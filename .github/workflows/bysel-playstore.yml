@@ -1,0 +1,58 @@
+name: BYSEL Play Store Release
+
+on:
+  workflow_dispatch:   # manual trigger
+  push:
+    tags:
+      - 'v*.*.*'       # e.g. v1.0.0
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Gradle build (AAB)
+        run: |
+          cd android
+          ./gradlew clean bundleRelease
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BYSEL-release-aab
+          path: android/app/build/outputs/bundle/release/app-release.aab
+
+  deploy-playstore:
+    runs-on: ubuntu-latest
+    needs: build-release
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Download AAB artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: BYSEL-release-aab
+          path: build/
+
+      - name: Upload to Play Store
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAYSTORE_SERVICE_ACCOUNT }}
+          packageName: com.bysel.trader
+          releaseFile: build/app-release.aab
+          track: internal
+          whatsNewDirectory: ./playstore-metadata/whatsnew
