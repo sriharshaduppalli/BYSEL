@@ -52,15 +52,15 @@ jobs:
       - name: Generate Gradle Wrapper
         run: |
           cd android
-          gradle wrapper --gradle-version 8.7
+          gradle wrapper --gradle-version 8.10
 
       - name: Gradle build (Debug)
         run: |
           cd android
           chmod +x ./gradlew
-          ./gradlew clean assembleDebug --stacktrace --no-daemon --no-build-cache --warning-mode=none
+          ./gradlew clean assembleDebug --stacktrace --no-daemon --no-build-cache --warning-mode=none -Dorg.gradle.internal.unsafe.hasConvention=false
         env:
-          GRADLE_OPTS: "-Xmx2048m"
+          GRADLE_OPTS: "-Xmx2048m -Dorg.gradle.internal.unsafe.hasConvention=false"
           ORG_GRADLE_PROJECT_daemon: "false"
 
       - name: Upload APK artifact

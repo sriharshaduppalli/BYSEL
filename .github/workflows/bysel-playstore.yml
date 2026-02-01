@@ -27,7 +27,7 @@ jobs:
       - name: Generate Gradle Wrapper
         run: |
           cd android
-          gradle wrapper --gradle-version 8.7
+          gradle wrapper --gradle-version 8.10
 
       - name: Decode Keystore
         run: |
@@ -44,7 +44,7 @@ jobs:
             -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
             -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
         env:
-          GRADLE_OPTS: "-Xmx2048m"
+          GRADLE_OPTS: "-Xmx2048m -Dorg.gradle.internal.unsafe.hasConvention=false"
           ORG_GRADLE_PROJECT_daemon: "false"
 
       - name: Upload AAB artifact
