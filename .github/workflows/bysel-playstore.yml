@@ -21,6 +21,8 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v2
+        with:
+          cache-disabled: true
 
       - name: Decode Keystore
         run: |
@@ -30,7 +32,7 @@ jobs:
       - name: Gradle build (AAB)
         run: |
           cd android
-          ./gradlew clean bundleRelease \
+          ./gradlew clean bundleRelease --no-daemon \
             -Pandroid.injected.signing.store.file=../keystore.jks \
             -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
