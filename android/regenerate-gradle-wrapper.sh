@@ -1,5 +1,5 @@
 #!/bin/bash
-# Regenerate gradle-wrapper.jar from Gradle distribution
+# Regenerate gradle-wrapper.jar from official source
 # This script is used in GitHub Actions when the wrapper JAR is missing
 
 set -e
@@ -15,31 +15,37 @@ trap "rm -rf $TEMP_DIR" EXIT
 
 cd "$TEMP_DIR"
 
-# Download Gradle distribution
-echo "Downloading Gradle $GRADLE_VERSION..."
-curl -L -o "gradle-${GRADLE_VERSION}-bin.zip" \
-  "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
+# Download gradle-wrapper.jar directly from Gradle's GitHub releases
+# The wrapper JAR is distributed separately from the main Gradle distribution
+echo "Downloading gradle-wrapper.jar from GitHub..."
 
-# Extract entire distribution
-echo "Extracting Gradle distribution..."
-unzip -q "gradle-${GRADLE_VERSION}-bin.zip"
+# Try multiple sources
+if curl -L -o "gradle-wrapper.jar" \
+  "https://raw.githubusercontent.com/gradle/gradle/v${GRADLE_VERSION}/gradle/wrapper/gradle-wrapper.jar" 2>/dev/null; then
+  echo "Downloaded from GitHub gradle repository"
+elif curl -L -o "gradle-wrapper.jar" \
+  "https://github.com/gradle/gradle/raw/v${GRADLE_VERSION}/gradle/wrapper/gradle-wrapper.jar" 2>/dev/null; then
+  echo "Downloaded from GitHub"
+else
+  # Fallback: Download from Maven Central (wrapper JARs are sometimes mirrored there)
+  echo "GitHub download failed, trying Maven Central..."
+  curl -L -o "gradle-wrapper.jar" \
+    "https://repo.maven.apache.org/maven2/org/gradle/gradle-wrapper/${GRADLE_VERSION}/gradle-wrapper-${GRADLE_VERSION}.jar"
+fi
 
-# Find and copy the wrapper JAR (it could be in lib/ or lib/plugins/)
-echo "Locating wrapper JAR..."
-WRAPPER_JAR=$(find "gradle-${GRADLE_VERSION}" -name "gradle-wrapper.jar" -type f | head -1)
-
-if [ -z "$WRAPPER_JAR" ]; then
-  echo "ERROR: Could not find gradle-wrapper.jar in distribution!"
-  echo "Available files:"
-  find "gradle-${GRADLE_VERSION}" -type f -name "*.jar" | head -10
+# Verify the file was downloaded and has content
+if [ ! -s "gradle-wrapper.jar" ]; then
+  echo "ERROR: Failed to download gradle-wrapper.jar!"
+  echo "The file is either missing or empty."
   exit 1
 fi
 
-echo "Found wrapper JAR at: $WRAPPER_JAR"
+FILE_SIZE=$(wc -c < "gradle-wrapper.jar")
+echo "Downloaded gradle-wrapper.jar (size: $FILE_SIZE bytes)"
 
 # Copy to wrapper directory
 echo "Copying wrapper JAR to $WRAPPER_DIR..."
-cp "$WRAPPER_JAR" "$WRAPPER_DIR/gradle-wrapper.jar"
+cp "gradle-wrapper.jar" "$WRAPPER_DIR/gradle-wrapper.jar"
 
 echo "Gradle wrapper JAR regenerated successfully!"
 ls -lh "$WRAPPER_DIR/gradle-wrapper.jar"
