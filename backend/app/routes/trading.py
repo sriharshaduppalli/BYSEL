@@ -1,8 +1,8 @@
 import random
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from app.database.db import QuoteModel, HoldingModel, OrderModel
-from app.models.schemas import Quote, Holding, Order, OrderResponse
+from ..database.db import QuoteModel, HoldingModel, OrderModel
+from ..models.schemas import Quote, Holding, Order, OrderResponse
 
 SYMBOLS = ["RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN", "WIPRO", "BAJAJFINSV", "HDFC", "LT", "MARUTI"]
 

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from app.database.db import get_db
-from app.models.schemas import Quote, Holding, Order, OrderResponse, Alert, HealthCheck
-from app.routes.trading import get_quotes, get_holdings, place_order
+from ..database.db import get_db
+from ..models.schemas import Quote, Holding, Order, OrderResponse, Alert, HealthCheck
+from .trading import get_quotes, get_holdings, place_order
 
 router = APIRouter()
 
