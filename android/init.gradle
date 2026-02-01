@@ -1,0 +1,15 @@
+// Disable Kotlin statistics at gradle initialization time
+// This runs BEFORE the daemon decision is made
+gradle.ext.kotlin_statistics_disabled = true
+
+// Hook into gradle startup to disable statistics
+allprojects {
+    afterEvaluate {
+        tasks.all {
+            doFirst {
+                // Disable Kotlin plugin statistics to prevent HasConvention errors
+                System.setProperty("kotlin.gradle.plugin.statistics", "false")
+            }
+        }
+    }
+}
