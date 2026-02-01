@@ -44,7 +44,9 @@ jobs:
             -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
             -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
         env:
-          GRADLE_OPTS: "-Xmx2048m"
+          GRADLE_OPTS: "-Xmx2048m -Dorg.gradle.jvmargs=-Xmx2048m"
+          KOTLIN_COMPILER_EXECUTION_STRATEGY: "daemon"
+          ORG_GRADLE_PROJECT_kotlin_gradle_plugin_statistics: "false"
 
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v4

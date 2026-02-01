@@ -1,15 +1,18 @@
-// Disable Kotlin statistics at gradle initialization time
-// This runs BEFORE the daemon decision is made
+// Gradle init script to disable Kotlin BuildFlowService BEFORE it initializes
+// This prevents HasConvention access errors in Gradle 9.3+
+
+// CRITICAL: Set at JVM startup level (not just gradle property level)
+System.setProperty("kotlin.gradle.plugin.statistics", "false")
+System.setProperty("kotlin.compiler.execution.strategy", "daemon")
+
+// Additional Gradle settings
 gradle.ext.kotlin_statistics_disabled = true
 
-// Hook into gradle startup to disable statistics
-allprojects {
-    afterEvaluate {
-        tasks.all {
-            doFirst {
-                // Disable Kotlin plugin statistics to prevent HasConvention errors
-                System.setProperty("kotlin.gradle.plugin.statistics", "false")
-            }
-        }
+// Completely disable BuildService isolation to prevent HasConvention access
+if (gradle.startParameter.gradle != null) {
+    try {
+        gradle.startParameter.gradle.ext.kotlin_statistics_disabled = true
+    } catch (Exception e) {
+        // Fallback if isolation prevents this
     }
 }

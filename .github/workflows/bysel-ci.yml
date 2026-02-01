@@ -60,7 +60,9 @@ jobs:
           chmod +x ./gradlew
           ./gradlew --no-daemon --init-script init.gradle --info clean assembleDebug
         env:
-          GRADLE_OPTS: "-Xmx2048m"
+          GRADLE_OPTS: "-Xmx2048m -Dorg.gradle.jvmargs=-Xmx2048m"
+          KOTLIN_COMPILER_EXECUTION_STRATEGY: "daemon"
+          ORG_GRADLE_PROJECT_kotlin_gradle_plugin_statistics: "false"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
