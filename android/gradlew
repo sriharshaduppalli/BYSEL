@@ -31,33 +31,42 @@ if [ ! -f "$WRAPPER_JAR" ]; then
   TEMP_ZIP="$TEMP_DIR/gradle.zip"
   
   if curl -f -L --connect-timeout 30 -o "$TEMP_ZIP" "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" 2>/dev/null; then
-    echo "Extracting wrapper JAR..."
+    echo "Downloaded gradle-$GRADLE_VERSION-bin.zip"
     mkdir -p "$(dirname "$WRAPPER_JAR")"
     
-    # Try extraction - gradle-wrapper.jar should be in gradle-8.5/lib/
-    if unzip -j "$TEMP_ZIP" "gradle-${GRADLE_VERSION}/lib/gradle-wrapper.jar" -d "$(dirname "$WRAPPER_JAR")" 2>/dev/null; then
+    # Search for gradle-wrapper.jar in the ZIP
+    echo "Searching for gradle-wrapper.jar in ZIP..."
+    JAR_PATH=$(unzip -l "$TEMP_ZIP" 2>/dev/null | grep 'gradle-wrapper.jar' | awk '{print $NF}' | head -1)
+    
+    if [ -z "$JAR_PATH" ]; then
+      echo "gradle-wrapper.jar not found in ZIP!"
+      echo "Available JAR files in ZIP:"
+      unzip -l "$TEMP_ZIP" 2>/dev/null | grep '\.jar$' | head -20
+      rm -rf "$TEMP_DIR"
+      exit 1
+    fi
+    
+    echo "Found at: $JAR_PATH"
+    echo "Extracting..."
+    if unzip -j "$TEMP_ZIP" "$JAR_PATH" -d "$(dirname "$WRAPPER_JAR")" 2>/dev/null; then
       echo "Successfully extracted gradle-wrapper.jar"
     else
-      # If that fails, list what's in the ZIP to debug
-      echo "Standard extraction failed, checking ZIP contents..."
-      JAR_IN_ZIP=$(unzip -l "$TEMP_ZIP" 2>/dev/null | grep -i "gradle-wrapper.jar" | head -1)
-      if [ -n "$JAR_IN_ZIP" ]; then
-        # Extract using the found path
-        JAR_PATH=$(echo "$JAR_IN_ZIP" | awk '{print $NF}')
-        echo "Found at: $JAR_PATH"
-        unzip -j "$TEMP_ZIP" "$JAR_PATH" -d "$(dirname "$WRAPPER_JAR")" 2>/dev/null
-      fi
+      echo "ERROR: Extraction failed for $JAR_PATH"
+      rm -rf "$TEMP_DIR"
+      exit 1
     fi
     
     rm -rf "$TEMP_DIR"
     
-    # Final check
     if [ ! -f "$WRAPPER_JAR" ]; then
-      echo "ERROR: Failed to obtain gradle-wrapper.jar"
+      echo "ERROR: File not found after extraction"
       exit 1
     fi
+    
+    echo "gradle-wrapper.jar ready at $WRAPPER_JAR"
   else
     echo "ERROR: Failed to download Gradle distribution"
+    rm -rf "$TEMP_DIR"
     exit 1
   fi
 fi
