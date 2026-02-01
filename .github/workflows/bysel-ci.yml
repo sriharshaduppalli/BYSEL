@@ -58,7 +58,7 @@ jobs:
         run: |
           cd android
           chmod +x ./gradlew
-          ./gradlew clean assembleDebug --stacktrace --info
+          ./gradlew --no-daemon --info clean assembleDebug
         env:
           GRADLE_OPTS: "-Xmx2048m"
 
