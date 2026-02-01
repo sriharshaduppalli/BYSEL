@@ -1,0 +1,25 @@
+# BYSEL v1.0.0 - Initial Release
+
+## What's New in v1.0.0:
+- 📈 **Watchlist** - Track your favorite stocks with real-time mock quotes
+- 💼 **Portfolio** - Manage your holdings with buy/sell capabilities
+- 🔔 **Price Alerts** - Set custom price alerts for quick notifications
+- 🎨 **Dark Mode UI** - Stylish, easy-on-the-eyes interface
+- ⚡ **Fast & Responsive** - Optimized for smooth trading experience
+
+## Features:
+- Mock trading with paper trading
+- Track multiple stocks simultaneously
+- Beautiful Jetpack Compose UI
+- Real-time data synchronization
+- Offline support with local caching
+- No personal data collection
+
+## Requirements:
+- Android 8.0 (API 26) or higher
+- Internet connection for trading data
+
+## Known Limitations:
+- Paper trading only (no real brokerage integration)
+- Mock data for demonstration purposes
+- Limited to Indian stock symbols

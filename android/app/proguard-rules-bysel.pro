@@ -1,0 +1,6 @@
+-keep class com.bysel.trader.** { *; }
+-dontwarn com.bysel.trader.**
+-keep class javax.inject.** { *; }
+-keep class * implements dagger.internal.Factory
+-keep class * extends java.lang.Enum
+-keep class kotlin.jvm.internal.Intrinsics { static *** checkNotNull(...); }
