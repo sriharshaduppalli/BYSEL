@@ -27,7 +27,7 @@ jobs:
       - name: Generate Gradle Wrapper
         run: |
           cd android
-          gradle wrapper --gradle-version 8.2
+          gradle wrapper --gradle-version 8.5
 
       - name: Decode Keystore
         run: |
