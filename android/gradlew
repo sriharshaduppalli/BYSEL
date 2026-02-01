@@ -23,7 +23,10 @@
 ##############################################################################
 
 # Check if wrapper JAR exists, if not generate it
-WRAPPER_JAR="$(dirname "$0")/gradle/wrapper/gradle-wrapper.jar"
+SCRIPT_DIR="$(dirname "$(cd "$(dirname "$0")" && pwd)")"
+WRAPPER_DIR="$SCRIPT_DIR/gradle/wrapper"
+WRAPPER_JAR="$WRAPPER_DIR/gradle-wrapper.jar"
+
 if [ ! -f "$WRAPPER_JAR" ]; then
   echo "gradle-wrapper.jar not found. Generating..."
   GRADLE_VERSION="8.5"
@@ -52,23 +55,23 @@ if [ ! -f "$WRAPPER_JAR" ]; then
   # Create a temporary project
   TEMP_PROJECT="$TEMP_DIR/temp-project"
   mkdir -p "$TEMP_PROJECT"
-  cd "$TEMP_PROJECT"
   
   # Create minimal project files
-  cat > build.gradle << 'EOF'
+  cat > "$TEMP_PROJECT/build.gradle" << 'EOF'
 plugins { id 'java' }
 repositories { mavenCentral() }
 EOF
-  cat > settings.gradle << 'EOF'
+  cat > "$TEMP_PROJECT/settings.gradle" << 'EOF'
 rootProject.name = 'temp'
 EOF
   
   # Generate wrapper using downloaded gradle
   echo "Generating wrapper files..."
-  if "$GRADLE_BIN" wrapper --gradle-version "$GRADLE_VERSION" --warning-mode none 2>&1 | grep -q "BUILD SUCCESS\|wrapper task"; then
+  cd "$TEMP_PROJECT"
+  if "$GRADLE_BIN" wrapper --gradle-version "$GRADLE_VERSION" --warning-mode none > /dev/null 2>&1; then
     if [ -f "gradle/wrapper/gradle-wrapper.jar" ]; then
-      mkdir -p "$(dirname "$WRAPPER_JAR")"
-      cp gradle/wrapper/gradle-wrapper.jar "$WRAPPER_JAR"
+      mkdir -p "$WRAPPER_DIR"
+      cp -v "gradle/wrapper/gradle-wrapper.jar" "$WRAPPER_JAR"
       echo "Successfully generated gradle-wrapper.jar"
     fi
   fi
@@ -78,7 +81,7 @@ EOF
   rm -rf "$TEMP_DIR"
   
   if [ ! -f "$WRAPPER_JAR" ]; then
-    echo "ERROR: Failed to generate gradle-wrapper.jar"
+    echo "ERROR: Failed to generate gradle-wrapper.jar at $WRAPPER_JAR"
     exit 1
   fi
 fi
