@@ -58,9 +58,9 @@ jobs:
         run: |
           cd android
           chmod +x ./gradlew
-          ./gradlew clean assembleDebug --stacktrace --no-daemon --no-build-cache --warning-mode=none -Dorg.gradle.internal.unsafe.hasConvention=false
+          ./gradlew clean assembleDebug --stacktrace --no-daemon --no-build-cache --warning-mode=none -Dkotlin.gradle.plugin.statistics=false
         env:
-          GRADLE_OPTS: "-Xmx2048m -Dorg.gradle.internal.unsafe.hasConvention=false"
+          GRADLE_OPTS: "-Xmx2048m -Dkotlin.gradle.plugin.statistics=false"
           ORG_GRADLE_PROJECT_daemon: "false"
 
       - name: Upload APK artifact
