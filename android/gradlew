@@ -22,6 +22,23 @@
 ##
 ##############################################################################
 
+# Check if wrapper JAR exists, if not download it
+WRAPPER_JAR="$(dirname "$0")/gradle/wrapper/gradle-wrapper.jar"
+if [ ! -f "$WRAPPER_JAR" ]; then
+  echo "gradle-wrapper.jar not found, attempting to download..."
+  GRADLE_VERSION="8.5"
+  TEMP_ZIP=$(mktemp)
+  if curl -f -L --connect-timeout 30 -o "$TEMP_ZIP" "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"; then
+    mkdir -p "$(dirname "$WRAPPER_JAR")"
+    unzip -j "$TEMP_ZIP" "gradle-${GRADLE_VERSION}/lib/gradle-wrapper.jar" -d "$(dirname "$WRAPPER_JAR")" 2>/dev/null || true
+    rm -f "$TEMP_ZIP"
+    if [ ! -f "$WRAPPER_JAR" ]; then
+      echo "ERROR: Failed to obtain gradle-wrapper.jar"
+      exit 1
+    fi
+  fi
+fi
+
 # Attempt to set APP_HOME
 # Resolve links: $0 may be a link
 PRG="$0"

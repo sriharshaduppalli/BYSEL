@@ -44,16 +44,6 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
-      - name: Regenerate Gradle wrapper if missing
-        run: |
-          if [ ! -f "android/gradle/wrapper/gradle-wrapper.jar" ]; then
-            echo "Gradle wrapper JAR missing, regenerating..."
-            chmod +x android/regenerate-gradle-wrapper.sh
-            ./android/regenerate-gradle-wrapper.sh
-          else
-            echo "Gradle wrapper JAR found"
-          fi
-
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v2
 
