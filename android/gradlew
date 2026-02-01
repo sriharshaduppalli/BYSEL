@@ -22,51 +22,63 @@
 ##
 ##############################################################################
 
-# Check if wrapper JAR exists, if not download it
+# Check if wrapper JAR exists, if not generate it
 WRAPPER_JAR="$(dirname "$0")/gradle/wrapper/gradle-wrapper.jar"
 if [ ! -f "$WRAPPER_JAR" ]; then
-  echo "gradle-wrapper.jar not found, attempting to download..."
+  echo "gradle-wrapper.jar not found. Generating..."
   GRADLE_VERSION="8.5"
   TEMP_DIR=$(mktemp -d)
   TEMP_ZIP="$TEMP_DIR/gradle.zip"
   
-  if curl -f -L --connect-timeout 30 -o "$TEMP_ZIP" "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" 2>/dev/null; then
-    echo "Downloaded gradle-$GRADLE_VERSION-bin.zip"
-    mkdir -p "$(dirname "$WRAPPER_JAR")"
-    
-    # Search for gradle-wrapper.jar in the ZIP
-    echo "Searching for gradle-wrapper.jar in ZIP..."
-    JAR_PATH=$(unzip -l "$TEMP_ZIP" 2>/dev/null | grep 'gradle-wrapper.jar' | awk '{print $NF}' | head -1)
-    
-    if [ -z "$JAR_PATH" ]; then
-      echo "gradle-wrapper.jar not found in ZIP!"
-      echo "Available JAR files in ZIP:"
-      unzip -l "$TEMP_ZIP" 2>/dev/null | grep '\.jar$' | head -20
-      rm -rf "$TEMP_DIR"
-      exit 1
-    fi
-    
-    echo "Found at: $JAR_PATH"
-    echo "Extracting..."
-    if unzip -j "$TEMP_ZIP" "$JAR_PATH" -d "$(dirname "$WRAPPER_JAR")" 2>/dev/null; then
-      echo "Successfully extracted gradle-wrapper.jar"
-    else
-      echo "ERROR: Extraction failed for $JAR_PATH"
-      rm -rf "$TEMP_DIR"
-      exit 1
-    fi
-    
+  # Download Gradle distribution
+  echo "Downloading Gradle $GRADLE_VERSION..."
+  if ! curl -f -L --connect-timeout 30 -o "$TEMP_ZIP" "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" 2>/dev/null; then
+    echo "ERROR: Failed to download Gradle"
     rm -rf "$TEMP_DIR"
-    
-    if [ ! -f "$WRAPPER_JAR" ]; then
-      echo "ERROR: File not found after extraction"
-      exit 1
-    fi
-    
-    echo "gradle-wrapper.jar ready at $WRAPPER_JAR"
-  else
-    echo "ERROR: Failed to download Gradle distribution"
+    exit 1
+  fi
+  
+  echo "Extracting Gradle..."
+  unzip -q "$TEMP_ZIP" -d "$TEMP_DIR"
+  
+  # Find gradle executable
+  GRADLE_BIN=$(find "$TEMP_DIR" -name "gradle" -type f -executable | head -1)
+  if [ -z "$GRADLE_BIN" ]; then
+    echo "ERROR: Could not find gradle executable"
     rm -rf "$TEMP_DIR"
+    exit 1
+  fi
+  
+  # Create a temporary project
+  TEMP_PROJECT="$TEMP_DIR/temp-project"
+  mkdir -p "$TEMP_PROJECT"
+  cd "$TEMP_PROJECT"
+  
+  # Create minimal project files
+  cat > build.gradle << 'EOF'
+plugins { id 'java' }
+repositories { mavenCentral() }
+EOF
+  cat > settings.gradle << 'EOF'
+rootProject.name = 'temp'
+EOF
+  
+  # Generate wrapper using downloaded gradle
+  echo "Generating wrapper files..."
+  if "$GRADLE_BIN" wrapper --gradle-version "$GRADLE_VERSION" --warning-mode none 2>&1 | grep -q "BUILD SUCCESS\|wrapper task"; then
+    if [ -f "gradle/wrapper/gradle-wrapper.jar" ]; then
+      mkdir -p "$(dirname "$WRAPPER_JAR")"
+      cp gradle/wrapper/gradle-wrapper.jar "$WRAPPER_JAR"
+      echo "Successfully generated gradle-wrapper.jar"
+    fi
+  fi
+  
+  # Cleanup
+  cd - > /dev/null
+  rm -rf "$TEMP_DIR"
+  
+  if [ ! -f "$WRAPPER_JAR" ]; then
+    echo "ERROR: Failed to generate gradle-wrapper.jar"
     exit 1
   fi
 fi
