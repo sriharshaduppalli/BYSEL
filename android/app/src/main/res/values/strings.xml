@@ -9,7 +9,7 @@
     <string name="change">Change</string>
     <string name="quantity">Quantity</string>
     <string name="average_price">Avg Price</string>
-    <string name="pnl">P&L</string>
+    <string name="pnl">P&amp;L</string>
     <string name="buy">Buy</string>
     <string name="sell">Sell</string>
     <string name="set_alert">Set Alert</string>
