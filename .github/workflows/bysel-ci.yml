@@ -54,8 +54,6 @@ jobs:
           cd android
           chmod +x ./gradlew
           ./gradlew --no-daemon --info clean assembleDebug
-        env:
-          GRADLE_OPTS: "-Xmx2048m"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

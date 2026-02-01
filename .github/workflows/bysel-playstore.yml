@@ -38,8 +38,6 @@ jobs:
             -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
             -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
-        env:
-          GRADLE_OPTS: "-Xmx2048m"
 
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v4
