@@ -58,7 +58,7 @@ jobs:
         run: |
           cd android
           chmod +x ./gradlew
-          ./gradlew clean assembleDebug --stacktrace --no-daemon --warning-mode=none
+          ./gradlew clean assembleDebug --stacktrace --no-daemon --no-build-cache --warning-mode=none
         env:
           GRADLE_OPTS: "-Xmx2048m"
           ORG_GRADLE_PROJECT_daemon: "false"
