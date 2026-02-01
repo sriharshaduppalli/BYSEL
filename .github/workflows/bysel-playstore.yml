@@ -24,6 +24,11 @@ jobs:
         with:
           cache-disabled: true
 
+      - name: Generate Gradle Wrapper
+        run: |
+          cd android
+          gradle wrapper --gradle-version 8.2
+
       - name: Decode Keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > keystore.jks
@@ -32,6 +37,7 @@ jobs:
       - name: Gradle build (AAB)
         run: |
           cd android
+          chmod +x ./gradlew
           ./gradlew clean bundleRelease --no-daemon \
             -Pandroid.injected.signing.store.file=../keystore.jks \
             -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \

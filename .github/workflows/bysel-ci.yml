@@ -49,9 +49,15 @@ jobs:
         with:
           cache-disabled: true
 
+      - name: Generate Gradle Wrapper
+        run: |
+          cd android
+          gradle wrapper --gradle-version 8.2
+
       - name: Gradle build (Debug)
         run: |
           cd android
+          chmod +x ./gradlew
           ./gradlew clean assembleDebug --stacktrace --no-daemon
 
       - name: Upload APK artifact
