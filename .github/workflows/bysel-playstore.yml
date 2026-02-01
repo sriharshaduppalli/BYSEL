@@ -31,8 +31,6 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v2
-        with:
-          cache-disabled: true
 
       - name: Decode Keystore
         run: |
@@ -69,6 +67,7 @@ jobs:
           path: build/
 
       - name: Upload to Play Store
+        if: env.HAS_PLAYSTORE_SECRET == 'true'
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAYSTORE_SERVICE_ACCOUNT }}
@@ -76,3 +75,18 @@ jobs:
           releaseFile: build/app-release.aab
           track: internal
           whatsNewDirectory: ./playstore-metadata/whatsnew
+
+      - name: ⚠️ Play Store upload skipped - service account not configured
+        if: env.HAS_PLAYSTORE_SECRET != 'true'
+        run: |
+          echo "⚠️  PLAYSTORE_SERVICE_ACCOUNT secret not configured"
+          echo "To deploy to Play Store, add the secret at:"
+          echo "https://github.com/sriharshaduppalli/BYSEL/settings/secrets/actions"
+          echo ""
+          echo "Steps:"
+          echo "1. Go to Google Play Console"
+          echo "2. Settings → API access → Create Service Account"
+          echo "3. Download JSON key"
+          echo "4. Add as PLAYSTORE_SERVICE_ACCOUNT secret"
+          echo ""
+          echo "AAB artifact is ready at: build/app-release.aab"

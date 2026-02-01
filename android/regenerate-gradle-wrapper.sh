@@ -18,45 +18,22 @@ trap "rm -rf $TEMP_DIR" EXIT
 
 cd "$TEMP_DIR"
 
-# Download gradle distribution ZIP
-GRADLE_ZIP_URL="https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
+# gradle-wrapper.jar is NOT in the gradle-*-bin.zip distribution
+# It must be downloaded from official repositories
+echo "Downloading gradle-wrapper.jar from official sources..."
 
-echo "Downloading Gradle $GRADLE_VERSION distribution..."
-if ! curl -f -L --connect-timeout 30 -o "gradle-dist.zip" "$GRADLE_ZIP_URL"; then
-  echo "ERROR: Failed to download Gradle distribution from $GRADLE_ZIP_URL"
-  exit 1
-fi
-
-DIST_SIZE=$(wc -c < "gradle-dist.zip" 2>/dev/null || echo 0)
-echo "Downloaded gradle-$GRADLE_VERSION-bin.zip: $DIST_SIZE bytes"
-
-if [ "$DIST_SIZE" -lt 1000000 ]; then
-  echo "ERROR: Downloaded file is too small! Expected ~100MB, got $DIST_SIZE bytes"
-  exit 1
-fi
-
-# List contents to find gradle-wrapper.jar
-echo "Searching for gradle-wrapper.jar in distribution..."
-JAR_PATH=$(unzip -l "gradle-dist.zip" | grep -o 'gradle-[^/]*/lib/gradle-wrapper.jar' | head -1)
-
-if [ -z "$JAR_PATH" ]; then
-  echo "ERROR: gradle-wrapper.jar not found in distribution!"
-  echo "Available JAR files in ZIP:"
-  unzip -l "gradle-dist.zip" | grep '\.jar$' | head -10
-  exit 1
-fi
-
-echo "Found: $JAR_PATH"
-
-# Extract the JAR
-if ! unzip -j "gradle-dist.zip" "$JAR_PATH" -d "."; then
-  echo "ERROR: Failed to extract gradle-wrapper.jar from $JAR_PATH"
-  exit 1
-fi
-
-# Verify the file was extracted
-if [ ! -f "gradle-wrapper.jar" ]; then
-  echo "ERROR: gradle-wrapper.jar not found after extraction"
+# Try multiple sources
+if curl -f -L --connect-timeout 10 -o "gradle-wrapper.jar" \
+  "https://repo.gradle.org/gradle-release-repository/org/gradle/gradle-wrapper/${GRADLE_VERSION}/gradle-wrapper-${GRADLE_VERSION}.jar" 2>/dev/null; then
+  echo "✓ Downloaded from Gradle official repository"
+elif curl -f -L --connect-timeout 10 -o "gradle-wrapper.jar" \
+  "https://repo1.maven.org/maven2/org/gradle/gradle-wrapper/${GRADLE_VERSION}/gradle-wrapper-${GRADLE_VERSION}.jar" 2>/dev/null; then
+  echo "✓ Downloaded from Maven Central"
+elif curl -f -L --connect-timeout 10 -o "gradle-wrapper.jar" \
+  "https://raw.githubusercontent.com/gradle/gradle/v${GRADLE_VERSION}/gradle/wrapper/gradle-wrapper.jar" 2>/dev/null; then
+  echo "✓ Downloaded from GitHub"
+else
+  echo "ERROR: Failed to download gradle-wrapper.jar from all sources"
   exit 1
 fi
 
