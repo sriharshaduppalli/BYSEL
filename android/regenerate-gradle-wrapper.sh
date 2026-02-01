@@ -1,6 +1,7 @@
 #!/bin/bash
-# Regenerate gradle-wrapper.jar from official source
+# Regenerate gradle-wrapper.jar from official Gradle distribution
 # This script is used in GitHub Actions when the wrapper JAR is missing
+# The gradle-wrapper.jar is included in the gradle-*-bin.zip distribution
 
 set -e
 
@@ -18,36 +19,56 @@ trap "rm -rf $TEMP_DIR" EXIT
 
 cd "$TEMP_DIR"
 
-# Download gradle-wrapper.jar
-# Primary source: Maven Central Repository (most reliable)
-echo "Downloading gradle-wrapper.jar from Maven Central..."
+# Download gradle distribution ZIP - this contains gradle-wrapper.jar in lib/
+GRADLE_ZIP_URL="https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
 
-MAVEN_URL="https://repo.maven.apache.org/maven2/org/gradle/gradle-wrapper/${GRADLE_VERSION}/gradle-wrapper-${GRADLE_VERSION}.jar"
-
-if curl -f -L --connect-timeout 10 -o "gradle-wrapper.jar" "$MAVEN_URL"; then
-  echo "✓ Downloaded from Maven Central"
-else
-  echo "Maven Central failed, trying Gradle GitHub releases..."
-  # Fallback: GitHub releases
-  GITHUB_URL="https://github.com/gradle/gradle/releases/download/v${GRADLE_VERSION}/gradle-${GRADLE_VERSION}-wrapper.jar"
-  if curl -f -L --connect-timeout 10 -o "gradle-wrapper.jar" "$GITHUB_URL"; then
-    echo "✓ Downloaded from GitHub"
-  else
-    echo "GitHub failed, trying raw.githubusercontent.com..."
-    # Last resort: raw GitHub content
-    curl -f -L --connect-timeout 10 -o "gradle-wrapper.jar" \
-      "https://raw.githubusercontent.com/gradle/gradle/v${GRADLE_VERSION}/gradle/wrapper/gradle-wrapper.jar"
-    echo "✓ Downloaded from raw.githubusercontent.com"
-  fi
+echo "Downloading Gradle $GRADLE_VERSION distribution..."
+if ! curl -f -L --connect-timeout 30 -o "gradle-dist.zip" "$GRADLE_ZIP_URL"; then
+  echo "ERROR: Failed to download Gradle distribution from $GRADLE_ZIP_URL"
+  exit 1
 fi
 
-# Verify the file was downloaded and has reasonable size
-FILE_SIZE=$(wc -c < "gradle-wrapper.jar" 2>/dev/null || echo 0)
-echo "Downloaded file size: $FILE_SIZE bytes"
+DIST_SIZE=$(wc -c < "gradle-dist.zip" 2>/dev/null || echo 0)
+echo "Downloaded gradle-$GRADLE_VERSION-bin.zip: $DIST_SIZE bytes"
 
-if [ "$FILE_SIZE" -lt 100000 ]; then
-  echo "ERROR: Downloaded file is too small! Expected ~1-2MB, got $FILE_SIZE bytes"
-  echo "The download may have failed or returned an error page."
+if [ "$DIST_SIZE" -lt 1000000 ]; then
+  echo "ERROR: Downloaded file is too small! Expected ~100MB, got $DIST_SIZE bytes"
+  exit 1
+fi
+
+# Extract gradle-wrapper.jar from the distribution
+# The JAR is located at: gradle-8.5/lib/gradle-wrapper.jar
+echo "Extracting gradle-wrapper.jar from distribution..."
+
+# First, list what's in the ZIP to verify structure
+echo "ZIP contents (first 20 files):"
+unzip -l "gradle-dist.zip" | head -20
+
+# Extract just the wrapper JAR
+if ! unzip -j "gradle-dist.zip" "gradle-${GRADLE_VERSION}/lib/gradle-wrapper.jar" -d "."; then
+  echo "ERROR: Failed to extract gradle-wrapper.jar from distribution"
+  echo "The expected file is: gradle-${GRADLE_VERSION}/lib/gradle-wrapper.jar"
+  exit 1
+fi
+
+# Verify the file was extracted and has reasonable size
+if [ ! -f "gradle-wrapper.jar" ]; then
+  echo "ERROR: gradle-wrapper.jar not found after extraction"
+  exit 1
+fi
+
+FILE_SIZE=$(wc -c < "gradle-wrapper.jar" 2>/dev/null || echo 0)
+echo "Extracted gradle-wrapper.jar: $FILE_SIZE bytes"
+
+if [ "$FILE_SIZE" -lt 1000000 ]; then
+  echo "ERROR: Extracted file is too small! Expected ~1-2MB, got $FILE_SIZE bytes"
+  exit 1
+fi
+
+# Verify it's actually a ZIP file (JAR is just a ZIP)
+if ! file "gradle-wrapper.jar" | grep -q "Zip\|JAR"; then
+  echo "ERROR: Extracted file doesn't appear to be a valid JAR/ZIP file!"
+  file "gradle-wrapper.jar" || true
   exit 1
 fi
 
