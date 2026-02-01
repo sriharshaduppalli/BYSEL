@@ -1,16 +1,15 @@
 #!/bin/bash
-# Regenerate gradle-wrapper.jar from official Gradle distribution
-# This script is used in GitHub Actions when the wrapper JAR is missing
+# Regenerate gradle-wrapper.jar using gradle wrapper task
+# This script uses Gradle itself to generate a proper wrapper JAR
 
 set -e
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-WRAPPER_DIR="$SCRIPT_DIR/gradle/wrapper"
 GRADLE_VERSION="8.5"
 
 echo "Regenerating Gradle $GRADLE_VERSION wrapper JAR..."
-echo "Target directory: $WRAPPER_DIR"
+echo "Target directory: $SCRIPT_DIR"
 
 # Create temporary directory
 TEMP_DIR=$(mktemp -d)
@@ -18,54 +17,87 @@ trap "rm -rf $TEMP_DIR" EXIT
 
 cd "$TEMP_DIR"
 
-# gradle-wrapper.jar is NOT in the gradle-*-bin.zip distribution
-# It must be downloaded from official repositories
-echo "Downloading gradle-wrapper.jar from official sources..."
+# Download Gradle standalone distribution
+GRADLE_ZIP_URL="https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
 
-# Try multiple sources
-if curl -f -L --connect-timeout 10 -o "gradle-wrapper.jar" \
-  "https://repo.gradle.org/gradle-release-repository/org/gradle/gradle-wrapper/${GRADLE_VERSION}/gradle-wrapper-${GRADLE_VERSION}.jar" 2>/dev/null; then
-  echo "✓ Downloaded from Gradle official repository"
-elif curl -f -L --connect-timeout 10 -o "gradle-wrapper.jar" \
-  "https://repo1.maven.org/maven2/org/gradle/gradle-wrapper/${GRADLE_VERSION}/gradle-wrapper-${GRADLE_VERSION}.jar" 2>/dev/null; then
-  echo "✓ Downloaded from Maven Central"
-elif curl -f -L --connect-timeout 10 -o "gradle-wrapper.jar" \
-  "https://raw.githubusercontent.com/gradle/gradle/v${GRADLE_VERSION}/gradle/wrapper/gradle-wrapper.jar" 2>/dev/null; then
-  echo "✓ Downloaded from GitHub"
-else
-  echo "ERROR: Failed to download gradle-wrapper.jar from all sources"
+echo "Downloading Gradle $GRADLE_VERSION..."
+if ! curl -f -L --connect-timeout 30 -o "gradle.zip" "$GRADLE_ZIP_URL"; then
+  echo "ERROR: Failed to download Gradle from $GRADLE_ZIP_URL"
   exit 1
 fi
 
-FILE_SIZE=$(wc -c < "gradle-wrapper.jar" 2>/dev/null || echo 0)
-echo "Extracted gradle-wrapper.jar: $FILE_SIZE bytes"
-
-if [ "$FILE_SIZE" -lt 1000000 ]; then
-  echo "ERROR: Extracted file is too small! Expected ~1-2MB, got $FILE_SIZE bytes"
+DIST_SIZE=$(wc -c < "gradle.zip" 2>/dev/null || echo 0)
+if [ "$DIST_SIZE" -lt 50000000 ]; then
+  echo "ERROR: Downloaded file too small ($DIST_SIZE bytes)"
   exit 1
 fi
 
-# Verify it's actually a ZIP file (JAR is just a ZIP)
-if ! file "gradle-wrapper.jar" | grep -q "Zip\|JAR"; then
-  echo "ERROR: Extracted file doesn't appear to be a valid JAR/ZIP file!"
-  file "gradle-wrapper.jar" || true
+echo "Extracting Gradle..."
+unzip -q "gradle.zip"
+
+# Find the gradle executable
+GRADLE_BIN=$(find . -name "gradle" -type f -executable 2>/dev/null | head -1)
+if [ -z "$GRADLE_BIN" ]; then
+  echo "ERROR: Could not find gradle executable in distribution"
   exit 1
 fi
 
-# Create wrapper directory if it doesn't exist
-mkdir -p "$WRAPPER_DIR"
+echo "Found gradle at: $GRADLE_BIN"
 
-# Copy to wrapper directory
-echo "Copying wrapper JAR to $WRAPPER_DIR..."
-cp "gradle-wrapper.jar" "$WRAPPER_DIR/gradle-wrapper.jar"
+# Initialize a minimal gradle project
+mkdir -p "$TEMP_DIR/minimal-gradle-project"
+cd "$TEMP_DIR/minimal-gradle-project"
 
-# Verify the file was copied successfully
-if [ -f "$WRAPPER_DIR/gradle-wrapper.jar" ]; then
-  FINAL_SIZE=$(wc -c < "$WRAPPER_DIR/gradle-wrapper.jar")
+# Create minimal build.gradle
+cat > build.gradle << 'EOF'
+plugins {
+    id 'java'
+}
+
+repositories {
+    mavenCentral()
+}
+EOF
+
+# Create settings.gradle
+cat > settings.gradle << 'EOF'
+rootProject.name = 'minimal'
+EOF
+
+# Run gradle wrapper task to generate wrapper files
+echo "Generating wrapper files..."
+if ! "$GRADLE_BIN" wrapper --gradle-version "$GRADLE_VERSION" --warning-mode none 2>/dev/null; then
+  echo "ERROR: Failed to generate wrapper"
+  exit 1
+fi
+
+# Verify wrapper.jar was created
+if [ ! -f "gradle/wrapper/gradle-wrapper.jar" ]; then
+  echo "ERROR: gradle-wrapper.jar not found after generation"
+  exit 1
+fi
+
+JAR_SIZE=$(wc -c < "gradle/wrapper/gradle-wrapper.jar")
+echo "Generated gradle-wrapper.jar: $JAR_SIZE bytes"
+
+if [ "$JAR_SIZE" -lt 100000 ]; then
+  echo "ERROR: Generated JAR too small ($JAR_SIZE bytes)"
+  exit 1
+fi
+
+# Copy to target directory
+echo "Copying wrapper JAR to $SCRIPT_DIR/gradle/wrapper/..."
+mkdir -p "$SCRIPT_DIR/gradle/wrapper"
+cp "gradle/wrapper/gradle-wrapper.jar" "$SCRIPT_DIR/gradle/wrapper/gradle-wrapper.jar"
+
+# Verify copy
+if [ -f "$SCRIPT_DIR/gradle/wrapper/gradle-wrapper.jar" ]; then
+  FINAL_SIZE=$(wc -c < "$SCRIPT_DIR/gradle/wrapper/gradle-wrapper.jar")
   echo "✓ Gradle wrapper JAR regenerated successfully!"
-  echo "  Location: $WRAPPER_DIR/gradle-wrapper.jar"
+  echo "  Location: $SCRIPT_DIR/gradle/wrapper/gradle-wrapper.jar"
   echo "  Size: $FINAL_SIZE bytes"
+  exit 0
 else
-  echo "ERROR: Failed to copy gradle-wrapper.jar to $WRAPPER_DIR"
+  echo "ERROR: Failed to copy gradle-wrapper.jar"
   exit 1
 fi
