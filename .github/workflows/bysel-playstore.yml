@@ -38,14 +38,13 @@ jobs:
         run: |
           cd android
           chmod +x ./gradlew
-          ./gradlew clean bundleRelease --no-daemon --no-build-cache --warning-mode=none -Dkotlin.gradle.plugin.statistics=false \
+          ./gradlew clean bundleRelease --info \
             -Pandroid.injected.signing.store.file=../keystore.jks \
             -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
             -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
         env:
           GRADLE_OPTS: "-Xmx2048m -Dkotlin.gradle.plugin.statistics=false"
-          ORG_GRADLE_PROJECT_daemon: "false"
 
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v4
