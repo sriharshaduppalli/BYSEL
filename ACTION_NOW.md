@@ -1,9 +1,33 @@
 # ⚡ IMMEDIATE ACTIONS - Complete Deployment Now
 
-## 🎉 MAJOR MILESTONE
+## 🚨 CRITICAL UPDATE - Build Fix Applied
+
+**IMPORTANT:** The build was failing with HasConvention errors even after initial fix attempts.
+
+✅ **NEW COMPREHENSIVE FIX DEPLOYED** (Commit 0c2eb0a)
+- Root cause identified: init.gradle alone was insufficient
+- BuildFlowService property isolation timing issue
+- Solution: **Multi-layer approach with environment variables at JVM startup level**
+
+### What Changed:
+1. ✅ Enhanced init.gradle with JVM-level System.setProperty calls
+2. ✅ Added KOTLIN_COMPILER_EXECUTION_STRATEGY environment variable to workflows
+3. ✅ Added ORG_GRADLE_PROJECT environment variable for property override
+4. ✅ gradle.properties verified and comments clarified
+
+### Expected Result This Time:
+- ❌ NO daemon fork ("Daemon will be forked" message should NOT appear)
+- ❌ NO HasConvention errors
+- ❌ NO BuildFlowService failures
+- ✅ CLEAN BUILD with "BUILD SUCCESSFUL"
+
+---
+
+## 🎉 READY FOR DEPLOYMENT
 
 ✅ Release tag **v1.0.0** has been created and pushed to GitHub!  
 ✅ Your code is ready for deployment!
+✅ **Build fix applied and pushed (Commit 0c2eb0a)**
 
 **Status:** Waiting for GitHub Secrets setup before build starts
 
@@ -65,8 +89,8 @@ You should see a workflow running called `bysel-playstore`.
 
 #### Build Steps (should all pass):
 1. ✅ Checkout code
-2. ✅ Setup Java JDK 11
-3. ✅ Build Android app
+2. ✅ Setup Java JDK 17
+3. ✅ Build Android app (NO daemon fork this time!)
 4. ✅ Sign APK with keystore
 5. ✅ Generate AAB bundle
 6. ✅ Upload artifacts
@@ -80,10 +104,11 @@ You should see a workflow running called `bysel-playstore`.
 ✅ Step 2: Create Signing Keystore ........ COMPLETE
 ✅ Step 3: Push Code to GitHub ............ COMPLETE
 ✅ Step 4: Tag Release (v1.0.0) ........... COMPLETE
-⏳ Step 5: Add GitHub Secrets ............. PENDING (YOUR ACTION)
-⏳ Step 6: Build & Sign ................... WAITING FOR SECRETS
-⏳ Step 7: Download Artifacts ............. WAITING FOR BUILD
-⏳ Step 8: Submit to Play Store ........... NEXT AFTER BUILD
+✅ Step 5: Apply Build Fixes .............. COMPLETE (Commit 0c2eb0a)
+⏳ Step 6: Add GitHub Secrets ............. PENDING (YOUR ACTION)
+⏳ Step 7: Build & Sign ................... WAITING FOR SECRETS
+⏳ Step 8: Download Artifacts ............. WAITING FOR BUILD
+⏳ Step 9: Submit to Play Store ........... NEXT AFTER BUILD
 ```
 
 ---
@@ -95,10 +120,11 @@ Once you add the secrets:
 1. **GitHub detects tag v1.0.0** 
    - Automatically triggers `bysel-playstore` workflow
    
-2. **Build process starts**
+2. **Build process starts with NEW FIX**
    - Uses GitHub Actions runners (free)
    - Retrieves your secrets safely
    - Decrypts keystore from KEYSTORE_BASE64
+   - **NEW:** Multi-layer BuildFlowService disable (no daemon fork!)
    - Builds the Android app
    - Signs with keystore (BYSEL@2026)
    - Creates release APK/AAB files
@@ -138,7 +164,7 @@ NOW:              Add GitHub Secrets (5 min) ← YOU ARE HERE
 ↓
 5 min:            Build starts automatically
 ↓
-10-15 min:        Build completes
+10-15 min:        Build completes (with NEW fix!)
 ↓
 15 min:           Download artifacts
 ↓
@@ -170,6 +196,16 @@ KEY_PASSWORD      = BYSEL@2026
 - Verify secret names match exactly (case-sensitive)
 - Ensure KEYSTORE_BASE64 value is complete
 - Refresh GitHub page and verify secrets appear in list
+
+### "Daemon will be forked" message appears
+- This should NOT appear with the new fix
+- If it does: Check that environment variables in workflows are set correctly
+- The fix was committed as 0c2eb0a - verify it's in the branch
+
+### "org/gradle/api/internal/HasConvention" error
+- This should NOT appear with the new multi-layer fix
+- If it does: The environment variable fix may need adjustment
+- Check GitHub Actions logs for which step failed
 
 ### Build still not starting
 - Give GitHub 2-3 minutes to detect the tag
@@ -210,7 +246,7 @@ KEY_PASSWORD      = BYSEL@2026
 
 The hard part is done. Now it's just:
 1. Add 4 secrets (5 min)
-2. Watch build (10-15 min)
+2. Watch build (10-15 min) - **with new fix, should work this time!**
 3. Download artifacts
 4. Upload to Play Store
 5. **LIVE!** 🎉

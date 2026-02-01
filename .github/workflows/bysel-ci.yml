@@ -49,20 +49,13 @@ jobs:
         with:
           cache-disabled: true
 
-      - name: Generate Gradle Wrapper
-        run: |
-          cd android
-          gradle wrapper --gradle-version 8.10
-
       - name: Gradle build (Debug)
         run: |
           cd android
           chmod +x ./gradlew
-          ./gradlew --no-daemon --init-script init.gradle --info clean assembleDebug
+          ./gradlew --no-daemon --info clean assembleDebug
         env:
-          GRADLE_OPTS: "-Xmx2048m -Dorg.gradle.jvmargs=-Xmx2048m"
-          KOTLIN_COMPILER_EXECUTION_STRATEGY: "daemon"
-          ORG_GRADLE_PROJECT_kotlin_gradle_plugin_statistics: "false"
+          GRADLE_OPTS: "-Xmx2048m"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
