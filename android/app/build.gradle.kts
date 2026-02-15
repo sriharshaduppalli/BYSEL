@@ -6,12 +6,12 @@ plugins {
 
 android {
     namespace = "com.bysel.trader"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.bysel.trader"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 17
         versionName = "1.0.1"
 
