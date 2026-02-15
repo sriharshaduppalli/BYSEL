@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.Quote
+import com.bysel.trader.data.models.Holding
 import com.bysel.trader.ui.components.QuoteCard
 import com.bysel.trader.ui.components.ErrorScreen
 import com.bysel.trader.ui.components.LoadingScreen
