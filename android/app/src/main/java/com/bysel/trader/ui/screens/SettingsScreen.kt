@@ -14,12 +14,31 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bysel.trader.ui.theme.allThemes
+import com.bysel.trader.ui.theme.getTheme
 
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(
+    onThemeChange: (String) -> Unit = {},
+    currentTheme: String = "Default"
+) {
     var darkMode by remember { mutableStateOf(true) }
     var enableNotifications by remember { mutableStateOf(true) }
+    var showThemeDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
+    var selectedTheme by remember { mutableStateOf(currentTheme) }
+
+    if (showThemeDialog) {
+        ThemeSelectionDialog(
+            selectedTheme = selectedTheme,
+            onThemeSelected = { theme ->
+                selectedTheme = theme
+                onThemeChange(theme)
+                showThemeDialog = false
+            },
+            onDismiss = { showThemeDialog = false }
+        )
+    }
 
     if (showAboutDialog) {
         AboutDialog { showAboutDialog = false }
@@ -53,6 +72,15 @@ fun SettingsScreen() {
                 subtitle = if (darkMode) "Enabled" else "Disabled",
                 value = darkMode,
                 onValueChange = { darkMode = it }
+            )
+        }
+
+        item {
+            SettingClickItem(
+                icon = Icons.Filled.Palette,
+                title = "App Theme",
+                subtitle = selectedTheme,
+                onClick = { showThemeDialog = true }
             )
         }
 
@@ -140,6 +168,85 @@ fun SettingsScreen() {
             Spacer(modifier = Modifier.height(40.dp))
         }
     }
+}
+
+@Composable
+fun ThemeSelectionDialog(
+    selectedTheme: String,
+    onThemeSelected: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF1A1A1A),
+        title = {
+            Text(
+                text = "Select Theme",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp)
+            ) {
+                allThemes.forEach { themeName ->
+                    val theme = getTheme(themeName.lowercase())
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .background(theme.primary, RoundedCornerShape(4.dp))
+                            )
+                            Column(
+                                modifier = Modifier.padding(start = 12.dp)
+                            ) {
+                                Text(
+                                    text = theme.name,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .height(4.dp)
+                                        .fillMaxWidth(0.3f)
+                                        .background(theme.positive, RoundedCornerShape(2.dp))
+                                        .padding(top = 4.dp)
+                                )
+                            }
+                        }
+                        if (selectedTheme == themeName) {
+                            Icon(
+                                Icons.Filled.Check,
+                                contentDescription = "Selected",
+                                tint = Color.Blue,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close", color = Color.Blue)
+            }
+        }
+    )
 }
 
 @Composable
