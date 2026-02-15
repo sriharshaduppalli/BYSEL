@@ -6,6 +6,10 @@ on:
     tags:
       - 'v*.*.*'       # e.g. v1.0.0
 
+permissions:
+  contents: write      # Allow writing to repository (for version bump)
+  packages: read
+
 jobs:
   build-release:
     runs-on: ubuntu-latest
@@ -47,11 +51,13 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure git
         run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "actions@github.com"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Bump versionCode and versionName
         run: |
@@ -66,12 +72,15 @@ jobs:
           grep -A2 "versionCode\|versionName" android/app/build.gradle.kts | head -6
 
       - name: Commit and push
+        if: success()
         run: |
-          if git diff --quiet; then
+          if git diff --quiet android/app/build.gradle.kts; then
             echo "ℹ️  No changes to commit"
           else
             git add android/app/build.gradle.kts
-            git commit -m "Bump version to ${{ github.ref_name }}"
-            git push
+            git commit -m "Bump version to ${{ github.ref_name }}" || true
+            git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" HEAD:main || echo "Push failed or no changes"
             echo "✅ Version bumped to ${{ github.ref_name }}"
           fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
