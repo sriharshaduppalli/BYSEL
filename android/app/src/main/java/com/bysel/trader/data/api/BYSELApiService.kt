@@ -76,6 +76,27 @@ interface BYSELApiService {
     // ==================== HEALTH ====================
     @GET("/health")
     suspend fun healthCheck(): Map<String, String>
+
+    // ==================== AI STOCK ASSISTANT ====================
+    @POST("/ai/ask")
+    suspend fun aiAsk(@Body query: AiQuery): AiAssistantResponse
+
+    @GET("/ai/analyze/{symbol}")
+    suspend fun aiAnalyze(@Path("symbol") symbol: String): StockAnalysis
+
+    @GET("/ai/predict/{symbol}")
+    suspend fun aiPredict(@Path("symbol") symbol: String): StockPredictionResponse
+
+    // ==================== PORTFOLIO HEALTH ====================
+    @GET("/portfolio/health")
+    suspend fun getPortfolioHealth(): PortfolioHealthScore
+
+    // ==================== MARKET HEATMAP ====================
+    @GET("/market/heatmap")
+    suspend fun getMarketHeatmap(): MarketHeatmap
+
+    @GET("/market/sector/{sectorName}")
+    suspend fun getSectorDetail(@Path("sectorName") sectorName: String): HeatmapSector
 }
 
 // Trading and Portfolio data classes

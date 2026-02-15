@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -14,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
 import com.bysel.trader.data.local.BYSELDatabase
 import com.bysel.trader.data.repository.TradingRepository
@@ -49,6 +51,13 @@ fun BYSELApp(viewModel: TradingViewModel) {
     val isLoading by viewModel.isLoading.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
     val error by viewModel.error.collectAsState()
+    // AI & Analytics state
+    val chatHistory by viewModel.chatHistory.collectAsState()
+    val aiLoading by viewModel.aiLoading.collectAsState()
+    val portfolioHealth by viewModel.portfolioHealth.collectAsState()
+    val healthLoading by viewModel.healthLoading.collectAsState()
+    val marketHeatmap by viewModel.marketHeatmap.collectAsState()
+    val heatmapLoading by viewModel.heatmapLoading.collectAsState()
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -60,79 +69,85 @@ fun BYSELApp(viewModel: TradingViewModel) {
                     modifier = Modifier.background(Color(0xFF1A1A1A)),
                     containerColor = Color(0xFF1A1A1A)
                 ) {
+                    // Tab 0: Dashboard
                     NavigationBarItem(
-                        icon = { Icon(Icons.Filled.Home, contentDescription = "Dashboard") },
-                        label = { Text("Dashboard") },
+                        icon = { Icon(Icons.Filled.Home, contentDescription = "Dashboard", modifier = Modifier.size(22.dp)) },
+                        label = { Text("Home", fontSize = 10.sp) },
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color.Blue,
-                            selectedTextColor = Color.Blue,
+                            selectedIconColor = Color(0xFF7C4DFF),
+                            selectedTextColor = Color(0xFF7C4DFF),
                             unselectedIconColor = Color.Gray,
                             unselectedTextColor = Color.Gray,
                             indicatorColor = Color.Transparent
                         )
                     )
+                    // Tab 1: AI Assistant
                     NavigationBarItem(
-                        icon = { Icon(Icons.Filled.AttachMoney, contentDescription = "Trading") },
-                        label = { Text("Trading") },
+                        icon = { Icon(Icons.Filled.Psychology, contentDescription = "AI", modifier = Modifier.size(22.dp)) },
+                        label = { Text("AI", fontSize = 10.sp) },
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color.Blue,
-                            selectedTextColor = Color.Blue,
+                            selectedIconColor = Color(0xFF7C4DFF),
+                            selectedTextColor = Color(0xFF7C4DFF),
                             unselectedIconColor = Color.Gray,
                             unselectedTextColor = Color.Gray,
                             indicatorColor = Color.Transparent
                         )
                     )
+                    // Tab 2: Trading
                     NavigationBarItem(
-                        icon = { Icon(Icons.Filled.ShowChart, contentDescription = "Portfolio") },
-                        label = { Text("Portfolio") },
+                        icon = { Icon(Icons.Filled.AttachMoney, contentDescription = "Trade", modifier = Modifier.size(22.dp)) },
+                        label = { Text("Trade", fontSize = 10.sp) },
                         selected = selectedTab == 2,
                         onClick = { selectedTab = 2 },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color.Blue,
-                            selectedTextColor = Color.Blue,
+                            selectedIconColor = Color(0xFF7C4DFF),
+                            selectedTextColor = Color(0xFF7C4DFF),
                             unselectedIconColor = Color.Gray,
                             unselectedTextColor = Color.Gray,
                             indicatorColor = Color.Transparent
                         )
                     )
+                    // Tab 3: Portfolio
                     NavigationBarItem(
-                        icon = { Icon(Icons.Filled.Notifications, contentDescription = "Alerts") },
-                        label = { Text("Alerts") },
+                        icon = { Icon(Icons.Filled.ShowChart, contentDescription = "Portfolio", modifier = Modifier.size(22.dp)) },
+                        label = { Text("Portfolio", fontSize = 10.sp) },
                         selected = selectedTab == 3,
                         onClick = { selectedTab = 3 },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color.Blue,
-                            selectedTextColor = Color.Blue,
+                            selectedIconColor = Color(0xFF7C4DFF),
+                            selectedTextColor = Color(0xFF7C4DFF),
                             unselectedIconColor = Color.Gray,
                             unselectedTextColor = Color.Gray,
                             indicatorColor = Color.Transparent
                         )
                     )
+                    // Tab 4: Heatmap
                     NavigationBarItem(
-                        icon = { Icon(Icons.Filled.Search, contentDescription = "Search") },
-                        label = { Text("Search") },
+                        icon = { Icon(Icons.Filled.GridView, contentDescription = "Heatmap", modifier = Modifier.size(22.dp)) },
+                        label = { Text("Heatmap", fontSize = 10.sp) },
                         selected = selectedTab == 4,
                         onClick = { selectedTab = 4 },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color.Blue,
-                            selectedTextColor = Color.Blue,
+                            selectedIconColor = Color(0xFF7C4DFF),
+                            selectedTextColor = Color(0xFF7C4DFF),
                             unselectedIconColor = Color.Gray,
                             unselectedTextColor = Color.Gray,
                             indicatorColor = Color.Transparent
                         )
                     )
+                    // Tab 5: More (Search, Alerts, Settings)
                     NavigationBarItem(
-                        icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
-                        label = { Text("Settings") },
-                        selected = selectedTab == 5,
+                        icon = { Icon(Icons.Filled.MoreHoriz, contentDescription = "More", modifier = Modifier.size(22.dp)) },
+                        label = { Text("More", fontSize = 10.sp) },
+                        selected = selectedTab in 5..8,
                         onClick = { selectedTab = 5 },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color.Blue,
-                            selectedTextColor = Color.Blue,
+                            selectedIconColor = Color(0xFF7C4DFF),
+                            selectedTextColor = Color(0xFF7C4DFF),
                             unselectedIconColor = Color.Gray,
                             unselectedTextColor = Color.Gray,
                             indicatorColor = Color.Transparent
@@ -154,10 +169,17 @@ fun BYSELApp(viewModel: TradingViewModel) {
                         isLoading = isLoading,
                         error = error,
                         onRefresh = { viewModel.refreshQuotes() },
-                        onTradeClick = { selectedTab = 1 },
+                        onTradeClick = { selectedTab = 2 },
                         onErrorDismiss = { viewModel.clearError() }
                     )
-                    1 -> TradingScreen(
+                    1 -> AiAssistantScreen(
+                        chatHistory = chatHistory,
+                        isLoading = aiLoading,
+                        onSendQuery = { query -> viewModel.askAi(query) },
+                        onSuggestionClick = { suggestion -> viewModel.askAi(suggestion) },
+                        onClearChat = { viewModel.clearChatHistory() }
+                    )
+                    2 -> TradingScreen(
                         quotes = quotes,
                         isLoading = isLoading,
                         error = error,
@@ -166,17 +188,40 @@ fun BYSELApp(viewModel: TradingViewModel) {
                         onRefresh = { viewModel.refreshQuotes() },
                         onErrorDismiss = { viewModel.clearError() }
                     )
-                    2 -> PortfolioScreen(
+                    3 -> PortfolioScreen(
                         holdings = holdings,
                         quotes = quotes,
                         isLoading = isLoading,
                         error = error,
+                        portfolioHealth = portfolioHealth,
+                        healthLoading = healthLoading,
                         onRefresh = { viewModel.refreshHoldings() },
+                        onRefreshHealth = { viewModel.loadPortfolioHealth() },
                         onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
                         onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") },
                         onErrorDismiss = { viewModel.clearError() }
                     )
-                    3 -> AlertsScreen(
+                    4 -> HeatmapScreen(
+                        heatmap = marketHeatmap,
+                        isLoading = heatmapLoading,
+                        onRefresh = { viewModel.loadMarketHeatmap() },
+                        onStockClick = { symbol -> selectedTab = 2 }
+                    )
+                    5 -> MoreScreen(
+                        onSearchClick = { selectedTab = 6 },
+                        onAlertsClick = { selectedTab = 7 },
+                        onSettingsClick = { selectedTab = 8 }
+                    )
+                    6 -> SearchScreen(
+                        quotes = quotes,
+                        searchResults = searchResults,
+                        isSearching = isSearching,
+                        onSearchQuery = { query -> viewModel.searchStocks(query) },
+                        onClearSearch = { viewModel.clearSearchResults() },
+                        onQuoteClick = { selectedTab = 2 },
+                        onSymbolClick = { symbol -> selectedTab = 2 }
+                    )
+                    7 -> AlertsScreen(
                         alerts = alerts,
                         isLoading = isLoading,
                         onCreateAlert = { symbol, price, type ->
@@ -186,16 +231,7 @@ fun BYSELApp(viewModel: TradingViewModel) {
                             viewModel.deleteAlert(alertId)
                         }
                     )
-                    4 -> SearchScreen(
-                        quotes = quotes,
-                        searchResults = searchResults,
-                        isSearching = isSearching,
-                        onSearchQuery = { query -> viewModel.searchStocks(query) },
-                        onClearSearch = { viewModel.clearSearchResults() },
-                        onQuoteClick = { selectedTab = 1 },
-                        onSymbolClick = { symbol -> selectedTab = 1 }
-                    )
-                    5 -> SettingsScreen()
+                    8 -> SettingsScreen()
                 }
             }
         }

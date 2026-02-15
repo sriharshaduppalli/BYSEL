@@ -181,7 +181,154 @@ class TradingViewModel(private val repository: TradingRepository) : ViewModel() 
     fun clearError() {
         _error.value = null
     }
+
+    // ==================== AI ASSISTANT ====================
+    private val _aiResponse = MutableStateFlow<AiAssistantResponse?>(null)
+    val aiResponse: StateFlow<AiAssistantResponse?> = _aiResponse.asStateFlow()
+
+    private val _aiLoading = MutableStateFlow(false)
+    val aiLoading: StateFlow<Boolean> = _aiLoading.asStateFlow()
+
+    private val _chatHistory = MutableStateFlow<List<ChatMessage>>(emptyList())
+    val chatHistory: StateFlow<List<ChatMessage>> = _chatHistory.asStateFlow()
+
+    fun askAi(query: String) {
+        viewModelScope.launch {
+            _aiLoading.value = true
+            // Add user message
+            _chatHistory.value = _chatHistory.value + ChatMessage(query, isUser = true)
+            val result = repository.aiAsk(query)
+            when (result) {
+                is Result.Success -> {
+                    _aiResponse.value = result.data
+                    _chatHistory.value = _chatHistory.value + ChatMessage(
+                        result.data.answer,
+                        isUser = false,
+                        suggestions = result.data.suggestions
+                    )
+                    _aiLoading.value = false
+                }
+                is Result.Error -> {
+                    _chatHistory.value = _chatHistory.value + ChatMessage(
+                        "Sorry, I couldn't process that. Please try again.",
+                        isUser = false
+                    )
+                    _aiLoading.value = false
+                }
+                else -> {}
+            }
+        }
+    }
+
+    fun clearChatHistory() {
+        _chatHistory.value = emptyList()
+        _aiResponse.value = null
+    }
+
+    // ==================== STOCK ANALYSIS & PREDICTION ====================
+    private val _stockAnalysis = MutableStateFlow<StockAnalysis?>(null)
+    val stockAnalysis: StateFlow<StockAnalysis?> = _stockAnalysis.asStateFlow()
+
+    private val _stockPrediction = MutableStateFlow<StockPredictionResponse?>(null)
+    val stockPrediction: StateFlow<StockPredictionResponse?> = _stockPrediction.asStateFlow()
+
+    private val _analysisLoading = MutableStateFlow(false)
+    val analysisLoading: StateFlow<Boolean> = _analysisLoading.asStateFlow()
+
+    fun analyzeStock(symbol: String) {
+        viewModelScope.launch {
+            _analysisLoading.value = true
+            val result = repository.aiAnalyze(symbol)
+            when (result) {
+                is Result.Success -> {
+                    _stockAnalysis.value = result.data
+                    _analysisLoading.value = false
+                }
+                is Result.Error -> {
+                    _error.value = result.message
+                    _analysisLoading.value = false
+                }
+                else -> {}
+            }
+        }
+    }
+
+    fun predictStock(symbol: String) {
+        viewModelScope.launch {
+            _analysisLoading.value = true
+            val result = repository.aiPredict(symbol)
+            when (result) {
+                is Result.Success -> {
+                    _stockPrediction.value = result.data
+                    _analysisLoading.value = false
+                }
+                is Result.Error -> {
+                    _error.value = result.message
+                    _analysisLoading.value = false
+                }
+                else -> {}
+            }
+        }
+    }
+
+    // ==================== PORTFOLIO HEALTH ====================
+    private val _portfolioHealth = MutableStateFlow<PortfolioHealthScore?>(null)
+    val portfolioHealth: StateFlow<PortfolioHealthScore?> = _portfolioHealth.asStateFlow()
+
+    private val _healthLoading = MutableStateFlow(false)
+    val healthLoading: StateFlow<Boolean> = _healthLoading.asStateFlow()
+
+    fun loadPortfolioHealth() {
+        viewModelScope.launch {
+            _healthLoading.value = true
+            val result = repository.getPortfolioHealth()
+            when (result) {
+                is Result.Success -> {
+                    _portfolioHealth.value = result.data
+                    _healthLoading.value = false
+                }
+                is Result.Error -> {
+                    _error.value = result.message
+                    _healthLoading.value = false
+                }
+                else -> {}
+            }
+        }
+    }
+
+    // ==================== MARKET HEATMAP ====================
+    private val _marketHeatmap = MutableStateFlow<MarketHeatmap?>(null)
+    val marketHeatmap: StateFlow<MarketHeatmap?> = _marketHeatmap.asStateFlow()
+
+    private val _heatmapLoading = MutableStateFlow(false)
+    val heatmapLoading: StateFlow<Boolean> = _heatmapLoading.asStateFlow()
+
+    fun loadMarketHeatmap() {
+        viewModelScope.launch {
+            _heatmapLoading.value = true
+            val result = repository.getMarketHeatmap()
+            when (result) {
+                is Result.Success -> {
+                    _marketHeatmap.value = result.data
+                    _heatmapLoading.value = false
+                }
+                is Result.Error -> {
+                    _error.value = result.message
+                    _heatmapLoading.value = false
+                }
+                else -> {}
+            }
+        }
+    }
 }
+
+// Chat message for AI Assistant
+data class ChatMessage(
+    val text: String,
+    val isUser: Boolean,
+    val suggestions: List<String> = emptyList(),
+    val timestamp: Long = System.currentTimeMillis()
+)
 
 class TradingViewModelFactory(private val repository: TradingRepository) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {

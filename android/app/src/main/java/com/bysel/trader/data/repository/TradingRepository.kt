@@ -204,6 +204,63 @@ class TradingRepository(private val database: BYSELDatabase) {
             Result.Error(e.message ?: "Unknown error")
         }
     }
+
+    // ==================== AI STOCK ASSISTANT ====================
+    suspend fun aiAsk(query: String): Result<AiAssistantResponse> {
+        return try {
+            val response = apiService.aiAsk(AiQuery(query = query))
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun aiAnalyze(symbol: String): Result<StockAnalysis> {
+        return try {
+            val analysis = apiService.aiAnalyze(symbol)
+            Result.Success(analysis)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun aiPredict(symbol: String): Result<StockPredictionResponse> {
+        return try {
+            val prediction = apiService.aiPredict(symbol)
+            Result.Success(prediction)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    // ==================== PORTFOLIO HEALTH ====================
+    suspend fun getPortfolioHealth(): Result<PortfolioHealthScore> {
+        return try {
+            val health = apiService.getPortfolioHealth()
+            Result.Success(health)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    // ==================== MARKET HEATMAP ====================
+    suspend fun getMarketHeatmap(): Result<MarketHeatmap> {
+        return try {
+            val heatmap = apiService.getMarketHeatmap()
+            Result.Success(heatmap)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getSectorDetail(sectorName: String): Result<HeatmapSector> {
+        return try {
+            val sector = apiService.getSectorDetail(sectorName)
+            Result.Success(sector)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
 }
 
 sealed class Result<out T> {

@@ -55,3 +55,117 @@ data class StockSearchResult(
     val name: String,
     val matchType: String = ""
 )
+
+// ==================== AI & ANALYTICS MODELS ====================
+
+data class AiQuery(
+    val query: String
+)
+
+data class AiAssistantResponse(
+    val type: String = "",
+    val answer: String = "",
+    val symbol: String? = null,
+    val score: Int? = null,
+    val signal: String? = null,
+    val suggestions: List<String> = emptyList(),
+    val data: Map<String, Any>? = null,
+    val stocks: List<Map<String, Any>>? = null
+)
+
+data class PricePrediction(
+    val horizon: String = "",
+    val days: Int = 0,
+    val predictedPrice: Double = 0.0,
+    val currentPrice: Double = 0.0,
+    val changePercent: Double = 0.0,
+    val confidenceHigh: Double = 0.0,
+    val confidenceLow: Double = 0.0,
+    val direction: String = ""
+)
+
+data class StockAnalysis(
+    val symbol: String = "",
+    val name: String = "",
+    val currentPrice: Double = 0.0,
+    val sector: String = "",
+    val industry: String = "",
+    val score: Int = 0,
+    val scoreBreakdown: Map<String, Int> = emptyMap(),
+    val signal: String = "",
+    val summary: String = "",
+    val technical: Map<String, Any> = emptyMap(),
+    val fundamental: Map<String, Any> = emptyMap(),
+    val predictions: List<PricePrediction> = emptyList(),
+    val modelAccuracy: Double = 0.0,
+    val disclaimer: String = "",
+    val lastUpdated: String = ""
+)
+
+data class StockPredictionResponse(
+    val symbol: String = "",
+    val currentPrice: Double = 0.0,
+    val predictions: List<PricePrediction> = emptyList(),
+    val signal: String = "",
+    val modelAccuracy: Double = 0.0,
+    val lastUpdated: String = "",
+    val disclaimer: String = ""
+)
+
+data class PortfolioHealthScore(
+    val overallScore: Int = 0,
+    val grade: String = "",
+    val breakdown: Map<String, Map<String, Any>> = emptyMap(),
+    val sectorAllocation: Map<String, Map<String, Any>> = emptyMap(),
+    val riskLevel: String = "",
+    val suggestions: List<String> = emptyList(),
+    val summary: String = "",
+    val totalValue: Double = 0.0,
+    val totalInvested: Double = 0.0,
+    val totalPnl: Double = 0.0,
+    val totalPnlPercent: Double = 0.0,
+    val stockCount: Int = 0,
+    val sectorCount: Int = 0,
+    val lastUpdated: String = ""
+)
+
+data class HeatmapStock(
+    val symbol: String = "",
+    val name: String = "",
+    val price: Double = 0.0,
+    val change: Double = 0.0,
+    val pctChange: Double = 0.0,
+    val intensity: String = ""
+)
+
+data class HeatmapSector(
+    val name: String = "",
+    val stocks: List<HeatmapStock> = emptyList(),
+    val avgChange: Double = 0.0,
+    val advances: Int = 0,
+    val declines: Int = 0,
+    val unchanged: Int = 0,
+    val totalStocks: Int = 0,
+    val intensity: String = "",
+    val topGainer: HeatmapStock? = null,
+    val topLoser: HeatmapStock? = null
+)
+
+data class MarketBreadth(
+    val advances: Int = 0,
+    val declines: Int = 0,
+    val unchanged: Int = 0,
+    val total: Int = 0,
+    val advanceRatio: Double = 0.0
+)
+
+data class MarketHeatmap(
+    val sectors: List<HeatmapSector> = emptyList(),
+    val marketBreadth: MarketBreadth = MarketBreadth(),
+    val mood: String = "",
+    val moodEmoji: String = "",
+    val moodDescription: String = "",
+    val bestSector: Map<String, Any> = emptyMap(),
+    val worstSector: Map<String, Any> = emptyMap(),
+    val lastUpdated: String = ""
+)

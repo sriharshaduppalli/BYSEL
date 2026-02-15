@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from ..database.db import get_db, AlertModel, OrderModel, HoldingModel
 from ..models.schemas import (
@@ -10,6 +11,9 @@ from ..market_data import (
     fetch_quote, fetch_quotes, get_all_symbols, get_default_symbols,
     search_stocks, get_symbols_with_names, get_stock_name, INDIAN_STOCKS
 )
+from ..ai_engine import analyze_stock, predict_price, ai_assistant
+from ..portfolio_scorer import calculate_portfolio_health
+from ..market_heatmap import get_market_heatmap, get_sector_detail
 
 router = APIRouter()
 
@@ -286,4 +290,74 @@ async def get_symbols_count():
 @router.get("/health", response_model=HealthCheck)
 async def health_check():
     """Health check endpoint."""
-    return HealthCheck(status="healthy", version="1.0.0")
+    return HealthCheck(status="healthy", version="2.0.0")
+
+
+# ==================== AI STOCK ASSISTANT ====================
+
+class AiQuery(BaseModel):
+    query: str
+
+@router.post("/ai/ask")
+async def ai_ask_endpoint(body: AiQuery):
+    """Natural language AI stock assistant.
+    Examples: 'Should I buy RELIANCE?', 'Predict TCS price', 'Compare INFY and TCS'"""
+    result = ai_assistant(body.query)
+    return result
+
+
+@router.get("/ai/analyze/{symbol}")
+async def ai_analyze_endpoint(symbol: str):
+    """Get comprehensive AI analysis for a stock including technical,
+    fundamental analysis, score, prediction, and plain-English summary."""
+    result = analyze_stock(symbol.upper())
+    if "error" in result and "predictions" not in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+
+@router.get("/ai/predict/{symbol}")
+async def ai_predict_endpoint(symbol: str):
+    """Get AI price predictions for 1-week, 1-month, and 3-month horizons
+    with confidence intervals and direction signals."""
+    result = predict_price(symbol.upper())
+    if "error" in result and not result.get("predictions"):
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+
+# ==================== PORTFOLIO HEALTH SCORE ====================
+
+@router.get("/portfolio/health")
+async def portfolio_health_endpoint(db: Session = Depends(get_db)):
+    """Get portfolio health score (0-100) with breakdown and suggestions.
+    Analyzes diversification, risk, quality, and balance."""
+    holdings_db = db.query(HoldingModel).all()
+    holdings_list = []
+    for h in holdings_db:
+        holdings_list.append({
+            "symbol": h.symbol,
+            "quantity": h.quantity,
+            "avgPrice": h.avg_price,
+        })
+    result = calculate_portfolio_health(holdings_list)
+    return result
+
+
+# ==================== MARKET HEATMAP ====================
+
+@router.get("/market/heatmap")
+async def market_heatmap_endpoint():
+    """Get real-time market heatmap with sector-wise performance,
+    market breadth, mood indicator, and individual stock data."""
+    result = get_market_heatmap()
+    return result
+
+
+@router.get("/market/sector/{sector_name}")
+async def sector_detail_endpoint(sector_name: str):
+    """Get detailed data for a specific sector."""
+    result = get_sector_detail(sector_name)
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Sector '{sector_name}' not found")
+    return result
