@@ -14,6 +14,19 @@ interface BYSELApiService {
     @GET("/quotes/all")
     suspend fun getAllQuotes(): List<Quote>
 
+    // ==================== SEARCH ====================
+    @GET("/search")
+    suspend fun searchStocks(
+        @Query("q") query: String,
+        @Query("limit") limit: Int = 50
+    ): List<StockSearchResult>
+
+    @GET("/symbols")
+    suspend fun getAllSymbols(): List<StockSearchResult>
+
+    @GET("/symbols/count")
+    suspend fun getSymbolsCount(): Map<String, Any>
+
     // ==================== HOLDINGS ====================
     @GET("/holdings")
     suspend fun getHoldings(): List<Holding>

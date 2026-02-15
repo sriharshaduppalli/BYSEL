@@ -6,7 +6,10 @@ from ..models.schemas import (
     AlertResponse, HealthCheck, TradeHistory, PortfolioSummary, PortfolioValue
 )
 from .trading import get_holdings, get_holding, place_order
-from ..market_data import fetch_quote, fetch_quotes, get_all_symbols, get_default_symbols
+from ..market_data import (
+    fetch_quote, fetch_quotes, get_all_symbols, get_default_symbols,
+    search_stocks, get_symbols_with_names, get_stock_name, INDIAN_STOCKS
+)
 
 router = APIRouter()
 
@@ -250,6 +253,32 @@ async def delete_alert_endpoint(alert_id: int, db: Session = Depends(get_db)):
     alert_db.is_active = False
     db.commit()
     return AlertResponse(status="ok", message=f"Alert {alert_id} deactivated", id=alert_id)
+
+
+# ==================== SEARCH ====================
+
+@router.get("/search")
+async def search_stocks_endpoint(
+    q: str = Query("", description="Search query (symbol or company name)"),
+    limit: int = Query(50, description="Max results"),
+):
+    """Search for Indian stocks by symbol or company name.
+    Covers NIFTY 500+ stocks. Unknown symbols are tried on Yahoo Finance."""
+    results = search_stocks(q, limit=limit)
+    return results
+
+
+@router.get("/symbols")
+async def get_symbols_endpoint():
+    """Get all available stock symbols with company names.
+    Returns 500+ Indian stocks (NSE & BSE)."""
+    return get_symbols_with_names()
+
+
+@router.get("/symbols/count")
+async def get_symbols_count():
+    """Get count of available symbols."""
+    return {"count": len(INDIAN_STOCKS), "exchange": "NSE/BSE"}
 
 
 # ==================== HEALTH ====================

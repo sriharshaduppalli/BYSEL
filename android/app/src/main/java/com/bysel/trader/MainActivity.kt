@@ -45,7 +45,9 @@ fun BYSELApp(viewModel: TradingViewModel) {
     val quotes by viewModel.quotes.collectAsState()
     val holdings by viewModel.holdings.collectAsState()
     val alerts by viewModel.alerts.collectAsState()
+    val searchResults by viewModel.searchResults.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val isSearching by viewModel.isSearching.collectAsState()
     val error by viewModel.error.collectAsState()
 
     Surface(
@@ -186,7 +188,12 @@ fun BYSELApp(viewModel: TradingViewModel) {
                     )
                     4 -> SearchScreen(
                         quotes = quotes,
-                        onQuoteClick = { selectedTab = 1 }
+                        searchResults = searchResults,
+                        isSearching = isSearching,
+                        onSearchQuery = { query -> viewModel.searchStocks(query) },
+                        onClearSearch = { viewModel.clearSearchResults() },
+                        onQuoteClick = { selectedTab = 1 },
+                        onSymbolClick = { symbol -> selectedTab = 1 }
                     )
                     5 -> SettingsScreen()
                 }

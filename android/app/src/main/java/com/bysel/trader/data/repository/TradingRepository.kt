@@ -26,6 +26,17 @@ class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
+    fun getAllQuotesFromApi(): Flow<Result<List<Quote>>> = flow {
+        try {
+            emit(Result.Loading)
+            val quotes = apiService.getAllQuotes()
+            database.quoteDao().insertQuotes(quotes)
+            emit(Result.Success(quotes))
+        } catch (e: Exception) {
+            emit(Result.Error(e.message ?: "Unknown error"))
+        }
+    }
+
     fun getCachedQuotes(symbols: List<String>): Flow<List<Quote>> {
         return database.quoteDao().getQuotesBySymbols(symbols)
     }
@@ -170,6 +181,25 @@ class TradingRepository(private val database: BYSELDatabase) {
         return try {
             val alerts = apiService.getAlerts()
             Result.Success(alerts)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    // ==================== SEARCH ====================
+    suspend fun searchStocks(query: String): Result<List<StockSearchResult>> {
+        return try {
+            val results = apiService.searchStocks(query)
+            Result.Success(results)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getAllSymbols(): Result<List<StockSearchResult>> {
+        return try {
+            val symbols = apiService.getAllSymbols()
+            Result.Success(symbols)
         } catch (e: Exception) {
             Result.Error(e.message ?: "Unknown error")
         }

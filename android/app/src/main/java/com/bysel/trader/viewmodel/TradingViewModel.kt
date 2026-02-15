@@ -23,13 +23,24 @@ class TradingViewModel(private val repository: TradingRepository) : ViewModel() 
     private val _alerts = MutableStateFlow<List<Alert>>(emptyList())
     val alerts: StateFlow<List<Alert>> = _alerts.asStateFlow()
 
+    private val _searchResults = MutableStateFlow<List<StockSearchResult>>(emptyList())
+    val searchResults: StateFlow<List<StockSearchResult>> = _searchResults.asStateFlow()
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    private val _isSearching = MutableStateFlow(false)
+    val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
-    private val defaultSymbols = listOf("RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN")
+    private val defaultSymbols = listOf(
+        "RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN",
+        "WIPRO", "ICICIBANK", "KOTAKBANK", "HINDUNILVR", "ITC",
+        "BHARTIARTL", "LT", "AXISBANK", "BAJFINANCE", "TATAMOTORS",
+        "SUNPHARMA", "TITAN", "MARUTI", "HCLTECH", "TATASTEEL"
+    )
 
     init {
         refreshQuotes()
@@ -53,6 +64,50 @@ class TradingViewModel(private val repository: TradingRepository) : ViewModel() 
                 }
             }
         }
+    }
+
+    fun loadAllQuotes() {
+        viewModelScope.launch {
+            repository.getAllQuotesFromApi().collectLatest { result ->
+                when (result) {
+                    is Result.Loading -> _isLoading.value = true
+                    is Result.Success -> {
+                        _quotes.value = result.data
+                        _isLoading.value = false
+                    }
+                    is Result.Error -> {
+                        _error.value = result.message
+                        _isLoading.value = false
+                    }
+                }
+            }
+        }
+    }
+
+    fun searchStocks(query: String) {
+        if (query.isBlank()) {
+            _searchResults.value = emptyList()
+            return
+        }
+        viewModelScope.launch {
+            _isSearching.value = true
+            val result = repository.searchStocks(query)
+            when (result) {
+                is Result.Success -> {
+                    _searchResults.value = result.data
+                    _isSearching.value = false
+                }
+                is Result.Error -> {
+                    _error.value = result.message
+                    _isSearching.value = false
+                }
+                else -> {}
+            }
+        }
+    }
+
+    fun clearSearchResults() {
+        _searchResults.value = emptyList()
     }
 
     fun refreshHoldings() {

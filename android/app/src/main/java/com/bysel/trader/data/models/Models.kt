@@ -49,3 +49,9 @@ data class OrderResponse(
     val order: Order,
     val message: String? = null
 )
+
+data class StockSearchResult(
+    val symbol: String,
+    val name: String,
+    val matchType: String = ""
+)
