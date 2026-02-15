@@ -7,4 +7,7 @@ gradlew text eol=lf
 *.bat text eol=crlf
 
 # Ensure execute permissions for shell scripts
+*.sh export-ignore
 gradlew export-ignore
+regenerate-gradle-wrapper.sh export-ignore
+
