@@ -1,0 +1,10 @@
+# Auto line ending normalization for all files
+* text=auto
+
+# Shell scripts and batch files need specific handling
+*.sh text eol=lf
+gradlew text eol=lf
+*.bat text eol=crlf
+
+# Ensure execute permissions for shell scripts
+gradlew export-ignore
