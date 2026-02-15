@@ -19,7 +19,18 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
+      - name: Generate keystore from secret
+        run: |
+          cd android/app
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > keystore.jks
+          ls -lah keystore.jks
+
       - name: Gradle build (AAB)
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/android/app/keystore.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           cd android
           ./gradlew clean bundleRelease
