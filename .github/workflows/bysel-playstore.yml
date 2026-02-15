@@ -60,7 +60,7 @@ jobs:
           path: build/
 
       - name: Upload to Play Store
-        if: env.HAS_PLAYSTORE_SECRET == 'true'
+        if: secrets.PLAYSTORE_SERVICE_ACCOUNT != ''
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAYSTORE_SERVICE_ACCOUNT }}
@@ -70,7 +70,7 @@ jobs:
           whatsNewDirectory: ./playstore-metadata/whatsnew
 
       - name: ⚠️ Play Store upload skipped - service account not configured
-        if: env.HAS_PLAYSTORE_SECRET != 'true'
+        if: secrets.PLAYSTORE_SERVICE_ACCOUNT == ''
         run: |
           echo "⚠️  PLAYSTORE_SERVICE_ACCOUNT secret not configured"
           echo "To deploy to Play Store, add the secret at:"
