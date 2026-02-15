@@ -1,30 +1,260 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
-from ..database.db import get_db
-from ..models.schemas import Quote, Holding, Order, OrderResponse, Alert, HealthCheck
-from .trading import get_quotes, get_holdings, place_order
+from ..database.db import get_db, AlertModel, OrderModel, HoldingModel
+from ..models.schemas import (
+    Quote, Holding, Order, OrderResponse, Alert, AlertCreate,
+    AlertResponse, HealthCheck, TradeHistory, PortfolioSummary, PortfolioValue
+)
+from .trading import get_holdings, get_holding, place_order
+from ..market_data import fetch_quote, fetch_quotes, get_all_symbols, get_default_symbols
 
 router = APIRouter()
+
+
+# ==================== QUOTES (LIVE DATA) ====================
 
 @router.get("/quotes", response_model=list[Quote])
 async def get_quotes_endpoint(
     symbols: str = Query(""),
     db: Session = Depends(get_db)
 ):
-    """Get quotes for specified symbols"""
-    return get_quotes(db, symbols)
+    """Get live quotes for specified symbols (comma-separated) or defaults."""
+    if symbols:
+        sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    else:
+        sym_list = get_default_symbols()
+
+    raw_quotes = fetch_quotes(sym_list)
+    return [Quote(
+        symbol=q["symbol"],
+        last=q["last"],
+        pctChange=q["pctChange"],
+    ) for q in raw_quotes]
+
+
+@router.get("/quotes/all", response_model=list[Quote])
+async def get_all_quotes_endpoint():
+    """Get live quotes for ALL supported NSE symbols."""
+    raw_quotes = fetch_quotes(get_all_symbols())
+    return [Quote(
+        symbol=q["symbol"],
+        last=q["last"],
+        pctChange=q["pctChange"],
+    ) for q in raw_quotes]
+
+
+@router.get("/quotes/{symbol}", response_model=Quote)
+async def get_single_quote_endpoint(symbol: str):
+    """Get a live quote for a single stock symbol."""
+    q = fetch_quote(symbol.upper())
+    if q["last"] == 0:
+        raise HTTPException(status_code=404, detail=f"Quote not found for {symbol}")
+    return Quote(
+        symbol=q["symbol"],
+        last=q["last"],
+        pctChange=q["pctChange"],
+    )
+
+
+# ==================== HOLDINGS ====================
 
 @router.get("/holdings", response_model=list[Holding])
 async def get_holdings_endpoint(db: Session = Depends(get_db)):
-    """Get all holdings"""
+    """Get all holdings with live prices."""
     return get_holdings(db)
+
+
+@router.get("/holdings/{symbol}", response_model=Holding)
+async def get_holding_endpoint(symbol: str, db: Session = Depends(get_db)):
+    """Get a single holding by symbol."""
+    holding = get_holding(db, symbol.upper())
+    if not holding:
+        raise HTTPException(status_code=404, detail=f"No holding found for {symbol}")
+    return holding
+
+
+# ==================== TRADING ====================
 
 @router.post("/order", response_model=OrderResponse)
 async def place_order_endpoint(order: Order, db: Session = Depends(get_db)):
-    """Place a buy or sell order"""
+    """Place a buy or sell order at live market price."""
     return place_order(db, order)
+
+
+@router.post("/trade/buy", response_model=OrderResponse)
+async def buy_stock_endpoint(order: Order, db: Session = Depends(get_db)):
+    """Buy stock at live market price."""
+    order.side = "BUY"
+    return place_order(db, order)
+
+
+@router.post("/trade/sell", response_model=OrderResponse)
+async def sell_stock_endpoint(order: Order, db: Session = Depends(get_db)):
+    """Sell stock at live market price."""
+    order.side = "SELL"
+    return place_order(db, order)
+
+
+@router.get("/trades/history", response_model=list[TradeHistory])
+async def get_trade_history_endpoint(db: Session = Depends(get_db)):
+    """Get all trade history."""
+    orders = db.query(OrderModel).order_by(OrderModel.created_at.desc()).all()
+    return [TradeHistory(
+        id=o.id,
+        symbol=o.symbol,
+        side=o.side,
+        quantity=o.quantity,
+        price=o.price or 0,
+        total=o.total or 0,
+        timestamp=int(o.created_at.timestamp() * 1000) if o.created_at else 0
+    ) for o in orders]
+
+
+@router.get("/trades/history/{symbol}", response_model=list[TradeHistory])
+async def get_trade_history_for_symbol(symbol: str, db: Session = Depends(get_db)):
+    """Get trade history for a specific symbol."""
+    orders = db.query(OrderModel).filter(
+        OrderModel.symbol == symbol.upper()
+    ).order_by(OrderModel.created_at.desc()).all()
+    return [TradeHistory(
+        id=o.id,
+        symbol=o.symbol,
+        side=o.side,
+        quantity=o.quantity,
+        price=o.price or 0,
+        total=o.total or 0,
+        timestamp=int(o.created_at.timestamp() * 1000) if o.created_at else 0
+    ) for o in orders]
+
+
+# ==================== PORTFOLIO ====================
+
+@router.get("/portfolio", response_model=PortfolioSummary)
+async def get_portfolio_endpoint(db: Session = Depends(get_db)):
+    """Get portfolio summary with live values."""
+    holdings = get_holdings(db)
+
+    total_value = sum(h.last * h.qty for h in holdings)
+    total_invested = sum(h.avgPrice * h.qty for h in holdings)
+    total_pnl = total_value - total_invested
+    total_pnl_pct = round((total_pnl / total_invested) * 100, 2) if total_invested > 0 else 0.0
+
+    return PortfolioSummary(
+        totalValue=round(total_value, 2),
+        totalInvested=round(total_invested, 2),
+        totalPnL=round(total_pnl, 2),
+        totalPnLPercent=total_pnl_pct,
+        holdingsCount=len(holdings)
+    )
+
+
+@router.get("/portfolio/value", response_model=PortfolioValue)
+async def get_portfolio_value_endpoint(db: Session = Depends(get_db)):
+    """Get portfolio current value with live prices."""
+    holdings = get_holdings(db)
+
+    total_value = sum(h.last * h.qty for h in holdings)
+    total_invested = sum(h.avgPrice * h.qty for h in holdings)
+    total_pnl = total_value - total_invested
+    total_pnl_pct = round((total_pnl / total_invested) * 100, 2) if total_invested > 0 else 0.0
+
+    return PortfolioValue(
+        value=round(total_value, 2),
+        invested=round(total_invested, 2),
+        pnl=round(total_pnl, 2),
+        pnlPercent=total_pnl_pct
+    )
+
+
+# ==================== ALERTS ====================
+
+@router.get("/alerts", response_model=list[Alert])
+async def get_alerts_endpoint(db: Session = Depends(get_db)):
+    """Get all alerts."""
+    alerts = db.query(AlertModel).all()
+    return [Alert(
+        id=a.id,
+        symbol=a.symbol,
+        thresholdPrice=a.threshold_price,
+        alertType=a.alert_type,
+        isActive=a.is_active,
+        createdAt=a.created_at
+    ) for a in alerts]
+
+
+@router.get("/alerts/active", response_model=list[Alert])
+async def get_active_alerts_endpoint(db: Session = Depends(get_db)):
+    """Get active alerts only."""
+    alerts = db.query(AlertModel).filter(AlertModel.is_active == True).all()
+    return [Alert(
+        id=a.id,
+        symbol=a.symbol,
+        thresholdPrice=a.threshold_price,
+        alertType=a.alert_type,
+        isActive=a.is_active,
+        createdAt=a.created_at
+    ) for a in alerts]
+
+
+@router.post("/alerts", response_model=Alert)
+async def create_alert_endpoint(alert: AlertCreate, db: Session = Depends(get_db)):
+    """Create a new price alert."""
+    alert_db = AlertModel(
+        symbol=alert.symbol.upper(),
+        threshold_price=alert.thresholdPrice,
+        alert_type=alert.alertType,
+        is_active=True
+    )
+    db.add(alert_db)
+    db.commit()
+    db.refresh(alert_db)
+    return Alert(
+        id=alert_db.id,
+        symbol=alert_db.symbol,
+        thresholdPrice=alert_db.threshold_price,
+        alertType=alert_db.alert_type,
+        isActive=alert_db.is_active,
+        createdAt=alert_db.created_at
+    )
+
+
+@router.put("/alerts/{alert_id}", response_model=Alert)
+async def update_alert_endpoint(alert_id: int, alert: AlertCreate, db: Session = Depends(get_db)):
+    """Update an existing alert."""
+    alert_db = db.query(AlertModel).filter(AlertModel.id == alert_id).first()
+    if not alert_db:
+        raise HTTPException(status_code=404, detail=f"Alert {alert_id} not found")
+
+    alert_db.symbol = alert.symbol.upper()
+    alert_db.threshold_price = alert.thresholdPrice
+    alert_db.alert_type = alert.alertType
+    db.commit()
+    db.refresh(alert_db)
+    return Alert(
+        id=alert_db.id,
+        symbol=alert_db.symbol,
+        thresholdPrice=alert_db.threshold_price,
+        alertType=alert_db.alert_type,
+        isActive=alert_db.is_active,
+        createdAt=alert_db.created_at
+    )
+
+
+@router.delete("/alert/{alert_id}", response_model=AlertResponse)
+async def delete_alert_endpoint(alert_id: int, db: Session = Depends(get_db)):
+    """Delete/deactivate an alert."""
+    alert_db = db.query(AlertModel).filter(AlertModel.id == alert_id).first()
+    if not alert_db:
+        raise HTTPException(status_code=404, detail=f"Alert {alert_id} not found")
+
+    alert_db.is_active = False
+    db.commit()
+    return AlertResponse(status="ok", message=f"Alert {alert_id} deactivated", id=alert_id)
+
+
+# ==================== HEALTH ====================
 
 @router.get("/health", response_model=HealthCheck)
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint."""
     return HealthCheck(status="healthy", version="1.0.0")

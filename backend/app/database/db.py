@@ -46,6 +46,8 @@ class OrderModel(Base):
     symbol = Column(String, index=True)
     quantity = Column(Integer)
     side = Column(String)  # BUY or SELL
+    price = Column(Float, default=0.0)
+    total = Column(Float, default=0.0)
     status = Column(String, default="COMPLETED")
     created_at = Column(DateTime, default=datetime.utcnow)
 

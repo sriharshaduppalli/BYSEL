@@ -12,7 +12,7 @@ class QuoteCreate(QuoteBase):
 
 class Quote(QuoteBase):
     id: Optional[int] = None
-    timestamp: datetime = None
+    timestamp: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -44,7 +44,7 @@ class AlertCreate(AlertBase):
 class Alert(AlertBase):
     id: int
     isActive: bool = True
-    createdAt: datetime = None
+    createdAt: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -61,6 +61,33 @@ class OrderResponse(BaseModel):
     status: str
     order: Order
     message: Optional[str] = None
+
+class AlertResponse(BaseModel):
+    status: str
+    message: str
+    id: Optional[int] = None
+
+class TradeHistory(BaseModel):
+    id: int
+    symbol: str
+    side: str
+    quantity: int
+    price: float
+    total: float
+    timestamp: int
+
+class PortfolioSummary(BaseModel):
+    totalValue: float
+    totalInvested: float
+    totalPnL: float
+    totalPnLPercent: float
+    holdingsCount: int
+
+class PortfolioValue(BaseModel):
+    value: float
+    invested: float
+    pnl: float
+    pnlPercent: float
 
 class HealthCheck(BaseModel):
     status: str
