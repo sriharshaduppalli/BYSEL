@@ -7,18 +7,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import com.bysel.trader.data.local.BYSELDatabase
 import com.bysel.trader.data.repository.TradingRepository
-import com.bysel.trader.ui.screens.WatchlistScreen
-import com.bysel.trader.ui.screens.PortfolioScreen
-import com.bysel.trader.ui.screens.AlertsScreen
+import com.bysel.trader.ui.screens.*
 import com.bysel.trader.viewmodel.TradingViewModel
 import com.bysel.trader.viewmodel.TradingViewModelFactory
 
@@ -51,17 +50,17 @@ fun BYSELApp(viewModel: TradingViewModel) {
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = Color.Black
+        color = Color(0xFF0D0D0D)
     ) {
         Scaffold(
             bottomBar = {
                 NavigationBar(
-                    modifier = Modifier.background(Color(0xFF1E1E1E)),
-                    containerColor = Color(0xFF1E1E1E)
+                    modifier = Modifier.background(Color(0xFF1A1A1A)),
+                    containerColor = Color(0xFF1A1A1A)
                 ) {
                     NavigationBarItem(
-                        icon = {},
-                        label = { Text("Watchlist") },
+                        icon = { Icon(Icons.Filled.Home, contentDescription = "Dashboard") },
+                        label = { Text("Dashboard") },
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
                         colors = NavigationBarItemDefaults.colors(
@@ -73,8 +72,8 @@ fun BYSELApp(viewModel: TradingViewModel) {
                         )
                     )
                     NavigationBarItem(
-                        icon = {},
-                        label = { Text("Portfolio") },
+                        icon = { Icon(Icons.Filled.AttachMoney, contentDescription = "Trading") },
+                        label = { Text("Trading") },
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
                         colors = NavigationBarItemDefaults.colors(
@@ -86,10 +85,49 @@ fun BYSELApp(viewModel: TradingViewModel) {
                         )
                     )
                     NavigationBarItem(
-                        icon = {},
-                        label = { Text("Alerts") },
+                        icon = { Icon(Icons.Filled.ShowChart, contentDescription = "Portfolio") },
+                        label = { Text("Portfolio") },
                         selected = selectedTab == 2,
                         onClick = { selectedTab = 2 },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = Color.Blue,
+                            selectedTextColor = Color.Blue,
+                            unselectedIconColor = Color.Gray,
+                            unselectedTextColor = Color.Gray,
+                            indicatorColor = Color.Transparent
+                        )
+                    )
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Filled.Notifications, contentDescription = "Alerts") },
+                        label = { Text("Alerts") },
+                        selected = selectedTab == 3,
+                        onClick = { selectedTab = 3 },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = Color.Blue,
+                            selectedTextColor = Color.Blue,
+                            unselectedIconColor = Color.Gray,
+                            unselectedTextColor = Color.Gray,
+                            indicatorColor = Color.Transparent
+                        )
+                    )
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Filled.Search, contentDescription = "Search") },
+                        label = { Text("Search") },
+                        selected = selectedTab == 4,
+                        onClick = { selectedTab = 4 },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = Color.Blue,
+                            selectedTextColor = Color.Blue,
+                            unselectedIconColor = Color.Gray,
+                            unselectedTextColor = Color.Gray,
+                            indicatorColor = Color.Transparent
+                        )
+                    )
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
+                        label = { Text("Settings") },
+                        selected = selectedTab == 5,
+                        onClick = { selectedTab = 5 },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = Color.Blue,
                             selectedTextColor = Color.Blue,
@@ -105,18 +143,28 @@ fun BYSELApp(viewModel: TradingViewModel) {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .background(Color.Black)
+                    .background(Color(0xFF0D0D0D))
             ) {
                 when (selectedTab) {
-                    0 -> WatchlistScreen(
+                    0 -> DashboardScreen(
+                        holdings = holdings,
                         quotes = quotes,
                         isLoading = isLoading,
                         error = error,
                         onRefresh = { viewModel.refreshQuotes() },
-                        onQuoteClick = {},
+                        onTradeClick = { selectedTab = 1 },
                         onErrorDismiss = { viewModel.clearError() }
                     )
-                    1 -> PortfolioScreen(
+                    1 -> TradingScreen(
+                        quotes = quotes,
+                        isLoading = isLoading,
+                        error = error,
+                        onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
+                        onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") },
+                        onRefresh = { viewModel.refreshQuotes() },
+                        onErrorDismiss = { viewModel.clearError() }
+                    )
+                    2 -> PortfolioScreen(
                         holdings = holdings,
                         quotes = quotes,
                         isLoading = isLoading,
@@ -126,7 +174,7 @@ fun BYSELApp(viewModel: TradingViewModel) {
                         onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") },
                         onErrorDismiss = { viewModel.clearError() }
                     )
-                    2 -> AlertsScreen(
+                    3 -> AlertsScreen(
                         alerts = alerts,
                         isLoading = isLoading,
                         onCreateAlert = { symbol, price, type ->
@@ -136,6 +184,11 @@ fun BYSELApp(viewModel: TradingViewModel) {
                             viewModel.deleteAlert(alertId)
                         }
                     )
+                    4 -> SearchScreen(
+                        quotes = quotes,
+                        onQuoteClick = { selectedTab = 1 }
+                    )
+                    5 -> SettingsScreen()
                 }
             }
         }
