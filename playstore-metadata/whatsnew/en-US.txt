@@ -1,0 +1,23 @@
+BYSEL - Modern Stock Trading Application
+
+✨ What's New in v1.0.8:
+• Clean, modern UI with Jetpack Compose
+• Real-time stock quotes and portfolio tracking
+• Mock trading with BUY/SELL orders
+• Price alerts with ABOVE/BELOW thresholds
+• Offline support with local database caching
+• Material Design 3 interface
+
+🎯 Features:
+• Watchlist: Track your favorite stocks
+• Portfolio: View holdings and P&L
+• Alerts: Set price notifications
+• Fast, responsive, and intuitive
+
+🔒 Built with:
+• Jetpack Compose for modern UI
+• Room Database for offline support
+• Retrofit for API calls
+• FastAPI backend service
+
+Perfect for learning stock market concepts in a fun, interactive way!
