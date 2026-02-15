@@ -56,8 +56,6 @@ android {
 
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.4"
-        // Suppress Kotlin version compatibility check to allow 1.9.20 with Compose 1.5.4
-        suppressKotlinVersionCompatibilityCheck = true
     }
 
     packaging {
