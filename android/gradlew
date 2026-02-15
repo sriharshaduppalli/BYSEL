@@ -23,12 +23,13 @@
 ##############################################################################
 
 # Check if wrapper JAR exists, if not generate it
-SCRIPT_DIR="$(dirname "$(cd "$(dirname "$0")" && pwd)")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRAPPER_DIR="$SCRIPT_DIR/gradle/wrapper"
 WRAPPER_JAR="$WRAPPER_DIR/gradle-wrapper.jar"
 
 if [ ! -f "$WRAPPER_JAR" ]; then
-  echo "gradle-wrapper.jar not found. Generating..."
+  echo "gradle-wrapper.jar not found at $WRAPPER_JAR"
+  echo "Generating..."
   GRADLE_VERSION="8.5"
   TEMP_DIR=$(mktemp -d)
   TEMP_ZIP="$TEMP_DIR/gradle.zip"
@@ -72,7 +73,7 @@ EOF
     if [ -f "gradle/wrapper/gradle-wrapper.jar" ]; then
       mkdir -p "$WRAPPER_DIR"
       cp -v "gradle/wrapper/gradle-wrapper.jar" "$WRAPPER_JAR"
-      echo "Successfully generated gradle-wrapper.jar"
+      echo "Successfully generated gradle-wrapper.jar at $WRAPPER_JAR"
     fi
   fi
   
