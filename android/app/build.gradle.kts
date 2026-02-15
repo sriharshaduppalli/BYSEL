@@ -12,7 +12,7 @@ android {
         applicationId = "com.bysel.trader"
         minSdk = 26
         targetSdk = 34
-        versionCode = 12
+        versionCode = 13
         versionName = "main"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
