@@ -13,6 +13,9 @@ interface QuoteDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertQuotes(quotes: List<Quote>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertQuote(quote: Quote)
+
     @Query("SELECT * FROM quotes WHERE symbol IN (:symbols)")
     fun getQuotesBySymbols(symbols: List<String>): Flow<List<Quote>>
 
@@ -27,6 +30,9 @@ interface QuoteDao {
 interface HoldingDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertHoldings(holdings: List<Holding>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertHolding(holding: Holding)
 
     @Query("SELECT * FROM holdings")
     fun getAllHoldings(): Flow<List<Holding>>
