@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class TradingViewModel(private val repository: TradingRepository) : ViewModel() {
@@ -43,6 +45,10 @@ class TradingViewModel(private val repository: TradingRepository) : ViewModel() 
     private val _marketStatus = MutableStateFlow<MarketStatus?>(null)
     val marketStatus: StateFlow<MarketStatus?> = _marketStatus.asStateFlow()
 
+    // Auto-refresh polling
+    private var autoRefreshJob: Job? = null
+    private val AUTO_REFRESH_INTERVAL = 15_000L // 15 seconds
+
     private val defaultSymbols = listOf(
         "RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN",
         "WIPRO", "ICICIBANK", "KOTAKBANK", "HINDUNILVR", "ITC",
@@ -56,6 +62,45 @@ class TradingViewModel(private val repository: TradingRepository) : ViewModel() 
         observeAlerts()
         refreshWallet()
         refreshMarketStatus()
+        startAutoRefresh()
+    }
+
+    private fun startAutoRefresh() {
+        autoRefreshJob?.cancel()
+        autoRefreshJob = viewModelScope.launch {
+            while (true) {
+                delay(AUTO_REFRESH_INTERVAL)
+                // Silently refresh quotes, holdings, wallet, and market status
+                refreshQuotesSilent()
+                refreshHoldingsSilent()
+                refreshWallet()
+                refreshMarketStatus()
+            }
+        }
+    }
+
+    /** Refresh quotes without showing loading spinner */
+    private fun refreshQuotesSilent() {
+        viewModelScope.launch {
+            repository.getQuotes(defaultSymbols).collectLatest { result ->
+                when (result) {
+                    is Result.Success -> _quotes.value = result.data
+                    else -> {} // Silently ignore errors during auto-refresh
+                }
+            }
+        }
+    }
+
+    /** Refresh holdings without showing loading spinner */
+    private fun refreshHoldingsSilent() {
+        viewModelScope.launch {
+            repository.getHoldings().collectLatest { result ->
+                when (result) {
+                    is Result.Success -> _holdings.value = result.data
+                    else -> {}
+                }
+            }
+        }
     }
 
     fun refreshQuotes() {
