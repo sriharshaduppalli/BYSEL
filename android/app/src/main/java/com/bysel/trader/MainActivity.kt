@@ -28,6 +28,8 @@ import com.bysel.trader.viewmodel.TradingViewModel
 import com.bysel.trader.viewmodel.TradingViewModelFactory
 
 class MainActivity : ComponentActivity() {
+    private var upiResultCallback: ((Boolean) -> Unit)? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -39,13 +41,41 @@ class MainActivity : ComponentActivity() {
         ).get(TradingViewModel::class.java)
 
         setContent {
-            BYSELApp(viewModel)
+            BYSELApp(viewModel) { amount, upiPackageName ->
+                launchUpiPayment(amount, upiPackageName) { success ->
+                    if (success) viewModel.addFunds(amount)
+                }
+            }
+        }
+    }
+
+    private fun launchUpiPayment(amount: Double, upiPackage: String, onResult: (Boolean) -> Unit) {
+        val upiUri = android.net.Uri.parse(
+            "upi://pay?pa=your-vpa@upi&pn=BYSEL&am=$amount&cu=INR"
+        )
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, upiUri)
+        intent.setPackage(upiPackage)
+        upiResultCallback = onResult
+        try {
+            startActivityForResult(intent, 2026)
+        } catch (e: Exception) {
+            onResult(false)
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 2026) {
+            val response = data?.getStringExtra("response") ?: ""
+            val success = response.contains("SUCCESS", ignoreCase = true)
+            upiResultCallback?.invoke(success)
+            upiResultCallback = null
         }
     }
 }
 
 @Composable
-fun BYSELApp(viewModel: TradingViewModel) {
+fun BYSELApp(viewModel: TradingViewModel, onUpiPay: (Double, String) -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("bysel_settings", Context.MODE_PRIVATE) }
     var currentThemeName by remember { mutableStateOf(prefs.getString("theme", "Default") ?: "Default") }
@@ -207,7 +237,7 @@ fun BYSELApp(viewModel: TradingViewModel) {
                             viewModel.refreshWallet()
                             viewModel.refreshMarketStatus()
                         },
-                        onAddFunds = { amount -> viewModel.addFunds(amount) },
+                        onAddFunds = { amount, upiProvider -> onUpiPay(amount, upiProvider) },
                         onErrorDismiss = { viewModel.clearError() }
                     )
                     3 -> PortfolioScreen(

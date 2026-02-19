@@ -32,7 +32,7 @@ fun TradingScreen(
     onBuy: (String, Int) -> Unit,
     onSell: (String, Int) -> Unit,
     onRefresh: () -> Unit,
-    onAddFunds: (Double) -> Unit,
+    onAddFunds: (Double, String) -> Unit,
     onErrorDismiss: () -> Unit
 ) {
     var selectedQuote by remember { mutableStateOf<Quote?>(null) }
@@ -58,8 +58,8 @@ fun TradingScreen(
     if (showAddFundsDialog) {
         AddFundsDialog(
             onDismiss = { showAddFundsDialog = false },
-            onAdd = { amount ->
-                onAddFunds(amount)
+            onAdd = { amount, upiProvider ->
+                onAddFunds(amount, upiProvider)
                 showAddFundsDialog = false
             }
         )
@@ -483,10 +483,17 @@ fun TradeDialog(
 @Composable
 fun AddFundsDialog(
     onDismiss: () -> Unit,
-    onAdd: (Double) -> Unit
+    onAdd: (Double, String) -> Unit
 ) {
     var amount by remember { mutableStateOf("") }
     val presetAmounts = listOf(10000.0, 25000.0, 50000.0, 100000.0)
+    var selectedUpi by remember { mutableStateOf("") }
+    val upiProviders = listOf(
+        "GPay" to "com.google.android.apps.nbu.paisa.user",
+        "PhonePe" to "com.phonepe.app",
+        "Amazon Pay" to "in.amazon.mShop.android.shopping"
+    )
+    var selectedUpiPackage by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -527,15 +534,40 @@ fun AddFundsDialog(
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Select UPI Provider", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    upiProviders.forEach { (name, pkg) ->
+                        Button(
+                            onClick = {
+                                selectedUpi = name
+                                selectedUpiPackage = pkg
+                            },
+                            modifier = Modifier.weight(1f).height(34.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (selectedUpi == name) Color(0xFF7C4DFF) else Color(0xFF2A2A2A)
+                            ),
+                            contentPadding = PaddingValues(horizontal = 4.dp)
+                        ) {
+                            Text(name, fontSize = 10.sp)
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
                     val amt = amount.toDoubleOrNull() ?: 0.0
-                    if (amt > 0) onAdd(amt)
+                    if (amt > 0 && selectedUpi.isNotEmpty() && selectedUpiPackage.isNotEmpty()) {
+                        onAdd(amt, selectedUpiPackage)
+                    }
                 },
-                enabled = (amount.toDoubleOrNull() ?: 0.0) > 0,
+                enabled = (amount.toDoubleOrNull() ?: 0.0) > 0 && selectedUpi.isNotEmpty() && selectedUpiPackage.isNotEmpty(),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF))
             ) {
                 Text("Add Funds", fontWeight = FontWeight.Bold)
