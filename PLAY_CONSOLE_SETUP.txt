@@ -1,0 +1,231 @@
+============================================================
+BYSEL TRADER — GOOGLE PLAY CONSOLE SETUP GUIDE
+Complete every section below to remove "(unreviewed)" status
+============================================================
+
+
+================================================================
+SECTION 1: STORE LISTING (Main store listing)
+================================================================
+
+APP NAME (max 30 chars):
+BYSEL Trader
+
+SHORT DESCRIPTION (max 80 chars):
+AI-powered stock analysis, predictions & paper trading for 363+ Indian stocks
+
+FULL DESCRIPTION (max 4000 chars):
+---
+BYSEL Trader is your AI-powered stock market companion for Indian markets. Track 363+ NSE/BSE stocks with live prices, get AI-driven analysis, and practice trading with zero risk.
+
+🤖 AI STOCK ASSISTANT
+Ask anything about stocks in plain English:
+• "Should I buy RELIANCE?"
+• "Compare TCS vs INFOSYS"  
+• "Show me top banking stocks"
+• "What's the prediction for HDFC Bank?"
+Get instant, detailed analysis with BYSEL Score (0-100), technical indicators, and actionable insights.
+
+📊 AI PRICE PREDICTIONS
+Our ensemble machine learning model combines Linear Regression, Exponential Smoothing, and Momentum Analysis to forecast stock prices for:
+• 1 Week ahead
+• 1 Month ahead  
+• 3 Months ahead
+Each prediction includes confidence intervals and directional indicators.
+
+💯 PORTFOLIO HEALTH SCORE
+Get a comprehensive 0-100 health score for your portfolio, graded A+ through D:
+• Diversification Score — Are you spread across enough stocks and sectors?
+• Risk Score — Concentration risk, loss positions, volatile sector exposure
+• Quality Score — Blue-chip and large-cap stock weight
+• Balance Score — How evenly distributed is your portfolio?
+Plus actionable suggestions to improve your portfolio health.
+
+🌡️ SMART MARKET HEATMAP
+See the entire market at a glance with our 14-sector heatmap:
+• Real-time sector performance with color-coded stock tiles
+• Market mood detection: Euphoric → Bullish → Neutral → Bearish → Fearful
+• Market breadth with advances/declines visualization
+• Drill down into any sector for detailed stock data
+
+📈 363+ INDIAN STOCKS
+Track every major Indian stock with live Yahoo Finance data:
+• All Nifty 50 & Nifty Next 50 constituents
+• Sector leaders: Banking, IT, Pharma, Auto, FMCG, Energy, Metals & more
+• Real-time prices, charts, and fundamental data (P/E, Market Cap, 52W High/Low)
+
+💼 PAPER TRADING
+Practice trading without risking real money:
+• Place BUY and SELL orders at market prices
+• Track your portfolio P&L in real-time
+• Set price alerts with ABOVE/BELOW thresholds
+• Perfect for learning stock market concepts
+
+🎨 5 BEAUTIFUL THEMES
+Customize your experience with 5 unique themes:
+• Default, Ocean, Forest, Sunset, Cyberpunk
+
+🔒 PRIVACY FIRST
+• No account or sign-up required
+• No personal data collected
+• All data stored locally on your device
+• No advertisements
+
+⚠️ DISCLAIMER: BYSEL Trader is for educational and informational purposes only. This is paper trading (simulated). AI predictions are based on technical analysis and historical data — they do not guarantee future performance. Not financial advice.
+---
+
+
+================================================================
+SECTION 2: APP CONTENT — Answers for each sub-section  
+================================================================
+
+--- PRIVACY POLICY ---
+URL: https://sriharshaduppalli.github.io/BYSEL/privacy-policy.html
+(Push the docs/ folder to GitHub and enable GitHub Pages — see instructions below)
+
+--- APP ACCESS ---
+Select: "All functionality is available without special access"
+(The app does not require login, account, or special credentials)
+
+--- ADS ---
+Select: "No, my app does not contain ads"
+
+--- CONTENT RATING ---
+Complete the IARC questionnaire with these answers:
+• Violence: No
+• Sexuality: No  
+• Language: No
+• Controlled substances: No
+• Gambling (simulated): No — Paper trading is NOT gambling under IARC's definition. 
+  It simulates stock trading for educational purposes with no real money.
+• User interaction: No (no chat between users, no user-generated content shared)
+• Users can share personal info: No
+• Users can purchase digital goods: No
+• The app shares user's current location: No
+• Does the app contain unrestricted web access: No
+
+Expected rating: PEGI 3 / Everyone
+
+--- TARGET AUDIENCE ---
+• Target age group: 18 and over (select "18+" only)
+  Reason: Stock trading content is intended for adults
+• Is this app designed to appeal to children? NO
+• Does this app contain ads? NO
+
+--- DATA SAFETY ---
+Fill the questionnaire as follows:
+• Does your app collect or share any of the required user data types? NO
+• Does your app collect any user data? NO  
+• Does your app share any user data with third parties? NO
+• Does your app include OPTIONAL security practices? 
+  → Data is encrypted in transit: YES (HTTPS)
+  → Data can be deleted by user: YES (clear app data / uninstall)
+
+Data types (all should be "Not collected"):
+• Location: Not collected
+• Personal info: Not collected
+• Financial info: Not collected  
+• Health info: Not collected
+• Messages: Not collected
+• Photos/Videos: Not collected
+• Audio: Not collected
+• Files/Docs: Not collected
+• Calendar: Not collected
+• Contacts: Not collected
+• App activity: Not collected
+• Web browsing: Not collected
+• App info: Not collected
+• Device info: Not collected
+
+--- GOVERNMENT APPS ---
+Select: "This is not a government app"
+
+--- FINANCIAL FEATURES ---
+This section may ask about financial services. Answer:
+• Does your app provide financial services? NO
+  (Paper trading / simulated trading is not a financial service)
+• Does your app facilitate cryptocurrency trading? NO
+• Does your app provide loans, insurance, or investment services? NO
+  (It's educational — simulated paper trading only)
+
+--- HEALTH ---
+Select: "This app is not a health app"
+
+
+================================================================
+SECTION 3: STORE SETTINGS
+================================================================
+
+--- APP CATEGORY ---
+Category: Finance
+Sub-category: (leave blank or select "Stock Trading" if available)
+
+--- CONTACT DETAILS ---
+Email: sriharshaduppalli@gmail.com
+Phone: (optional — can leave blank)
+Website: https://github.com/sriharshaduppalli/BYSEL
+
+
+================================================================
+SECTION 4: STORE LISTING GRAPHICS (you must create/upload)
+================================================================
+
+REQUIRED GRAPHICS:
+1. App Icon — 512 x 512 px, PNG, 32-bit with alpha
+   → Your ic_launcher should already have this in android/app/src/main/res/
+
+2. Feature Graphic — 1024 x 500 px, PNG or JPG
+   → Create one with: "BYSEL Trader" title + "AI-Powered Stock Trading" subtitle
+   → Use purple/dark blue gradient (matching app theme #1A237E → #7C4DFF)
+
+3. Phone Screenshots — Min 2, max 8 (16:9 or 9:16)
+   → Take screenshots from emulator showing:
+     - Dashboard/Home screen with stock prices
+     - AI Assistant chat with a query result
+     - Market Heatmap with sectors
+     - Portfolio screen with health score
+     - Trading screen with BUY/SELL
+
+SCREENSHOT SPECS:
+• Minimum: 320px on shortest side
+• Maximum: 3840px on longest side  
+• Aspect ratio: 16:9 or 9:16
+• PNG or JPG
+
+
+================================================================
+SECTION 5: ENABLE GITHUB PAGES (for Privacy Policy URL)
+================================================================
+
+STEPS:
+1. Push the docs/ folder to GitHub (commit below handles this)
+2. Go to: https://github.com/sriharshaduppalli/BYSEL/settings/pages
+3. Source: Deploy from a branch
+4. Branch: main
+5. Folder: /docs
+6. Click Save
+7. Wait 1-2 minutes
+8. Your privacy policy will be live at:
+   https://sriharshaduppalli.github.io/BYSEL/privacy-policy.html
+
+
+================================================================
+SECTION 6: PATH TO PRODUCTION
+================================================================
+
+After completing all sections above, you need:
+
+1. ✅ Finish app setup (all sections green)
+2. Create a CLOSED test (not just internal)
+   → Testing > Closed testing > Create track
+   → Upload your signed AAB
+   → Add at least 12 testers (email addresses)
+3. Run closed test for at least 14 days
+4. Apply for production access
+5. Submit for Google review
+
+TIMELINE:
+• Day 1: Complete setup + upload AAB + add testers → Start closed test
+• Day 15+: Apply for production access
+• Day 16-19: Google review (typically 1-3 days for new apps)
+• Day 20~: App goes live on Play Store
