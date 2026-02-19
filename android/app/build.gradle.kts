@@ -9,6 +9,10 @@ android {
     namespace = "com.bysel.trader"
     compileSdk = 36
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     defaultConfig {
         applicationId = "com.bysel.trader"
         minSdk = 26

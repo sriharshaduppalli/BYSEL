@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bysel.trader.BuildConfig
 import com.bysel.trader.ui.theme.allThemes
 import com.bysel.trader.ui.theme.getTheme
 import com.bysel.trader.ui.theme.LocalAppTheme
@@ -134,7 +135,7 @@ fun SettingsScreen(
             SettingClickItem(
                 icon = Icons.Filled.Info,
                 title = "About BYSEL",
-                subtitle = "Version 2.4.0",
+                subtitle = "Version ${BuildConfig.VERSION_NAME}",
                 onClick = { showAboutDialog = true }
             )
         }
@@ -405,7 +406,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
                 Text(
-                    text = "Version 2.4.0",
+                    text = "Version ${BuildConfig.VERSION_NAME}",
                     fontSize = 12.sp,
                     color = LocalAppTheme.current.textSecondary,
                     modifier = Modifier.padding(bottom = 12.dp)
