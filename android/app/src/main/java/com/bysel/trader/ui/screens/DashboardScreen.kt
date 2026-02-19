@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.Holding
 import com.bysel.trader.data.models.Quote
+import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
 fun DashboardScreen(
@@ -33,16 +34,16 @@ fun DashboardScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF0D0D0D)),
+                .background(LocalAppTheme.current.surface),
             contentAlignment = Alignment.Center
         ) {
-            CircularProgressIndicator(color = Color.Blue)
+            CircularProgressIndicator(color = LocalAppTheme.current.primary)
         }
     } else {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF0D0D0D))
+                .background(LocalAppTheme.current.surface)
                 .padding(16.dp)
         ) {
             item {
@@ -50,7 +51,7 @@ fun DashboardScreen(
                     text = "Portfolio Overview",
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White,
+                    color = LocalAppTheme.current.text,
                     modifier = Modifier.padding(bottom = 20.dp)
                 )
             }
@@ -67,7 +68,7 @@ fun DashboardScreen(
                     text = "Top Gainers",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color.White,
+                    color = LocalAppTheme.current.text,
                     modifier = Modifier.padding(vertical = 16.dp)
                 )
             }
@@ -83,7 +84,7 @@ fun DashboardScreen(
                     text = "Top Losers",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color.White,
+                    color = LocalAppTheme.current.text,
                     modifier = Modifier.padding(vertical = 16.dp, horizontal = 0.dp)
                 )
             }
@@ -125,9 +126,9 @@ fun PortfolioSummaryCard(holdings: List<Holding>, quotes: List<Quote>) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF1A1A1A))
+            .background(LocalAppTheme.current.card)
             .padding(bottom = 16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(
@@ -138,13 +139,13 @@ fun PortfolioSummaryCard(holdings: List<Holding>, quotes: List<Quote>) {
             Text(
                 text = "Total Portfolio Value",
                 fontSize = 14.sp,
-                color = Color.Gray
+                color = LocalAppTheme.current.textSecondary
             )
             Text(
                 text = "₹${String.format("%.2f", totalValue)}",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White,
+                color = LocalAppTheme.current.text,
                 modifier = Modifier.padding(vertical = 8.dp)
             )
 
@@ -158,13 +159,13 @@ fun PortfolioSummaryCard(holdings: List<Holding>, quotes: List<Quote>) {
                     Text(
                         text = "Invested",
                         fontSize = 12.sp,
-                        color = Color.Gray
+                        color = LocalAppTheme.current.textSecondary
                     )
                     Text(
                         text = "₹${String.format("%.2f", totalInvested)}",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White
+                        color = LocalAppTheme.current.text
                     )
                 }
 
@@ -172,13 +173,13 @@ fun PortfolioSummaryCard(holdings: List<Holding>, quotes: List<Quote>) {
                     Text(
                         text = "P&L",
                         fontSize = 12.sp,
-                        color = Color.Gray
+                        color = LocalAppTheme.current.textSecondary
                     )
                     Text(
                         text = "₹${String.format("%.2f", totalPnL)} (${String.format("%.2f", totalPnLPercent)}%)",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (totalPnL >= 0) Color(0xFF00E676) else Color(0xFFFF5252)
+                        color = if (totalPnL >= 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
                     )
                 }
             }
@@ -191,7 +192,7 @@ fun PortfolioSummaryCard(holdings: List<Holding>, quotes: List<Quote>) {
             Text(
                 text = "Holdings: ${holdings.size} stocks",
                 fontSize = 12.sp,
-                color = Color.Gray
+                color = LocalAppTheme.current.textSecondary
             )
         }
     }
@@ -203,7 +204,7 @@ fun GainerLosersCard(quote: Quote, isGainer: Boolean, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
         shape = RoundedCornerShape(10.dp)
     ) {
         Row(
@@ -218,12 +219,12 @@ fun GainerLosersCard(quote: Quote, isGainer: Boolean, onClick: () -> Unit) {
                     text = quote.symbol,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = LocalAppTheme.current.text
                 )
                 Text(
                     text = "₹${String.format("%.2f", quote.last)}",
                     fontSize = 14.sp,
-                    color = Color.Gray,
+                    color = LocalAppTheme.current.textSecondary,
                     modifier = Modifier.padding(top = 4.dp)
                 )
             }
@@ -242,14 +243,14 @@ fun GainerLosersCard(quote: Quote, isGainer: Boolean, onClick: () -> Unit) {
                 Icon(
                     imageVector = if (isGainer) Icons.Filled.TrendingUp else Icons.Filled.TrendingDown,
                     contentDescription = null,
-                    tint = if (isGainer) Color(0xFF00E676) else Color(0xFFFF5252),
+                    tint = if (isGainer) LocalAppTheme.current.positive else LocalAppTheme.current.negative,
                     modifier = Modifier.size(20.dp)
                 )
                 Text(
                     text = "${if (quote.pctChange > 0) "+" else ""}${String.format("%.2f", quote.pctChange)}%",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = if (isGainer) Color(0xFF00E676) else Color(0xFFFF5252)
+                    color = if (isGainer) LocalAppTheme.current.positive else LocalAppTheme.current.negative
                 )
             }
         }

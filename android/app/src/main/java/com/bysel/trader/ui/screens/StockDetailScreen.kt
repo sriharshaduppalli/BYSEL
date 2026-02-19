@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.Quote
+import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
 fun StockDetailScreen(
@@ -28,10 +29,10 @@ fun StockDetailScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF0D0D0D)),
+                .background(LocalAppTheme.current.surface),
             contentAlignment = Alignment.Center
         ) {
-            Text("Stock not found", color = Color.White)
+            Text("Stock not found", color = LocalAppTheme.current.text)
         }
         return
     }
@@ -39,7 +40,7 @@ fun StockDetailScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0D0D0D))
+            .background(LocalAppTheme.current.surface)
     ) {
         // Header
         Row(
@@ -50,13 +51,13 @@ fun StockDetailScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBackPress) {
-                Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = LocalAppTheme.current.text)
             }
             Text(
                 text = quote.symbol,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = LocalAppTheme.current.text
             )
             Spacer(modifier = Modifier.width(48.dp))
         }
@@ -72,7 +73,7 @@ fun StockDetailScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+                colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(
@@ -83,13 +84,13 @@ fun StockDetailScreen(
                     Text(
                         text = "Current Price",
                         fontSize = 14.sp,
-                        color = Color.Gray
+                        color = LocalAppTheme.current.textSecondary
                     )
                     Text(
                         text = "₹${String.format("%.2f", quote.last)}",
                         fontSize = 40.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White,
+                        color = LocalAppTheme.current.text,
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
 
@@ -108,7 +109,7 @@ fun StockDetailScreen(
                             text = "${if (quote.pctChange > 0) "+" else ""}${String.format("%.2f", quote.pctChange)}%",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (quote.pctChange > 0) Color(0xFF00E676) else Color(0xFFFF5252)
+                            color = if (quote.pctChange > 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
                         )
                     }
                 }
@@ -119,7 +120,7 @@ fun StockDetailScreen(
                 text = "Stock Information",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White,
+                color = LocalAppTheme.current.text,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
 
@@ -136,7 +137,7 @@ fun StockDetailScreen(
                 text = "Volume & Trade Data",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White,
+                color = LocalAppTheme.current.text,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
 
@@ -151,7 +152,7 @@ fun StockDetailScreen(
                 text = "Valuation",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White,
+                color = LocalAppTheme.current.text,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
 
@@ -183,7 +184,7 @@ fun StockDetailScreen(
                     modifier = Modifier
                         .weight(1f)
                         .height(50.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252)),
+                    colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.negative),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text("Sell", fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -201,7 +202,7 @@ fun DetailRow(label: String, value: String) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
         shape = RoundedCornerShape(8.dp)
     ) {
         Row(
@@ -213,13 +214,13 @@ fun DetailRow(label: String, value: String) {
             Text(
                 text = label,
                 fontSize = 12.sp,
-                color = Color.Gray
+                color = LocalAppTheme.current.textSecondary
             )
             Text(
                 text = value,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = Color.White
+                color = LocalAppTheme.current.text
             )
         }
     }

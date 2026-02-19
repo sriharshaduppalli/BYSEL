@@ -1,7 +1,10 @@
 package com.bysel.trader.ui.theme
 
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
+
+// CompositionLocal for app theme - accessible from any composable
+val LocalAppTheme = compositionLocalOf { getTheme("default") }
 
 // Define color palettes
 object ThemeColors {

@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.Alert
 import com.bysel.trader.ui.components.AlertCard
 import com.bysel.trader.ui.components.LoadingScreen
+import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
 fun AlertsScreen(
@@ -28,7 +29,7 @@ fun AlertsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(LocalAppTheme.current.surface)
     ) {
         Row(
             modifier = Modifier
@@ -41,11 +42,11 @@ fun AlertsScreen(
                 text = "Price Alerts",
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = LocalAppTheme.current.text
             )
             Button(
                 onClick = { showDialog = true },
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Blue)
+                colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary)
             ) {
                 Text("+ New Alert")
             }
@@ -63,7 +64,7 @@ fun AlertsScreen(
                 Text(
                     text = "No alerts set",
                     fontSize = 16.sp,
-                    color = Color.Gray
+                    color = LocalAppTheme.current.textSecondary
                 )
             }
         } else {
@@ -101,12 +102,12 @@ fun CreateAlertDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Create Price Alert", color = Color.White) },
+        title = { Text("Create Price Alert", color = LocalAppTheme.current.text) },
         text = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF1E1E1E))
+                    .background(LocalAppTheme.current.card)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -118,8 +119,8 @@ fun CreateAlertDialog(
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color(0xFF333333),
                         unfocusedContainerColor = Color(0xFF333333),
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
+                        focusedTextColor = LocalAppTheme.current.text,
+                        unfocusedTextColor = LocalAppTheme.current.text
                     )
                 )
 
@@ -131,8 +132,8 @@ fun CreateAlertDialog(
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color(0xFF333333),
                         unfocusedContainerColor = Color(0xFF333333),
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
+                        focusedTextColor = LocalAppTheme.current.text,
+                        unfocusedTextColor = LocalAppTheme.current.text
                     )
                 )
 
@@ -144,7 +145,7 @@ fun CreateAlertDialog(
                         onClick = { alertType = "ABOVE" },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (alertType == "ABOVE") Color.Blue else Color(0xFF333333)
+                            containerColor = if (alertType == "ABOVE") LocalAppTheme.current.primary else Color(0xFF333333)
                         )
                     ) {
                         Text("Above")
@@ -153,7 +154,7 @@ fun CreateAlertDialog(
                         onClick = { alertType = "BELOW" },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (alertType == "BELOW") Color.Blue else Color(0xFF333333)
+                            containerColor = if (alertType == "BELOW") LocalAppTheme.current.primary else Color(0xFF333333)
                         )
                     ) {
                         Text("Below")
@@ -177,6 +178,6 @@ fun CreateAlertDialog(
                 Text("Cancel")
             }
         },
-        containerColor = Color(0xFF1E1E1E)
+        containerColor = LocalAppTheme.current.card
     )
 }

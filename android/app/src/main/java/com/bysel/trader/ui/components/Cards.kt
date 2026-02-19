@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.Holding
 import com.bysel.trader.data.models.Alert
+import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
 fun QuoteCard(quote: Quote, onClick: () -> Unit = {}) {
@@ -24,7 +25,7 @@ fun QuoteCard(quote: Quote, onClick: () -> Unit = {}) {
             .padding(8.dp)
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)
     ) {
         Row(
             modifier = Modifier
@@ -38,19 +39,19 @@ fun QuoteCard(quote: Quote, onClick: () -> Unit = {}) {
                     text = quote.symbol,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = LocalAppTheme.current.text
                 )
                 Text(
                     text = "₹${quote.last}",
                     fontSize = 14.sp,
-                    color = Color.Gray
+                    color = LocalAppTheme.current.textSecondary
                 )
             }
             Text(
                 text = "${if (quote.pctChange > 0) "+" else ""}${quote.pctChange}%",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (quote.pctChange > 0) Color.Green else Color.Red
+                color = if (quote.pctChange > 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
             )
         }
     }
@@ -63,7 +64,7 @@ fun HoldingCard(holding: Holding) {
             .fillMaxWidth()
             .padding(8.dp),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)
     ) {
         Column(
             modifier = Modifier
@@ -79,19 +80,19 @@ fun HoldingCard(holding: Holding) {
                         text = holding.symbol,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = LocalAppTheme.current.text
                     )
                     Text(
                         text = "Qty: ${holding.qty}",
                         fontSize = 12.sp,
-                        color = Color.Gray
+                        color = LocalAppTheme.current.textSecondary
                     )
                 }
                 Text(
                     text = "₹${holding.pnl}",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (holding.pnl > 0) Color.Green else Color.Red
+                    color = if (holding.pnl > 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
@@ -103,12 +104,12 @@ fun HoldingCard(holding: Holding) {
                 Text(
                     text = "Avg: ₹${holding.avgPrice}",
                     fontSize = 12.sp,
-                    color = Color.Gray
+                    color = LocalAppTheme.current.textSecondary
                 )
                 Text(
                     text = "Last: ₹${holding.last}",
                     fontSize = 12.sp,
-                    color = Color.Gray
+                    color = LocalAppTheme.current.textSecondary
                 )
             }
         }
@@ -122,7 +123,7 @@ fun AlertCard(alert: Alert, onDelete: () -> Unit = {}) {
             .fillMaxWidth()
             .padding(8.dp),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)
     ) {
         Row(
             modifier = Modifier
@@ -136,12 +137,12 @@ fun AlertCard(alert: Alert, onDelete: () -> Unit = {}) {
                     text = "${alert.symbol} ${alert.alertType}",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = LocalAppTheme.current.text
                 )
                 Text(
                     text = "₹${alert.thresholdPrice}",
                     fontSize = 14.sp,
-                    color = Color.Gray
+                    color = LocalAppTheme.current.textSecondary
                 )
             }
             Button(
@@ -162,10 +163,10 @@ fun LoadingScreen() {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(LocalAppTheme.current.surface),
         contentAlignment = Alignment.Center
     ) {
-        CircularProgressIndicator(color = Color.Blue)
+        CircularProgressIndicator(color = LocalAppTheme.current.primary)
     }
 }
 
@@ -174,7 +175,7 @@ fun ErrorScreen(error: String, onRetry: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(LocalAppTheme.current.surface)
             .padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -186,18 +187,18 @@ fun ErrorScreen(error: String, onRetry: () -> Unit) {
                 text = "Error",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.Red
+                color = LocalAppTheme.current.negative
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = error,
                 fontSize = 14.sp,
-                color = Color.Gray,
+                color = LocalAppTheme.current.textSecondary,
                 modifier = Modifier.padding(16.dp)
             )
             Button(
                 onClick = onRetry,
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Blue)
+                colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary)
             ) {
                 Text("Retry")
             }

@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.viewmodel.ChatMessage
+import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
 fun AiAssistantScreen(
@@ -52,7 +53,7 @@ fun AiAssistantScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0D0D0D))
+            .background(LocalAppTheme.current.surface)
     ) {
         // Header
         Row(
@@ -78,7 +79,7 @@ fun AiAssistantScreen(
                     Icon(
                         Icons.Filled.Psychology,
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = LocalAppTheme.current.text,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -86,13 +87,13 @@ fun AiAssistantScreen(
                 Column {
                     Text(
                         "BYSEL AI Assistant",
-                        color = Color.White,
+                        color = LocalAppTheme.current.text,
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp
                     )
                     Text(
                         "Your smart stock advisor",
-                        color = Color.White.copy(alpha = 0.7f),
+                        color = LocalAppTheme.current.text.copy(alpha = 0.7f),
                         fontSize = 12.sp
                     )
                 }
@@ -102,7 +103,7 @@ fun AiAssistantScreen(
                     Icon(
                         Icons.Filled.DeleteSweep,
                         contentDescription = "Clear chat",
-                        tint = Color.White.copy(alpha = 0.7f)
+                        tint = LocalAppTheme.current.text.copy(alpha = 0.7f)
                     )
                 }
             }
@@ -139,7 +140,7 @@ fun AiAssistantScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFF1A1A1A))
+                .background(LocalAppTheme.current.card)
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -149,15 +150,15 @@ fun AiAssistantScreen(
                 placeholder = {
                     Text(
                         "Ask about any stock...",
-                        color = Color.Gray
+                        color = LocalAppTheme.current.textSecondary
                     )
                 },
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(min = 48.dp, max = 120.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
+                    focusedTextColor = LocalAppTheme.current.text,
+                    unfocusedTextColor = LocalAppTheme.current.text,
                     focusedBorderColor = Color(0xFF7C4DFF),
                     unfocusedBorderColor = Color(0xFF333333),
                     cursorColor = Color(0xFF7C4DFF),
@@ -195,7 +196,7 @@ fun AiAssistantScreen(
                 Icon(
                     Icons.Filled.Send,
                     contentDescription = "Send",
-                    tint = Color.White
+                    tint = LocalAppTheme.current.text
                 )
             }
         }
@@ -235,7 +236,7 @@ private fun WelcomeContent(onSuggestionClick: (String) -> Unit) {
             Icon(
                 Icons.Filled.Psychology,
                 contentDescription = null,
-                tint = Color.White,
+                tint = LocalAppTheme.current.text,
                 modifier = Modifier.size(48.dp)
             )
         }
@@ -244,7 +245,7 @@ private fun WelcomeContent(onSuggestionClick: (String) -> Unit) {
 
         Text(
             "Hi! I'm your AI Stock Assistant",
-            color = Color.White,
+            color = LocalAppTheme.current.text,
             fontWeight = FontWeight.Bold,
             fontSize = 20.sp,
             textAlign = TextAlign.Center
@@ -252,7 +253,7 @@ private fun WelcomeContent(onSuggestionClick: (String) -> Unit) {
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             "Ask me anything about Indian stocks.\nI can analyze, predict, and compare stocks for you.",
-            color = Color.Gray,
+            color = LocalAppTheme.current.textSecondary,
             fontSize = 14.sp,
             textAlign = TextAlign.Center,
             lineHeight = 20.sp
@@ -322,7 +323,7 @@ private fun SuggestionChip(
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text,
-                color = Color.White,
+                color = LocalAppTheme.current.text,
                 fontSize = 12.sp,
                 maxLines = 2,
                 lineHeight = 16.sp
@@ -356,7 +357,7 @@ private fun ChatBubble(
         ) {
             Text(
                 text = message.text,
-                color = Color.White,
+                color = LocalAppTheme.current.text,
                 fontSize = 14.sp,
                 modifier = Modifier.padding(12.dp),
                 lineHeight = 20.sp
@@ -423,7 +424,7 @@ private fun TypingIndicator() {
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             "AI is thinking...",
-            color = Color.Gray,
+            color = LocalAppTheme.current.textSecondary,
             fontSize = 12.sp
         )
     }

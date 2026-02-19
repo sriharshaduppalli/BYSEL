@@ -31,6 +31,7 @@ import com.bysel.trader.data.models.PortfolioHealthScore
 import com.bysel.trader.ui.components.QuoteCard
 import com.bysel.trader.ui.components.ErrorScreen
 import com.bysel.trader.ui.components.LoadingScreen
+import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
 fun WatchlistScreen(
@@ -49,7 +50,7 @@ fun WatchlistScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF0D0D0D))
+                .background(LocalAppTheme.current.surface)
         ) {
             Row(
                 modifier = Modifier
@@ -62,12 +63,12 @@ fun WatchlistScreen(
                     text = "Watchlist",
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = LocalAppTheme.current.text
                 )
                 Button(
                     onClick = onRefresh,
                     modifier = Modifier.height(40.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.Blue),
+                    colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text("Refresh", fontSize = 12.sp)
@@ -108,7 +109,7 @@ fun UpgradedQuoteCard(quote: Quote, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(
@@ -127,12 +128,12 @@ fun UpgradedQuoteCard(quote: Quote, onClick: () -> Unit) {
                         text = quote.symbol,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = LocalAppTheme.current.text
                     )
                     Text(
                         text = "₹${String.format("%.2f", quote.last)}",
                         fontSize = 16.sp,
-                        color = Color.Gray,
+                        color = LocalAppTheme.current.textSecondary,
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
@@ -152,14 +153,14 @@ fun UpgradedQuoteCard(quote: Quote, onClick: () -> Unit) {
                         Icon(
                             imageVector = if (quote.pctChange > 0) Icons.Filled.TrendingUp else Icons.Filled.TrendingDown,
                             contentDescription = null,
-                            tint = if (quote.pctChange > 0) Color(0xFF00E676) else Color(0xFFFF5252),
+                            tint = if (quote.pctChange > 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative,
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
                             text = "${if (quote.pctChange > 0) "+" else ""}${String.format("%.2f", quote.pctChange)}%",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (quote.pctChange > 0) Color(0xFF00E676) else Color(0xFFFF5252)
+                            color = if (quote.pctChange > 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
                         )
                     }
                 }
@@ -171,7 +172,7 @@ fun UpgradedQuoteCard(quote: Quote, onClick: () -> Unit) {
                     .fillMaxWidth()
                     .height(40.dp)
                     .padding(top = 12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Blue),
+                colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Text("View Details", fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -206,7 +207,7 @@ fun PortfolioScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF0D0D0D))
+                .background(LocalAppTheme.current.surface)
         ) {
             Row(
                 modifier = Modifier
@@ -219,12 +220,12 @@ fun PortfolioScreen(
                     text = "Portfolio",
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = LocalAppTheme.current.text
                 )
                 Button(
                     onClick = onRefresh,
                     modifier = Modifier.height(40.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.Blue),
+                    colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text("Refresh", fontSize = 12.sp)
@@ -265,7 +266,7 @@ fun PortfolioScreen(
                         Text(
                             text = "No holdings yet",
                             fontSize = 16.sp,
-                            color = Color.Gray,
+                            color = LocalAppTheme.current.textSecondary,
                             modifier = Modifier.padding(top = 16.dp)
                         )
                         Text(
@@ -316,7 +317,7 @@ fun UpgradedPortfolioHoldingItem(
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(
@@ -334,12 +335,12 @@ fun UpgradedPortfolioHoldingItem(
                         text = holding.symbol,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = LocalAppTheme.current.text
                     )
                     Text(
                         text = "₹${String.format("%.2f", holding.last)}",
                         fontSize = 14.sp,
-                        color = Color.Gray,
+                        color = LocalAppTheme.current.textSecondary,
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
@@ -348,7 +349,7 @@ fun UpgradedPortfolioHoldingItem(
                     text = "${if (holding.pnl > 0) "+" else ""}₹${String.format("%.2f", holding.pnl)}",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (holding.pnl > 0) Color(0xFF00E676) else Color(0xFFFF5252)
+                    color = if (holding.pnl > 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
                 )
             }
 
@@ -367,39 +368,39 @@ fun UpgradedPortfolioHoldingItem(
                     Text(
                         text = "Quantity",
                         fontSize = 11.sp,
-                        color = Color.Gray
+                        color = LocalAppTheme.current.textSecondary
                     )
                     Text(
                         text = "${holding.qty}",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White
+                        color = LocalAppTheme.current.text
                     )
                 }
                 Column {
                     Text(
                         text = "Avg Cost",
                         fontSize = 11.sp,
-                        color = Color.Gray
+                        color = LocalAppTheme.current.textSecondary
                     )
                     Text(
                         text = "₹${String.format("%.2f", holding.avgPrice)}",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White
+                        color = LocalAppTheme.current.text
                     )
                 }
                 Column {
                     Text(
                         text = "Current Value",
                         fontSize = 11.sp,
-                        color = Color.Gray
+                        color = LocalAppTheme.current.textSecondary
                     )
                     Text(
                         text = "₹${String.format("%.2f", holding.qty * holding.last)}",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White
+                        color = LocalAppTheme.current.text
                     )
                 }
             }
@@ -424,7 +425,7 @@ fun UpgradedPortfolioHoldingItem(
                     modifier = Modifier
                         .weight(1f)
                         .height(36.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252)),
+                    colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.negative),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text("Sell", fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -460,7 +461,7 @@ fun PortfolioHealthCard(
                         modifier = Modifier.size(32.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Analyzing portfolio health...", color = Color.Gray, fontSize = 12.sp)
+                    Text("Analyzing portfolio health...", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                 }
             }
         } else if (health != null) {
@@ -481,7 +482,7 @@ fun PortfolioHealthCard(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             "Portfolio Health",
-                            color = Color.White,
+                            color = LocalAppTheme.current.text,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
                         )
@@ -506,7 +507,7 @@ fun PortfolioHealthCard(
                     ) {
                         Text(
                             health.grade,
-                            color = Color.White,
+                            color = LocalAppTheme.current.text,
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 18.sp
                         )
@@ -549,7 +550,7 @@ fun PortfolioHealthCard(
                 // Summary
                 Text(
                     health.summary,
-                    color = Color.White.copy(alpha = 0.8f),
+                    color = LocalAppTheme.current.text.copy(alpha = 0.8f),
                     fontSize = 12.sp,
                     lineHeight = 18.sp
                 )
@@ -579,7 +580,7 @@ fun PortfolioHealthCard(
                     Spacer(modifier = Modifier.width(16.dp))
                     Text(
                         "${health.stockCount} stocks, ${health.sectorCount} sectors",
-                        color = Color.Gray,
+                        color = LocalAppTheme.current.textSecondary,
                         fontSize = 11.sp
                     )
                 }
@@ -599,7 +600,7 @@ fun PortfolioHealthCard(
                     health.suggestions.take(3).forEach { suggestion ->
                         Text(
                             suggestion,
-                            color = Color.White.copy(alpha = 0.7f),
+                            color = LocalAppTheme.current.text.copy(alpha = 0.7f),
                             fontSize = 11.sp,
                             lineHeight = 16.sp,
                             modifier = Modifier.padding(vertical = 2.dp)

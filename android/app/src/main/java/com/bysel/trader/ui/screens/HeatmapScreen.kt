@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.HeatmapSector
 import com.bysel.trader.data.models.HeatmapStock
 import com.bysel.trader.data.models.MarketHeatmap
+import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
 fun HeatmapScreen(
@@ -41,7 +42,7 @@ fun HeatmapScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0D0D0D))
+            .background(LocalAppTheme.current.surface)
     ) {
         // Header with market mood
         HeatmapHeader(heatmap)
@@ -54,7 +55,7 @@ fun HeatmapScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = Color(0xFF7C4DFF))
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("Loading market data...", color = Color.Gray, fontSize = 14.sp)
+                    Text("Loading market data...", color = LocalAppTheme.current.textSecondary, fontSize = 14.sp)
                 }
             }
         } else if (heatmap != null) {
@@ -106,21 +107,21 @@ private fun HeatmapHeader(heatmap: MarketHeatmap?) {
                     Icon(
                         Icons.Filled.GridView,
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = LocalAppTheme.current.text,
                         modifier = Modifier.size(28.dp)
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
                             "Smart Sentiment Heatmap",
-                            color = Color.White,
+                            color = LocalAppTheme.current.text,
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp
                         )
                         if (heatmap != null) {
                             Text(
                                 "Market Mood: ${heatmap.moodEmoji} ${heatmap.mood}",
-                                color = Color.White.copy(alpha = 0.9f),
+                                color = LocalAppTheme.current.text.copy(alpha = 0.9f),
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
                             )
@@ -132,7 +133,7 @@ private fun HeatmapHeader(heatmap: MarketHeatmap?) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     heatmap.moodDescription,
-                    color = Color.White.copy(alpha = 0.8f),
+                    color = LocalAppTheme.current.text.copy(alpha = 0.8f),
                     fontSize = 12.sp
                 )
             }
@@ -150,7 +151,7 @@ private fun MarketBreadthCard(heatmap: MarketHeatmap) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 "Market Breadth",
-                color = Color.White,
+                color = LocalAppTheme.current.text,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp
             )
@@ -189,7 +190,7 @@ private fun MarketBreadthCard(heatmap: MarketHeatmap) {
                         modifier = Modifier
                             .weight(unchangedPct)
                             .fillMaxHeight()
-                            .background(Color.Gray)
+                            .background(LocalAppTheme.current.textSecondary)
                     )
                 }
             }
@@ -202,7 +203,7 @@ private fun MarketBreadthCard(heatmap: MarketHeatmap) {
             ) {
                 BreadthLabel("Advances", heatmap.marketBreadth.advances, Color(0xFF00C853))
                 BreadthLabel("Declines", heatmap.marketBreadth.declines, Color(0xFFE53935))
-                BreadthLabel("Unchanged", heatmap.marketBreadth.unchanged, Color.Gray)
+                BreadthLabel("Unchanged", heatmap.marketBreadth.unchanged, LocalAppTheme.current.textSecondary)
             }
 
             // Best and worst sectors
@@ -217,7 +218,7 @@ private fun MarketBreadthCard(heatmap: MarketHeatmap) {
                 val bestChange = (heatmap.bestSector["change"] as? Number)?.toDouble() ?: 0.0
                 val worstChange = (heatmap.worstSector["change"] as? Number)?.toDouble() ?: 0.0
                 Column {
-                    Text("Best Sector", color = Color.Gray, fontSize = 11.sp)
+                    Text("Best Sector", color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
                     Text(
                         "${heatmap.bestSector["name"] ?: "N/A"} (${String.format("%+.2f", bestChange)}%)",
                         color = Color(0xFF00C853),
@@ -226,7 +227,7 @@ private fun MarketBreadthCard(heatmap: MarketHeatmap) {
                     )
                 }
                 Column(horizontalAlignment = Alignment.End) {
-                    Text("Worst Sector", color = Color.Gray, fontSize = 11.sp)
+                    Text("Worst Sector", color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
                     Text(
                         "${heatmap.worstSector["name"] ?: "N/A"} (${String.format("%+.2f", worstChange)}%)",
                         color = Color(0xFFE53935),
@@ -250,7 +251,7 @@ private fun BreadthLabel(label: String, count: Int, color: Color) {
         )
         Text(
             label,
-            color = Color.Gray,
+            color = LocalAppTheme.current.textSecondary,
             fontSize = 11.sp
         )
     }
@@ -264,7 +265,7 @@ private fun SectorHeatmapCard(sector: HeatmapSector, onStockClick: (String) -> U
         "neutral" -> Color(0xFFFFB300)
         "negative" -> Color(0xFFE53935)
         "strong_negative" -> Color(0xFFB71C1C)
-        else -> Color.Gray
+        else -> LocalAppTheme.current.textSecondary
     }
 
     Card(
@@ -289,7 +290,7 @@ private fun SectorHeatmapCard(sector: HeatmapSector, onStockClick: (String) -> U
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         sector.name,
-                        color = Color.White,
+                        color = LocalAppTheme.current.text,
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp
                     )
@@ -307,7 +308,7 @@ private fun SectorHeatmapCard(sector: HeatmapSector, onStockClick: (String) -> U
             // Advances/Declines mini bar
             Text(
                 "↑${sector.advances} ↓${sector.declines} (${sector.totalStocks} stocks)",
-                color = Color.Gray,
+                color = LocalAppTheme.current.textSecondary,
                 fontSize = 11.sp
             )
 
@@ -370,7 +371,7 @@ private fun StockHeatTile(
         ) {
             Text(
                 stock.symbol,
-                color = Color.White,
+                color = LocalAppTheme.current.text,
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
@@ -378,7 +379,7 @@ private fun StockHeatTile(
             )
             Text(
                 "${String.format("%+.1f", stock.pctChange)}%",
-                color = Color.White.copy(alpha = 0.9f),
+                color = LocalAppTheme.current.text.copy(alpha = 0.9f),
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Medium
             )

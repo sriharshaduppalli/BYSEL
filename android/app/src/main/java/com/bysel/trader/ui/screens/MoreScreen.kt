@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
 fun MoreScreen(
@@ -26,14 +27,14 @@ fun MoreScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0D0D0D))
+            .background(LocalAppTheme.current.surface)
             .padding(16.dp)
     ) {
         Text(
             text = "More",
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
-            color = Color.White
+            color = LocalAppTheme.current.text
         )
         Spacer(modifier = Modifier.height(24.dp))
 
@@ -67,8 +68,8 @@ fun MoreScreen(
 
         // App info
         Text(
-            "BYSEL v2.0 — AI-Powered Stock Trading",
-            color = Color.Gray,
+            "BYSEL v2.4 — AI-Powered Stock Trading",
+            color = LocalAppTheme.current.textSecondary,
             fontSize = 12.sp,
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
@@ -109,7 +110,7 @@ private fun MoreMenuItem(
                 Icon(
                     icon,
                     contentDescription = null,
-                    tint = Color.White,
+                    tint = LocalAppTheme.current.text,
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -117,20 +118,20 @@ private fun MoreMenuItem(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     title,
-                    color = Color.White,
+                    color = LocalAppTheme.current.text,
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp
                 )
                 Text(
                     subtitle,
-                    color = Color.Gray,
+                    color = LocalAppTheme.current.textSecondary,
                     fontSize = 12.sp
                 )
             }
             Icon(
                 Icons.Filled.ChevronRight,
                 contentDescription = null,
-                tint = Color.Gray,
+                tint = LocalAppTheme.current.textSecondary,
                 modifier = Modifier.size(24.dp)
             )
         }

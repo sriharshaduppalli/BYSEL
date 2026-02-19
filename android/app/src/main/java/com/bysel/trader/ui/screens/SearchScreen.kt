@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.StockSearchResult
 import kotlinx.coroutines.delay
+import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
 fun SearchScreen(
@@ -45,16 +46,16 @@ fun SearchScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0D0D0D))
+            .background(LocalAppTheme.current.surface)
             .padding(16.dp)
     ) {
         // Search Bar
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
-            placeholder = { Text("Search 500+ Indian stocks...", color = Color.Gray) },
+            placeholder = { Text("Search 500+ Indian stocks...", color = LocalAppTheme.current.textSecondary) },
             leadingIcon = {
-                Icon(Icons.Filled.Search, contentDescription = null, tint = Color.Gray)
+                Icon(Icons.Filled.Search, contentDescription = null, tint = LocalAppTheme.current.textSecondary)
             },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
@@ -62,7 +63,7 @@ fun SearchScreen(
                         searchQuery = ""
                         onClearSearch()
                     }) {
-                        Icon(Icons.Filled.Close, contentDescription = "Clear", tint = Color.Gray)
+                        Icon(Icons.Filled.Close, contentDescription = "Clear", tint = LocalAppTheme.current.textSecondary)
                     }
                 }
             },
@@ -70,11 +71,11 @@ fun SearchScreen(
                 .fillMaxWidth()
                 .padding(bottom = 20.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.Gray,
-                focusedBorderColor = Color.Blue,
+                focusedTextColor = LocalAppTheme.current.text,
+                unfocusedTextColor = LocalAppTheme.current.textSecondary,
+                focusedBorderColor = LocalAppTheme.current.primary,
                 unfocusedBorderColor = Color(0xFF2A2A2A),
-                cursorColor = Color.Blue
+                cursorColor = LocalAppTheme.current.primary
             ),
             shape = RoundedCornerShape(10.dp),
             singleLine = true
@@ -98,7 +99,7 @@ fun SearchScreen(
                     Text(
                         "Search for stocks",
                         fontSize = 16.sp,
-                        color = Color.Gray,
+                        color = LocalAppTheme.current.textSecondary,
                         modifier = Modifier.padding(top = 16.dp)
                     )
                     Text(
@@ -114,7 +115,7 @@ fun SearchScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = Color.Blue)
+                CircularProgressIndicator(color = LocalAppTheme.current.primary)
             }
         } else if (searchResults.isEmpty()) {
             Box(
@@ -125,7 +126,7 @@ fun SearchScreen(
                 Text(
                     "No stocks found for \"$searchQuery\"",
                     fontSize = 16.sp,
-                    color = Color.Gray
+                    color = LocalAppTheme.current.textSecondary
                 )
             }
         } else {
@@ -164,7 +165,7 @@ fun SearchResultCard(result: StockSearchResult, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
         shape = RoundedCornerShape(10.dp)
     ) {
         Row(
@@ -179,12 +180,12 @@ fun SearchResultCard(result: StockSearchResult, onClick: () -> Unit) {
                     text = result.symbol,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = LocalAppTheme.current.text
                 )
                 Text(
                     text = result.name,
                     fontSize = 12.sp,
-                    color = Color.Gray,
+                    color = LocalAppTheme.current.textSecondary,
                     modifier = Modifier.padding(top = 4.dp),
                     maxLines = 1
                 )
@@ -196,7 +197,7 @@ fun SearchResultCard(result: StockSearchResult, onClick: () -> Unit) {
                     .padding(start = 12.dp)
                     .height(32.dp)
                     .wrapContentWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Blue),
+                colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
                 contentPadding = PaddingValues(horizontal = 16.dp)
             ) {
                 Text("View", fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -215,7 +216,7 @@ fun SearchResultCardWithPrice(
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
         shape = RoundedCornerShape(10.dp)
     ) {
         Row(
@@ -230,19 +231,19 @@ fun SearchResultCardWithPrice(
                     text = result.symbol,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = LocalAppTheme.current.text
                 )
                 Text(
                     text = result.name,
                     fontSize = 12.sp,
-                    color = Color.Gray,
+                    color = LocalAppTheme.current.textSecondary,
                     modifier = Modifier.padding(top = 2.dp),
                     maxLines = 1
                 )
                 Text(
                     text = "₹${String.format("%.2f", quote.last)}",
                     fontSize = 14.sp,
-                    color = Color.White,
+                    color = LocalAppTheme.current.text,
                     modifier = Modifier.padding(top = 4.dp)
                 )
             }
@@ -252,7 +253,7 @@ fun SearchResultCardWithPrice(
                     text = "${if (quote.pctChange > 0) "+" else ""}${String.format("%.2f", quote.pctChange)}%",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (quote.pctChange > 0) Color(0xFF00E676) else Color(0xFFFF5252)
+                    color = if (quote.pctChange > 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
                 )
                 Button(
                     onClick = onClick,
@@ -260,7 +261,7 @@ fun SearchResultCardWithPrice(
                         .padding(top = 8.dp)
                         .height(32.dp)
                         .wrapContentWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.Blue),
+                    colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
                     contentPadding = PaddingValues(horizontal = 16.dp)
                 ) {
                     Text("View", fontSize = 11.sp, fontWeight = FontWeight.Bold)

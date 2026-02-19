@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.MarketStatus
+import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
 fun TradingScreen(
@@ -67,7 +68,7 @@ fun TradingScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0D0D0D))
+            .background(LocalAppTheme.current.surface)
     ) {
         // Header
         Row(
@@ -81,11 +82,11 @@ fun TradingScreen(
                 text = "Trading Market",
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = LocalAppTheme.current.text
             )
             Button(
                 onClick = onRefresh,
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Blue),
+                colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
                 modifier = Modifier.height(40.dp)
             ) {
                 Text("Refresh", fontSize = 12.sp)
@@ -115,14 +116,14 @@ fun TradingScreen(
                         Text(
                             text = if (marketStatus.isOpen) "\u2B24" else "\u2B24",
                             fontSize = 10.sp,
-                            color = if (marketStatus.isOpen) Color(0xFF00E676) else Color(0xFFFF5252),
+                            color = if (marketStatus.isOpen) LocalAppTheme.current.positive else LocalAppTheme.current.negative,
                             modifier = Modifier.padding(end = 8.dp)
                         )
                         Text(
                             text = marketStatus.message,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = if (marketStatus.isOpen) Color(0xFF00E676) else Color(0xFFFF5252)
+                            color = if (marketStatus.isOpen) LocalAppTheme.current.positive else LocalAppTheme.current.negative
                         )
                     }
                 }
@@ -155,13 +156,13 @@ fun TradingScreen(
                         Text(
                             text = "Wallet Balance",
                             fontSize = 11.sp,
-                            color = Color.Gray
+                            color = LocalAppTheme.current.textSecondary
                         )
                         Text(
                             text = "\u20B9${String.format("%,.2f", walletBalance)}",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = LocalAppTheme.current.text
                         )
                     }
                 }
@@ -197,7 +198,7 @@ fun TradingScreen(
                     .fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = Color.Blue)
+                CircularProgressIndicator(color = LocalAppTheme.current.primary)
             }
         } else {
             LazyColumn(
@@ -221,7 +222,7 @@ fun TradingQuoteCard(quote: Quote, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(
@@ -239,12 +240,12 @@ fun TradingQuoteCard(quote: Quote, onClick: () -> Unit) {
                         text = quote.symbol,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = LocalAppTheme.current.text
                     )
                     Text(
                         text = "₹${String.format("%.2f", quote.last)}",
                         fontSize = 16.sp,
-                        color = Color.Gray,
+                        color = LocalAppTheme.current.textSecondary,
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
@@ -254,7 +255,7 @@ fun TradingQuoteCard(quote: Quote, onClick: () -> Unit) {
                         text = "${if (quote.pctChange > 0) "+" else ""}${String.format("%.2f", quote.pctChange)}%",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (quote.pctChange > 0) Color(0xFF00E676) else Color(0xFFFF5252)
+                        color = if (quote.pctChange > 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
                     )
                 }
             }
@@ -280,7 +281,7 @@ fun TradingQuoteCard(quote: Quote, onClick: () -> Unit) {
                     modifier = Modifier
                         .weight(1f)
                         .height(40.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252))
+                    colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.negative)
                 ) {
                     Text("Sell", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
@@ -308,7 +309,7 @@ fun TradeDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1A1A1A),
+        containerColor = LocalAppTheme.current.card,
         modifier = Modifier.height(560.dp),
         title = {
             Row(
@@ -320,10 +321,10 @@ fun TradeDialog(
                     text = "${tradeType} ${quote.symbol}",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = LocalAppTheme.current.text
                 )
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White)
+                    Icon(Icons.Filled.Close, contentDescription = "Close", tint = LocalAppTheme.current.text)
                 }
             }
         },
@@ -348,7 +349,7 @@ fun TradeDialog(
                             text = "\u26A0 ${marketStatus?.message ?: "Market is closed"}",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFFFF5252),
+                            color = LocalAppTheme.current.negative,
                             modifier = Modifier.padding(10.dp)
                         )
                     }
@@ -368,7 +369,7 @@ fun TradeDialog(
                             .padding(10.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Wallet Balance", fontSize = 12.sp, color = Color.Gray)
+                        Text("Wallet Balance", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
                         Text(
                             text = "\u20B9${String.format("%,.2f", walletBalance)}",
                             fontSize = 13.sp,
@@ -381,7 +382,7 @@ fun TradeDialog(
                 Text(
                     text = "Current Price: \u20B9${String.format("%.2f", quote.last)}",
                     fontSize = 14.sp,
-                    color = Color.Gray,
+                    color = LocalAppTheme.current.textSecondary,
                     modifier = Modifier.padding(bottom = 20.dp)
                 )
 
@@ -409,7 +410,7 @@ fun TradeDialog(
                             .weight(1f)
                             .height(40.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (tradeType == "SELL") Color(0xFFFF5252) else Color(0xFF2A2A2A)
+                            containerColor = if (tradeType == "SELL") LocalAppTheme.current.negative else Color(0xFF2A2A2A)
                         )
                     ) {
                         Text("Sell", fontWeight = FontWeight.Bold)
@@ -419,14 +420,14 @@ fun TradeDialog(
                 OutlinedTextField(
                     value = quantity,
                     onValueChange = { quantity = it },
-                    label = { Text("Quantity", color = Color.Gray) },
+                    label = { Text("Quantity", color = LocalAppTheme.current.textSecondary) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.Gray,
-                        focusedBorderColor = Color.Blue,
+                        focusedTextColor = LocalAppTheme.current.text,
+                        unfocusedTextColor = LocalAppTheme.current.textSecondary,
+                        focusedBorderColor = LocalAppTheme.current.primary,
                         unfocusedBorderColor = Color(0xFF2A2A2A)
                     )
                 )
@@ -436,7 +437,7 @@ fun TradeDialog(
                         text = "Total: \u20B9${String.format("%,.2f", totalCost)}",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = LocalAppTheme.current.text
                     )
 
                     // Insufficient funds warning for BUY
@@ -444,7 +445,7 @@ fun TradeDialog(
                         Text(
                             text = "\u26A0 Insufficient funds! Need \u20B9${String.format("%,.2f", totalCost - walletBalance)} more",
                             fontSize = 12.sp,
-                            color = Color(0xFFFF5252),
+                            color = LocalAppTheme.current.negative,
                             modifier = Modifier.padding(top = 6.dp)
                         )
                     }
@@ -464,7 +465,7 @@ fun TradeDialog(
                 },
                 enabled = qty > 0 && isMarketOpen && (tradeType == "SELL" || canAfford),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (tradeType == "BUY") Color(0xFF00B050) else Color(0xFFFF5252),
+                    containerColor = if (tradeType == "BUY") Color(0xFF00B050) else LocalAppTheme.current.negative,
                     disabledContainerColor = Color(0xFF2A2A2A)
                 )
             ) {
@@ -473,7 +474,7 @@ fun TradeDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Color.Blue)
+                Text("Cancel", color = LocalAppTheme.current.primary)
             }
         }
     )
@@ -489,28 +490,28 @@ fun AddFundsDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1A1A1A),
+        containerColor = LocalAppTheme.current.card,
         title = {
-            Text("Add Funds to Wallet", color = Color.White, fontWeight = FontWeight.Bold)
+            Text("Add Funds to Wallet", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold)
         },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
                     value = amount,
                     onValueChange = { amount = it },
-                    label = { Text("Amount (\u20B9)", color = Color.Gray) },
+                    label = { Text("Amount (\u20B9)", color = LocalAppTheme.current.textSecondary) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.Gray,
+                        focusedTextColor = LocalAppTheme.current.text,
+                        unfocusedTextColor = LocalAppTheme.current.textSecondary,
                         focusedBorderColor = Color(0xFF7C4DFF),
                         unfocusedBorderColor = Color(0xFF2A2A2A)
                     )
                 )
 
-                Text("Quick Add", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp))
+                Text("Quick Add", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary, modifier = Modifier.padding(bottom = 8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -542,7 +543,7 @@ fun AddFundsDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Color.Blue)
+                Text("Cancel", color = LocalAppTheme.current.primary)
             }
         }
     )

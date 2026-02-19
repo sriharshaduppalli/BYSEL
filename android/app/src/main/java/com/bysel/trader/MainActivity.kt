@@ -1,5 +1,6 @@
 package com.bysel.trader
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -14,12 +15,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
 import com.bysel.trader.data.local.BYSELDatabase
 import com.bysel.trader.data.repository.TradingRepository
 import com.bysel.trader.ui.screens.*
+import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.getTheme
 import com.bysel.trader.viewmodel.TradingViewModel
 import com.bysel.trader.viewmodel.TradingViewModelFactory
 
@@ -42,7 +46,13 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun BYSELApp(viewModel: TradingViewModel) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("bysel_settings", Context.MODE_PRIVATE) }
+    var currentThemeName by remember { mutableStateOf(prefs.getString("theme", "Default") ?: "Default") }
+    val appTheme = remember(currentThemeName) { getTheme(currentThemeName.lowercase()) }
+
     var selectedTab by remember { mutableStateOf(0) }
+    var previousTab by remember { mutableIntStateOf(0) }
     
     val quotes by viewModel.quotes.collectAsState()
     val holdings by viewModel.holdings.collectAsState()
@@ -63,15 +73,16 @@ fun BYSELApp(viewModel: TradingViewModel) {
     val walletBalance by viewModel.walletBalance.collectAsState()
     val marketStatus by viewModel.marketStatus.collectAsState()
 
+    CompositionLocalProvider(LocalAppTheme provides appTheme) {
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = Color(0xFF0D0D0D)
+        color = appTheme.surface
     ) {
         Scaffold(
             bottomBar = {
                 NavigationBar(
-                    modifier = Modifier.background(Color(0xFF1A1A1A)),
-                    containerColor = Color(0xFF1A1A1A)
+                    modifier = Modifier.background(appTheme.card),
+                    containerColor = appTheme.card
                 ) {
                     // Tab 0: Dashboard
                     NavigationBarItem(
@@ -164,7 +175,7 @@ fun BYSELApp(viewModel: TradingViewModel) {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .background(Color(0xFF0D0D0D))
+                    .background(appTheme.surface)
             ) {
                 when (selectedTab) {
                     0 -> DashboardScreen(
@@ -217,6 +228,7 @@ fun BYSELApp(viewModel: TradingViewModel) {
                         isLoading = heatmapLoading,
                         onRefresh = { viewModel.loadMarketHeatmap() },
                         onStockClick = { symbol ->
+                            previousTab = selectedTab
                             viewModel.fetchAndSelectQuote(symbol)
                             selectedTab = 9
                         }
@@ -233,10 +245,12 @@ fun BYSELApp(viewModel: TradingViewModel) {
                         onSearchQuery = { query -> viewModel.searchStocks(query) },
                         onClearSearch = { viewModel.clearSearchResults() },
                         onQuoteClick = { quote ->
+                            previousTab = selectedTab
                             viewModel.setSelectedQuote(quote)
                             selectedTab = 9
                         },
                         onSymbolClick = { symbol ->
+                            previousTab = selectedTab
                             viewModel.fetchAndSelectQuote(symbol)
                             selectedTab = 9
                         }
@@ -251,21 +265,27 @@ fun BYSELApp(viewModel: TradingViewModel) {
                             viewModel.deleteAlert(alertId)
                         }
                     )
-                    8 -> SettingsScreen()
+                    8 -> SettingsScreen(
+                        currentTheme = currentThemeName,
+                        onThemeChange = { theme ->
+                            currentThemeName = theme
+                            prefs.edit().putString("theme", theme).apply()
+                        }
+                    )
                     9 -> {
                         if (detailLoading) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .background(Color(0xFF0D0D0D)),
+                                    .background(appTheme.surface),
                                 contentAlignment = androidx.compose.ui.Alignment.Center
                             ) {
-                                CircularProgressIndicator(color = Color(0xFF7C4DFF))
+                                CircularProgressIndicator(color = appTheme.primary)
                             }
                         } else {
                             StockDetailScreen(
                                 quote = selectedQuote,
-                                onBackPress = { selectedTab = 6 },
+                                onBackPress = { selectedTab = previousTab },
                                 onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
                                 onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") }
                             )
@@ -275,4 +295,5 @@ fun BYSELApp(viewModel: TradingViewModel) {
             }
         }
     }
+    } // end CompositionLocalProvider
 }

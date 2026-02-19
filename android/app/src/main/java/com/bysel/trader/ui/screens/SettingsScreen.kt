@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.ui.theme.allThemes
 import com.bysel.trader.ui.theme.getTheme
+import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
 fun SettingsScreen(
@@ -48,7 +49,7 @@ fun SettingsScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0D0D0D))
+            .background(LocalAppTheme.current.surface)
             .padding(16.dp)
     ) {
         item {
@@ -56,7 +57,7 @@ fun SettingsScreen(
                 text = "Settings",
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White,
+                color = LocalAppTheme.current.text,
                 modifier = Modifier.padding(bottom = 24.dp)
             )
         }
@@ -133,7 +134,7 @@ fun SettingsScreen(
             SettingClickItem(
                 icon = Icons.Filled.Info,
                 title = "About BYSEL",
-                subtitle = "Version 1.0.1",
+                subtitle = "Version 2.4.0",
                 onClick = { showAboutDialog = true }
             )
         }
@@ -161,7 +162,7 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252)),
+                colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.negative),
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Text("Logout", fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -179,13 +180,13 @@ fun ThemeSelectionDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1A1A1A),
+        containerColor = LocalAppTheme.current.card,
         title = {
             Text(
                 text = "Select Theme",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = LocalAppTheme.current.text
             )
         },
         text = {
@@ -219,7 +220,7 @@ fun ThemeSelectionDialog(
                                     text = theme.name,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = Color.White
+                                    color = LocalAppTheme.current.text
                                 )
                                 Box(
                                     modifier = Modifier
@@ -234,7 +235,7 @@ fun ThemeSelectionDialog(
                             Icon(
                                 Icons.Filled.Check,
                                 contentDescription = "Selected",
-                                tint = Color.Blue,
+                                tint = LocalAppTheme.current.primary,
                                 modifier = Modifier.size(24.dp)
                             )
                         }
@@ -244,7 +245,7 @@ fun ThemeSelectionDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Close", color = Color.Blue)
+                Text("Close", color = LocalAppTheme.current.primary)
             }
         }
     )
@@ -256,7 +257,7 @@ fun SettingsSection(title: String) {
         text = title,
         fontSize = 14.sp,
         fontWeight = FontWeight.SemiBold,
-        color = Color.Blue,
+        color = LocalAppTheme.current.primary,
         modifier = Modifier.padding(bottom = 8.dp)
     )
 }
@@ -273,7 +274,7 @@ fun SettingItem(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
         shape = RoundedCornerShape(10.dp)
     ) {
         Row(
@@ -291,7 +292,7 @@ fun SettingItem(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = Color.Blue,
+                    tint = LocalAppTheme.current.primary,
                     modifier = Modifier.size(24.dp)
                 )
                 Column {
@@ -299,12 +300,12 @@ fun SettingItem(
                         text = title,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White
+                        color = LocalAppTheme.current.text
                     )
                     Text(
                         text = subtitle,
                         fontSize = 12.sp,
-                        color = Color.Gray,
+                        color = LocalAppTheme.current.textSecondary,
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
@@ -334,7 +335,7 @@ fun SettingClickItem(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
         shape = RoundedCornerShape(10.dp)
     ) {
         Row(
@@ -352,7 +353,7 @@ fun SettingClickItem(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = Color.Blue,
+                    tint = LocalAppTheme.current.primary,
                     modifier = Modifier.size(24.dp)
                 )
                 Column {
@@ -360,12 +361,12 @@ fun SettingClickItem(
                         text = title,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White
+                        color = LocalAppTheme.current.text
                     )
                     Text(
                         text = subtitle,
                         fontSize = 12.sp,
-                        color = Color.Gray,
+                        color = LocalAppTheme.current.textSecondary,
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
@@ -374,7 +375,7 @@ fun SettingClickItem(
             Icon(
                 imageVector = Icons.Filled.ChevronRight,
                 contentDescription = null,
-                tint = Color.Gray,
+                tint = LocalAppTheme.current.textSecondary,
                 modifier = Modifier.size(24.dp)
             )
         }
@@ -385,13 +386,13 @@ fun SettingClickItem(
 fun AboutDialog(onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1A1A1A),
+        containerColor = LocalAppTheme.current.card,
         title = {
             Text(
                 text = "About BYSEL",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = LocalAppTheme.current.text
             )
         },
         text = {
@@ -400,32 +401,32 @@ fun AboutDialog(onDismiss: () -> Unit) {
                     text = "BYSEL - Stock Trading Simulator",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color.White,
+                    color = LocalAppTheme.current.text,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
                 Text(
-                    text = "Version 1.0.1",
+                    text = "Version 2.4.0",
                     fontSize = 12.sp,
-                    color = Color.Gray,
+                    color = LocalAppTheme.current.textSecondary,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
                 Text(
                     text = "BYSEL is a modern stock trading simulator that helps you learn and practice stock trading with real market data.",
                     fontSize = 12.sp,
-                    color = Color.Gray,
+                    color = LocalAppTheme.current.textSecondary,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
                 Text(
-                    text = "© 2024 BYSEL. All rights reserved.",
+                    text = "© 2026 BYSEL. All rights reserved.",
                     fontSize = 11.sp,
-                    color = Color.Gray,
+                    color = LocalAppTheme.current.textSecondary,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Close", color = Color.Blue)
+                Text("Close", color = LocalAppTheme.current.primary)
             }
         }
     )
