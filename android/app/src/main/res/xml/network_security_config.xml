@@ -1,16 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
+    <!-- Production: HTTPS to Render cloud backend -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">onrender.com</domain>
+    </domain-config>
+
     <!-- Allow cleartext (HTTP) traffic for local development/testing -->
     <domain-config cleartextTrafficPermitted="true">
-        <!-- Emulator localhost (10.0.2.2 is how emulator accesses host machine) -->
         <domain includeSubdomains="true">10.0.2.2</domain>
-        <!-- Actual localhost if testing on device -->
         <domain includeSubdomains="true">localhost</domain>
         <domain includeSubdomains="true">127.0.0.1</domain>
-    </domain-config>
-    
-    <!-- For all other domains, use HTTPS only (default security) -->
-    <domain-config cleartextTrafficPermitted="false">
-        <domain includeSubdomains="true">example.com</domain>
     </domain-config>
 </network-security-config>
