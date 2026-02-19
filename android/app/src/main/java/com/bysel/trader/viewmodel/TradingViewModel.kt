@@ -70,9 +70,10 @@ class TradingViewModel(private val repository: TradingRepository) : ViewModel() 
         autoRefreshJob = viewModelScope.launch {
             while (true) {
                 delay(AUTO_REFRESH_INTERVAL)
-                // Silently refresh quotes, holdings, wallet, and market status
+                // Silently refresh all live data
                 refreshQuotesSilent()
                 refreshHoldingsSilent()
+                refreshHeatmapSilent()
                 refreshWallet()
                 refreshMarketStatus()
             }
@@ -99,6 +100,17 @@ class TradingViewModel(private val repository: TradingRepository) : ViewModel() 
                     is Result.Success -> _holdings.value = result.data
                     else -> {}
                 }
+            }
+        }
+    }
+
+    /** Refresh heatmap without showing loading spinner */
+    private fun refreshHeatmapSilent() {
+        viewModelScope.launch {
+            val result = repository.getMarketHeatmap()
+            when (result) {
+                is Result.Success -> _marketHeatmap.value = result.data
+                else -> {}
             }
         }
     }
