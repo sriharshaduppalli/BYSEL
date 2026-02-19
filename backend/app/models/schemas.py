@@ -92,3 +92,20 @@ class PortfolioValue(BaseModel):
 class HealthCheck(BaseModel):
     status: str
     version: str = "1.0.0"
+
+class Wallet(BaseModel):
+    balance: float
+
+class WalletTransaction(BaseModel):
+    amount: float
+
+class WalletResponse(BaseModel):
+    status: str
+    balance: float
+    message: Optional[str] = None
+
+class MarketStatus(BaseModel):
+    isOpen: bool
+    message: str
+    nextOpen: Optional[str] = None
+    nextClose: Optional[str] = None

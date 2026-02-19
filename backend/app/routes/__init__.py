@@ -4,9 +4,13 @@ from sqlalchemy.orm import Session
 from ..database.db import get_db, AlertModel, OrderModel, HoldingModel
 from ..models.schemas import (
     Quote, Holding, Order, OrderResponse, Alert, AlertCreate,
-    AlertResponse, HealthCheck, TradeHistory, PortfolioSummary, PortfolioValue
+    AlertResponse, HealthCheck, TradeHistory, PortfolioSummary, PortfolioValue,
+    Wallet, WalletTransaction, WalletResponse, MarketStatus
 )
-from .trading import get_holdings, get_holding, place_order
+from .trading import (
+    get_holdings, get_holding, place_order,
+    is_market_open, get_wallet, add_funds, withdraw_funds
+)
 from ..market_data import (
     fetch_quote, fetch_quotes, get_all_symbols, get_default_symbols,
     search_stocks, get_symbols_with_names, get_stock_name, INDIAN_STOCKS
@@ -171,6 +175,34 @@ async def get_portfolio_value_endpoint(db: Session = Depends(get_db)):
         pnl=round(total_pnl, 2),
         pnlPercent=total_pnl_pct
     )
+
+
+# ==================== WALLET ====================
+
+@router.get("/wallet", response_model=Wallet)
+async def get_wallet_endpoint(db: Session = Depends(get_db)):
+    """Get current wallet balance."""
+    return get_wallet(db)
+
+
+@router.post("/wallet/add", response_model=WalletResponse)
+async def add_funds_endpoint(txn: WalletTransaction, db: Session = Depends(get_db)):
+    """Add funds to wallet."""
+    return add_funds(db, txn.amount)
+
+
+@router.post("/wallet/withdraw", response_model=WalletResponse)
+async def withdraw_funds_endpoint(txn: WalletTransaction, db: Session = Depends(get_db)):
+    """Withdraw funds from wallet."""
+    return withdraw_funds(db, txn.amount)
+
+
+# ==================== MARKET STATUS ====================
+
+@router.get("/market/status", response_model=MarketStatus)
+async def market_status_endpoint():
+    """Check if NSE market is currently open (9:15 AM - 3:30 PM IST, Mon-Fri)."""
+    return is_market_open()
 
 
 # ==================== ALERTS ====================

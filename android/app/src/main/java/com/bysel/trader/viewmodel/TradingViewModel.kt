@@ -35,6 +35,14 @@ class TradingViewModel(private val repository: TradingRepository) : ViewModel() 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    // Wallet
+    private val _walletBalance = MutableStateFlow(0.0)
+    val walletBalance: StateFlow<Double> = _walletBalance.asStateFlow()
+
+    // Market status
+    private val _marketStatus = MutableStateFlow<MarketStatus?>(null)
+    val marketStatus: StateFlow<MarketStatus?> = _marketStatus.asStateFlow()
+
     private val defaultSymbols = listOf(
         "RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN",
         "WIPRO", "ICICIBANK", "KOTAKBANK", "HINDUNILVR", "ITC",
@@ -46,6 +54,8 @@ class TradingViewModel(private val repository: TradingRepository) : ViewModel() 
         refreshQuotes()
         refreshHoldings()
         observeAlerts()
+        refreshWallet()
+        refreshMarketStatus()
     }
 
     fun refreshQuotes() {
@@ -171,8 +181,54 @@ class TradingViewModel(private val repository: TradingRepository) : ViewModel() 
             val result = repository.placeOrder(order)
             when (result) {
                 is Result.Success -> {
-                    _error.value = null
-                    refreshHoldings()
+                    // Check if backend returned an error status (market closed, insufficient funds)
+                    if (result.data.status == "error") {
+                        _error.value = result.data.message
+                    } else {
+                        _error.value = null
+                        refreshHoldings()
+                        refreshWallet()
+                    }
+                }
+                is Result.Error -> _error.value = result.message
+                else -> {}
+            }
+        }
+    }
+
+    fun refreshWallet() {
+        viewModelScope.launch {
+            val result = repository.getWallet()
+            when (result) {
+                is Result.Success -> _walletBalance.value = result.data.balance
+                is Result.Error -> { /* silently ignore wallet errors */ }
+                else -> {}
+            }
+        }
+    }
+
+    fun refreshMarketStatus() {
+        viewModelScope.launch {
+            val result = repository.getMarketStatus()
+            when (result) {
+                is Result.Success -> _marketStatus.value = result.data
+                is Result.Error -> { /* silently ignore */ }
+                else -> {}
+            }
+        }
+    }
+
+    fun addFunds(amount: Double) {
+        viewModelScope.launch {
+            val result = repository.addFunds(amount)
+            when (result) {
+                is Result.Success -> {
+                    if (result.data.status == "ok") {
+                        _walletBalance.value = result.data.balance
+                        _error.value = null
+                    } else {
+                        _error.value = result.data.message
+                    }
                 }
                 is Result.Error -> _error.value = result.message
                 else -> {}

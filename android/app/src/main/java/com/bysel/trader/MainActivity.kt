@@ -60,6 +60,8 @@ fun BYSELApp(viewModel: TradingViewModel) {
     val heatmapLoading by viewModel.heatmapLoading.collectAsState()
     val selectedQuote by viewModel.selectedQuote.collectAsState()
     val detailLoading by viewModel.detailLoading.collectAsState()
+    val walletBalance by viewModel.walletBalance.collectAsState()
+    val marketStatus by viewModel.marketStatus.collectAsState()
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -185,9 +187,16 @@ fun BYSELApp(viewModel: TradingViewModel) {
                         quotes = quotes,
                         isLoading = isLoading,
                         error = error,
+                        walletBalance = walletBalance,
+                        marketStatus = marketStatus,
                         onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
                         onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") },
-                        onRefresh = { viewModel.refreshQuotes() },
+                        onRefresh = {
+                            viewModel.refreshQuotes()
+                            viewModel.refreshWallet()
+                            viewModel.refreshMarketStatus()
+                        },
+                        onAddFunds = { amount -> viewModel.addFunds(amount) },
                         onErrorDismiss = { viewModel.clearError() }
                     )
                     3 -> PortfolioScreen(

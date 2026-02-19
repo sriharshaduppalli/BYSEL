@@ -195,7 +195,43 @@ class TradingRepository(private val database: BYSELDatabase) {
             Result.Error(e.message ?: "Unknown error")
         }
     }
+    // ==================== WALLET ====================
+    suspend fun getWallet(): Result<WalletBalance> {
+        return try {
+            val wallet = apiService.getWallet()
+            Result.Success(wallet)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
 
+    suspend fun addFunds(amount: Double): Result<WalletResponse> {
+        return try {
+            val response = apiService.addFunds(WalletTransaction(amount = amount))
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun withdrawFunds(amount: Double): Result<WalletResponse> {
+        return try {
+            val response = apiService.withdrawFunds(WalletTransaction(amount = amount))
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    // ==================== MARKET STATUS ====================
+    suspend fun getMarketStatus(): Result<MarketStatus> {
+        return try {
+            val status = apiService.getMarketStatus()
+            Result.Success(status)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
     suspend fun getAllSymbols(): Result<List<StockSearchResult>> {
         return try {
             val symbols = apiService.getAllSymbols()

@@ -50,6 +50,29 @@ data class OrderResponse(
     val message: String? = null
 )
 
+// ==================== WALLET & MARKET STATUS ====================
+
+data class WalletBalance(
+    val balance: Double
+)
+
+data class WalletTransaction(
+    val amount: Double
+)
+
+data class WalletResponse(
+    val status: String,
+    val balance: Double,
+    val message: String? = null
+)
+
+data class MarketStatus(
+    val isOpen: Boolean,
+    val message: String,
+    val nextOpen: String? = null,
+    val nextClose: String? = null
+)
+
 data class StockSearchResult(
     val symbol: String,
     val name: String,

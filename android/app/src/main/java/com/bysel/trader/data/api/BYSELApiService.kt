@@ -77,6 +77,20 @@ interface BYSELApiService {
     @GET("/health")
     suspend fun healthCheck(): Map<String, String>
 
+    // ==================== WALLET ====================
+    @GET("/wallet")
+    suspend fun getWallet(): WalletBalance
+
+    @POST("/wallet/add")
+    suspend fun addFunds(@Body txn: WalletTransaction): WalletResponse
+
+    @POST("/wallet/withdraw")
+    suspend fun withdrawFunds(@Body txn: WalletTransaction): WalletResponse
+
+    // ==================== MARKET STATUS ====================
+    @GET("/market/status")
+    suspend fun getMarketStatus(): MarketStatus
+
     // ==================== AI STOCK ASSISTANT ====================
     @POST("/ai/ask")
     suspend fun aiAsk(@Body query: AiQuery): AiAssistantResponse

@@ -51,6 +51,12 @@ class OrderModel(Base):
     status = Column(String, default="COMPLETED")
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class WalletModel(Base):
+    __tablename__ = "wallet"
+    id = Column(Integer, primary_key=True, index=True)
+    balance = Column(Float, default=0.0)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 Base.metadata.create_all(bind=engine)
 
 def get_db():
