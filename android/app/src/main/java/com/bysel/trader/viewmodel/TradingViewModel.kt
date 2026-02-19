@@ -110,6 +110,35 @@ class TradingViewModel(private val repository: TradingRepository) : ViewModel() 
         _searchResults.value = emptyList()
     }
 
+    // --- Single stock detail ---
+    private val _selectedQuote = MutableStateFlow<Quote?>(null)
+    val selectedQuote: StateFlow<Quote?> = _selectedQuote.asStateFlow()
+
+    private val _detailLoading = MutableStateFlow(false)
+    val detailLoading: StateFlow<Boolean> = _detailLoading.asStateFlow()
+
+    fun setSelectedQuote(quote: Quote) {
+        _selectedQuote.value = quote
+    }
+
+    fun fetchAndSelectQuote(symbol: String) {
+        viewModelScope.launch {
+            _detailLoading.value = true
+            val result = repository.getQuote(symbol)
+            when (result) {
+                is Result.Success -> {
+                    _selectedQuote.value = result.data
+                    _detailLoading.value = false
+                }
+                is Result.Error -> {
+                    _error.value = result.message
+                    _detailLoading.value = false
+                }
+                else -> {}
+            }
+        }
+    }
+
     fun refreshHoldings() {
         viewModelScope.launch {
             repository.getHoldings().collectLatest { result ->

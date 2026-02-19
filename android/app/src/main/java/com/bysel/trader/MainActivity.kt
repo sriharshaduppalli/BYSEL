@@ -58,6 +58,8 @@ fun BYSELApp(viewModel: TradingViewModel) {
     val healthLoading by viewModel.healthLoading.collectAsState()
     val marketHeatmap by viewModel.marketHeatmap.collectAsState()
     val heatmapLoading by viewModel.heatmapLoading.collectAsState()
+    val selectedQuote by viewModel.selectedQuote.collectAsState()
+    val detailLoading by viewModel.detailLoading.collectAsState()
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -143,7 +145,7 @@ fun BYSELApp(viewModel: TradingViewModel) {
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.MoreHoriz, contentDescription = "More", modifier = Modifier.size(22.dp)) },
                         label = { Text("More", fontSize = 10.sp) },
-                        selected = selectedTab in 5..8,
+                        selected = selectedTab in 5..9,
                         onClick = { selectedTab = 5 },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = Color(0xFF7C4DFF),
@@ -205,7 +207,10 @@ fun BYSELApp(viewModel: TradingViewModel) {
                         heatmap = marketHeatmap,
                         isLoading = heatmapLoading,
                         onRefresh = { viewModel.loadMarketHeatmap() },
-                        onStockClick = { symbol -> selectedTab = 2 }
+                        onStockClick = { symbol ->
+                            viewModel.fetchAndSelectQuote(symbol)
+                            selectedTab = 9
+                        }
                     )
                     5 -> MoreScreen(
                         onSearchClick = { selectedTab = 6 },
@@ -218,8 +223,14 @@ fun BYSELApp(viewModel: TradingViewModel) {
                         isSearching = isSearching,
                         onSearchQuery = { query -> viewModel.searchStocks(query) },
                         onClearSearch = { viewModel.clearSearchResults() },
-                        onQuoteClick = { selectedTab = 2 },
-                        onSymbolClick = { symbol -> selectedTab = 2 }
+                        onQuoteClick = { quote ->
+                            viewModel.setSelectedQuote(quote)
+                            selectedTab = 9
+                        },
+                        onSymbolClick = { symbol ->
+                            viewModel.fetchAndSelectQuote(symbol)
+                            selectedTab = 9
+                        }
                     )
                     7 -> AlertsScreen(
                         alerts = alerts,
@@ -232,6 +243,25 @@ fun BYSELApp(viewModel: TradingViewModel) {
                         }
                     )
                     8 -> SettingsScreen()
+                    9 -> {
+                        if (detailLoading) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color(0xFF0D0D0D)),
+                                contentAlignment = androidx.compose.ui.Alignment.Center
+                            ) {
+                                CircularProgressIndicator(color = Color(0xFF7C4DFF))
+                            }
+                        } else {
+                            StockDetailScreen(
+                                quote = selectedQuote,
+                                onBackPress = { selectedTab = 6 },
+                                onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
+                                onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") }
+                            )
+                        }
+                    }
                 }
             }
         }
