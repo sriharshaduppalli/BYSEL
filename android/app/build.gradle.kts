@@ -13,8 +13,8 @@ android {
         applicationId = "com.bysel.trader"
         minSdk = 26
         targetSdk = 36
-        versionCode = 20
-        versionName = "2.0.0"
+        versionCode = 22
+        versionName = "2.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
