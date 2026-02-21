@@ -59,24 +59,18 @@ jobs:
           name: BYSEL-release-aab
           path: build/
 
-
-        - name: Upload to Play Store
-          if: ${{ env.PLAYSTORE_SERVICE_ACCOUNT != '' }}
-          env:
-            PLAYSTORE_SERVICE_ACCOUNT: ${{ secrets.PLAYSTORE_SERVICE_ACCOUNT }}
-          uses: r0adkll/upload-google-play@v1
-          with:
-            serviceAccountJsonPlainText: ${{ secrets.PLAYSTORE_SERVICE_ACCOUNT }}
-            packageName: com.bysel.trader
-            releaseFile: build/app-release.aab
-            track: internal
-            whatsNewDirectory: ./playstore-metadata/whatsnew
-
-        - name: ⚠️ Play Store upload skipped - service account not configured
-          if: ${{ env.PLAYSTORE_SERVICE_ACCOUNT == '' }}
-          env:
-            PLAYSTORE_SERVICE_ACCOUNT: ${{ secrets.PLAYSTORE_SERVICE_ACCOUNT }}
-          run: |
+      - name: Play Store upload or skip
+        env:
+          PLAYSTORE_SERVICE_ACCOUNT: ${{ secrets.PLAYSTORE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -n "$PLAYSTORE_SERVICE_ACCOUNT" ]; then
+            npx r0adkll/upload-google-play \
+              --serviceAccountJsonPlainText "$PLAYSTORE_SERVICE_ACCOUNT" \
+              --packageName com.bysel.trader \
+              --releaseFile build/app-release.aab \
+              --track internal \
+              --whatsNewDirectory ./playstore-metadata/whatsnew
+          else
             echo "⚠️  PLAYSTORE_SERVICE_ACCOUNT secret not configured"
             echo "To deploy to Play Store, add the secret at:"
             echo "https://github.com/sriharshaduppalli/BYSEL/settings/secrets/actions"
@@ -88,3 +82,4 @@ jobs:
             echo "4. Add as PLAYSTORE_SERVICE_ACCOUNT secret"
             echo ""
             echo "AAB artifact is ready at: build/app-release.aab"
+          fi
