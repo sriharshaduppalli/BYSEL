@@ -58,7 +58,6 @@ jobs:
         with:
           name: BYSEL-release-aab
           path: build/
-
       - name: Play Store upload or skip
         env:
           PLAYSTORE_SERVICE_ACCOUNT: ${{ secrets.PLAYSTORE_SERVICE_ACCOUNT }}
