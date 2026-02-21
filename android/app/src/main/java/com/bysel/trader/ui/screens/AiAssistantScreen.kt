@@ -1,4 +1,7 @@
 package com.bysel.trader.ui.screens
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.automirrored.filled.CompareArrows
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
@@ -15,6 +18,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.automirrored.filled.CompareArrows
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -194,7 +200,7 @@ fun AiAssistantScreen(
                 )
             ) {
                 Icon(
-                    Icons.Filled.Send,
+                    Icons.AutoMirrored.Filled.Send,
                     contentDescription = "Send",
                     tint = LocalAppTheme.current.text
                 )
@@ -206,9 +212,9 @@ fun AiAssistantScreen(
 @Composable
 private fun WelcomeContent(onSuggestionClick: (String) -> Unit) {
     val suggestions = listOf(
-        "Should I buy RELIANCE?" to Icons.Filled.TrendingUp,
+        "Should I buy RELIANCE?" to Icons.AutoMirrored.Filled.TrendingUp,
         "Predict TCS price" to Icons.Filled.Timeline,
-        "Compare INFY and TCS" to Icons.Filled.CompareArrows,
+        "Compare INFY and TCS" to Icons.AutoMirrored.Filled.CompareArrows,
         "Best bank stocks" to Icons.Filled.AccountBalance,
         "Analyze HDFCBANK" to Icons.Filled.Analytics,
         "Is SBIN overvalued?" to Icons.Filled.PriceCheck,

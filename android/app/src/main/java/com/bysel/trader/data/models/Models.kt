@@ -15,6 +15,7 @@ data class Quote(
     val pctChange: Double,
     val timestamp: Long = System.currentTimeMillis()
 )
+ 
 
 @Entity(tableName = "holdings")
 data class Holding(
@@ -188,7 +189,12 @@ data class MarketHeatmap(
     val mood: String = "",
     val moodEmoji: String = "",
     val moodDescription: String = "",
-    val bestSector: Map<String, Any> = emptyMap(),
-    val worstSector: Map<String, Any> = emptyMap(),
+    val bestSector: SectorSummary = SectorSummary(),
+    val worstSector: SectorSummary = SectorSummary(),
     val lastUpdated: String = ""
+)
+
+data class SectorSummary(
+    val name: String = "",
+    val change: Double = 0.0
 )

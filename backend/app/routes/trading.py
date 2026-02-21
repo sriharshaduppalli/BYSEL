@@ -91,25 +91,27 @@ def is_market_open() -> MarketStatus:
         )
 
 
-def get_wallet(db: Session) -> Wallet:
-    """Get current wallet balance. Creates wallet with ₹100,000 if first time."""
-    wallet = db.query(WalletModel).first()
+
+def get_wallet(db: Session, user_id: int) -> Wallet:
+    """Get current wallet balance for a user. Creates wallet with ₹100,000 if first time."""
+    wallet = db.query(WalletModel).filter(WalletModel.user_id == user_id).first()
     if not wallet:
-        wallet = WalletModel(balance=100000.0)
+        wallet = WalletModel(user_id=user_id, balance=0.0)
         db.add(wallet)
         db.commit()
         db.refresh(wallet)
     return Wallet(balance=round(wallet.balance, 2))
 
 
-def add_funds(db: Session, amount: float) -> WalletResponse:
-    """Add funds to wallet."""
+
+def add_funds(db: Session, user_id: int, amount: float) -> WalletResponse:
+    """Add funds to a user's wallet."""
     if amount <= 0:
         return WalletResponse(status="error", balance=0, message="Amount must be positive")
 
-    wallet = db.query(WalletModel).first()
+    wallet = db.query(WalletModel).filter(WalletModel.user_id == user_id).first()
     if not wallet:
-        wallet = WalletModel(balance=amount)
+        wallet = WalletModel(user_id=user_id, balance=amount)
         db.add(wallet)
     else:
         wallet.balance += amount
@@ -123,12 +125,13 @@ def add_funds(db: Session, amount: float) -> WalletResponse:
     )
 
 
-def withdraw_funds(db: Session, amount: float) -> WalletResponse:
-    """Withdraw funds from wallet."""
+
+def withdraw_funds(db: Session, user_id: int, amount: float) -> WalletResponse:
+    """Withdraw funds from a user's wallet."""
     if amount <= 0:
         return WalletResponse(status="error", balance=0, message="Amount must be positive")
 
-    wallet = db.query(WalletModel).first()
+    wallet = db.query(WalletModel).filter(WalletModel.user_id == user_id).first()
     if not wallet or wallet.balance < amount:
         current = round(wallet.balance, 2) if wallet else 0
         return WalletResponse(
@@ -219,7 +222,7 @@ def place_order(db: Session, order: Order) -> OrderResponse:
     # Get or create wallet
     wallet = db.query(WalletModel).first()
     if not wallet:
-        wallet = WalletModel(balance=100000.0)
+        wallet = WalletModel(balance=0.0)
         db.add(wallet)
         db.commit()
         db.refresh(wallet)

@@ -208,19 +208,19 @@ private fun MarketBreadthCard(heatmap: MarketHeatmap) {
 
             // Best and worst sectors
             Spacer(modifier = Modifier.height(12.dp))
-            Divider(color = Color(0xFF333333))
+            HorizontalDivider(color = Color(0xFF333333))
             Spacer(modifier = Modifier.height(12.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                val bestChange = (heatmap.bestSector["change"] as? Number)?.toDouble() ?: 0.0
-                val worstChange = (heatmap.worstSector["change"] as? Number)?.toDouble() ?: 0.0
+                val bestChange = heatmap.bestSector.change
+                val worstChange = heatmap.worstSector.change
                 Column {
                     Text("Best Sector", color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
                     Text(
-                        "${heatmap.bestSector["name"] ?: "N/A"} (${String.format("%+.2f", bestChange)}%)",
+                        "${heatmap.bestSector.name} (${String.format("%+.2f", bestChange)}%)",
                         color = Color(0xFF00C853),
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp
@@ -229,7 +229,7 @@ private fun MarketBreadthCard(heatmap: MarketHeatmap) {
                 Column(horizontalAlignment = Alignment.End) {
                     Text("Worst Sector", color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
                     Text(
-                        "${heatmap.worstSector["name"] ?: "N/A"} (${String.format("%+.2f", worstChange)}%)",
+                        "${heatmap.worstSector.name} (${String.format("%+.2f", worstChange)}%)",
                         color = Color(0xFFE53935),
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp

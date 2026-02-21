@@ -1,5 +1,5 @@
-package com.bysel.trader.ui.screens
 
+package com.bysel.trader.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,6 +21,18 @@ import com.bysel.trader.ui.theme.getTheme
 import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
+fun SimpleDialog(title: String, message: String, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(message) },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("OK") }
+        }
+    )
+}
+
+@Composable
 fun SettingsScreen(
     onThemeChange: (String) -> Unit = {},
     currentTheme: String = "Default"
@@ -30,6 +42,11 @@ fun SettingsScreen(
     var showThemeDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var selectedTheme by remember { mutableStateOf(currentTheme) }
+    var showProfileDialog by remember { mutableStateOf(false) }
+    var showSecurityDialog by remember { mutableStateOf(false) }
+    var showFeedbackDialog by remember { mutableStateOf(false) }
+    var showLogoutDialog by remember { mutableStateOf(false) }
+    var openWebsite by remember { mutableStateOf(false) }
 
     if (showThemeDialog) {
         ThemeSelectionDialog(
@@ -45,6 +62,22 @@ fun SettingsScreen(
 
     if (showAboutDialog) {
         AboutDialog { showAboutDialog = false }
+    }
+    if (showProfileDialog) {
+        SimpleDialog(title = "Profile", message = "Profile screen coming soon.", onDismiss = { showProfileDialog = false })
+    }
+    if (showSecurityDialog) {
+        SimpleDialog(title = "Security", message = "Security settings coming soon.", onDismiss = { showSecurityDialog = false })
+    }
+    if (showFeedbackDialog) {
+        SimpleDialog(title = "Feedback", message = "Feedback form coming soon.", onDismiss = { showFeedbackDialog = false })
+    }
+    if (showLogoutDialog) {
+        SimpleDialog(title = "Logout", message = "Logout functionality coming soon.", onDismiss = { showLogoutDialog = false })
+    }
+    if (openWebsite) {
+        // TODO: Implement actual website opening logic
+        SimpleDialog(title = "Visit Website", message = "Opening website...", onDismiss = { openWebsite = false })
     }
 
     LazyColumn(
@@ -113,7 +146,8 @@ fun SettingsScreen(
             SettingClickItem(
                 icon = Icons.Filled.Person,
                 title = "Profile",
-                subtitle = "View and edit profile"
+                subtitle = "View and edit profile",
+                onClick = { showProfileDialog = true }
             )
         }
 
@@ -121,7 +155,8 @@ fun SettingsScreen(
             SettingClickItem(
                 icon = Icons.Filled.Lock,
                 title = "Security",
-                subtitle = "Manage password and privacy"
+                subtitle = "Manage password and privacy",
+                onClick = { showSecurityDialog = true }
             )
         }
 
@@ -144,7 +179,8 @@ fun SettingsScreen(
             SettingClickItem(
                 icon = Icons.Filled.Public,
                 title = "Visit Website",
-                subtitle = "Open official website"
+                subtitle = "Open official website",
+                onClick = { openWebsite = true }
             )
         }
 
@@ -152,14 +188,15 @@ fun SettingsScreen(
             SettingClickItem(
                 icon = Icons.Filled.Feedback,
                 title = "Send Feedback",
-                subtitle = "Help us improve"
+                subtitle = "Help us improve",
+                onClick = { showFeedbackDialog = true }
             )
         }
 
         item {
             Spacer(modifier = Modifier.height(20.dp))
             Button(
-                onClick = { },
+                onClick = { showLogoutDialog = true },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp),
@@ -170,6 +207,33 @@ fun SettingsScreen(
             }
             Spacer(modifier = Modifier.height(40.dp))
         }
+    @Composable
+    fun SimpleDialog(title: String, message: String, onDismiss: () -> Unit) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            containerColor = LocalAppTheme.current.card,
+            title = {
+                Text(
+                    text = title,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = LocalAppTheme.current.text
+                )
+            },
+            text = {
+                Text(
+                    text = message,
+                    fontSize = 14.sp,
+                    color = LocalAppTheme.current.textSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = onDismiss) {
+                    Text("Close", color = LocalAppTheme.current.primary)
+                }
+            }
+        )
+    }
     }
 }
 

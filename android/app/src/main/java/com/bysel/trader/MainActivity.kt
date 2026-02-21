@@ -1,4 +1,5 @@
 package com.bysel.trader
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 
 import android.content.Context
 import android.os.Bundle
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -30,8 +32,20 @@ import com.bysel.trader.viewmodel.TradingViewModelFactory
 class MainActivity : ComponentActivity() {
     private var upiResultCallback: ((Boolean) -> Unit)? = null
 
+
+
+    private lateinit var upiLauncher: androidx.activity.result.ActivityResultLauncher<android.content.Intent>
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        upiLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
+            val data = result.data
+            val response = data?.getStringExtra("response") ?: ""
+            val success = response.contains("SUCCESS", ignoreCase = true)
+            upiResultCallback?.invoke(success)
+            upiResultCallback = null
+        }
 
         val database = BYSELDatabase.getInstance(this)
         val repository = TradingRepository(database)
@@ -57,19 +71,9 @@ class MainActivity : ComponentActivity() {
         intent.setPackage(upiPackage)
         upiResultCallback = onResult
         try {
-            startActivityForResult(intent, 2026)
+            upiLauncher.launch(intent)
         } catch (e: Exception) {
             onResult(false)
-        }
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 2026) {
-            val response = data?.getStringExtra("response") ?: ""
-            val success = response.contains("SUCCESS", ignoreCase = true)
-            upiResultCallback?.invoke(success)
-            upiResultCallback = null
         }
     }
 }
@@ -158,7 +162,7 @@ fun BYSELApp(viewModel: TradingViewModel, onUpiPay: (Double, String) -> Unit) {
                     )
                     // Tab 3: Portfolio
                     NavigationBarItem(
-                        icon = { Icon(Icons.Filled.ShowChart, contentDescription = "Portfolio", modifier = Modifier.size(22.dp)) },
+                        icon = { Icon(Icons.AutoMirrored.Filled.ShowChart, contentDescription = "Portfolio", modifier = Modifier.size(22.dp)) },
                         label = { Text("Portfolio", fontSize = 10.sp) },
                         selected = selectedTab == 3,
                         onClick = { selectedTab = 3 },

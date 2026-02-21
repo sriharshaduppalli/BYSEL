@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from ..database.db import get_db, AlertModel, OrderModel, HoldingModel
+from .dependencies import get_current_user
 from ..models.schemas import (
     Quote, Holding, Order, OrderResponse, Alert, AlertCreate,
     AlertResponse, HealthCheck, TradeHistory, PortfolioSummary, PortfolioValue,
@@ -179,22 +180,25 @@ async def get_portfolio_value_endpoint(db: Session = Depends(get_db)):
 
 # ==================== WALLET ====================
 
+
 @router.get("/wallet", response_model=Wallet)
-async def get_wallet_endpoint(db: Session = Depends(get_db)):
-    """Get current wallet balance."""
-    return get_wallet(db)
+async def get_wallet_endpoint(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Get current wallet balance for the authenticated user."""
+    return get_wallet(db, user.id)
+
 
 
 @router.post("/wallet/add", response_model=WalletResponse)
-async def add_funds_endpoint(txn: WalletTransaction, db: Session = Depends(get_db)):
-    """Add funds to wallet."""
-    return add_funds(db, txn.amount)
+async def add_funds_endpoint(txn: WalletTransaction, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Add funds to the authenticated user's wallet."""
+    return add_funds(db, user.id, txn.amount)
+
 
 
 @router.post("/wallet/withdraw", response_model=WalletResponse)
-async def withdraw_funds_endpoint(txn: WalletTransaction, db: Session = Depends(get_db)):
-    """Withdraw funds from wallet."""
-    return withdraw_funds(db, txn.amount)
+async def withdraw_funds_endpoint(txn: WalletTransaction, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Withdraw funds from the authenticated user's wallet."""
+    return withdraw_funds(db, user.id, txn.amount)
 
 
 # ==================== MARKET STATUS ====================

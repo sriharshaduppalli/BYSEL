@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 from .routes import router
+from .routes.auth import router as auth_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -23,8 +24,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routes
+
+# Include main and auth routes
 app.include_router(router)
+app.include_router(auth_router, prefix="/auth")
 
 @app.on_event("startup")
 async def startup_event():

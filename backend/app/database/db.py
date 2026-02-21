@@ -51,9 +51,21 @@ class OrderModel(Base):
     status = Column(String, default="COMPLETED")
     created_at = Column(DateTime, default=datetime.utcnow)
 
+
+# --- User Model ---
+class UserModel(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+# --- Wallet Model (per user) ---
 class WalletModel(Base):
     __tablename__ = "wallet"
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
     balance = Column(Float, default=0.0)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
