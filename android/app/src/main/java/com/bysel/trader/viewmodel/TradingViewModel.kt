@@ -49,11 +49,9 @@ class TradingViewModel(private val repository: TradingRepository) : ViewModel() 
     private var autoRefreshJob: Job? = null
     private val AUTO_REFRESH_INTERVAL = 15_000L // 15 seconds
 
+    // Only use symbols supported by backend mock
     private val defaultSymbols = listOf(
-        "RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN",
-        "WIPRO", "ICICIBANK", "KOTAKBANK", "HINDUNILVR", "ITC",
-        "BHARTIARTL", "LT", "AXISBANK", "BAJFINANCE", "TATAMOTORS",
-        "SUNPHARMA", "TITAN", "MARUTI", "HCLTECH", "TATASTEEL"
+        "RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN"
     )
 
     init {
@@ -123,6 +121,9 @@ class TradingViewModel(private val repository: TradingRepository) : ViewModel() 
                     is Result.Success -> {
                         _quotes.value = result.data
                         _isLoading.value = false
+                        if (result.data.isEmpty()) {
+                            _error.value = "No stock data available. Backend may be missing symbols or offline."
+                        }
                     }
                     is Result.Error -> {
                         _error.value = result.message
