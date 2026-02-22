@@ -1,11 +1,1 @@
-// Top-level build file
-plugins {
-    id("com.android.application") version "8.3.0" apply false
-    id("com.android.library") version "8.3.0" apply false
-    id("org.jetbrains.kotlin.android") version "1.9.23" apply false
-    id("com.google.dagger.hilt.android") version "2.51.1" apply false
-}
-
-tasks.register("clean", Delete::class) {
-    delete(layout.buildDirectory)
-}
+// Root build.gradle.kts intentionally left minimal. All configuration is in settings.gradle.kts and app/build.gradle.kts.
