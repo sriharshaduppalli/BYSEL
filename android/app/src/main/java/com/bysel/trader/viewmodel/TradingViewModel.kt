@@ -121,6 +121,18 @@ class TradingViewModel(
     // --- Demo account helper used by MainActivity ---
     fun initDemoAccount() {
         viewModelScope.launch {
+            // If a real wallet already exists (backend/persisted), do not overwrite it with demo funds
+            when (val r = repository.getWallet()) {
+                is Result.Success -> {
+                    // If the user already has a balance, skip demo initialization
+                    if (r.data.balance > 0.0) return@launch
+                }
+                is Result.Error -> {
+                    // If error fetching wallet, we proceed to demo initialization as a fallback
+                }
+                else -> { /* proceed to demo */ }
+            }
+
             _walletBalance.value = 100000.0
             val demoHoldings = listOf(
                 Holding(symbol = "RELIANCE", qty = 10, avgPrice = 2500.0, last = 2550.0, pnl = 500.0),
