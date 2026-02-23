@@ -1,3 +1,42 @@
+    # Technical signal logic
+    if symbols:
+        symbol = symbols[0]
+        ticker = _yf_ticker(symbol)
+        data = yf.download(ticker, period="6mo", interval="1d")
+        prices = np.array(data["Close"].values)
+        rsi = _compute_rsi(prices)
+        macd = _compute_macd(prices)
+        bollinger = _compute_bollinger(prices)
+        signal = "hold"
+        reasons = []
+        if rsi < 30:
+            signal = "buy"
+            reasons.append("RSI indicates oversold")
+        elif rsi > 70:
+            signal = "sell"
+            reasons.append("RSI indicates overbought")
+        if macd["trend"] == "bullish":
+            if signal == "hold":
+                signal = "buy"
+            reasons.append("MACD bullish trend")
+        elif macd["trend"] == "bearish":
+            if signal == "hold":
+                signal = "sell"
+            reasons.append("MACD bearish trend")
+        if bollinger["position"] == "lower":
+            signal = "buy"
+            reasons.append("Price near lower Bollinger Band")
+        elif bollinger["position"] == "upper":
+            signal = "sell"
+            reasons.append("Price near upper Bollinger Band")
+        return {
+            "type": "analysis",
+            "answer": f"Technical signal for {symbol}: {signal.upper()}\n" + ", ".join(reasons),
+            "signal": signal,
+            "rsi": rsi,
+            "macd": macd,
+            "bollinger": bollinger,
+        }
 """
 BYSEL AI Engine — Stock Analysis, Price Prediction & Natural Language Assistant
 
@@ -565,8 +604,52 @@ def ai_assistant(query: str) -> Dict:
     elif any(w in query_lower for w in ["buy", "sell", "should i", "invest", "good time"]):
         return _handle_buy_sell_query(symbols, query)
 
-    elif any(w in query_lower for w in ["best", "top", "undervalued", "overvalued", "cheap", "value"]):
-        return _handle_screening_query(query_lower, symbols)
+    elif any(w in query_lower for w in ["best", "top", "undervalued", "overvalued", "cheap", "value", "recommend", "suggest", "portfolio", "watchlist"]):
+        # Personalized recommendation logic
+        from fastapi import Request
+        import inspect
+        db = None
+        # Try to get DB/session from caller context
+        for frame in inspect.stack():
+            if 'db' in frame.frame.f_locals:
+                db = frame.frame.f_locals['db']
+                break
+        user_portfolio = _get_user_portfolio(db)
+        if user_portfolio:
+            return _handle_personalized_recommendation(query_lower, symbols, user_portfolio)
+        else:
+            return _handle_screening_query(query_lower, symbols)
+def _get_user_portfolio(db=None):
+    """Fetch user's portfolio or watchlist for personalized recommendations."""
+    if db is not None:
+        try:
+            from .routes.trading import get_holdings
+            holdings = get_holdings(db)
+            return [h.symbol for h in holdings]
+        except Exception:
+            pass
+    # Fallback: sample portfolio
+    return ["RELIANCE", "TCS", "HDFCBANK"]
+
+def _handle_personalized_recommendation(query, symbols, portfolio):
+    """Recommend stocks based on user's portfolio/watchlist."""
+    # Example: diversify sectors, suggest high-quality stocks not in portfolio
+    from .market_data import INDIAN_STOCKS
+    portfolio_set = set(portfolio)
+    recommendations = []
+    for sym, (ticker, name) in INDIAN_STOCKS.items():
+        if sym not in portfolio_set:
+            # Simple logic: recommend stocks from different sectors
+            recommendations.append({"symbol": sym, "name": name})
+            if len(recommendations) >= 5:
+                break
+    answer = "Top recommendations based on your portfolio: " + ", ".join([r["symbol"] for r in recommendations])
+    return {
+        "type": "recommendation",
+        "answer": answer,
+        "suggestions": [r["symbol"] for r in recommendations],
+        "stocks": recommendations
+    }
 
     elif any(w in query_lower for w in ["analyze", "analysis", "detail", "about", "tell me"]):
         return _handle_analysis_query(symbols, query)

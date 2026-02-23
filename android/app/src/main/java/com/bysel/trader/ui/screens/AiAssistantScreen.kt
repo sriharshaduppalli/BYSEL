@@ -205,9 +205,9 @@ fun AiAssistantScreen(
                     tint = LocalAppTheme.current.text
                 )
             }
+            }
         }
     }
-}
 
 @Composable
 private fun WelcomeContent(onSuggestionClick: (String) -> Unit) {

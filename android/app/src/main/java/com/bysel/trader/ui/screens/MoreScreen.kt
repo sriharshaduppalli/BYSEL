@@ -22,7 +22,8 @@ import com.bysel.trader.ui.theme.LocalAppTheme
 fun MoreScreen(
     onSearchClick: () -> Unit,
     onAlertsClick: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onAchievementsClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -62,6 +63,16 @@ fun MoreScreen(
             subtitle = "Customize themes and preferences",
             gradientColors = listOf(Color(0xFF424242), Color(0xFF757575)),
             onClick = onSettingsClick
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        MoreMenuItem(
+            icon = Icons.Filled.EmojiEvents,
+            title = "Achievements",
+            subtitle = "View your unlocked badges",
+            gradientColors = listOf(Color(0xFF388E3C), Color(0xFF81C784)),
+            onClick = onAchievementsClick
         )
 
         Spacer(modifier = Modifier.weight(1f))

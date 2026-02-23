@@ -49,9 +49,11 @@ class MainActivity : ComponentActivity() {
 
         val database = BYSELDatabase.getInstance(this)
         val repository = TradingRepository(database)
+        val factory = TradingViewModelFactory(repository)
+        factory.initApplication(application)
         val viewModel = ViewModelProvider(
             this,
-            TradingViewModelFactory(repository)
+            factory
         ).get(TradingViewModel::class.java)
 
         setContent {
@@ -85,6 +87,9 @@ fun BYSELApp(viewModel: TradingViewModel, onUpiPay: (Double, String) -> Unit) {
     var currentThemeName by remember { mutableStateOf(prefs.getString("theme", "Default") ?: "Default") }
     val appTheme = remember(currentThemeName) { getTheme(currentThemeName.lowercase()) }
 
+    // Onboarding state
+    var showOnboarding by remember { mutableStateOf(prefs.getBoolean("onboarding_complete", false).not()) }
+
     var selectedTab by remember { mutableStateOf(0) }
     var previousTab by remember { mutableIntStateOf(0) }
     
@@ -108,16 +113,26 @@ fun BYSELApp(viewModel: TradingViewModel, onUpiPay: (Double, String) -> Unit) {
     val marketStatus by viewModel.marketStatus.collectAsState()
 
     CompositionLocalProvider(LocalAppTheme provides appTheme) {
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = appTheme.surface
-    ) {
-        Scaffold(
-            bottomBar = {
-                NavigationBar(
-                    modifier = Modifier.background(appTheme.card),
-                    containerColor = appTheme.card
-                ) {
+        if (showOnboarding) {
+            com.bysel.trader.ui.screens.OnboardingScreen(
+                onFinish = {
+                    // Initialize demo account for first-time users
+                    viewModel.initDemoAccount()
+                    showOnboarding = false
+                    prefs.edit().putBoolean("onboarding_complete", true).apply()
+                }
+            )
+        } else {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = appTheme.surface
+            ) {
+                Scaffold(
+                    bottomBar = {
+                        NavigationBar(
+                            modifier = Modifier.background(appTheme.card),
+                            containerColor = appTheme.card
+                        ) {
                     // Tab 0: Dashboard
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.Home, contentDescription = "Dashboard", modifier = Modifier.size(22.dp)) },
@@ -202,16 +217,16 @@ fun BYSELApp(viewModel: TradingViewModel, onUpiPay: (Double, String) -> Unit) {
                             indicatorColor = Color.Transparent
                         )
                     )
-                }
-            }
-        ) { paddingValues ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .background(appTheme.surface)
-            ) {
-                when (selectedTab) {
+                        }
+                    }
+                ) { paddingValues ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(paddingValues)
+                            .background(appTheme.surface)
+                    ) {
+                        when (selectedTab) {
                     0 -> DashboardScreen(
                         holdings = holdings,
                         quotes = quotes,
@@ -242,7 +257,8 @@ fun BYSELApp(viewModel: TradingViewModel, onUpiPay: (Double, String) -> Unit) {
                             viewModel.refreshMarketStatus()
                         },
                         onAddFunds = { amount, upiProvider -> onUpiPay(amount, upiProvider) },
-                        onErrorDismiss = { viewModel.clearError() }
+                        onErrorDismiss = { viewModel.clearError() },
+                        viewModel = viewModel
                     )
                     3 -> PortfolioScreen(
                         holdings = holdings,
@@ -270,8 +286,10 @@ fun BYSELApp(viewModel: TradingViewModel, onUpiPay: (Double, String) -> Unit) {
                     5 -> MoreScreen(
                         onSearchClick = { selectedTab = 6 },
                         onAlertsClick = { selectedTab = 7 },
-                        onSettingsClick = { selectedTab = 8 }
+                        onSettingsClick = { selectedTab = 8 },
+                        onAchievementsClick = { selectedTab = 10 }
                     )
+                                        10 -> com.bysel.trader.ui.screens.AchievementsScreen(viewModel)
                     6 -> SearchScreen(
                         quotes = quotes,
                         searchResults = searchResults,
@@ -325,9 +343,10 @@ fun BYSELApp(viewModel: TradingViewModel, onUpiPay: (Double, String) -> Unit) {
                             )
                         }
                     }
+                        }
+                    }
                 }
             }
         }
-    }
     } // end CompositionLocalProvider
 }

@@ -11,6 +11,12 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
 class TradingRepository(private val database: BYSELDatabase) {
+
+        suspend fun setDemoHoldings(holdings: List<Holding>) {
+            // Overwrite holdings in local DB for demo
+            database.holdingDao().clearAll()
+            database.holdingDao().insertHoldings(holdings)
+        }
     private val apiService: BYSELApiService = RetrofitClient.apiService
 
     // ==================== QUOTES ====================

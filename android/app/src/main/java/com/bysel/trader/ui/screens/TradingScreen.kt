@@ -33,8 +33,23 @@ fun TradingScreen(
     onSell: (String, Int) -> Unit,
     onRefresh: () -> Unit,
     onAddFunds: (Double, String) -> Unit,
-    onErrorDismiss: () -> Unit
+    onErrorDismiss: () -> Unit,
+    viewModel: com.bysel.trader.viewmodel.TradingViewModel
 ) {
+        // AI Trade Coach Dialog
+        val tradeCoachTip by viewModel.tradeCoachTip.collectAsState()
+        if (tradeCoachTip != null) {
+            AlertDialog(
+                onDismissRequest = { viewModel.clearTradeCoachTip() },
+                title = { Text("Coach says…", fontWeight = FontWeight.Bold) },
+                text = { Text(tradeCoachTip ?: "") },
+                confirmButton = {
+                    Button(onClick = { viewModel.clearTradeCoachTip() }) {
+                        Text("Got it!")
+                    }
+                }
+            )
+        }
     var selectedQuote by remember { mutableStateOf<Quote?>(null) }
     var showAddFundsDialog by remember { mutableStateOf(false) }
 
@@ -44,14 +59,8 @@ fun TradingScreen(
             walletBalance = walletBalance,
             marketStatus = marketStatus,
             onDismiss = { selectedQuote = null },
-            onBuy = { quantity ->
-                onBuy(selectedQuote!!.symbol, quantity)
-                selectedQuote = null
-            },
-            onSell = { quantity ->
-                onSell(selectedQuote!!.symbol, quantity)
-                selectedQuote = null
-            }
+            onBuy = { qty -> onBuy(selectedQuote!!.symbol, qty) },
+            onSell = { qty -> onSell(selectedQuote!!.symbol, qty) }
         )
     }
 

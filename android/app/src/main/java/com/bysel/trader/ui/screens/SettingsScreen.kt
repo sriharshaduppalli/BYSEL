@@ -1,6 +1,6 @@
-
 package com.bysel.trader.ui.screens
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,18 +21,6 @@ import com.bysel.trader.ui.theme.getTheme
 import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
-fun SimpleDialog(title: String, message: String, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Text(message) },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("OK") }
-        }
-    )
-}
-
-@Composable
 fun SettingsScreen(
     onThemeChange: (String) -> Unit = {},
     currentTheme: String = "Default"
@@ -47,7 +35,19 @@ fun SettingsScreen(
     var showFeedbackDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
     var openWebsite by remember { mutableStateOf(false) }
+    var showIntervalDialog by remember { mutableStateOf(false) }
+    var heatmapInterval by remember { mutableStateOf(2000) }
 
+    if (showIntervalDialog) {
+        IntervalSelectionDialog(
+            selectedInterval = heatmapInterval,
+            onIntervalSelected = { interval ->
+                heatmapInterval = interval
+                showIntervalDialog = false
+            },
+            onDismiss = { showIntervalDialog = false }
+        )
+    }
     if (showThemeDialog) {
         ThemeSelectionDialog(
             selectedTheme = selectedTheme,
@@ -59,25 +59,23 @@ fun SettingsScreen(
             onDismiss = { showThemeDialog = false }
         )
     }
-
     if (showAboutDialog) {
         AboutDialog { showAboutDialog = false }
     }
     if (showProfileDialog) {
-        SimpleDialog(title = "Profile", message = "Profile screen coming soon.", onDismiss = { showProfileDialog = false })
+        ProfileDialog(onDismiss = { showProfileDialog = false })
     }
     if (showSecurityDialog) {
-        SimpleDialog(title = "Security", message = "Security settings coming soon.", onDismiss = { showSecurityDialog = false })
+        SecurityDialog(onDismiss = { showSecurityDialog = false })
     }
     if (showFeedbackDialog) {
-        SimpleDialog(title = "Feedback", message = "Feedback form coming soon.", onDismiss = { showFeedbackDialog = false })
+        FeedbackDialog(onDismiss = { showFeedbackDialog = false })
     }
     if (showLogoutDialog) {
         SimpleDialog(title = "Logout", message = "Logout functionality coming soon.", onDismiss = { showLogoutDialog = false })
     }
     if (openWebsite) {
-        // TODO: Implement actual website opening logic
-        SimpleDialog(title = "Visit Website", message = "Opening website...", onDismiss = { openWebsite = false })
+        WebsiteDialog(onDismiss = { openWebsite = false })
     }
 
     LazyColumn(
@@ -95,12 +93,10 @@ fun SettingsScreen(
                 modifier = Modifier.padding(bottom = 24.dp)
             )
         }
-
         item {
             SettingsSection(title = "Display")
             Spacer(modifier = Modifier.height(12.dp))
         }
-
         item {
             SettingItem(
                 icon = Icons.Filled.Brightness4,
@@ -110,7 +106,6 @@ fun SettingsScreen(
                 onValueChange = { darkMode = it }
             )
         }
-
         item {
             SettingClickItem(
                 icon = Icons.Filled.Palette,
@@ -119,13 +114,11 @@ fun SettingsScreen(
                 onClick = { showThemeDialog = true }
             )
         }
-
         item {
             Spacer(modifier = Modifier.height(20.dp))
             SettingsSection(title = "Notifications")
             Spacer(modifier = Modifier.height(12.dp))
         }
-
         item {
             SettingItem(
                 icon = Icons.Filled.Notifications,
@@ -135,13 +128,11 @@ fun SettingsScreen(
                 onValueChange = { enableNotifications = it }
             )
         }
-
         item {
             Spacer(modifier = Modifier.height(20.dp))
             SettingsSection(title = "Account")
             Spacer(modifier = Modifier.height(12.dp))
         }
-
         item {
             SettingClickItem(
                 icon = Icons.Filled.Person,
@@ -150,7 +141,6 @@ fun SettingsScreen(
                 onClick = { showProfileDialog = true }
             )
         }
-
         item {
             SettingClickItem(
                 icon = Icons.Filled.Lock,
@@ -159,13 +149,11 @@ fun SettingsScreen(
                 onClick = { showSecurityDialog = true }
             )
         }
-
         item {
             Spacer(modifier = Modifier.height(20.dp))
             SettingsSection(title = "About")
             Spacer(modifier = Modifier.height(12.dp))
         }
-
         item {
             SettingClickItem(
                 icon = Icons.Filled.Info,
@@ -174,7 +162,6 @@ fun SettingsScreen(
                 onClick = { showAboutDialog = true }
             )
         }
-
         item {
             SettingClickItem(
                 icon = Icons.Filled.Public,
@@ -183,7 +170,6 @@ fun SettingsScreen(
                 onClick = { openWebsite = true }
             )
         }
-
         item {
             SettingClickItem(
                 icon = Icons.Filled.Feedback,
@@ -192,7 +178,14 @@ fun SettingsScreen(
                 onClick = { showFeedbackDialog = true }
             )
         }
-
+        item {
+            SettingClickItem(
+                icon = Icons.Filled.Tune,
+                title = "Heatmap Refresh Interval",
+                subtitle = "${heatmapInterval / 1000}s",
+                onClick = { showIntervalDialog = true }
+            )
+        }
         item {
             Spacer(modifier = Modifier.height(20.dp))
             Button(
@@ -207,34 +200,154 @@ fun SettingsScreen(
             }
             Spacer(modifier = Modifier.height(40.dp))
         }
-    @Composable
-    fun SimpleDialog(title: String, message: String, onDismiss: () -> Unit) {
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            containerColor = LocalAppTheme.current.card,
-            title = {
-                Text(
-                    text = title,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = LocalAppTheme.current.text
-                )
-            },
-            text = {
-                Text(
-                    text = message,
-                    fontSize = 14.sp,
-                    color = LocalAppTheme.current.textSecondary
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = onDismiss) {
-                    Text("Close", color = LocalAppTheme.current.primary)
+    }
+}
+
+@Composable
+fun IntervalSelectionDialog(selectedInterval: Int, onIntervalSelected: (Int) -> Unit, onDismiss: () -> Unit) {
+    val intervals = listOf(1000, 2000, 5000, 10000)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = LocalAppTheme.current.card,
+        title = {
+            Text("Select Heatmap Refresh Interval", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = LocalAppTheme.current.text)
+        },
+        text = {
+            Column {
+                intervals.forEach { interval ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onIntervalSelected(interval) }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selectedInterval == interval,
+                            onClick = { onIntervalSelected(interval) }
+                        )
+                        Text("${interval / 1000}s", fontSize = 14.sp, color = LocalAppTheme.current.text, modifier = Modifier.padding(start = 8.dp))
+                    }
                 }
             }
-        )
-    }
-    }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close", color = LocalAppTheme.current.primary)
+            }
+        }
+    )
+}
+
+@Composable
+fun ProfileDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = LocalAppTheme.current.card,
+        title = {
+            Text(
+                text = "Profile",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = LocalAppTheme.current.text
+            )
+        },
+        text = {
+            Column {
+                Text("Name: John Doe", fontSize = 14.sp, color = LocalAppTheme.current.text)
+                Text("Email: johndoe@email.com", fontSize = 14.sp, color = LocalAppTheme.current.text)
+                Text("Edit your profile information here.", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close", color = LocalAppTheme.current.primary)
+            }
+        }
+    )
+}
+
+@Composable
+fun SecurityDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = LocalAppTheme.current.card,
+        title = {
+            Text(
+                text = "Security",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = LocalAppTheme.current.text
+            )
+        },
+        text = {
+            Column {
+                Text("Change your password or update privacy settings.", fontSize = 14.sp, color = LocalAppTheme.current.text)
+                Text("Password: ********", fontSize = 14.sp, color = LocalAppTheme.current.textSecondary)
+                Text("Privacy: Standard", fontSize = 14.sp, color = LocalAppTheme.current.textSecondary)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close", color = LocalAppTheme.current.primary)
+            }
+        }
+    )
+}
+
+@Composable
+fun FeedbackDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = LocalAppTheme.current.card,
+        title = {
+            Text(
+                text = "Feedback",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = LocalAppTheme.current.text
+            )
+        },
+        text = {
+            Column {
+                Text("We value your feedback!", fontSize = 14.sp, color = LocalAppTheme.current.text)
+                Text("Please email us at support@bysel.com or use the feedback form.", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close", color = LocalAppTheme.current.primary)
+            }
+        }
+    )
+}
+
+@Composable
+fun WebsiteDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = LocalAppTheme.current.card,
+        title = {
+            Text(
+                text = "Visit Website",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = LocalAppTheme.current.text
+            )
+        },
+        text = {
+            Column {
+                Text("Official BYSEL website:", fontSize = 14.sp, color = LocalAppTheme.current.text)
+                Text("https://bysel.com", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
+                Text("Click to open in browser.", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close", color = LocalAppTheme.current.primary)
+            }
+        }
+    )
 }
 
 @Composable
@@ -375,7 +488,6 @@ fun SettingItem(
                     )
                 }
             }
-
             Switch(
                 checked = value,
                 onCheckedChange = onValueChange,
@@ -436,7 +548,6 @@ fun SettingClickItem(
                     )
                 }
             }
-
             Icon(
                 imageVector = Icons.Filled.ChevronRight,
                 contentDescription = null,
@@ -487,12 +598,56 @@ fun AboutDialog(onDismiss: () -> Unit) {
                     color = LocalAppTheme.current.textSecondary,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Legal & Info:",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = LocalAppTheme.current.primary,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Text(
+                    text = "Privacy Policy: https://bysel.com/privacy",
+                    fontSize = 12.sp,
+                    color = LocalAppTheme.current.textSecondary,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+                Text(
+                    text = "Terms of Service: https://bysel.com/terms",
+                    fontSize = 12.sp,
+                    color = LocalAppTheme.current.textSecondary,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+                Text(
+                    text = "Open Source Licenses: https://bysel.com/licenses",
+                    fontSize = 12.sp,
+                    color = LocalAppTheme.current.textSecondary,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+                Text(
+                    text = "Contact: support@bysel.com",
+                    fontSize = 12.sp,
+                    color = LocalAppTheme.current.textSecondary,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
                 Text("Close", color = LocalAppTheme.current.primary)
             }
+        }
+    )
+}
+
+@Composable
+fun SimpleDialog(title: String, message: String, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(message) },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("OK") }
         }
     )
 }

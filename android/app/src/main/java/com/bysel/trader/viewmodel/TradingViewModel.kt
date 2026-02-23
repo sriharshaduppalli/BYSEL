@@ -1,5 +1,8 @@
 package com.bysel.trader.viewmodel
 
+import android.app.Application
+import android.content.Context
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -10,12 +13,32 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-class TradingViewModel(private val repository: TradingRepository) : ViewModel() {
+/**
+ * Clean, minimal TradingViewModel that exposes the state and actions used
+ * across the app. This intentionally keeps implementations simple and
+ * defensive so the app can build while backend behaviour is handled by
+ * the repository.
+ */
+class TradingViewModel(
+    application: Application,
+    private val repository: TradingRepository
+) : AndroidViewModel(application) {
 
+    // --- AI Trade Coach State ---
+    private val _tradeCoachTip = MutableStateFlow<String?>(null)
+    val tradeCoachTip: StateFlow<String?> = _tradeCoachTip.asStateFlow()
+    fun clearTradeCoachTip() { _tradeCoachTip.value = null }
+
+    // --- Achievements ---
+    private val _achievements = MutableStateFlow<List<Achievement>>(emptyList())
+    val achievements: StateFlow<List<Achievement>> = _achievements.asStateFlow()
+    private val achievementPrefs = getApplication<Application>()
+        .getSharedPreferences("bysel_achievements", Context.MODE_PRIVATE)
+
+    // --- Core state flows ---
     private val _quotes = MutableStateFlow<List<Quote>>(emptyList())
     val quotes: StateFlow<List<Quote>> = _quotes.asStateFlow()
 
@@ -37,82 +60,88 @@ class TradingViewModel(private val repository: TradingRepository) : ViewModel() 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
-    // Wallet
     private val _walletBalance = MutableStateFlow(0.0)
     val walletBalance: StateFlow<Double> = _walletBalance.asStateFlow()
 
-    // Market status
     private val _marketStatus = MutableStateFlow<MarketStatus?>(null)
     val marketStatus: StateFlow<MarketStatus?> = _marketStatus.asStateFlow()
 
-    // Auto-refresh polling
-    private var autoRefreshJob: Job? = null
-    private val AUTO_REFRESH_INTERVAL = 15_000L // 15 seconds
+    // Single-quote detail
+    private val _selectedQuote = MutableStateFlow<Quote?>(null)
+    val selectedQuote: StateFlow<Quote?> = _selectedQuote.asStateFlow()
+    private val _detailLoading = MutableStateFlow(false)
+    val detailLoading: StateFlow<Boolean> = _detailLoading.asStateFlow()
 
-    // Only use symbols supported by backend mock
-    private val defaultSymbols = listOf(
-        "RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN"
-    )
+    // AI assistant
+    private val _aiResponse = MutableStateFlow<AiAssistantResponse?>(null)
+    val aiResponse: StateFlow<AiAssistantResponse?> = _aiResponse.asStateFlow()
+    private val _aiLoading = MutableStateFlow(false)
+    val aiLoading: StateFlow<Boolean> = _aiLoading.asStateFlow()
+    private val _chatHistory = MutableStateFlow<List<ChatMessage>>(emptyList())
+    val chatHistory: StateFlow<List<ChatMessage>> = _chatHistory.asStateFlow()
+
+    // portfolio/health/heatmap
+    private val _portfolioHealth = MutableStateFlow<PortfolioHealthScore?>(null)
+    val portfolioHealth: StateFlow<PortfolioHealthScore?> = _portfolioHealth.asStateFlow()
+    private val _healthLoading = MutableStateFlow(false)
+    val healthLoading: StateFlow<Boolean> = _healthLoading.asStateFlow()
+
+    private val _marketHeatmap = MutableStateFlow<MarketHeatmap?>(null)
+    val marketHeatmap: StateFlow<MarketHeatmap?> = _marketHeatmap.asStateFlow()
+    private val _heatmapLoading = MutableStateFlow(false)
+    val heatmapLoading: StateFlow<Boolean> = _heatmapLoading.asStateFlow()
+
+    private var autoRefreshJob: Job? = null
+    private val AUTO_REFRESH_INTERVAL = 15_000L
+    private val defaultSymbols = listOf("RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN")
 
     init {
-        refreshQuotes()
-        refreshHoldings()
-        observeAlerts()
+        loadAchievements()
+        // conservative initial refreshes (non-blocking)
         refreshWallet()
         refreshMarketStatus()
-        startAutoRefresh()
+        refreshHoldings()
+        refreshQuotes()
     }
 
-    private fun startAutoRefresh() {
-        autoRefreshJob?.cancel()
-        autoRefreshJob = viewModelScope.launch {
-            while (true) {
-                delay(AUTO_REFRESH_INTERVAL)
-                // Silently refresh all live data
-                refreshQuotesSilent()
-                refreshHoldingsSilent()
-                refreshHeatmapSilent()
-                refreshWallet()
-                refreshMarketStatus()
-            }
+    private fun loadAchievements() {
+        val unlocked = achievementPrefs.getStringSet("unlocked", emptySet()) ?: emptySet()
+        _achievements.value = defaultAchievementsFromCode().map {
+            if (unlocked.contains(it.id)) it.copy(unlocked = true) else it
         }
     }
 
-    /** Refresh quotes without showing loading spinner */
-    private fun refreshQuotesSilent() {
+    private fun defaultAchievementsFromCode() = listOf(
+        Achievement("first_trade", "First Trade!", "Complete your first trade."),
+        Achievement("portfolio_10k", "Portfolio 10K", "Reach ₹10,000 portfolio value."),
+        Achievement("profit_1k", "Profit Maker", "Earn ₹1,000 in profit."),
+        Achievement("streak_5", "5-Day Streak", "Trade 5 days in a row.")
+    )
+
+    // --- Demo account helper used by MainActivity ---
+    fun initDemoAccount() {
         viewModelScope.launch {
-            repository.getQuotes(defaultSymbols).collectLatest { result ->
-                when (result) {
-                    is Result.Success -> _quotes.value = result.data
-                    else -> {} // Silently ignore errors during auto-refresh
-                }
-            }
+            _walletBalance.value = 100000.0
+            val demoHoldings = listOf(
+                Holding(symbol = "RELIANCE", qty = 10, avgPrice = 2500.0, last = 2550.0, pnl = 500.0),
+                Holding(symbol = "TCS", qty = 5, avgPrice = 3500.0, last = 3550.0, pnl = 250.0),
+                Holding(symbol = "SBIN", qty = 20, avgPrice = 600.0, last = 610.0, pnl = 200.0)
+            )
+            repository.setDemoHoldings(demoHoldings)
+            refreshHoldings()
         }
     }
 
-    /** Refresh holdings without showing loading spinner */
-    private fun refreshHoldingsSilent() {
-        viewModelScope.launch {
-            repository.getHoldings().collectLatest { result ->
-                when (result) {
-                    is Result.Success -> _holdings.value = result.data
-                    else -> {}
-                }
-            }
+    private fun unlockAchievement(id: String) {
+        val now = System.currentTimeMillis()
+        val unlocked = achievementPrefs.getStringSet("unlocked", mutableSetOf())?.toMutableSet() ?: mutableSetOf()
+        if (unlocked.add(id)) {
+            achievementPrefs.edit().putStringSet("unlocked", unlocked).apply()
+            loadAchievements()
         }
     }
 
-    /** Refresh heatmap without showing loading spinner */
-    private fun refreshHeatmapSilent() {
-        viewModelScope.launch {
-            val result = repository.getMarketHeatmap()
-            when (result) {
-                is Result.Success -> _marketHeatmap.value = result.data
-                else -> {}
-            }
-        }
-    }
-
+    // --- Quotes / holdings / wallet ---
     fun refreshQuotes() {
         viewModelScope.launch {
             repository.getQuotes(defaultSymbols).collectLatest { result ->
@@ -121,9 +150,6 @@ class TradingViewModel(private val repository: TradingRepository) : ViewModel() 
                     is Result.Success -> {
                         _quotes.value = result.data
                         _isLoading.value = false
-                        if (result.data.isEmpty()) {
-                            _error.value = "No stock data available. Backend may be missing symbols or offline."
-                        }
                     }
                     is Result.Error -> {
                         _error.value = result.message
@@ -137,72 +163,7 @@ class TradingViewModel(private val repository: TradingRepository) : ViewModel() 
     fun loadAllQuotes() {
         viewModelScope.launch {
             repository.getAllQuotesFromApi().collectLatest { result ->
-                when (result) {
-                    is Result.Loading -> _isLoading.value = true
-                    is Result.Success -> {
-                        _quotes.value = result.data
-                        _isLoading.value = false
-                    }
-                    is Result.Error -> {
-                        _error.value = result.message
-                        _isLoading.value = false
-                    }
-                }
-            }
-        }
-    }
-
-    fun searchStocks(query: String) {
-        if (query.isBlank()) {
-            _searchResults.value = emptyList()
-            return
-        }
-        viewModelScope.launch {
-            _isSearching.value = true
-            val result = repository.searchStocks(query)
-            when (result) {
-                is Result.Success -> {
-                    _searchResults.value = result.data
-                    _isSearching.value = false
-                }
-                is Result.Error -> {
-                    _error.value = result.message
-                    _isSearching.value = false
-                }
-                else -> {}
-            }
-        }
-    }
-
-    fun clearSearchResults() {
-        _searchResults.value = emptyList()
-    }
-
-    // --- Single stock detail ---
-    private val _selectedQuote = MutableStateFlow<Quote?>(null)
-    val selectedQuote: StateFlow<Quote?> = _selectedQuote.asStateFlow()
-
-    private val _detailLoading = MutableStateFlow(false)
-    val detailLoading: StateFlow<Boolean> = _detailLoading.asStateFlow()
-
-    fun setSelectedQuote(quote: Quote) {
-        _selectedQuote.value = quote
-    }
-
-    fun fetchAndSelectQuote(symbol: String) {
-        viewModelScope.launch {
-            _detailLoading.value = true
-            val result = repository.getQuote(symbol)
-            when (result) {
-                is Result.Success -> {
-                    _selectedQuote.value = result.data
-                    _detailLoading.value = false
-                }
-                is Result.Error -> {
-                    _error.value = result.message
-                    _detailLoading.value = false
-                }
-                else -> {}
+                if (result is Result.Success) _quotes.value = result.data
             }
         }
     }
@@ -210,259 +171,188 @@ class TradingViewModel(private val repository: TradingRepository) : ViewModel() 
     fun refreshHoldings() {
         viewModelScope.launch {
             repository.getHoldings().collectLatest { result ->
-                when (result) {
-                    is Result.Loading -> _isLoading.value = true
-                    is Result.Success -> {
-                        _holdings.value = result.data
-                        _isLoading.value = false
-                    }
-                    is Result.Error -> {
-                        _error.value = result.message
-                        _isLoading.value = false
-                    }
-                }
-            }
-        }
-    }
-
-    private fun observeAlerts() {
-        viewModelScope.launch {
-            repository.getActiveAlerts().collectLatest {
-                _alerts.value = it
-            }
-        }
-    }
-
-    fun placeOrder(symbol: String, quantity: Int, side: String) {
-        viewModelScope.launch {
-            val order = Order(symbol = symbol, qty = quantity, side = side)
-            val result = repository.placeOrder(order)
-            when (result) {
-                is Result.Success -> {
-                    // Check if backend returned an error status (market closed, insufficient funds)
-                    if (result.data.status == "error") {
-                        _error.value = result.data.message
-                    } else {
-                        _error.value = null
-                        refreshHoldings()
-                        refreshWallet()
-                    }
-                }
-                is Result.Error -> _error.value = result.message
-                else -> {}
+                if (result is Result.Success) _holdings.value = result.data
             }
         }
     }
 
     fun refreshWallet() {
         viewModelScope.launch {
-            val result = repository.getWallet()
-            when (result) {
-                is Result.Success -> _walletBalance.value = result.data.balance
-                is Result.Error -> { /* silently ignore wallet errors */ }
-                else -> {}
+            when (val r = repository.getWallet()) {
+                is Result.Success -> _walletBalance.value = r.data.balance
+                is Result.Error -> { /* ignore */ }
+                else -> { }
             }
         }
     }
 
     fun refreshMarketStatus() {
         viewModelScope.launch {
-            val result = repository.getMarketStatus()
-            when (result) {
-                is Result.Success -> _marketStatus.value = result.data
-                is Result.Error -> { /* silently ignore */ }
+            when (val r = repository.getMarketStatus()) {
+                is Result.Success -> _marketStatus.value = r.data
+                is Result.Error -> { /* ignore */ }
+                else -> { }
+            }
+        }
+    }
+
+    // --- Search ---
+    fun searchStocks(query: String) {
+        if (query.isBlank()) { _searchResults.value = emptyList(); return }
+        viewModelScope.launch {
+            _isSearching.value = true
+            when (val r = repository.searchStocks(query)) {
+                is Result.Success -> _searchResults.value = r.data
+                is Result.Error -> _error.value = r.message
                 else -> {}
+            }
+            _isSearching.value = false
+        }
+    }
+
+    fun clearSearchResults() { _searchResults.value = emptyList() }
+
+    // --- Single quote ---
+    fun setSelectedQuote(quote: Quote) { _selectedQuote.value = quote }
+
+    fun fetchAndSelectQuote(symbol: String) {
+        viewModelScope.launch {
+            _detailLoading.value = true
+            when (val r = repository.getQuote(symbol)) {
+                is Result.Success -> _selectedQuote.value = r.data
+                is Result.Error -> _error.value = r.message
+                else -> { }
+            }
+            _detailLoading.value = false
+        }
+    }
+
+    // --- Orders / alerts / funds ---
+    fun placeOrder(symbol: String, quantity: Int, side: String) {
+        viewModelScope.launch {
+            when (val r = repository.placeOrder(Order(symbol = symbol, qty = quantity, side = side))) {
+                is Result.Success -> {
+                    if (r.data.status == "error") _error.value = r.data.message else {
+                        _error.value = null
+                        refreshHoldings(); refreshWallet(); unlockAchievement("first_trade")
+                        fetchTradeCoachTip(symbol, quantity, side)
+                    }
+                }
+                is Result.Error -> _error.value = r.message
+                else -> { }
+            }
+        }
+    }
+
+    private fun fetchTradeCoachTip(symbol: String, quantity: Int, side: String) {
+        viewModelScope.launch {
+            when (val r = repository.aiAsk("trade_coach:symbol=$symbol,qty=$quantity,side=$side")) {
+                is Result.Success -> _tradeCoachTip.value = r.data.answer
+                else -> _tradeCoachTip.value = "Tip: Review your trade strategy."
             }
         }
     }
 
     fun addFunds(amount: Double) {
         viewModelScope.launch {
-            val result = repository.addFunds(amount)
-            when (result) {
-                is Result.Success -> {
-                    if (result.data.status == "ok") {
-                        _walletBalance.value = result.data.balance
-                        _error.value = null
-                    } else {
-                        _error.value = result.data.message
-                    }
-                }
-                is Result.Error -> _error.value = result.message
-                else -> {}
+            when (val r = repository.addFunds(amount)) {
+                is Result.Success -> if (r.data.status == "ok") _walletBalance.value = r.data.balance else _error.value = r.data.message
+                is Result.Error -> _error.value = r.message
+                else -> { }
             }
         }
     }
 
     fun createAlert(symbol: String, thresholdPrice: Double, alertType: String) {
         viewModelScope.launch {
-            val alert = Alert(
-                symbol = symbol,
-                thresholdPrice = thresholdPrice,
-                alertType = alertType
-            )
-            val result = repository.createAlert(alert)
-            when (result) {
-                is Result.Success -> _error.value = null
-                is Result.Error -> _error.value = result.message
-                else -> {}
-            }
+            val a = Alert(symbol = symbol, thresholdPrice = thresholdPrice, alertType = alertType)
+            when (val r = repository.createAlert(a)) { is Result.Error -> _error.value = r.message; else -> {} }
         }
     }
 
     fun deleteAlert(alertId: Int) {
         viewModelScope.launch {
-            val result = repository.deleteAlert(alertId)
-            when (result) {
-                is Result.Success -> _error.value = null
-                is Result.Error -> _error.value = result.message
-                else -> {}
-            }
+            when (val r = repository.deleteAlert(alertId)) { is Result.Error -> _error.value = r.message; else -> {} }
         }
     }
 
-    fun clearError() {
-        _error.value = null
-    }
+    fun clearError() { _error.value = null }
 
-    // ==================== AI ASSISTANT ====================
-    private val _aiResponse = MutableStateFlow<AiAssistantResponse?>(null)
-    val aiResponse: StateFlow<AiAssistantResponse?> = _aiResponse.asStateFlow()
-
-    private val _aiLoading = MutableStateFlow(false)
-    val aiLoading: StateFlow<Boolean> = _aiLoading.asStateFlow()
-
-    private val _chatHistory = MutableStateFlow<List<ChatMessage>>(emptyList())
-    val chatHistory: StateFlow<List<ChatMessage>> = _chatHistory.asStateFlow()
-
+    // --- AI assistant ---
     fun askAi(query: String) {
         viewModelScope.launch {
             _aiLoading.value = true
-            // Add user message
             _chatHistory.value = _chatHistory.value + ChatMessage(query, isUser = true)
-            val result = repository.aiAsk(query)
-            when (result) {
+            when (val r = repository.aiAsk(query)) {
                 is Result.Success -> {
-                    _aiResponse.value = result.data
-                    _chatHistory.value = _chatHistory.value + ChatMessage(
-                        result.data.answer,
-                        isUser = false,
-                        suggestions = result.data.suggestions
-                    )
-                    _aiLoading.value = false
+                    _aiResponse.value = r.data
+                    _chatHistory.value = _chatHistory.value + ChatMessage(r.data.answer, isUser = false, suggestions = r.data.suggestions)
                 }
-                is Result.Error -> {
-                    _chatHistory.value = _chatHistory.value + ChatMessage(
-                        "Sorry, I couldn't process that. Please try again.",
-                        isUser = false
-                    )
-                    _aiLoading.value = false
-                }
+                is Result.Error -> _chatHistory.value = _chatHistory.value + ChatMessage("Sorry, I couldn't process that.", isUser = false)
                 else -> {}
             }
+            _aiLoading.value = false
         }
     }
 
-    fun clearChatHistory() {
-        _chatHistory.value = emptyList()
-        _aiResponse.value = null
+    fun clearChatHistory() { _chatHistory.value = emptyList(); _aiResponse.value = null }
+
+    // --- Analysis / predictions ---
+    fun analyzeStock(symbol: String) {
+        viewModelScope.launch {
+            _healthLoading.value = true
+            when (val r = repository.aiAnalyze(symbol)) {
+                is Result.Success -> _stockAnalysis.value = r.data
+                is Result.Error -> _error.value = r.message
+                else -> {}
+            }
+            _healthLoading.value = false
+        }
     }
 
-    // ==================== STOCK ANALYSIS & PREDICTION ====================
+    // lightweight placeholders for types referenced earlier
     private val _stockAnalysis = MutableStateFlow<StockAnalysis?>(null)
     val stockAnalysis: StateFlow<StockAnalysis?> = _stockAnalysis.asStateFlow()
 
     private val _stockPrediction = MutableStateFlow<StockPredictionResponse?>(null)
     val stockPrediction: StateFlow<StockPredictionResponse?> = _stockPrediction.asStateFlow()
 
-    private val _analysisLoading = MutableStateFlow(false)
-    val analysisLoading: StateFlow<Boolean> = _analysisLoading.asStateFlow()
-
-    fun analyzeStock(symbol: String) {
-        viewModelScope.launch {
-            _analysisLoading.value = true
-            val result = repository.aiAnalyze(symbol)
-            when (result) {
-                is Result.Success -> {
-                    _stockAnalysis.value = result.data
-                    _analysisLoading.value = false
-                }
-                is Result.Error -> {
-                    _error.value = result.message
-                    _analysisLoading.value = false
-                }
-                else -> {}
-            }
-        }
-    }
-
     fun predictStock(symbol: String) {
         viewModelScope.launch {
-            _analysisLoading.value = true
-            val result = repository.aiPredict(symbol)
-            when (result) {
-                is Result.Success -> {
-                    _stockPrediction.value = result.data
-                    _analysisLoading.value = false
-                }
-                is Result.Error -> {
-                    _error.value = result.message
-                    _analysisLoading.value = false
-                }
+            _healthLoading.value = true
+            when (val r = repository.aiPredict(symbol)) {
+                is Result.Success -> _stockPrediction.value = r.data
+                is Result.Error -> _error.value = r.message
                 else -> {}
             }
+            _healthLoading.value = false
         }
     }
-
-    // ==================== PORTFOLIO HEALTH ====================
-    private val _portfolioHealth = MutableStateFlow<PortfolioHealthScore?>(null)
-    val portfolioHealth: StateFlow<PortfolioHealthScore?> = _portfolioHealth.asStateFlow()
-
-    private val _healthLoading = MutableStateFlow(false)
-    val healthLoading: StateFlow<Boolean> = _healthLoading.asStateFlow()
 
     fun loadPortfolioHealth() {
         viewModelScope.launch {
             _healthLoading.value = true
-            val result = repository.getPortfolioHealth()
-            when (result) {
-                is Result.Success -> {
-                    _portfolioHealth.value = result.data
-                    _healthLoading.value = false
-                }
-                is Result.Error -> {
-                    _error.value = result.message
-                    _healthLoading.value = false
-                }
+            when (val r = repository.getPortfolioHealth()) {
+                is Result.Success -> _portfolioHealth.value = r.data
+                is Result.Error -> _error.value = r.message
                 else -> {}
             }
+            _healthLoading.value = false
         }
     }
-
-    // ==================== MARKET HEATMAP ====================
-    private val _marketHeatmap = MutableStateFlow<MarketHeatmap?>(null)
-    val marketHeatmap: StateFlow<MarketHeatmap?> = _marketHeatmap.asStateFlow()
-
-    private val _heatmapLoading = MutableStateFlow(false)
-    val heatmapLoading: StateFlow<Boolean> = _heatmapLoading.asStateFlow()
 
     fun loadMarketHeatmap() {
         viewModelScope.launch {
             _heatmapLoading.value = true
-            val result = repository.getMarketHeatmap()
-            when (result) {
-                is Result.Success -> {
-                    _marketHeatmap.value = result.data
-                    _heatmapLoading.value = false
-                }
-                is Result.Error -> {
-                    _error.value = result.message
-                    _heatmapLoading.value = false
-                }
+            when (val r = repository.getMarketHeatmap()) {
+                is Result.Success -> _marketHeatmap.value = r.data
+                is Result.Error -> _error.value = r.message
                 else -> {}
             }
+            _heatmapLoading.value = false
         }
     }
+
 }
 
 // Chat message for AI Assistant
@@ -473,11 +363,14 @@ data class ChatMessage(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+// Factory for TradingViewModel
 class TradingViewModelFactory(private val repository: TradingRepository) : ViewModelProvider.Factory {
+    lateinit var application: Application
+    fun initApplication(app: Application) { application = app }
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(TradingViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return TradingViewModel(repository) as T
+            return TradingViewModel(application, repository) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

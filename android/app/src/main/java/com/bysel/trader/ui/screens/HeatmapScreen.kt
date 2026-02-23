@@ -33,10 +33,20 @@ fun HeatmapScreen(
     heatmap: MarketHeatmap?,
     isLoading: Boolean,
     onRefresh: () -> Unit,
-    onStockClick: (String) -> Unit
+    onStockClick: (String) -> Unit,
+    heatmapInterval: Int = 2000
 ) {
+    // Initial load
     LaunchedEffect(Unit) {
         if (heatmap == null) onRefresh()
+    }
+
+    // Periodic refresh using user interval
+    LaunchedEffect(heatmapInterval) {
+        while (true) {
+            onRefresh()
+            kotlinx.coroutines.delay(heatmapInterval.toLong())
+        }
     }
 
     Column(
