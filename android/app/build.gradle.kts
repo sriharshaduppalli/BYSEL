@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application") version "8.4.0"
     id("org.jetbrains.kotlin.android") version "1.9.23"
@@ -22,14 +24,55 @@ android {
         applicationId = "com.bysel.trader"
         minSdk = 24
         targetSdk = 36
-        versionCode = 44
-        versionName = "2.6.4"
+        // read version from root gradle.properties (VERSION_CODE, VERSION_NAME)
+        val verCodeProp = rootProject.findProperty("VERSION_CODE") ?: "44"
+        val verNameProp = rootProject.findProperty("VERSION_NAME") ?: "2.6.4"
+        versionCode = verCodeProp.toString().toInt()
+        versionName = verNameProp.toString()
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
         }
     }
+
+        // --- Auto-increment version before bundleRelease ---
+        // This task updates root gradle.properties VERSION_CODE and VERSION_NAME.
+        // It increments VERSION_CODE by 1 and bumps the patch of VERSION_NAME (x.y.z -> x.y.(z+1)).
+        val incrementVersion by tasks.registering {
+            doLast {
+                val propsFile = rootProject.file("gradle.properties")
+                if (!propsFile.exists()) {
+                    println("gradle.properties not found at ${propsFile.absolutePath}")
+                    return@doLast
+                }
+                val props = Properties()
+                props.load(propsFile.inputStream())
+                val code = (props.getProperty("VERSION_CODE") ?: "0").toInt()
+                val name = props.getProperty("VERSION_NAME") ?: "0.0.0"
+                val newCode = code + 1
+                val parts = name.split('.').toMutableList()
+                if (parts.size >= 3) {
+                    val patch = parts.last().toIntOrNull() ?: 0
+                    parts[parts.size - 1] = (patch + 1).toString()
+                } else {
+                    // ensure at least 3 parts
+                    while (parts.size < 3) parts.add("0")
+                    val patch = parts.last().toIntOrNull() ?: 0
+                    parts[parts.size - 1] = (patch + 1).toString()
+                }
+                val newName = parts.joinToString(".")
+                props.setProperty("VERSION_CODE", newCode.toString())
+                props.setProperty("VERSION_NAME", newName)
+                props.store(propsFile.outputStream(), null)
+                println("Bumped VERSION_CODE: $code -> $newCode, VERSION_NAME: $name -> $newName")
+            }
+        }
+
+        // Ensure bundleRelease depends on incrementVersion so version is bumped automatically.
+        tasks.matching { it.name == "bundleRelease" }.configureEach {
+            dependsOn(incrementVersion)
+        }
 
     signingConfigs {
         create("release") {
