@@ -258,7 +258,18 @@ class TradingViewModel(
 
     private fun fetchTradeCoachTip(symbol: String, quantity: Int, side: String) {
         viewModelScope.launch {
-            when (val r = repository.aiAsk("trade_coach:symbol=$symbol,qty=$quantity,side=$side")) {
+            // Gather latest quote data to give the AI more context
+            val quoteResult = repository.getQuote(symbol)
+            var prompt = "trade_coach:symbol=$symbol,qty=$quantity,side=$side"
+            if (quoteResult is Result.Success) {
+                val q = quoteResult.data
+                prompt += ",price=${q.last},pctChange=${q.pctChange}"
+                q.trailingPE?.let { prompt += ",pe=${it}" }
+                q.volume?.let { prompt += ",volume=${it}" }
+                q.marketCap?.let { prompt += ",marketCap=${it}" }
+            }
+
+            when (val r = repository.aiAsk(prompt)) {
                 is Result.Success -> _tradeCoachTip.value = r.data.answer
                 else -> _tradeCoachTip.value = "Tip: Review your trade strategy."
             }

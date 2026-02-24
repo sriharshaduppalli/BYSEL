@@ -10,9 +10,40 @@ data class Quote(
     @SerializedName("symbol")
     val symbol: String,
     @SerializedName("last")
-    val last: Double,
+    val last: Double = 0.0,
     @SerializedName("pctChange")
-    val pctChange: Double,
+    val pctChange: Double = 0.0,
+    // additional fields commonly returned by market data APIs (Yahoo/others)
+    @SerializedName("open")
+    val open: Double? = null,
+    @SerializedName("prevClose")
+    val prevClose: Double? = null,
+    @SerializedName("high")
+    val dayHigh: Double? = null,
+    @SerializedName("low")
+    val dayLow: Double? = null,
+    @SerializedName("volume")
+    val volume: Long? = null,
+    @SerializedName("avgVolume")
+    val avgVolume: Long? = null,
+    @SerializedName("marketCap")
+    val marketCap: Long? = null,
+    @SerializedName("trailingPE")
+    val trailingPE: Double? = null,
+    @SerializedName("eps")
+    val eps: Double? = null,
+    @SerializedName("fiftyTwoWeekHigh")
+    val fiftyTwoWeekHigh: Double? = null,
+    @SerializedName("fiftyTwoWeekLow")
+    val fiftyTwoWeekLow: Double? = null,
+    @SerializedName("targetMeanPrice")
+    val targetMeanPrice: Double? = null,
+    @SerializedName("bid")
+    val bid: Double? = null,
+    @SerializedName("ask")
+    val ask: Double? = null,
+    @SerializedName("dividendYield")
+    val dividendYield: Double? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
  

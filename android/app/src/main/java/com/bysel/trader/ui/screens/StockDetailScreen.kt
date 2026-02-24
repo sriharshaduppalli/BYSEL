@@ -124,11 +124,11 @@ fun StockDetailScreen(
                 modifier = Modifier.padding(bottom = 12.dp)
             )
 
-            DetailRow(label = "Today's Open", value = "₹${String.format("%.2f", quote.last)}")
-            DetailRow(label = "Day High", value = "₹${String.format("%.2f", quote.last * 1.02)}")
-            DetailRow(label = "Day Low", value = "₹${String.format("%.2f", quote.last * 0.98)}")
-            DetailRow(label = "52 Week High", value = "₹${String.format("%.2f", quote.last * 1.15)}")
-            DetailRow(label = "52 Week Low", value = "₹${String.format("%.2f", quote.last * 0.85)}")
+            DetailRow(label = "Today's Open", value = "₹${String.format("%.2f", quote.open ?: quote.prevClose ?: quote.last)}")
+            DetailRow(label = "Day High", value = "₹${String.format("%.2f", quote.dayHigh ?: quote.last)}")
+            DetailRow(label = "Day Low", value = "₹${String.format("%.2f", quote.dayLow ?: quote.last)}")
+            DetailRow(label = "52 Week High", value = "₹${String.format("%.2f", quote.fiftyTwoWeekHigh ?: quote.last * 1.15)}")
+            DetailRow(label = "52 Week Low", value = "₹${String.format("%.2f", quote.fiftyTwoWeekLow ?: quote.last * 0.85)}")
 
             Spacer(modifier = Modifier.height(20.dp))
 
@@ -141,9 +141,9 @@ fun StockDetailScreen(
                 modifier = Modifier.padding(bottom = 12.dp)
             )
 
-            DetailRow(label = "Volume", value = "${(Math.random() * 10000000).toInt()} shares")
-            DetailRow(label = "Avg Volume", value = "${(Math.random() * 8000000).toInt()} shares")
-            DetailRow(label = "Market Cap", value = "₹${(Math.random() * 500000).toInt()} Cr")
+            DetailRow(label = "Volume", value = "${quote.volume?.toString() ?: "N/A"} shares")
+            DetailRow(label = "Avg Volume", value = "${quote.avgVolume?.toString() ?: "N/A"} shares")
+            DetailRow(label = "Market Cap", value = "${quote.marketCap?.let { "₹${it}" } ?: "N/A"}")
 
             Spacer(modifier = Modifier.height(20.dp))
 
@@ -156,9 +156,9 @@ fun StockDetailScreen(
                 modifier = Modifier.padding(bottom = 12.dp)
             )
 
-            DetailRow(label = "P/E Ratio", value = "${String.format("%.2f", 15.5 + Math.random() * 10)}")
-            DetailRow(label = "Dividend Yield", value = "${String.format("%.2f", 2.5 + Math.random() * 3)}%")
-            DetailRow(label = "Book Value", value = "₹${String.format("%.2f", quote.last * 0.8)}")
+            DetailRow(label = "P/E Ratio", value = "${quote.trailingPE?.let { String.format("%.2f", it) } ?: "N/A"}")
+            DetailRow(label = "Dividend Yield", value = "${quote.dividendYield?.let { String.format("%.2f", it) + "%" } ?: "N/A"}")
+            DetailRow(label = "Book Value", value = "₹${String.format("%.2f", (quote.last * 0.8))}")
 
             Spacer(modifier = Modifier.height(30.dp))
 
