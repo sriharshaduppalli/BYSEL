@@ -31,7 +31,7 @@ jobs:
       - name: Write keystore.properties
         run: |
           cat > android/keystore.properties <<EOF
-          storeFile=keystore.jks
+          storeFile=${{ github.workspace }}/android/keystore.jks
           storePassword=${{ secrets.KEYSTORE_PASSWORD }}
           keyAlias=${{ secrets.KEY_ALIAS }}
           keyPassword=${{ secrets.KEY_PASSWORD }}
