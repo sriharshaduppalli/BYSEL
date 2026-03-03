@@ -11,6 +11,13 @@ interface BYSELApiService {
     @GET("/quotes/{symbol}")
     suspend fun getQuote(@Path("symbol") symbol: String): Quote
 
+    @GET("/quotes/{symbol}/history")
+    suspend fun getQuoteHistory(
+        @Path("symbol") symbol: String,
+        @Query("period") period: String = "1mo",
+        @Query("interval") interval: String = "1d"
+    ): List<HistoryCandle>
+
     @GET("/quotes/all")
     suspend fun getAllQuotes(): List<Quote>
 

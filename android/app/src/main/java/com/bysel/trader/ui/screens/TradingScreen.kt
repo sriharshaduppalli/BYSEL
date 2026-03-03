@@ -12,6 +12,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -21,6 +23,17 @@ import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.MarketStatus
 import com.bysel.trader.ui.theme.LocalAppTheme
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.OutlinedTextField
+
+private fun formatVolume(v: Long?): String {
+    if (v == null) return "N/A"
+    return when {
+        v >= 1_000_000 -> String.format("%.2fM", v / 1_000_000.0)
+        v >= 1_000 -> String.format("%.1fK", v / 1_000.0)
+        else -> v.toString()
+    }
+}
 
 @Composable
 fun TradingScreen(
@@ -36,6 +49,13 @@ fun TradingScreen(
     onErrorDismiss: () -> Unit,
     viewModel: com.bysel.trader.viewmodel.TradingViewModel
 ) {
+    // Start fast-refresh while this screen is visible; stop on dispose
+    DisposableEffect(viewModel) {
+        viewModel.startFastRefresh()
+        onDispose { viewModel.stopFastRefresh() }
+    }
+    var showAddWatchlistDialog by remember { mutableStateOf(false) }
+    var newWatchSymbol by remember { mutableStateOf("") }
         // AI Trade Coach Dialog
         val tradeCoachTip by viewModel.tradeCoachTip.collectAsState()
         if (tradeCoachTip != null) {
@@ -79,6 +99,30 @@ fun TradingScreen(
             .fillMaxSize()
             .background(LocalAppTheme.current.surface)
     ) {
+        // Watchlist header
+        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            val wl by viewModel.watchlist.collectAsState()
+            Row {
+                wl.forEach { s ->
+                    AssistChip(onClick = { viewModel.fetchAndSelectQuote(s) }, label = { Text(s) }, modifier = Modifier.padding(end = 8.dp))
+                }
+            }
+            Button(onClick = { showAddWatchlistDialog = true }, modifier = Modifier.height(36.dp)) { Text("+ Watchlist") }
+        }
+
+        if (showAddWatchlistDialog) {
+            AlertDialog(onDismissRequest = { showAddWatchlistDialog = false }, confirmButton = {
+                TextButton(onClick = {
+                    if (newWatchSymbol.isNotBlank()) {
+                        viewModel.addToWatchlist(newWatchSymbol)
+                        newWatchSymbol = ""
+                    }
+                    showAddWatchlistDialog = false
+                }) { Text("Add") }
+            }, title = { Text("Add to Watchlist") }, text = {
+                OutlinedTextField(value = newWatchSymbol, onValueChange = { newWatchSymbol = it }, label = { Text("Symbol") })
+            }, dismissButton = { TextButton(onClick = { showAddWatchlistDialog = false }) { Text("Cancel") } })
+        }
         // Header
         Row(
             modifier = Modifier
@@ -202,22 +246,46 @@ fun TradingScreen(
         }
 
         if (isLoading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(color = LocalAppTheme.current.primary)
-            }
+                // show skeleton list placeholders for better cold-start UX
+                Column(modifier = Modifier.fillMaxSize().padding(8.dp)) {
+                    repeat(6) {
+                        Card(modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp), colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card), shape = RoundedCornerShape(12.dp)) {
+                            Box(modifier = Modifier
+                                .fillMaxWidth()
+                                .height(80.dp)
+                                .padding(16.dp)) {
+                                // simple gray blocks as skeleton
+                                Column(modifier = Modifier.fillMaxSize()) {
+                                    Box(modifier = Modifier
+                                        .fillMaxWidth(0.4f)
+                                        .height(16.dp)
+                                        .background(Color.Gray.copy(alpha = 0.2f)))
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Box(modifier = Modifier
+                                        .fillMaxWidth(0.6f)
+                                        .height(14.dp)
+                                        .background(Color.Gray.copy(alpha = 0.15f)))
+                                }
+                            }
+                        }
+                    }
+                }
         } else {
+            // Use paged quotes for large lists and load more when scrolled
+            val paged by viewModel.pagedQuotes.collectAsState()
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 8.dp)
             ) {
-                items(quotes) { quote ->
-                    TradingQuoteCard(quote) {
-                        selectedQuote = quote
+                itemsIndexed(paged) { index: Int, quote: Quote ->
+                    TradingQuoteCard(quote) { selectedQuote = quote }
+                    // prefetch next page when reaching near the end
+                    if (index >= paged.size - 5) {
+                        // launch in composition-safe scope
+                        LaunchedEffect(index) { viewModel.loadNextQuotesPage() }
                     }
                 }
             }
@@ -266,6 +334,14 @@ fun TradingQuoteCard(quote: Quote, onClick: () -> Unit) {
                         fontWeight = FontWeight.Bold,
                         color = if (quote.pctChange > 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
                     )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.End) {
+                        Text(text = "O: ₹${String.format("%.2f", quote.open ?: quote.prevClose ?: quote.last)}", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "H/L: ₹${String.format("%.2f", quote.dayHigh ?: quote.last)}/${String.format("%.2f", quote.dayLow ?: quote.last)}", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "Vol: ${formatVolume(quote.volume)}", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
+                    }
                 }
             }
 

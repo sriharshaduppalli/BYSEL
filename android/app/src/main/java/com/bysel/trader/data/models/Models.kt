@@ -167,6 +167,28 @@ data class StockPredictionResponse(
     val disclaimer: String = ""
 )
 
+data class HistoryCandle(
+    val timestamp: Long = 0L,
+    val open: Double = 0.0,
+    val high: Double = 0.0,
+    val low: Double = 0.0,
+    val close: Double = 0.0,
+    val volume: Long = 0
+)
+
+@Entity(tableName = "history")
+data class HistoryEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Int = 0,
+    val symbol: String,
+    val timestamp: Long,
+    val open: Double,
+    val high: Double,
+    val low: Double,
+    val close: Double,
+    val volume: Long
+)
+
 data class PortfolioHealthScore(
     val overallScore: Int = 0,
     val grade: String = "",

@@ -116,8 +116,8 @@ fun BYSELApp(viewModel: TradingViewModel, onUpiPay: (Double, String) -> Unit) {
         if (showOnboarding) {
             com.bysel.trader.ui.screens.OnboardingScreen(
                 onFinish = {
-                    // Initialize demo account for first-time users
-                    viewModel.initDemoAccount()
+                    // Do NOT auto-initialize demo funds. Keep wallet at 0 by default.
+                    // User can opt-in to demo from Settings or explicit UI action.
                     showOnboarding = false
                     prefs.edit().putBoolean("onboarding_complete", true).apply()
                 }
@@ -337,9 +337,11 @@ fun BYSELApp(viewModel: TradingViewModel, onUpiPay: (Double, String) -> Unit) {
                         } else {
                             StockDetailScreen(
                                 quote = selectedQuote,
+                                history = viewModel.quoteHistory.value,
                                 onBackPress = { selectedTab = previousTab },
                                 onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
-                                onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") }
+                                onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") },
+                                viewModel = viewModel
                             )
                         }
                     }

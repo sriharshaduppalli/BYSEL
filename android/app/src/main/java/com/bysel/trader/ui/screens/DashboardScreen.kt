@@ -16,6 +16,8 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bysel.trader.ui.viewmodel.DashboardViewModel
@@ -31,6 +33,7 @@ import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.components.NewsWidget
 import com.bysel.trader.ui.components.WatchlistWidget
 import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.BorderStroke
 
 @Composable
@@ -57,6 +60,7 @@ fun DashboardScreen(
         if (!showOnboarding) showOnboarding = true
     }
 
+    val ctx = LocalContext.current
     when {
         showOnboarding -> {
             AlertDialog(
@@ -67,6 +71,13 @@ fun DashboardScreen(
                 },
                 confirmButton = {
                     TextButton(onClick = { showOnboarding = false }) { Text("Got it!") }
+                },
+                // Try it now will dismiss and show a brief toast guiding user to actions
+                dismissButton = {
+                    TextButton(onClick = {
+                        showOnboarding = false
+                        Toast.makeText(ctx, "Pin widgets with the star and reorder with the arrows.", Toast.LENGTH_SHORT).show()
+                    }) { Text("Try it now!") }
                 }
             )
         }
@@ -88,6 +99,7 @@ fun DashboardScreen(
                 error = error,
                 onTradeClick = onTradeClick,
                 onErrorDismiss = onErrorDismiss,
+                onRefresh = onRefresh,
                 portfolioPinned = portfolioPinned,
                 newsPinned = newsPinned,
                 watchlistPinned = watchlistPinned,
@@ -106,12 +118,17 @@ fun DashboardContent(
     error: String?,
     onTradeClick: (String) -> Unit,
     onErrorDismiss: () -> Unit,
+    onRefresh: () -> Unit,
     portfolioPinned: Boolean,
     newsPinned: Boolean,
     watchlistPinned: Boolean,
     widgetOrder: List<String>,
     pinnedStocks: Set<String>
 ) {
+    // Precompute filtered/sorted lists to avoid repeated work on recomposition
+    val pinnedList by remember(quotes, pinnedStocks) { mutableStateOf(quotes.filter { pinnedStocks.contains(it.symbol) }) }
+    val topGainers by remember(quotes, pinnedStocks) { mutableStateOf(quotes.sortedByDescending { it.pctChange }.filter { !pinnedStocks.contains(it.symbol) }.take(3)) }
+    val topLosers by remember(quotes, pinnedStocks) { mutableStateOf(quotes.sortedBy { it.pctChange }.filter { !pinnedStocks.contains(it.symbol) }.take(3)) }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween
@@ -123,7 +140,7 @@ fun DashboardContent(
             Text("Reset Layout")
         }
         // Onboarding/tutorial button
-        IconButton(onClick = { /* handled in DashboardScreen */ }) {
+        IconButton(onClick = { onRefresh() }) {
             Icon(Icons.Default.Info, contentDescription = "Show Dashboard Tutorial")
         }
     }
@@ -160,7 +177,7 @@ fun DashboardContent(
                                 border = if (idx == 0) BorderStroke(2.dp, LocalAppTheme.current.primary) else null
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
-                                    PortfolioSummaryCard(holdings, quotes)
+                                    PortfolioSummaryCard(holdings)
                                     Column {
                                         IconButton(onClick = { dashboardViewModel.moveWidgetUp("portfolio") }, enabled = idx > 0) {
                                             Icon(Icons.Default.ArrowUpward, contentDescription = "Move Up", tint = if (idx > 0) LocalAppTheme.current.primary else LocalAppTheme.current.textSecondary)
@@ -233,11 +250,11 @@ fun DashboardContent(
 
         // Portfolio Summary Card (if not pinned)
         if (!portfolioPinned) {
-            item {
-                PortfolioSummaryCard(holdings, quotes)
-                Spacer(modifier = Modifier.height(20.dp))
+                item {
+                    PortfolioSummaryCard(holdings)
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
             }
-        }
 
         // News Widget (if not pinned)
         if (!newsPinned) {
@@ -266,7 +283,7 @@ fun DashboardContent(
                     modifier = Modifier.padding(vertical = 16.dp)
                 )
             }
-            items(quotes.filter { pinnedStocks.contains(it.symbol) }) { quote ->
+            items(items = pinnedList, key = { it.symbol }) { quote ->
                 GainerLosersCard(
                     quote,
                     isGainer = quote.pctChange >= 0,
@@ -287,7 +304,7 @@ fun DashboardContent(
                 modifier = Modifier.padding(vertical = 16.dp)
             )
         }
-        items(quotes.sortedByDescending { it.pctChange }.take(3).filter { !pinnedStocks.contains(it.symbol) }) { quote ->
+        items(items = topGainers, key = { it.symbol }) { quote ->
             GainerLosersCard(
                 quote,
                 isGainer = true,
@@ -308,7 +325,7 @@ fun DashboardContent(
         }
 
         // Top Losers
-        items(quotes.sortedBy { it.pctChange }.take(3).filter { !pinnedStocks.contains(it.symbol) }) { quote ->
+        items(items = topLosers, key = { it.symbol }) { quote ->
             GainerLosersCard(
                 quote,
                 isGainer = false,
@@ -334,7 +351,7 @@ fun DashboardContent(
                         Text(error)
                         // Pinned Portfolio Section
                         if (portfolioPinned) {
-                            PortfolioSummaryCard(holdings, quotes)
+                            PortfolioSummaryCard(holdings)
                         }
                     }
                 }
@@ -343,7 +360,7 @@ fun DashboardContent(
     }
 }
 @Composable
-fun PortfolioSummaryCard(holdings: List<Holding>, quotes: List<Quote>) {
+fun PortfolioSummaryCard(holdings: List<Holding>) {
     val totalValue = holdings.sumOf { it.qty * it.last }
     val totalInvested = holdings.sumOf { it.qty * it.avgPrice }
     val totalPnL = totalValue - totalInvested
@@ -435,7 +452,8 @@ fun GainerLosersCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 12.dp),
+            .padding(bottom = 12.dp)
+            .clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
         shape = RoundedCornerShape(10.dp)
     ) {

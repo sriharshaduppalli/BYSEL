@@ -1,3 +1,4 @@
+import java.io.FileInputStream
 import java.util.Properties
 
 plugins {
@@ -5,7 +6,14 @@ plugins {
     id("org.jetbrains.kotlin.android") version "1.9.23"
     id("org.jetbrains.kotlin.kapt") version "1.9.23"
     id("com.google.dagger.hilt.android") version "2.51.1"
+    // Google services plugin is applied via apply() below to ensure google-services.json is present
 }
+
+// Note: `google-services` plugin intentionally not applied here to avoid
+// build-time plugin resolution issues in this mono-repo environment.
+// The app can still use `firebase-messaging` runtime APIs; to enable the
+// Gradle plugin, add the plugin classpath in the root buildscript or
+// declare the plugin in `settings.gradle.kts` if your CI supports it.
 
 apply {
     plugin("kotlin-kapt")
@@ -74,12 +82,27 @@ android {
             dependsOn(incrementVersion)
         }
 
+    // Load keystore properties from project root `keystore.properties` or environment variables.
+    val keystorePropsFile = rootProject.file("keystore.properties")
+    val keystoreProps = Properties().apply {
+        if (keystorePropsFile.exists()) {
+            load(FileInputStream(keystorePropsFile))
+        }
+    }
+
     signingConfigs {
         create("release") {
-            storeFile = file(System.getenv("KEYSTORE_PATH") ?: "keystore.jks")
-            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "BYSEL@2026"
-            keyAlias = System.getenv("KEY_ALIAS") ?: "bysel_key"
-            keyPassword = System.getenv("KEY_PASSWORD") ?: "BYSEL@2026"
+            val storeFilePath = keystoreProps.getProperty("storeFile") ?: System.getenv("KEYSTORE_PATH")
+            if (storeFilePath == null) {
+                throw GradleException("Keystore not configured. Create keystore.properties (see android/keystore.properties.example) or set KEYSTORE_PATH env var.")
+            }
+            storeFile = file(storeFilePath)
+            storePassword = keystoreProps.getProperty("storePassword") ?: System.getenv("KEYSTORE_PASSWORD")
+                ?: throw GradleException("Keystore storePassword missing. Set in keystore.properties or KEYSTORE_PASSWORD env var.")
+            keyAlias = keystoreProps.getProperty("keyAlias") ?: System.getenv("KEY_ALIAS")
+                ?: throw GradleException("Keystore keyAlias missing. Set in keystore.properties or KEY_ALIAS env var.")
+            keyPassword = keystoreProps.getProperty("keyPassword") ?: System.getenv("KEY_PASSWORD")
+                ?: throw GradleException("Keystore keyPassword missing. Set in keystore.properties or KEY_PASSWORD env var.")
         }
     }
 
@@ -154,7 +177,15 @@ dependencies {
     kapt("com.google.dagger:hilt-compiler:2.51.1")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
     implementation("androidx.work:work-runtime-ktx:2.8.1")
+    // Firebase Cloud Messaging
+    implementation("com.google.firebase:firebase-messaging:23.2.1")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.11")
+    testImplementation("androidx.work:work-testing:2.8.1")
+    testImplementation("org.mockito:mockito-core:5.5.0")
+    testImplementation("androidx.test:core:1.5.0")
+    testImplementation("androidx.test:core-ktx:1.5.0")
+    testImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.06.00"))

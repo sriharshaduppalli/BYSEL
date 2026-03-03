@@ -10,7 +10,7 @@ import com.bysel.trader.data.models.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
-class TradingRepository(private val database: BYSELDatabase) {
+open class TradingRepository(private val database: BYSELDatabase) {
 
         suspend fun setDemoHoldings(holdings: List<Holding>) {
             // Overwrite holdings in local DB for demo
@@ -20,7 +20,7 @@ class TradingRepository(private val database: BYSELDatabase) {
     private val apiService: BYSELApiService = RetrofitClient.apiService
 
     // ==================== QUOTES ====================
-    fun getQuotes(symbols: List<String>): Flow<Result<List<Quote>>> = flow {
+    open fun getQuotes(symbols: List<String>): Flow<Result<List<Quote>>> = flow {
         try {
             emit(Result.Loading)
             val symbolString = symbols.joinToString(",")
@@ -51,6 +51,11 @@ class TradingRepository(private val database: BYSELDatabase) {
         return database.quoteDao().getAllQuotes()
     }
 
+    fun getQuotesPage(page: Int, pageSize: Int): Flow<List<Quote>> {
+        val offset = page * pageSize
+        return database.quoteDao().getQuotesPaged(pageSize, offset)
+    }
+
     suspend fun getQuote(symbol: String): Result<Quote> {
         return try {
             val quote = apiService.getQuote(symbol)
@@ -58,6 +63,64 @@ class TradingRepository(private val database: BYSELDatabase) {
             Result.Success(quote)
         } catch (e: Exception) {
             Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getQuoteHistory(symbol: String, period: String = "1mo", interval: String = "1d"): Result<List<HistoryCandle>> {
+        return try {
+            val history = apiService.getQuoteHistory(symbol, period, interval)
+            // persist fetched history to local DB
+            try {
+                val entities = history.map { h ->
+                    com.bysel.trader.data.models.HistoryEntity(
+                        symbol = symbol,
+                        timestamp = h.timestamp,
+                        open = h.open,
+                        high = h.high,
+                        low = h.low,
+                        close = h.close,
+                        volume = h.volume
+                    )
+                }
+                database.historyDao().deleteHistoryForSymbol(symbol)
+                database.historyDao().insertCandles(entities)
+            } catch (_: Exception) {
+                // ignore persistence errors
+            }
+            Result.Success(history)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    // Return locally cached history as a Flow
+    fun getCachedHistory(symbol: String) = kotlinx.coroutines.flow.flow {
+        try {
+            val rows = database.historyDao().getHistoryForSymbol(symbol)
+            val candles = rows.map { r -> HistoryCandle(timestamp = r.timestamp, open = r.open, high = r.high, low = r.low, close = r.close, volume = r.volume) }
+            emit(candles)
+        } catch (e: Exception) {
+            emit(emptyList<HistoryCandle>())
+        }
+    }
+
+    suspend fun saveHistory(symbol: String, candles: List<HistoryCandle>) {
+        try {
+            val entities = candles.map { h ->
+                com.bysel.trader.data.models.HistoryEntity(
+                    symbol = symbol,
+                    timestamp = h.timestamp,
+                    open = h.open,
+                    high = h.high,
+                    low = h.low,
+                    close = h.close,
+                    volume = h.volume
+                )
+            }
+            database.historyDao().deleteHistoryForSymbol(symbol)
+            database.historyDao().insertCandles(entities)
+        } catch (_: Exception) {
+            // ignore
         }
     }
 

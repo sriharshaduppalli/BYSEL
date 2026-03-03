@@ -1,4 +1,5 @@
 package com.bysel.trader.ui.screens
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -240,89 +241,6 @@ fun IntervalSelectionDialog(selectedInterval: Int, onIntervalSelected: (Int) -> 
 }
 
 @Composable
-fun ProfileDialog(onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = LocalAppTheme.current.card,
-        title = {
-            Text(
-                text = "Profile",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = LocalAppTheme.current.text
-            )
-        },
-        text = {
-            Column {
-                Text("Name: John Doe", fontSize = 14.sp, color = LocalAppTheme.current.text)
-                Text("Email: johndoe@email.com", fontSize = 14.sp, color = LocalAppTheme.current.text)
-                Text("Edit your profile information here.", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close", color = LocalAppTheme.current.primary)
-            }
-        }
-    )
-}
-
-@Composable
-fun SecurityDialog(onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = LocalAppTheme.current.card,
-        title = {
-            Text(
-                text = "Security",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = LocalAppTheme.current.text
-            )
-        },
-        text = {
-            Column {
-                Text("Change your password or update privacy settings.", fontSize = 14.sp, color = LocalAppTheme.current.text)
-                Text("Password: ********", fontSize = 14.sp, color = LocalAppTheme.current.textSecondary)
-                Text("Privacy: Standard", fontSize = 14.sp, color = LocalAppTheme.current.textSecondary)
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close", color = LocalAppTheme.current.primary)
-            }
-        }
-    )
-}
-
-@Composable
-fun FeedbackDialog(onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = LocalAppTheme.current.card,
-        title = {
-            Text(
-                text = "Feedback",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = LocalAppTheme.current.text
-            )
-        },
-        text = {
-            Column {
-                Text("We value your feedback!", fontSize = 14.sp, color = LocalAppTheme.current.text)
-                Text("Please email us at support@bysel.com or use the feedback form.", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close", color = LocalAppTheme.current.primary)
-            }
-        }
-    )
-}
-
-@Composable
 fun WebsiteDialog(onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -378,7 +296,8 @@ fun ThemeSelectionDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 12.dp),
+                            .padding(vertical = 12.dp)
+                            .clickable { onThemeSelected(themeName) },
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -511,7 +430,8 @@ fun SettingClickItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(vertical = 8.dp)
+            .clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
         shape = RoundedCornerShape(10.dp)
     ) {
@@ -649,5 +569,38 @@ fun SimpleDialog(title: String, message: String, onDismiss: () -> Unit) {
         confirmButton = {
             TextButton(onClick = onDismiss) { Text("OK") }
         }
+    )
+}
+
+@Composable
+fun ProfileDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = LocalAppTheme.current.card,
+        title = { Text("Profile", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = LocalAppTheme.current.text) },
+        text = { Column { Text("Name: John Doe", fontSize = 14.sp, color = LocalAppTheme.current.text); Text("Email: johndoe@email.com", fontSize = 14.sp, color = LocalAppTheme.current.text) } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = LocalAppTheme.current.primary) } }
+    )
+}
+
+@Composable
+fun SecurityDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = LocalAppTheme.current.card,
+        title = { Text("Security", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = LocalAppTheme.current.text) },
+        text = { Column { Text("Change your password or update privacy settings.", fontSize = 14.sp, color = LocalAppTheme.current.text) } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = LocalAppTheme.current.primary) } }
+    )
+}
+
+@Composable
+fun FeedbackDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = LocalAppTheme.current.card,
+        title = { Text("Feedback", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = LocalAppTheme.current.text) },
+        text = { Column { Text("We value your feedback!", fontSize = 14.sp, color = LocalAppTheme.current.text); Text("Please email us at support@bysel.com", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary) } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = LocalAppTheme.current.primary) } }
     )
 }

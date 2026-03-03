@@ -4,6 +4,7 @@ pluginManagement {
         mavenCentral()
         gradlePluginPortal()
     }
+    // No additional plugins declared here to avoid plugin resolution issues
 }
 
 dependencyResolutionManagement {

@@ -13,8 +13,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import com.bysel.trader.utils.PromptBuilder
+import android.content.Intent
+import android.content.IntentFilter
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.BatteryManager
+import com.bysel.trader.alerts.AlertsManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 
 /**
  * Clean, minimal TradingViewModel that exposes the state and actions used
@@ -42,6 +50,12 @@ class TradingViewModel(
     private val _quotes = MutableStateFlow<List<Quote>>(emptyList())
     val quotes: StateFlow<List<Quote>> = _quotes.asStateFlow()
 
+    // Watchlist stored in SharedPreferences for quick cold-start access
+    private val watchlistPrefs = getApplication<Application>()
+        .getSharedPreferences("bysel_watchlist", Context.MODE_PRIVATE)
+    private val _watchlist = MutableStateFlow<List<String>>(emptyList())
+    val watchlist: StateFlow<List<String>> = _watchlist.asStateFlow()
+
     private val _holdings = MutableStateFlow<List<Holding>>(emptyList())
     val holdings: StateFlow<List<Holding>> = _holdings.asStateFlow()
 
@@ -66,11 +80,32 @@ class TradingViewModel(
     private val _marketStatus = MutableStateFlow<MarketStatus?>(null)
     val marketStatus: StateFlow<MarketStatus?> = _marketStatus.asStateFlow()
 
+    // Fast-refresh controls and safety settings
+    private val _fastRefreshPlaying = MutableStateFlow(true)
+    val fastRefreshPlaying: StateFlow<Boolean> = _fastRefreshPlaying.asStateFlow()
+
+    // safety toggles: require device charging and require unmetered network
+    private val settingsPrefs = getApplication<Application>().getSharedPreferences("bysel_settings", Context.MODE_PRIVATE)
+    private val _requireCharging = MutableStateFlow(settingsPrefs.getBoolean("fast_refresh_require_charging", false))
+    private val _requireUnmetered = MutableStateFlow(settingsPrefs.getBoolean("fast_refresh_require_unmetered", false))
+    val requireCharging: StateFlow<Boolean> = _requireCharging.asStateFlow()
+    val requireUnmetered: StateFlow<Boolean> = _requireUnmetered.asStateFlow()
+
+    // Alerts manager instance (declared early so init can use it)
+    private lateinit var alertsManager: AlertsManager
+    // initialize fast refresh enabled from settings
+    private val _fastRefreshEnabled = MutableStateFlow(settingsPrefs.getBoolean("fast_refresh_enabled", false))
+    val fastRefreshEnabled: StateFlow<Boolean> = _fastRefreshEnabled.asStateFlow()
+
     // Single-quote detail
     private val _selectedQuote = MutableStateFlow<Quote?>(null)
     val selectedQuote: StateFlow<Quote?> = _selectedQuote.asStateFlow()
     private val _detailLoading = MutableStateFlow(false)
     val detailLoading: StateFlow<Boolean> = _detailLoading.asStateFlow()
+
+    // Historical OHLCV for selected symbol (used for charting)
+    private val _quoteHistory = MutableStateFlow<List<HistoryCandle>>(emptyList())
+    val quoteHistory: StateFlow<List<HistoryCandle>> = _quoteHistory.asStateFlow()
 
     // AI assistant
     private val _aiResponse = MutableStateFlow<AiAssistantResponse?>(null)
@@ -93,15 +128,64 @@ class TradingViewModel(
 
     private var autoRefreshJob: Job? = null
     private val AUTO_REFRESH_INTERVAL = 15_000L
+    private val FAST_REFRESH_INTERVAL = 1_000L
     private val defaultSymbols = listOf("RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN")
+    // Paging state for quotes list
+    private val _pagedQuotes = MutableStateFlow<List<Quote>>(emptyList())
+    val pagedQuotes: StateFlow<List<Quote>> = _pagedQuotes.asStateFlow()
+    private var currentPage = 0
+    private val pageSize = 50
+    private var loadingPage = false
 
     init {
         loadAchievements()
+        // instantiate AlertsManager with application context
+        alertsManager = AlertsManager(getApplication())
+        // observe active alerts from DB
+        viewModelScope.launch {
+            try {
+                repository.getActiveAlerts().collectLatest { list -> _alerts.value = list }
+            } catch (_: Exception) { }
+        }
         // conservative initial refreshes (non-blocking)
+        // Load cached quotes immediately to improve cold-start UX
+        viewModelScope.launch {
+            try {
+                // prefer watchlist symbols if available
+                val wl = watchlistPrefs.getStringSet("symbols", emptySet())?.toList() ?: emptyList()
+                val symbolsToLoad = if (wl.isNotEmpty()) wl else defaultSymbols
+                repository.getCachedQuotes(symbolsToLoad).collectLatest { cached ->
+                    if (cached.isNotEmpty()) _quotes.value = cached
+                }
+            } catch (_: Exception) { }
+        }
+
+        // restore watchlist into state
+        _watchlist.value = watchlistPrefs.getStringSet("symbols", emptySet())?.toList() ?: emptyList()
         refreshWallet()
         refreshMarketStatus()
         refreshHoldings()
         refreshQuotes()
+    }
+
+    
+
+    fun addToWatchlist(symbol: String) {
+        val normalized = symbol.trim().uppercase()
+        val current = watchlistPrefs.getStringSet("symbols", mutableSetOf())?.toMutableSet() ?: mutableSetOf()
+        if (current.add(normalized)) {
+            watchlistPrefs.edit().putStringSet("symbols", current).apply()
+            _watchlist.value = current.toList()
+        }
+    }
+
+    fun removeFromWatchlist(symbol: String) {
+        val normalized = symbol.trim().uppercase()
+        val current = watchlistPrefs.getStringSet("symbols", mutableSetOf())?.toMutableSet() ?: mutableSetOf()
+        if (current.remove(normalized)) {
+            watchlistPrefs.edit().putStringSet("symbols", current).apply()
+            _watchlist.value = current.toList()
+        }
     }
 
     private fun loadAchievements() {
@@ -145,7 +229,6 @@ class TradingViewModel(
     }
 
     private fun unlockAchievement(id: String) {
-        val now = System.currentTimeMillis()
         val unlocked = achievementPrefs.getStringSet("unlocked", mutableSetOf())?.toMutableSet() ?: mutableSetOf()
         if (unlocked.add(id)) {
             achievementPrefs.edit().putStringSet("unlocked", unlocked).apply()
@@ -168,6 +251,30 @@ class TradingViewModel(
                         _isLoading.value = false
                     }
                 }
+            }
+            // also reset paging
+            currentPage = 0
+            loadNextQuotesPage()
+        }
+    }
+
+    fun loadNextQuotesPage() {
+        if (loadingPage) return
+        loadingPage = true
+        viewModelScope.launch {
+            repository.getQuotesPage(currentPage, pageSize).collectLatest { page ->
+                if (page.isNotEmpty()) {
+                    val current = _pagedQuotes.value.toMutableList()
+                    // append only new symbols to avoid duplicates caused by overlapping
+                    // or re-emitted pages from the DB/repository
+                    val toAdd = page.filter { p -> current.none { it.symbol == p.symbol } }
+                    if (toAdd.isNotEmpty()) {
+                        current.addAll(toAdd)
+                        _pagedQuotes.value = current
+                        currentPage += 1
+                    }
+                }
+                loadingPage = false
             }
         }
     }
@@ -209,15 +316,29 @@ class TradingViewModel(
     }
 
     // --- Search ---
+    private var searchJob: kotlinx.coroutines.Job? = null
+    private val searchCache = mutableMapOf<String, List<StockSearchResult>>()
     fun searchStocks(query: String) {
         if (query.isBlank()) { _searchResults.value = emptyList(); return }
-        viewModelScope.launch {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(300) // debounce
             _isSearching.value = true
-            when (val r = repository.searchStocks(query)) {
-                is Result.Success -> _searchResults.value = r.data
-                is Result.Error -> _error.value = r.message
-                else -> {}
-            }
+            try {
+                val cached = searchCache[query]
+                if (cached != null) {
+                    _searchResults.value = cached
+                } else {
+                    when (val r = repository.searchStocks(query)) {
+                        is Result.Success -> {
+                            _searchResults.value = r.data
+                            searchCache[query] = r.data
+                        }
+                        is Result.Error -> _error.value = r.message
+                        else -> {}
+                    }
+                }
+            } catch (e: Exception) { _error.value = e.message }
             _isSearching.value = false
         }
     }
@@ -236,6 +357,138 @@ class TradingViewModel(
                 else -> { }
             }
             _detailLoading.value = false
+            // fetch recent history for charting
+            fetchQuoteHistory(symbol)
+        }
+    }
+
+    fun fetchQuoteHistory(symbol: String, period: String = "1mo", interval: String = "1d") {
+        viewModelScope.launch {
+            // Emit cached history first (if any), then refresh from API and persist
+            try {
+                repository.getCachedHistory(symbol).collectLatest { cached ->
+                    if (cached.isNotEmpty()) _quoteHistory.value = cached
+                }
+            } catch (_: Exception) {
+                // ignore cache read errors
+            }
+
+            when (val r = repository.getQuoteHistory(symbol, period, interval)) {
+                is Result.Success -> _quoteHistory.value = r.data
+                is Result.Error -> _error.value = r.message
+                else -> {}
+            }
+        }
+    }
+
+    /**
+     * Start a fast refresh loop that fetches quotes every [intervalMs] milliseconds.
+     * This is intended for live-updating UI when the user is actively viewing
+     * dashboard or detail screens. It will only perform network refreshes while
+     * the market appears open (`marketStatus.isOpen == true`).
+     */
+    fun startFastRefresh(intervalMs: Long = FAST_REFRESH_INTERVAL, symbols: List<String> = defaultSymbols) {
+        // avoid starting multiple jobs
+        if (autoRefreshJob?.isActive == true) return
+        // respect global enabled flag
+        if (!_fastRefreshEnabled.value) return
+        autoRefreshJob = viewModelScope.launch {
+            while (isActive) {
+                // check play/pause state and safety toggles each iteration
+                if (!_fastRefreshPlaying.value) {
+                    kotlinx.coroutines.delay(intervalMs)
+                    continue
+                }
+
+                if (_requireCharging.value && !isDeviceCharging()) {
+                    kotlinx.coroutines.delay(intervalMs)
+                    continue
+                }
+
+                if (_requireUnmetered.value && !isOnUnmeteredNetwork()) {
+                    kotlinx.coroutines.delay(intervalMs)
+                    continue
+                }
+
+                val isMarketOpen = _marketStatus.value?.isOpen ?: true
+
+                if (isMarketOpen) {
+                    try {
+                        repository.getQuotes(symbols).collectLatest { result ->
+                            when (result) {
+                                is Result.Success -> {
+                                    // update UI state
+                                    _quotes.value = result.data
+                                    // evaluate alerts against latest quotes
+                                    evaluateAlerts(result.data)
+                                }
+                                is Result.Error -> _error.value = result.message
+                                else -> {}
+                            }
+                        }
+                    } catch (_: Exception) {
+                        // ignore transient errors and continue
+                    }
+                }
+
+                kotlinx.coroutines.delay(intervalMs)
+            }
+        }
+    }
+
+    /** Stop the fast-refresh loop. Call when the view is hidden. */
+    fun stopFastRefresh() {
+        autoRefreshJob?.cancel()
+        autoRefreshJob = null
+    }
+
+    fun setFastRefreshEnabled(enabled: Boolean) {
+        _fastRefreshEnabled.value = enabled
+        settingsPrefs.edit().putBoolean("fast_refresh_enabled", enabled).apply()
+        if (!enabled) stopFastRefresh()
+    }
+
+    fun setFastRefreshPlaying(play: Boolean) {
+        _fastRefreshPlaying.value = play
+    }
+
+    fun setRequireCharging(require: Boolean) {
+        _requireCharging.value = require
+        settingsPrefs.edit().putBoolean("fast_refresh_require_charging", require).apply()
+    }
+
+    fun setRequireUnmetered(require: Boolean) {
+        _requireUnmetered.value = require
+        settingsPrefs.edit().putBoolean("fast_refresh_require_unmetered", require).apply()
+    }
+
+    private fun isDeviceCharging(): Boolean {
+        return try {
+            val intent = getApplication<Application>().registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+            status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+        } catch (e: Exception) { false }
+    }
+
+    private fun isOnUnmeteredNetwork(): Boolean {
+        return try {
+            val cm = getApplication<Application>().getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+            caps != null && (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) || caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI))
+        } catch (e: Exception) { false }
+    }
+
+    private fun evaluateAlerts(quotesNow: List<Quote>) {
+        val activeAlerts = _alerts.value.filter { it.isActive }
+        if (activeAlerts.isEmpty()) return
+        val map = quotesNow.associateBy { it.symbol }
+        for (a in activeAlerts) {
+            val q = map[a.symbol] ?: continue
+            val price = q.last
+            when (a.alertType.uppercase()) {
+                "ABOVE" -> if (price >= a.thresholdPrice) alertsManager.sendPriceAlert(a, price)
+                "BELOW" -> if (price <= a.thresholdPrice) alertsManager.sendPriceAlert(a, price)
+            }
         }
     }
 
@@ -260,14 +513,14 @@ class TradingViewModel(
         viewModelScope.launch {
             // Gather latest quote data to give the AI more context
             val quoteResult = repository.getQuote(symbol)
-            var prompt = "trade_coach:symbol=$symbol,qty=$quantity,side=$side"
-            if (quoteResult is Result.Success) {
-                val q = quoteResult.data
-                prompt += ",price=${q.last},pctChange=${q.pctChange}"
-                q.trailingPE?.let { prompt += ",pe=${it}" }
-                q.volume?.let { prompt += ",volume=${it}" }
-                q.marketCap?.let { prompt += ",marketCap=${it}" }
-            }
+            // build prompt using PromptBuilder including recent history if available
+            val holdingsSummary = _holdings.value.joinToString(separator = ";") { h -> "${h.symbol}:${h.qty}@${h.last}" }
+            val wallet = _walletBalance.value
+            val portfolioScore = _portfolioHealth.value?.overallScore
+
+            val recentHistory = if (_selectedQuote.value?.symbol == symbol) _quoteHistory.value else emptyList()
+            val baseQuery = "trade_coach:symbol=$symbol,qty=$quantity,side=$side"
+            val prompt = PromptBuilder.buildPrompt(baseQuery, holdingsSummary, wallet, portfolioScore, quoteResult.let { if (it is Result.Success) it.data else null }, recentHistory)
 
             when (val r = repository.aiAsk(prompt)) {
                 is Result.Success -> _tradeCoachTip.value = r.data.answer
@@ -306,7 +559,57 @@ class TradingViewModel(
         viewModelScope.launch {
             _aiLoading.value = true
             _chatHistory.value = _chatHistory.value + ChatMessage(query, isUser = true)
-            when (val r = repository.aiAsk(query)) {
+            // Build context: holdings, wallet balance, portfolio health where available
+            val holdingsSummary = _holdings.value.joinToString(separator = ";") { h ->
+                "${h.symbol}:${h.qty}@${h.last}"
+            }
+            val wallet = _walletBalance.value
+            val portfolio = _portfolioHealth.value
+            val contextParts = mutableListOf<String>()
+            if (holdingsSummary.isNotBlank()) contextParts.add("holdings=$holdingsSummary")
+            contextParts.add("wallet=$wallet")
+            portfolio?.let { contextParts.add("portfolioScore=${it.overallScore}") }
+
+            // Add selected quote and recent history summary to context when available
+            val symbol = _selectedQuote.value?.symbol
+            symbol?.let { contextParts.add("symbol=$it") }
+            _selectedQuote.value?.let { q ->
+                contextParts.add("price=${q.last}")
+                q.pctChange.let { contextParts.add("pctChange=${it}") }
+            }
+
+            // gather recent history (prefer in-memory state, fallback to cached DB)
+            val recentHistory = mutableListOf<HistoryCandle>()
+            if (_quoteHistory.value.isNotEmpty()) {
+                recentHistory.addAll(_quoteHistory.value)
+            } else if (symbol != null) {
+                try {
+                    repository.getCachedHistory(symbol).collectLatest { cached ->
+                        if (cached.isNotEmpty()) {
+                            recentHistory.clear()
+                            recentHistory.addAll(cached)
+                        }
+                    }
+                } catch (_: Exception) { /* ignore */ }
+            }
+
+            if (recentHistory.isNotEmpty()) {
+                val lastN = recentHistory.takeLast(10)
+                val closes = lastN.map { it.close }
+                val avgClose = closes.average()
+                val variance = closes.map { (it - avgClose) * (it - avgClose) }.average()
+                val volatility = kotlin.math.sqrt(variance)
+                contextParts.add("history_count=${lastN.size}")
+                contextParts.add("history_avg=${String.format("%.2f", avgClose)}")
+                contextParts.add("history_vol=${String.format("%.4f", volatility)}")
+                // small inline list of recent closes for AI context (comma-separated)
+                val closesShort = lastN.joinToString(",") { String.format("%.2f", it.close) }
+                contextParts.add("history_closes=[$closesShort]")
+            }
+
+            val prompt = PromptBuilder.buildPrompt(query, holdingsSummary, wallet, portfolio?.overallScore, _selectedQuote.value, recentHistory)
+
+            when (val r = repository.aiAsk(prompt)) {
                 is Result.Success -> {
                     _aiResponse.value = r.data
                     _chatHistory.value = _chatHistory.value + ChatMessage(r.data.answer, isUser = false, suggestions = r.data.suggestions)
@@ -324,8 +627,55 @@ class TradingViewModel(
     fun analyzeStock(symbol: String) {
         viewModelScope.launch {
             _healthLoading.value = true
-            when (val r = repository.aiAnalyze(symbol)) {
-                is Result.Success -> _stockAnalysis.value = r.data
+            // Build contextual analyze prompt including holdings and wallet
+            val holdingsSummary = _holdings.value.joinToString(separator = ";") { h ->
+                "${h.symbol}:${h.qty}@${h.last}"
+            }
+            val wallet = _walletBalance.value
+            val portfolio = _portfolioHealth.value
+
+            // include recent history for symbol in analysis
+            val recentHistory = if (_selectedQuote.value?.symbol == symbol) _quoteHistory.value else emptyList()
+            val prompt = PromptBuilder.buildPrompt("analyze_stock:symbol=$symbol,wallet=$wallet", holdingsSummary, wallet, portfolio?.overallScore, _selectedQuote.value, recentHistory)
+
+            when (val r = repository.aiAsk(prompt)) {
+                is Result.Success -> {
+                    // Try to map returned data to StockAnalysis if available
+                    val resp = r.data
+                    val dataMap = resp.data
+                    if (dataMap is Map<*, *>) {
+                        try {
+                            val map = dataMap as Map<*, *>
+                            val symbolS = map["symbol"] as? String ?: symbol
+                            val nameS = map["name"] as? String ?: ""
+                            val currentPrice = (map["currentPrice"] as? Number)?.toDouble() ?: 0.0
+                            val sector = map["sector"] as? String ?: ""
+                            val industry = map["industry"] as? String ?: ""
+                            val score = (map["score"] as? Number)?.toInt() ?: 0
+                            val sbAny = map["scoreBreakdown"] as? Map<*, *>
+                            val scoreBreakdown = sbAny?.mapNotNull { (k, v) ->
+                                if (k is String && v is Number) k to v.toInt() else null
+                            }?.toMap() ?: emptyMap()
+
+                            val sa = StockAnalysis(
+                                symbol = symbolS,
+                                name = nameS,
+                                currentPrice = currentPrice,
+                                sector = sector,
+                                industry = industry,
+                                score = score,
+                                scoreBreakdown = scoreBreakdown,
+                                signal = map["signal"] as? String ?: "",
+                                summary = map["summary"] as? String ?: ""
+                            )
+                            _stockAnalysis.value = sa
+                        } catch (e: Exception) {
+                            _error.value = "AI response parsing error"
+                        }
+                    } else {
+                        _error.value = "No analysis data returned"
+                    }
+                }
                 is Result.Error -> _error.value = r.message
                 else -> {}
             }
@@ -391,7 +741,7 @@ class TradingViewModelFactory(private val repository: TradingRepository) : ViewM
     lateinit var application: Application
     fun initApplication(app: Application) { application = app }
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(TradingViewModel::class.java)) {
+        if (modelClass == TradingViewModel::class.java) {
             @Suppress("UNCHECKED_CAST")
             return TradingViewModel(application, repository) as T
         }

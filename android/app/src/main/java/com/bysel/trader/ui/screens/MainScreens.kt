@@ -32,6 +32,8 @@ import com.bysel.trader.ui.components.QuoteCard
 import com.bysel.trader.ui.components.ErrorScreen
 import com.bysel.trader.ui.components.LoadingScreen
 import com.bysel.trader.ui.theme.LocalAppTheme
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.Refresh
 
 @Composable
 fun WatchlistScreen(
@@ -95,7 +97,7 @@ fun WatchlistScreen(
                     .fillMaxSize()
                     .padding(horizontal = 8.dp)
             ) {
-                items(quotes) { quote ->
+                items(items = quotes, key = { it.symbol }) { quote ->
                     UpgradedQuoteCard(quote) { onQuoteClick(quote) }
                 }
             }
@@ -184,7 +186,7 @@ fun UpgradedQuoteCard(quote: Quote, onClick: () -> Unit) {
 @Composable
 fun PortfolioScreen(
     holdings: List<Holding>,
-    quotes: List<Quote>,
+    @Suppress("UNUSED_PARAMETER") quotes: List<Quote>,
     isLoading: Boolean,
     error: String?,
     portfolioHealth: PortfolioHealthScore?,
@@ -200,6 +202,8 @@ fun PortfolioScreen(
             onRefreshHealth()
         }
     }
+
+    // `quotes` parameter intentionally kept for future use (API stability)
 
     if (isLoading && holdings.isEmpty()) {
         LoadingScreen()
@@ -511,6 +515,10 @@ fun PortfolioHealthCard(
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 18.sp
                         )
+                    }
+                    // Refresh action for the health card
+                    IconButton(onClick = onRefresh) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh health", tint = LocalAppTheme.current.text)
                     }
                 }
 
