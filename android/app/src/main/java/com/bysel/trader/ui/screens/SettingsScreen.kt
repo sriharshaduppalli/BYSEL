@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -17,15 +18,28 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.BuildConfig
+import com.bysel.trader.data.models.AuthSessionItem
+import com.bysel.trader.data.repository.AuthRepository
+import com.bysel.trader.data.repository.Result
+import com.bysel.trader.security.BiometricAuthManager
+import com.bysel.trader.security.BiometricStatus
+import com.bysel.trader.security.getMessage
 import com.bysel.trader.ui.theme.allThemes
 import com.bysel.trader.ui.theme.getTheme
 import com.bysel.trader.ui.theme.LocalAppTheme
+import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(
     onThemeChange: (String) -> Unit = {},
-    currentTheme: String = "Default"
+    currentTheme: String = "Default",
+    biometricAuthManager: BiometricAuthManager? = null,
+    onLogout: () -> Unit = {},
+    onLogoutAllDevices: () -> Unit = {}
 ) {
+    val authRepository = remember { AuthRepository() }
+    val scope = rememberCoroutineScope()
+
     var darkMode by remember { mutableStateOf(true) }
     var enableNotifications by remember { mutableStateOf(true) }
     var showThemeDialog by remember { mutableStateOf(false) }
@@ -35,9 +49,27 @@ fun SettingsScreen(
     var showSecurityDialog by remember { mutableStateOf(false) }
     var showFeedbackDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
+    var showLogoutAllDialog by remember { mutableStateOf(false) }
     var openWebsite by remember { mutableStateOf(false) }
     var showIntervalDialog by remember { mutableStateOf(false) }
     var heatmapInterval by remember { mutableStateOf(2000) }
+    var showSessionsDialog by remember { mutableStateOf(false) }
+    var sessionsLoading by remember { mutableStateOf(false) }
+    var sessionsError by remember { mutableStateOf<String?>(null) }
+    var activeSessions by remember { mutableStateOf<List<AuthSessionItem>>(emptyList()) }
+
+    fun loadSessions() {
+        scope.launch {
+            sessionsLoading = true
+            sessionsError = null
+            when (val result = authRepository.getActiveSessions()) {
+                is Result.Success -> activeSessions = result.data
+                is Result.Error -> sessionsError = result.message
+                else -> Unit
+            }
+            sessionsLoading = false
+        }
+    }
 
     if (showIntervalDialog) {
         IntervalSelectionDialog(
@@ -73,10 +105,98 @@ fun SettingsScreen(
         FeedbackDialog(onDismiss = { showFeedbackDialog = false })
     }
     if (showLogoutDialog) {
-        SimpleDialog(title = "Logout", message = "Logout functionality coming soon.", onDismiss = { showLogoutDialog = false })
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            containerColor = LocalAppTheme.current.card,
+            title = {
+                Text(
+                    text = "Logout",
+                    color = LocalAppTheme.current.text,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to logout?",
+                    color = LocalAppTheme.current.textSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showLogoutDialog = false
+                        onLogout()
+                    }
+                ) {
+                    Text("Logout", color = LocalAppTheme.current.negative)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutDialog = false }) {
+                    Text("Cancel", color = LocalAppTheme.current.textSecondary)
+                }
+            }
+        )
+    }
+    if (showLogoutAllDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutAllDialog = false },
+            containerColor = LocalAppTheme.current.card,
+            title = {
+                Text(
+                    text = "Logout All Devices",
+                    color = LocalAppTheme.current.text,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "This will end your sessions on all devices. Continue?",
+                    color = LocalAppTheme.current.textSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showLogoutAllDialog = false
+                        onLogoutAllDevices()
+                    }
+                ) {
+                    Text("Logout All", color = LocalAppTheme.current.negative)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutAllDialog = false }) {
+                    Text("Cancel", color = LocalAppTheme.current.textSecondary)
+                }
+            }
+        )
     }
     if (openWebsite) {
         WebsiteDialog(onDismiss = { openWebsite = false })
+    }
+    if (showSessionsDialog) {
+        ManageSessionsDialog(
+            sessions = activeSessions,
+            isLoading = sessionsLoading,
+            error = sessionsError,
+            onRefresh = { loadSessions() },
+            onRevokeSession = { sessionId ->
+                scope.launch {
+                    sessionsLoading = true
+                    sessionsError = null
+                    when (val result = authRepository.revokeSession(sessionId)) {
+                        is Result.Success -> loadSessions()
+                        is Result.Error -> {
+                            sessionsError = result.message
+                            sessionsLoading = false
+                        }
+                        else -> sessionsLoading = false
+                    }
+                }
+            },
+            onDismiss = { showSessionsDialog = false }
+        )
     }
 
     LazyColumn(
@@ -142,12 +262,56 @@ fun SettingsScreen(
                 onClick = { showProfileDialog = true }
             )
         }
+        
+        // Biometric Authentication Toggle
+        if (biometricAuthManager != null) {
+            val biometricStatus = biometricAuthManager.isBiometricAvailable()
+            val biometricEnabled = biometricAuthManager.isBiometricEnabled()
+            
+            item {
+                SettingItem(
+                    icon = Icons.Filled.Fingerprint,
+                    title = "Biometric Lock",
+                    subtitle = when (biometricStatus) {
+                        BiometricStatus.AVAILABLE -> if (biometricEnabled) "Enabled" else "Disabled"
+                        else -> biometricStatus.getMessage()
+                    },
+                    value = biometricEnabled,
+                    onValueChange = { enabled ->
+                        if (biometricStatus == BiometricStatus.AVAILABLE) {
+                            biometricAuthManager.setBiometricEnabled(enabled)
+                        }
+                    },
+                    enabled = biometricStatus == BiometricStatus.AVAILABLE
+                )
+            }
+        }
+        
         item {
             SettingClickItem(
                 icon = Icons.Filled.Lock,
                 title = "Security",
                 subtitle = "Manage password and privacy",
                 onClick = { showSecurityDialog = true }
+            )
+        }
+        item {
+            SettingClickItem(
+                icon = Icons.Filled.Devices,
+                title = "Manage Sessions",
+                subtitle = "View and revoke active sessions",
+                onClick = {
+                    showSessionsDialog = true
+                    loadSessions()
+                }
+            )
+        }
+        item {
+            SettingClickItem(
+                icon = Icons.AutoMirrored.Filled.Logout,
+                title = "Logout All Devices",
+                subtitle = "Sign out from all devices",
+                onClick = { showLogoutAllDialog = true }
             )
         }
         item {
@@ -202,6 +366,119 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(40.dp))
         }
     }
+}
+
+@Composable
+fun ManageSessionsDialog(
+    sessions: List<AuthSessionItem>,
+    isLoading: Boolean,
+    error: String?,
+    onRefresh: () -> Unit,
+    onRevokeSession: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = LocalAppTheme.current.card,
+        title = {
+            Text(
+                text = "Manage Sessions",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = LocalAppTheme.current.text
+            )
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                if (isLoading) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator(color = LocalAppTheme.current.primary)
+                    }
+                } else if (!error.isNullOrBlank()) {
+                    Text(
+                        text = error,
+                        color = LocalAppTheme.current.negative,
+                        fontSize = 12.sp
+                    )
+                } else if (sessions.isEmpty()) {
+                    Text(
+                        text = "No active sessions found.",
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 12.sp
+                    )
+                } else {
+                    sessions.forEach { session ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp),
+                            colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.surface),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    text = "Session #${session.session_id}",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = LocalAppTheme.current.text
+                                )
+                                Text(
+                                    text = "Created: ${session.created_at}",
+                                    fontSize = 11.sp,
+                                    color = LocalAppTheme.current.textSecondary
+                                )
+                                if (!session.last_used_at.isNullOrBlank()) {
+                                    Text(
+                                        text = "Last used: ${session.last_used_at}",
+                                        fontSize = 11.sp,
+                                        color = LocalAppTheme.current.textSecondary
+                                    )
+                                }
+                                Text(
+                                    text = "Expires: ${session.expires_at}",
+                                    fontSize = 11.sp,
+                                    color = LocalAppTheme.current.textSecondary
+                                )
+                                if (!session.client_ip.isNullOrBlank()) {
+                                    Text(
+                                        text = "IP: ${session.client_ip}",
+                                        fontSize = 11.sp,
+                                        color = LocalAppTheme.current.textSecondary
+                                    )
+                                }
+                                if (!session.device_info.isNullOrBlank()) {
+                                    Text(
+                                        text = "Device: ${session.device_info}",
+                                        fontSize = 11.sp,
+                                        color = LocalAppTheme.current.textSecondary
+                                    )
+                                }
+                                TextButton(
+                                    onClick = { onRevokeSession(session.session_id) },
+                                    modifier = Modifier.align(Alignment.End)
+                                ) {
+                                    Text("Revoke", color = LocalAppTheme.current.negative)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onRefresh, enabled = !isLoading) {
+                Text("Refresh", color = LocalAppTheme.current.primary)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close", color = LocalAppTheme.current.textSecondary)
+            }
+        }
+    )
 }
 
 @Composable
@@ -365,7 +642,8 @@ fun SettingItem(
     title: String,
     subtitle: String,
     value: Boolean,
-    onValueChange: (Boolean) -> Unit
+    onValueChange: (Boolean) -> Unit,
+    enabled: Boolean = true
 ) {
     Card(
         modifier = Modifier
@@ -389,7 +667,7 @@ fun SettingItem(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = LocalAppTheme.current.primary,
+                    tint = if (enabled) LocalAppTheme.current.primary else LocalAppTheme.current.textSecondary,
                     modifier = Modifier.size(24.dp)
                 )
                 Column {
@@ -397,7 +675,7 @@ fun SettingItem(
                         text = title,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = LocalAppTheme.current.text
+                        color = if (enabled) LocalAppTheme.current.text else LocalAppTheme.current.textSecondary
                     )
                     Text(
                         text = subtitle,
@@ -409,7 +687,8 @@ fun SettingItem(
             }
             Switch(
                 checked = value,
-                onCheckedChange = onValueChange,
+                onCheckedChange = if (enabled) onValueChange else { {} },
+                enabled = enabled,
                 modifier = Modifier.size(48.dp),
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = Color(0xFF00B050),

@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.Alert
 import com.bysel.trader.ui.components.AlertCard
 import com.bysel.trader.ui.components.LoadingScreen
+import com.bysel.trader.ui.components.SwipeToDismissItem
 import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
@@ -73,8 +74,14 @@ fun AlertsScreen(
                     .fillMaxSize()
                     .padding(horizontal = 8.dp)
             ) {
-                items(alerts) { alert ->
-                    AlertCard(alert) { onDeleteAlert(alert.id) }
+                items(items = alerts, key = { it.id }) { alert ->
+                    SwipeToDismissItem(
+                        item = alert,
+                        onDismiss = { onDeleteAlert(it.id) },
+                        enabled = true
+                    ) {
+                        AlertCard(alert) { onDeleteAlert(alert.id) }
+                    }
                 }
             }
         }

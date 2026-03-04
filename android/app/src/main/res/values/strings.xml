@@ -21,4 +21,14 @@
     <string name="error">Error occurred</string>
     <string name="retry">Retry</string>
     <string name="no_data">No data available</string>
+    
+    <!-- App Shortcuts -->
+    <string name="shortcut_portfolio_short">Portfolio</string>
+    <string name="shortcut_portfolio_long">View My Portfolio</string>
+    <string name="shortcut_buy_short">Buy Stock</string>
+    <string name="shortcut_buy_long">Buy Stocks</string>
+    <string name="shortcut_market_short">Market</string>
+    <string name="shortcut_market_long">Market Status</string>
+    <string name="shortcut_alerts_short">Alerts</string>
+    <string name="shortcut_alerts_long">Price Alerts</string>
 </resources>

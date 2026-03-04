@@ -62,6 +62,50 @@ object ThemeColors {
         val text = Color(0xFFFFFFFF)
         val textSecondary = Color(0xFF00FFFF)
     }
+
+    // Amoled Theme (Pure black for OLED)
+    object Amoled {
+        val primary = Color(0xFF7C4DFF)
+        val surface = Color(0xFF000000)
+        val card = Color(0xFF0A0A0A)
+        val positive = Color(0xFF00E676)
+        val negative = Color(0xFFFF1744)
+        val text = Color(0xFFFFFFFF)
+        val textSecondary = Color(0xFFB0BEC5)
+    }
+
+    // Light Theme
+    object Light {
+        val primary = Color(0xFF1976D2)
+        val surface = Color(0xFFFAFAFA)
+        val card = Color(0xFFFFFFFF)
+        val positive = Color(0xFF4CAF50)
+        val negative = Color(0xFFF44336)
+        val text = Color(0xFF212121)
+        val textSecondary = Color(0xFF757575)
+    }
+
+    // Royal Purple Theme
+    object Royal {
+        val primary = Color(0xFF9C27B0)
+        val surface = Color(0xFF1A0D1F)
+        val card = Color(0xFF2D1B3D)
+        val positive = Color(0xFFCE93D8)
+        val negative = Color(0xFFE91E63)
+        val text = Color(0xFFF3E5F5)
+        val textSecondary = Color(0xFFBA68C8)
+    }
+
+    // Monochrome Theme
+    object Monochrome {
+        val primary = Color(0xFFFFFFFF)
+        val surface = Color(0xFF0D0D0D)
+        val card = Color(0xFF1F1F1F)
+        val positive = Color(0xFFEEEEEE)
+        val negative = Color(0xFF424242)
+        val text = Color(0xFFFFFFFF)
+        val textSecondary = Color(0xFF9E9E9E)
+    }
 }
 
 data class AppTheme(
@@ -76,7 +120,7 @@ data class AppTheme(
 )
 
 fun getTheme(themeName: String): AppTheme {
-    return when (themeName) {
+    return when (themeName.lowercase()) {
         "ocean" -> AppTheme(
             ThemeColors.Ocean.primary,
             ThemeColors.Ocean.surface,
@@ -117,6 +161,46 @@ fun getTheme(themeName: String): AppTheme {
             ThemeColors.Cyberpunk.textSecondary,
             "Cyberpunk"
         )
+        "amoled" -> AppTheme(
+            ThemeColors.Amoled.primary,
+            ThemeColors.Amoled.surface,
+            ThemeColors.Amoled.card,
+            ThemeColors.Amoled.positive,
+            ThemeColors.Amoled.negative,
+            ThemeColors.Amoled.text,
+            ThemeColors.Amoled.textSecondary,
+            "Amoled"
+        )
+        "light" -> AppTheme(
+            ThemeColors.Light.primary,
+            ThemeColors.Light.surface,
+            ThemeColors.Light.card,
+            ThemeColors.Light.positive,
+            ThemeColors.Light.negative,
+            ThemeColors.Light.text,
+            ThemeColors.Light.textSecondary,
+            "Light"
+        )
+        "royal" -> AppTheme(
+            ThemeColors.Royal.primary,
+            ThemeColors.Royal.surface,
+            ThemeColors.Royal.card,
+            ThemeColors.Royal.positive,
+            ThemeColors.Royal.negative,
+            ThemeColors.Royal.text,
+            ThemeColors.Royal.textSecondary,
+            "Royal"
+        )
+        "monochrome" -> AppTheme(
+            ThemeColors.Monochrome.primary,
+            ThemeColors.Monochrome.surface,
+            ThemeColors.Monochrome.card,
+            ThemeColors.Monochrome.positive,
+            ThemeColors.Monochrome.negative,
+            ThemeColors.Monochrome.text,
+            ThemeColors.Monochrome.textSecondary,
+            "Monochrome"
+        )
         else -> AppTheme(
             ThemeColors.Default.primary,
             ThemeColors.Default.surface,
@@ -130,4 +214,4 @@ fun getTheme(themeName: String): AppTheme {
     }
 }
 
-val allThemes = listOf("Default", "Ocean", "Forest", "Sunset", "Cyberpunk")
+val allThemes = listOf("Default", "Amoled", "Light", "Ocean", "Forest", "Sunset", "Royal", "Cyberpunk", "Monochrome")

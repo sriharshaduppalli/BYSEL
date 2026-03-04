@@ -1,5 +1,8 @@
 package com.bysel.trader.data.api
 
+import com.bysel.trader.BuildConfig
+import com.bysel.trader.data.auth.AuthInterceptor
+import com.bysel.trader.data.auth.TokenRefreshAuthenticator
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -7,11 +10,12 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
-    private const val BASE_URL = "https://bysel-backend.onrender.com" // Cloud backend
-    // For emulator dev, use: "http://10.0.2.2:8000"
+    private val BASE_URL = BuildConfig.MARKET_REST_URL
 
-    private val httpClient: OkHttpClient by lazy {
+    val httpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
+            .addInterceptor(AuthInterceptor())
+            .authenticator(TokenRefreshAuthenticator())
             .addInterceptor(HttpLoggingInterceptor().apply {
                 level = HttpLoggingInterceptor.Level.BODY
             })

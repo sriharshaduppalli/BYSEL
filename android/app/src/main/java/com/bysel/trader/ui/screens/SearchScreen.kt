@@ -32,14 +32,18 @@ fun SearchScreen(
     onSymbolClick: (String) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
+    var showSuggestions by remember { mutableStateOf(false) }
 
-    // Debounce search - wait 300ms after typing stops
+    // Fast autocomplete - 100ms delay for instant suggestions
     LaunchedEffect(searchQuery) {
         if (searchQuery.isBlank()) {
             onClearSearch()
+            showSuggestions = false
             return@LaunchedEffect
         }
-        delay(300)
+        // Show suggestions immediately for better UX
+        showSuggestions = true
+        delay(100) // Reduced from 300ms for faster response
         onSearchQuery(searchQuery)
     }
 
@@ -111,13 +115,22 @@ fun SearchScreen(
                 }
             }
         } else if (isSearching) {
+            // Show loading with search query for better feedback
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = LocalAppTheme.current.primary)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = LocalAppTheme.current.primary)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "Searching for \"$searchQuery\"...",
+                        fontSize = 12.sp,
+                        color = LocalAppTheme.current.textSecondary
+                    )
+                }
             }
-        } else if (searchResults.isEmpty()) {
+        } else if (searchResults.isEmpty() && showSuggestions) {
             Box(
                 modifier = Modifier
                     .fillMaxSize(),
@@ -130,18 +143,31 @@ fun SearchScreen(
                 )
             }
         } else {
-            // Show result count
-            Text(
-                "${searchResults.size} stocks found",
-                fontSize = 12.sp,
-                color = Color(0xFF888888),
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
+            // Live search suggestions with count
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "${searchResults.size} ${if (searchResults.size == 1) "stock" else "stocks"} matching",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = LocalAppTheme.current.primary
+                )
+                Text(
+                    "Live suggestions",
+                    fontSize = 10.sp,
+                    color = Color(0xFF888888)
+                )
+            }
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(searchResults) { result ->
+                items(searchResults, key = { it.symbol }) { result ->
                     // Check if we have live price data
                     val existingQuote = quotes.find { it.symbol == result.symbol }
                     if (existingQuote != null) {

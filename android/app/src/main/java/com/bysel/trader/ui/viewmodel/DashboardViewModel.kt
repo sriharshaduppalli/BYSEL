@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class DashboardViewModel(app: Application) : AndroidViewModel(app) {
-    private val _widgetOrder = MutableStateFlow<List<String>>(listOf("portfolio", "news", "watchlist"))
+    private val _widgetOrder = MutableStateFlow<List<String>>(listOf("news", "watchlist"))
     val widgetOrder: StateFlow<List<String>> = _widgetOrder.asStateFlow()
 
     private val _watchlistPinned = MutableStateFlow(false)
@@ -22,21 +22,23 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     fun resetDashboardLayout() {
         val context = getApplication<Application>().applicationContext
         viewModelScope.launch {
-            _portfolioPinned.value = true
+            _portfolioPinned.value = false
             _newsPinned.value = true
             _watchlistPinned.value = true
-            _widgetOrder.value = listOf("portfolio", "news", "watchlist")
-            PinnedWidgetsStore.setPortfolioPinned(context, true)
+            _widgetOrder.value = listOf("news", "watchlist")
+            PinnedWidgetsStore.setPortfolioPinned(context, false)
             PinnedWidgetsStore.setNewsPinned(context, true)
             PinnedWidgetsStore.setWatchlistPinned(context, true)
-            PinnedWidgetsStore.setWidgetOrder(context, listOf("portfolio", "news", "watchlist"))
+            PinnedWidgetsStore.setWidgetOrder(context, listOf("news", "watchlist"))
         }
     }
 
     private fun loadWidgetOrder() {
         viewModelScope.launch {
             val context = getApplication<Application>().applicationContext
-            _widgetOrder.value = PinnedWidgetsStore.getWidgetOrder(context).first()
+            val savedOrder = PinnedWidgetsStore.getWidgetOrder(context).first()
+            val filtered = savedOrder.filter { it == "news" || it == "watchlist" }
+            _widgetOrder.value = if (filtered.isNotEmpty()) filtered else listOf("news", "watchlist")
         }
     }
     private val _pinnedStocks = MutableStateFlow<Set<String>>(emptySet())

@@ -4,6 +4,7 @@ import com.bysel.trader.data.api.BYSELApiService
 import com.bysel.trader.data.api.PortfolioSummary
 import com.bysel.trader.data.api.PortfolioValue
 import com.bysel.trader.data.api.RetrofitClient
+import com.bysel.trader.data.live.LiveMarketDataClient
 import com.bysel.trader.data.api.TradeHistory
 import com.bysel.trader.data.local.BYSELDatabase
 import com.bysel.trader.data.models.*
@@ -18,6 +19,7 @@ open class TradingRepository(private val database: BYSELDatabase) {
             database.holdingDao().insertHoldings(holdings)
         }
     private val apiService: BYSELApiService = RetrofitClient.apiService
+    private val liveMarketDataClient = LiveMarketDataClient(apiService)
 
     // ==================== QUOTES ====================
     open fun getQuotes(symbols: List<String>): Flow<Result<List<Quote>>> = flow {
@@ -40,6 +42,25 @@ open class TradingRepository(private val database: BYSELDatabase) {
             emit(Result.Success(quotes))
         } catch (e: Exception) {
             emit(Result.Error(e.message ?: "Unknown error"))
+        }
+    }
+
+    fun streamLiveQuotes(symbols: List<String>): Flow<Result<List<Quote>>> = flow {
+        emit(Result.Loading)
+        try {
+            liveMarketDataClient.streamQuotes(symbols).collect { quotes ->
+                if (quotes.isNotEmpty()) {
+                    database.quoteDao().insertQuotes(quotes)
+                    emit(Result.Success(quotes))
+                }
+            }
+        } catch (_: Exception) {
+            liveMarketDataClient.pollQuotes(symbols).collect { quotes ->
+                if (quotes.isNotEmpty()) {
+                    database.quoteDao().insertQuotes(quotes)
+                    emit(Result.Success(quotes))
+                }
+            }
         }
     }
 
@@ -246,6 +267,16 @@ open class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
+    suspend fun deactivateAlert(alertId: Int): Result<Unit> {
+        return try {
+            // Deactivate without deleting - useful for triggered alerts
+            database.alertDao().deactivateAlert(alertId)
+            Result.Success(Unit)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
     suspend fun getAllAlerts(): Result<List<Alert>> {
         return try {
             val alerts = apiService.getAlerts()
@@ -343,6 +374,115 @@ open class TradingRepository(private val database: BYSELDatabase) {
         return try {
             val health = apiService.getPortfolioHealth()
             Result.Success(health)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    // ==================== PHASE 1: MF, SIP, IPO, ETF ====================
+    suspend fun getMutualFunds(category: String? = null, query: String? = null): Result<List<MutualFund>> {
+        return try {
+            val funds = apiService.getMutualFunds(category = category, query = query)
+            Result.Success(funds)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getMutualFundDetail(schemeCode: String): Result<MutualFund> {
+        return try {
+            val fund = apiService.getMutualFundDetail(schemeCode)
+            Result.Success(fund)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun createSipPlan(request: SipPlanRequest): Result<SipPlan> {
+        return try {
+            val plan = apiService.createSipPlan(request)
+            Result.Success(plan)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getSipPlans(): Result<List<SipPlan>> {
+        return try {
+            val plans = apiService.getSipPlans()
+            Result.Success(plans)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun updateSipPlan(sipId: String, request: SipPlanUpdateRequest): Result<SipPlan> {
+        return try {
+            val plan = apiService.updateSipPlan(sipId, request)
+            Result.Success(plan)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun pauseSipPlan(sipId: String): Result<SipPlan> {
+        return try {
+            val plan = apiService.pauseSipPlan(sipId)
+            Result.Success(plan)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun resumeSipPlan(sipId: String): Result<SipPlan> {
+        return try {
+            val plan = apiService.resumeSipPlan(sipId)
+            Result.Success(plan)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getIpoListings(status: String? = null): Result<List<IPOListing>> {
+        return try {
+            val listings = apiService.getIpoListings(status)
+            Result.Success(listings)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getIpoDetail(ipoId: String): Result<IPOListing> {
+        return try {
+            val listing = apiService.getIpoDetail(ipoId)
+            Result.Success(listing)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun applyIpo(request: IPOApplicationRequest): Result<IPOApplicationResponse> {
+        return try {
+            val response = apiService.applyIpo(request)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getMyIpoApplications(): Result<List<IPOApplication>> {
+        return try {
+            val applications = apiService.getMyIpoApplications()
+            Result.Success(applications)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getEtfInstruments(category: String? = null, query: String? = null): Result<List<ETFInstrument>> {
+        return try {
+            val etfs = apiService.getEtfInstruments(category = category, query = query)
+            Result.Success(etfs)
         } catch (e: Exception) {
             Result.Error(e.message ?: "Unknown error")
         }

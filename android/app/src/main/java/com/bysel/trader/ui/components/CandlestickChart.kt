@@ -30,7 +30,6 @@ fun CandlestickChart(
     }
 
     var barWidth by remember { mutableStateOf(initialBarWidthDp) }
-    val scrollState = rememberScrollState()
 
     val closes = remember(history) { history.map { it.close } }
     val highs = remember(history) { history.map { it.high } }

@@ -17,3 +17,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "BYSEL"
 include(":app")
+include(":core:auth")
+include(":core:network")

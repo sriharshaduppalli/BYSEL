@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.MarketStatus
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.components.PullToRefreshBox
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.OutlinedTextField
 
@@ -37,7 +38,6 @@ private fun formatVolume(v: Long?): String {
 
 @Composable
 fun TradingScreen(
-    quotes: List<Quote>,
     isLoading: Boolean,
     error: String?,
     walletBalance: Double,
@@ -275,11 +275,16 @@ fun TradingScreen(
         } else {
             // Use paged quotes for large lists and load more when scrolled
             val paged by viewModel.pagedQuotes.collectAsState()
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 8.dp)
+            PullToRefreshBox(
+                isRefreshing = isLoading,
+                onRefresh = onRefresh,
+                enabled = true
             ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 8.dp)
+                ) {
                 itemsIndexed(paged) { index: Int, quote: Quote ->
                     TradingQuoteCard(quote) { selectedQuote = quote }
                     // prefetch next page when reaching near the end
@@ -288,6 +293,7 @@ fun TradingScreen(
                         LaunchedEffect(index) { viewModel.loadNextQuotesPage() }
                     }
                 }
+            }
             }
         }
     }

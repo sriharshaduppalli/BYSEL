@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collect
 import com.bysel.trader.utils.PromptBuilder
 import android.content.Intent
 import android.content.IntentFilter
@@ -91,8 +93,8 @@ class TradingViewModel(
     val requireCharging: StateFlow<Boolean> = _requireCharging.asStateFlow()
     val requireUnmetered: StateFlow<Boolean> = _requireUnmetered.asStateFlow()
 
-    // Alerts manager instance (declared early so init can use it)
-    private lateinit var alertsManager: AlertsManager
+    // Alerts manager instance (initialized directly to avoid lateinit)
+    private val alertsManager: AlertsManager = AlertsManager(getApplication())
     // initialize fast refresh enabled from settings
     private val _fastRefreshEnabled = MutableStateFlow(settingsPrefs.getBoolean("fast_refresh_enabled", false))
     val fastRefreshEnabled: StateFlow<Boolean> = _fastRefreshEnabled.asStateFlow()
@@ -126,6 +128,28 @@ class TradingViewModel(
     private val _heatmapLoading = MutableStateFlow(false)
     val heatmapLoading: StateFlow<Boolean> = _heatmapLoading.asStateFlow()
 
+    // Phase 1 products
+    private val _mutualFunds = MutableStateFlow<List<MutualFund>>(emptyList())
+    val mutualFunds: StateFlow<List<MutualFund>> = _mutualFunds.asStateFlow()
+
+    private val _ipoListings = MutableStateFlow<List<IPOListing>>(emptyList())
+    val ipoListings: StateFlow<List<IPOListing>> = _ipoListings.asStateFlow()
+
+    private val _myIpoApplications = MutableStateFlow<List<IPOApplication>>(emptyList())
+    val myIpoApplications: StateFlow<List<IPOApplication>> = _myIpoApplications.asStateFlow()
+
+    private val _etfInstruments = MutableStateFlow<List<ETFInstrument>>(emptyList())
+    val etfInstruments: StateFlow<List<ETFInstrument>> = _etfInstruments.asStateFlow()
+
+    private val _sipPlans = MutableStateFlow<List<SipPlan>>(emptyList())
+    val sipPlans: StateFlow<List<SipPlan>> = _sipPlans.asStateFlow()
+
+    private val _productsLoading = MutableStateFlow(false)
+    val productsLoading: StateFlow<Boolean> = _productsLoading.asStateFlow()
+
+    private val _productActionMessage = MutableStateFlow<String?>(null)
+    val productActionMessage: StateFlow<String?> = _productActionMessage.asStateFlow()
+
     private var autoRefreshJob: Job? = null
     private val AUTO_REFRESH_INTERVAL = 15_000L
     private val FAST_REFRESH_INTERVAL = 1_000L
@@ -135,17 +159,19 @@ class TradingViewModel(
     val pagedQuotes: StateFlow<List<Quote>> = _pagedQuotes.asStateFlow()
     private var currentPage = 0
     private val pageSize = 50
-    private var loadingPage = false
+    // Thread-safe pagination loading flag
+    private val _loadingPage = MutableStateFlow(false)
 
     init {
         loadAchievements()
-        // instantiate AlertsManager with application context
-        alertsManager = AlertsManager(getApplication())
         // observe active alerts from DB
         viewModelScope.launch {
-            try {
-                repository.getActiveAlerts().collectLatest { list -> _alerts.value = list }
-            } catch (_: Exception) { }
+            repository.getActiveAlerts()
+                .catch { e ->
+                    android.util.Log.e("TradingViewModel", "Error collecting alerts", e)
+                    emit(emptyList()) // Emit empty list on error to prevent crash
+                }
+                .collectLatest { list -> _alerts.value = list }
         }
         // conservative initial refreshes (non-blocking)
         // Load cached quotes immediately to improve cold-start UX
@@ -239,12 +265,16 @@ class TradingViewModel(
     // --- Quotes / holdings / wallet ---
     fun refreshQuotes() {
         viewModelScope.launch {
-            repository.getQuotes(defaultSymbols).collectLatest { result ->
+            _isLoading.value = true
+            repository.getQuotes(defaultSymbols).collect { result ->
                 when (result) {
                     is Result.Loading -> _isLoading.value = true
                     is Result.Success -> {
                         _quotes.value = result.data
                         _isLoading.value = false
+                        // Reset paging after success
+                        currentPage = 0
+                        loadNextQuotesPage()
                     }
                     is Result.Error -> {
                         _error.value = result.message
@@ -252,29 +282,30 @@ class TradingViewModel(
                     }
                 }
             }
-            // also reset paging
-            currentPage = 0
-            loadNextQuotesPage()
         }
     }
 
     fun loadNextQuotesPage() {
-        if (loadingPage) return
-        loadingPage = true
+        // Thread-safe check-and-set using StateFlow
+        if (_loadingPage.value) return
+        _loadingPage.value = true
         viewModelScope.launch {
-            repository.getQuotesPage(currentPage, pageSize).collectLatest { page ->
-                if (page.isNotEmpty()) {
-                    val current = _pagedQuotes.value.toMutableList()
-                    // append only new symbols to avoid duplicates caused by overlapping
-                    // or re-emitted pages from the DB/repository
-                    val toAdd = page.filter { p -> current.none { it.symbol == p.symbol } }
-                    if (toAdd.isNotEmpty()) {
-                        current.addAll(toAdd)
-                        _pagedQuotes.value = current
-                        currentPage += 1
+            try {
+                repository.getQuotesPage(currentPage, pageSize).collect { page ->
+                    if (page.isNotEmpty()) {
+                        val current = _pagedQuotes.value.toMutableList()
+                        // append only new symbols to avoid duplicates caused by overlapping
+                        // or re-emitted pages from the DB/repository
+                        val toAdd = page.filter { p -> current.none { it.symbol == p.symbol } }
+                        if (toAdd.isNotEmpty()) {
+                            current.addAll(toAdd)
+                            _pagedQuotes.value = current
+                            currentPage += 1
+                        }
                     }
                 }
-                loadingPage = false
+            } finally {
+                _loadingPage.value = false
             }
         }
     }
@@ -317,7 +348,12 @@ class TradingViewModel(
 
     // --- Search ---
     private var searchJob: kotlinx.coroutines.Job? = null
-    private val searchCache = mutableMapOf<String, List<StockSearchResult>>()
+    // LRU cache with max size to prevent unbounded growth
+    private val searchCache = object : LinkedHashMap<String, List<StockSearchResult>>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: Map.Entry<String, List<StockSearchResult>>): Boolean {
+            return size > 50 // Keep max 50 cached searches
+        }
+    }
     fun searchStocks(query: String) {
         if (query.isBlank()) { _searchResults.value = emptyList(); return }
         searchJob?.cancel()
@@ -393,45 +429,25 @@ class TradingViewModel(
         // respect global enabled flag
         if (!_fastRefreshEnabled.value) return
         autoRefreshJob = viewModelScope.launch {
-            while (isActive) {
-                // check play/pause state and safety toggles each iteration
-                if (!_fastRefreshPlaying.value) {
-                    kotlinx.coroutines.delay(intervalMs)
-                    continue
-                }
+            try {
+                repository.streamLiveQuotes(symbols).collectLatest { result ->
+                    if (!_fastRefreshPlaying.value) return@collectLatest
+                    if (_requireCharging.value && !isDeviceCharging()) return@collectLatest
+                    if (_requireUnmetered.value && !isOnUnmeteredNetwork()) return@collectLatest
+                    val isMarketOpen = _marketStatus.value?.isOpen ?: true
+                    if (!isMarketOpen) return@collectLatest
 
-                if (_requireCharging.value && !isDeviceCharging()) {
-                    kotlinx.coroutines.delay(intervalMs)
-                    continue
-                }
-
-                if (_requireUnmetered.value && !isOnUnmeteredNetwork()) {
-                    kotlinx.coroutines.delay(intervalMs)
-                    continue
-                }
-
-                val isMarketOpen = _marketStatus.value?.isOpen ?: true
-
-                if (isMarketOpen) {
-                    try {
-                        repository.getQuotes(symbols).collectLatest { result ->
-                            when (result) {
-                                is Result.Success -> {
-                                    // update UI state
-                                    _quotes.value = result.data
-                                    // evaluate alerts against latest quotes
-                                    evaluateAlerts(result.data)
-                                }
-                                is Result.Error -> _error.value = result.message
-                                else -> {}
-                            }
+                    when (result) {
+                        is Result.Success -> {
+                            _quotes.value = result.data
+                            evaluateAlerts(result.data)
                         }
-                    } catch (_: Exception) {
-                        // ignore transient errors and continue
+                        is Result.Error -> _error.value = result.message
+                        else -> {}
                     }
                 }
-
-                kotlinx.coroutines.delay(intervalMs)
+            } catch (_: Exception) {
+                // ignore transient stream interruptions
             }
         }
     }
@@ -464,10 +480,19 @@ class TradingViewModel(
 
     private fun isDeviceCharging(): Boolean {
         return try {
-            val intent = getApplication<Application>().registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-            val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
-            status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
-        } catch (e: Exception) { false }
+            val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+            val batteryStatus = getApplication<Application>().registerReceiver(null, filter)
+            if (batteryStatus == null) {
+                android.util.Log.w("TradingViewModel", "Could not read battery status")
+                return true // Default to true to avoid blocking refresh
+            }
+            val status = batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+            status == BatteryManager.BATTERY_STATUS_CHARGING || 
+            status == BatteryManager.BATTERY_STATUS_FULL
+        } catch (e: Exception) {
+            android.util.Log.e("TradingViewModel", "Error checking charging status", e)
+            true // Default to true on error to avoid blocking
+        }
     }
 
     private fun isOnUnmeteredNetwork(): Boolean {
@@ -485,9 +510,27 @@ class TradingViewModel(
         for (a in activeAlerts) {
             val q = map[a.symbol] ?: continue
             val price = q.last
+            var alertTriggered = false
             when (a.alertType.uppercase()) {
-                "ABOVE" -> if (price >= a.thresholdPrice) alertsManager.sendPriceAlert(a, price)
-                "BELOW" -> if (price <= a.thresholdPrice) alertsManager.sendPriceAlert(a, price)
+                "ABOVE" -> if (price >= a.thresholdPrice) {
+                    alertsManager.sendPriceAlert(a, price)
+                    alertTriggered = true
+                }
+                "BELOW" -> if (price <= a.thresholdPrice) {
+                    alertsManager.sendPriceAlert(a, price)
+                    alertTriggered = true
+                }
+            }
+            // Deactivate alert after triggering to prevent spam
+            if (alertTriggered) {
+                viewModelScope.launch {
+                    try {
+                        repository.deactivateAlert(a.id)
+                    } catch (e: Exception) {
+                        // Log error but don't fail the whole evaluation
+                        android.util.Log.e("TradingViewModel", "Error deactivating alert ${a.id}", e)
+                    }
+                }
             }
         }
     }
@@ -724,6 +767,170 @@ class TradingViewModel(
             }
             _heatmapLoading.value = false
         }
+    }
+
+    fun loadMutualFunds(category: String? = null, query: String? = null) {
+        viewModelScope.launch {
+            _productsLoading.value = true
+            when (val r = repository.getMutualFunds(category = category, query = query)) {
+                is Result.Success -> _mutualFunds.value = r.data
+                is Result.Error -> _error.value = r.message
+                else -> {}
+            }
+            _productsLoading.value = false
+        }
+    }
+
+    fun loadIpoListings(status: String? = null) {
+        viewModelScope.launch {
+            _productsLoading.value = true
+            when (val r = repository.getIpoListings(status = status)) {
+                is Result.Success -> _ipoListings.value = r.data
+                is Result.Error -> _error.value = r.message
+                else -> {}
+            }
+            _productsLoading.value = false
+        }
+    }
+
+    fun loadMyIpoApplications() {
+        viewModelScope.launch {
+            _productsLoading.value = true
+            when (val r = repository.getMyIpoApplications()) {
+                is Result.Success -> _myIpoApplications.value = r.data
+                is Result.Error -> _error.value = r.message
+                else -> {}
+            }
+            _productsLoading.value = false
+        }
+    }
+
+    fun loadEtfs(category: String? = null, query: String? = null) {
+        viewModelScope.launch {
+            _productsLoading.value = true
+            when (val r = repository.getEtfInstruments(category = category, query = query)) {
+                is Result.Success -> _etfInstruments.value = r.data
+                is Result.Error -> _error.value = r.message
+                else -> {}
+            }
+            _productsLoading.value = false
+        }
+    }
+
+    fun loadSipPlans() {
+        viewModelScope.launch {
+            _productsLoading.value = true
+            when (val r = repository.getSipPlans()) {
+                is Result.Success -> _sipPlans.value = r.data
+                is Result.Error -> _error.value = r.message
+                else -> {}
+            }
+            _productsLoading.value = false
+        }
+    }
+
+    fun updateSipPlan(sipId: String, amount: Double, frequency: String, dayOfMonth: Int) {
+        viewModelScope.launch {
+            _productsLoading.value = true
+            when (val r = repository.updateSipPlan(
+                sipId,
+                SipPlanUpdateRequest(
+                    amount = amount,
+                    frequency = frequency,
+                    dayOfMonth = dayOfMonth
+                )
+            )) {
+                is Result.Success -> {
+                    _productActionMessage.value = "SIP updated"
+                    loadSipPlans()
+                }
+                is Result.Error -> _error.value = r.message
+                else -> {}
+            }
+            _productsLoading.value = false
+        }
+    }
+
+    fun pauseSipPlan(sipId: String) {
+        viewModelScope.launch {
+            _productsLoading.value = true
+            when (val r = repository.pauseSipPlan(sipId)) {
+                is Result.Success -> {
+                    _productActionMessage.value = "SIP paused"
+                    loadSipPlans()
+                }
+                is Result.Error -> _error.value = r.message
+                else -> {}
+            }
+            _productsLoading.value = false
+        }
+    }
+
+    fun resumeSipPlan(sipId: String) {
+        viewModelScope.launch {
+            _productsLoading.value = true
+            when (val r = repository.resumeSipPlan(sipId)) {
+                is Result.Success -> {
+                    _productActionMessage.value = "SIP resumed"
+                    loadSipPlans()
+                }
+                is Result.Error -> _error.value = r.message
+                else -> {}
+            }
+            _productsLoading.value = false
+        }
+    }
+
+    fun createSipForFund(schemeCode: String, amount: Double, frequency: String = "MONTHLY", dayOfMonth: Int = 5) {
+        viewModelScope.launch {
+            _productsLoading.value = true
+            when (val r = repository.createSipPlan(
+                SipPlanRequest(
+                    schemeCode = schemeCode,
+                    amount = amount,
+                    frequency = frequency,
+                    dayOfMonth = dayOfMonth
+                )
+            )) {
+                is Result.Success -> {
+                    _productActionMessage.value = "SIP created successfully"
+                    loadSipPlans()
+                }
+                is Result.Error -> _error.value = r.message
+                else -> {}
+            }
+            _productsLoading.value = false
+        }
+    }
+
+    fun applyForIpo(ipo: IPOListing, lots: Int = 1, upiId: String = "demo@upi") {
+        viewModelScope.launch {
+            _productsLoading.value = true
+            val bid = ipo.priceBandMax ?: ipo.priceBandMin ?: 0.0
+            when (val r = repository.applyIpo(
+                IPOApplicationRequest(
+                    ipoId = ipo.ipoId,
+                    lots = lots,
+                    bidPrice = bid,
+                    upiId = upiId
+                )
+            )) {
+                is Result.Success -> _productActionMessage.value = "IPO application submitted"
+                is Result.Error -> _error.value = r.message
+                else -> {}
+            }
+            _productsLoading.value = false
+        }
+    }
+
+    fun clearProductActionMessage() {
+        _productActionMessage.value = null
+    }
+
+    // Fix Bug #1: Properly clean up resources to prevent memory leaks
+    override fun onCleared() {
+        super.onCleared()
+        stopFastRefresh()
     }
 
 }

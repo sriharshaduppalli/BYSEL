@@ -251,3 +251,127 @@ data class SectorSummary(
     val name: String = "",
     val change: Double = 0.0
 )
+
+data class MutualFund(
+    val schemeCode: String,
+    val schemeName: String,
+    val category: String,
+    val nav: Double,
+    val navDate: String,
+    val returns1Y: Double? = null,
+    val returns3Y: Double? = null,
+    val returns5Y: Double? = null,
+    val fundHouse: String? = null,
+    val riskLevel: String? = null
+)
+
+data class SipPlanRequest(
+    val schemeCode: String,
+    val amount: Double,
+    val frequency: String = "MONTHLY",
+    val dayOfMonth: Int = 5
+)
+
+data class SipPlanUpdateRequest(
+    val amount: Double? = null,
+    val frequency: String? = null,
+    val dayOfMonth: Int? = null,
+    val isActive: Boolean? = null
+)
+
+data class SipPlan(
+    val id: String,
+    val schemeCode: String,
+    val schemeName: String,
+    val amount: Double,
+    val frequency: String,
+    val nextInstallmentDate: String,
+    val isActive: Boolean
+)
+
+data class IPOListing(
+    val ipoId: String,
+    val companyName: String,
+    val symbol: String,
+    val status: String,
+    val issueOpenDate: String,
+    val issueCloseDate: String,
+    val listingDate: String? = null,
+    val priceBandMin: Double? = null,
+    val priceBandMax: Double? = null,
+    val lotSize: Int? = null
+)
+
+data class IPOApplicationRequest(
+    val ipoId: String,
+    val lots: Int,
+    val bidPrice: Double,
+    val upiId: String
+)
+
+data class IPOApplicationResponse(
+    val applicationId: String,
+    val status: String,
+    val message: String
+)
+
+data class IPOApplication(
+    val applicationId: String,
+    val ipoId: String,
+    val companyName: String,
+    val lots: Int,
+    val bidPrice: Double,
+    val upiId: String,
+    val status: String,
+    val appliedAt: String
+)
+
+data class ETFInstrument(
+    val symbol: String,
+    val name: String,
+    val category: String,
+    val last: Double,
+    val pctChange: Double,
+    val aumCr: Double? = null,
+    val expenseRatio: Double? = null
+)
+
+data class RegisterRequest(
+    val username: String,
+    val email: String,
+    val password: String
+)
+
+data class LoginRequest(
+    val username: String,
+    val password: String
+)
+
+data class RefreshTokenRequest(
+    val refreshToken: String
+)
+
+data class LogoutRequest(
+    val refreshToken: String
+)
+
+data class AuthResponse(
+    val status: String,
+    val user_id: Int,
+    val access_token: String,
+    val refresh_token: String
+)
+
+data class AuthSessionItem(
+    val session_id: Int,
+    val created_at: String,
+    val expires_at: String,
+    val last_used_at: String? = null,
+    val client_ip: String? = null,
+    val device_info: String? = null
+)
+
+data class AuthSessionsResponse(
+    val status: String,
+    val sessions: List<AuthSessionItem>
+)

@@ -2,10 +2,10 @@ import java.io.FileInputStream
 import java.util.Properties
 
 plugins {
-    id("com.android.application") version "8.4.0"
-    id("org.jetbrains.kotlin.android") version "1.9.23"
-    id("org.jetbrains.kotlin.kapt") version "1.9.23"
-    id("com.google.dagger.hilt.android") version "2.51.1"
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.kapt")
+    id("com.google.dagger.hilt.android")
     // Google services plugin is applied via apply() below to ensure google-services.json is present
 }
 
@@ -42,6 +42,13 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        buildConfigField("String", "MARKET_REST_URL", "\"https://bysel-backend.onrender.com/\"")
+        buildConfigField("String", "MARKET_WS_URL", "\"wss://bysel-backend.onrender.com/ws/quotes\"")
+        buildConfigField("String", "MARKET_DATA_PROVIDER", "\"REST_FALLBACK\"")
+        buildConfigField("String", "MARKET_TRUEDATA_WS_URL", "\"wss://push.truedata.in\"")
+        buildConfigField("String", "MARKET_TRUEDATA_TOKEN", "\"\"")
+        buildConfigField("String", "CHART_ENGINE", "\"COMPOSE\"")
     }
 
         // --- Auto-increment version before bundleRelease ---
@@ -124,6 +131,10 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+        freeCompilerArgs += listOf(
+            "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi",
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api"
+        )
     }
 
     buildFeatures {
@@ -142,6 +153,9 @@ android {
 }
 
 dependencies {
+    implementation(project(":core:auth"))
+    implementation(project(":core:network"))
+
     // Core Android
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
@@ -160,6 +174,16 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0")
     implementation("androidx.compose.runtime:runtime-livedata")
+    
+    // Gesture support - HorizontalPager for swipeable tabs
+    implementation("androidx.compose.foundation:foundation:1.6.8")
+    
+    // Modern splash screen API
+    implementation("androidx.core:core-splashscreen:1.0.1")
+    
+    // Biometric authentication
+    implementation("androidx.biometric:biometric:1.2.0-alpha05")
+    
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     implementation("androidx.navigation:navigation-compose:2.7.7")

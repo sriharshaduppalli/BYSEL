@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.HeatmapSector
 import com.bysel.trader.data.models.HeatmapStock
 import com.bysel.trader.data.models.MarketHeatmap
+import com.bysel.trader.ui.components.PullToRefreshBox
 import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
@@ -69,11 +70,16 @@ fun HeatmapScreen(
                 }
             }
         } else if (heatmap != null) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            PullToRefreshBox(
+                isRefreshing = isLoading,
+                onRefresh = onRefresh,
+                enabled = true
             ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                 // Market Breadth Card
                 item {
                     MarketBreadthCard(heatmap)
@@ -83,6 +89,7 @@ fun HeatmapScreen(
                 items(heatmap.sectors) { sector ->
                     SectorHeatmapCard(sector, onStockClick)
                 }
+            }
             }
         }
     }

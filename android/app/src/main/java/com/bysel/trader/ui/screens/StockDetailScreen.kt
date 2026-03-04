@@ -162,8 +162,7 @@ fun StockDetailScreen(
             if (history.isEmpty()) {
                 Text(text = "No historical data", color = LocalAppTheme.current.textSecondary)
             } else {
-                // Candlestick chart with pan/zoom
-                com.bysel.trader.ui.components.CandlestickChart(history = history, modifier = Modifier.fillMaxWidth())
+                com.bysel.trader.ui.components.PriceHistoryChart(history = history, modifier = Modifier.fillMaxWidth())
             }
 
             // Trading Volume Section
