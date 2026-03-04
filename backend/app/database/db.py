@@ -189,6 +189,9 @@ def _ensure_refresh_token_columns() -> None:
 
 
 def _ensure_user_columns() -> None:
+    _ensure_column("users", "email", "email VARCHAR NULL")
+    _ensure_column("users", "password_hash", "password_hash VARCHAR NULL")
+    _ensure_column("users", "created_at", "created_at TIMESTAMP NULL")
     _ensure_column("users", "token_version", "token_version INTEGER NOT NULL DEFAULT 0")
 
 
