@@ -49,6 +49,8 @@ jobs:
   deploy-playstore:
     runs-on: ubuntu-latest
     needs: build-release
+    env:
+      PLAYSTORE_SERVICE_ACCOUNT: ${{ secrets.PLAYSTORE_SERVICE_ACCOUNT }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -58,27 +60,89 @@ jobs:
         with:
           name: BYSEL-release-aab
           path: build/
-      - name: Play Store upload or skip
-        env:
-          PLAYSTORE_SERVICE_ACCOUNT: ${{ secrets.PLAYSTORE_SERVICE_ACCOUNT }}
+
+      - name: Generate Play Store release notes
         run: |
-          if [ -n "$PLAYSTORE_SERVICE_ACCOUNT" ]; then
-            npx r0adkll/upload-google-play \
-              --serviceAccountJsonPlainText "$PLAYSTORE_SERVICE_ACCOUNT" \
-              --packageName com.bysel.trader \
-              --releaseFile build/app-release.aab \
-              --track internal \
-              --whatsNewDirectory ./playstore-metadata/whatsnew
-          else
-            echo "⚠️  PLAYSTORE_SERVICE_ACCOUNT secret not configured"
-            echo "To deploy to Play Store, add the secret at:"
-            echo "https://github.com/sriharshaduppalli/BYSEL/settings/secrets/actions"
-            echo ""
-            echo "Steps:"
-            echo "1. Go to Google Play Console"
-            echo "2. Settings → API access → Create Service Account"
-            echo "3. Download JSON key"
-            echo "4. Add as PLAYSTORE_SERVICE_ACCOUNT secret"
-            echo ""
-            echo "AAB artifact is ready at: build/app-release.aab"
-          fi
+          mkdir -p distribution/whatsnew
+          python - <<'PY'
+          import datetime as dt
+          import os
+          import subprocess
+          from pathlib import Path
+
+          sha = os.environ.get("GITHUB_SHA", "HEAD")
+          ref_name = os.environ.get("GITHUB_REF_NAME", "manual")
+
+          def cmd(args):
+              return subprocess.check_output(args, text=True).strip()
+
+          previous_tag = ""
+          try:
+              previous_tag = cmd(["git", "describe", "--tags", "--abbrev=0", f"{sha}^"])
+          except Exception:
+              previous_tag = ""
+
+          log_range = f"{previous_tag}..{sha}" if previous_tag else sha
+
+          try:
+              subjects_raw = cmd(["git", "log", log_range, "--no-merges", "--pretty=format:%s", "-n", "20"])
+              subjects = subjects_raw.splitlines() if subjects_raw else []
+          except Exception:
+              subjects = []
+
+          ignored_prefixes = (
+              "chore(android): bump version",
+              "merge ",
+              "release ",
+          )
+
+          bullets = []
+          for subject in subjects:
+              subject = subject.strip()
+              if not subject:
+                  continue
+              lowered = subject.lower()
+              if any(lowered.startswith(prefix) for prefix in ignored_prefixes):
+                  continue
+              bullets.append(f"• {subject}")
+              if len(bullets) == 6:
+                  break
+
+          if not bullets:
+              bullets = [
+                  "• Bug fixes and performance improvements.",
+                  "• Stability and reliability enhancements.",
+              ]
+
+          header = f"BYSEL {ref_name} ({dt.datetime.utcnow():%Y-%m-%d})"
+          notes = header + "\n" + "\n".join(bullets)
+
+          max_chars = 500
+          if len(notes) > max_chars:
+              notes = notes[: max_chars - 1].rstrip() + "…"
+
+          output = Path("distribution/whatsnew/whatsnew-en-US")
+          output.write_text(notes + "\n", encoding="utf-8")
+          print(f"Generated {output} ({len(notes)} chars)")
+          PY
+
+      - name: Preview generated release notes
+        run: cat distribution/whatsnew/whatsnew-en-US
+
+      - name: Upload to Google Play (internal)
+        if: ${{ env.PLAYSTORE_SERVICE_ACCOUNT != '' }}
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAYSTORE_SERVICE_ACCOUNT }}
+          packageName: com.bysel.trader
+          releaseFiles: build/app-release.aab
+          track: internal
+          status: completed
+          whatsNewDirectory: distribution/whatsnew
+
+      - name: Skip upload if Play credentials are missing
+        if: ${{ env.PLAYSTORE_SERVICE_ACCOUNT == '' }}
+        run: |
+          echo "⚠️ PLAYSTORE_SERVICE_ACCOUNT secret not configured"
+          echo "AAB artifact is ready at: build/app-release.aab"
+          echo "Add PLAYSTORE_SERVICE_ACCOUNT in repo secrets to enable automatic Play uploads."
