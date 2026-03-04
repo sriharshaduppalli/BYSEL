@@ -17,6 +17,11 @@ import os
 import time
 import secrets
 
+try:
+    import bcrypt as bcrypt_lib
+except Exception:
+    bcrypt_lib = None
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -86,6 +91,34 @@ class SessionInfo(BaseModel):
 class SessionsResponse(BaseModel):
     status: str
     sessions: List[SessionInfo]
+
+
+def _hash_password(password: str) -> str:
+    if bcrypt_lib is not None:
+        try:
+            return bcrypt_lib.hashpw(password.encode(), bcrypt_lib.gensalt()).decode()
+        except Exception as exc:
+            logger.exception("auth.password.hash_bcrypt_failed reason=%s", str(exc))
+
+    try:
+        return pwd_context.hash(password)
+    except Exception as exc:
+        logger.exception("auth.password.hash_passlib_failed reason=%s", str(exc))
+        raise HTTPException(status_code=500, detail="Password hashing unavailable")
+
+
+def _verify_password(password: str, password_hash: str) -> bool:
+    if password_hash.startswith("$2") and bcrypt_lib is not None:
+        try:
+            return bcrypt_lib.checkpw(password.encode(), password_hash.encode())
+        except Exception as exc:
+            logger.exception("auth.password.verify_bcrypt_failed reason=%s", str(exc))
+
+    try:
+        return pwd_context.verify(password, password_hash)
+    except Exception as exc:
+        logger.exception("auth.password.verify_passlib_failed reason=%s", str(exc))
+        return False
 
 
 def _b64_encode(data: bytes) -> str:
@@ -506,7 +539,7 @@ def register(user: UserRegister, request: Request):
             raise HTTPException(status_code=400, detail="Username or email already exists")
 
         stage = "hash_password"
-        hashed = pwd_context.hash(password)
+        hashed = _hash_password(password)
 
         stage = "insert_user"
         new_user = UserModel(username=user.username, email=user.email, password_hash=hashed, created_at=datetime.utcnow())
@@ -585,7 +618,7 @@ def login(user: UserLogin, request: Request):
     try:
         _prune_stale_refresh_tokens(db)
         db_user = db.query(UserModel).filter(UserModel.username == user.username).first()
-        if not db_user or not pwd_context.verify(user.password, db_user.password_hash):
+        if not db_user or not _verify_password(user.password, db_user.password_hash):
             _metric_inc("login.failure_invalid_credentials")
             lockout_triggered = _record_login_failure(login_key)
             if lockout_triggered:
