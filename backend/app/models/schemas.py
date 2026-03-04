@@ -124,6 +124,35 @@ class MutualFund(BaseModel):
     riskLevel: Optional[str] = None
 
 
+class MutualFundCompareResponse(BaseModel):
+    funds: List[MutualFund]
+    bestReturns1YSchemeCode: Optional[str] = None
+    bestReturns3YSchemeCode: Optional[str] = None
+    bestReturns5YSchemeCode: Optional[str] = None
+    lowestRiskSchemeCode: Optional[str] = None
+    summary: str
+
+
+class MutualFundRecommendationItem(BaseModel):
+    schemeCode: str
+    schemeName: str
+    category: str
+    nav: float
+    navDate: str
+    fundHouse: Optional[str] = None
+    riskLevel: Optional[str] = None
+    suitabilityScore: float
+    rationale: str
+
+
+class MutualFundRecommendationResponse(BaseModel):
+    riskProfile: str
+    goal: Optional[str] = None
+    horizonYears: int
+    recommendations: List[MutualFundRecommendationItem]
+    generatedAt: str
+
+
 class SipPlanRequest(BaseModel):
     schemeCode: str
     amount: float

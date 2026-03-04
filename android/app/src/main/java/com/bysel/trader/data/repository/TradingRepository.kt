@@ -380,10 +380,54 @@ open class TradingRepository(private val database: BYSELDatabase) {
     }
 
     // ==================== PHASE 1: MF, SIP, IPO, ETF ====================
-    suspend fun getMutualFunds(category: String? = null, query: String? = null): Result<List<MutualFund>> {
+    suspend fun getMutualFunds(
+        category: String? = null,
+        query: String? = null,
+        sortBy: String? = null,
+        sortOrder: String? = null,
+        limit: Int? = null,
+    ): Result<List<MutualFund>> {
         return try {
-            val funds = apiService.getMutualFunds(category = category, query = query)
+            val funds = apiService.getMutualFunds(
+                category = category,
+                query = query,
+                sortBy = sortBy,
+                sortOrder = sortOrder,
+                limit = limit,
+            )
             Result.Success(funds)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun compareMutualFunds(schemeCodes: List<String>): Result<MutualFundCompareResponse> {
+        val normalized = schemeCodes.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        if (normalized.size < 2) {
+            return Result.Error("Select at least 2 funds to compare")
+        }
+        return try {
+            val response = apiService.compareMutualFunds(normalized.joinToString(","))
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun recommendMutualFunds(
+        riskProfile: String,
+        goal: String? = null,
+        horizonYears: Int = 5,
+        limit: Int = 5,
+    ): Result<MutualFundRecommendationResponse> {
+        return try {
+            val response = apiService.recommendMutualFunds(
+                riskProfile = riskProfile,
+                goal = goal,
+                horizonYears = horizonYears,
+                limit = limit,
+            )
+            Result.Success(response)
         } catch (e: Exception) {
             Result.Error(e.message ?: "Unknown error")
         }

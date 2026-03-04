@@ -132,6 +132,12 @@ class TradingViewModel(
     private val _mutualFunds = MutableStateFlow<List<MutualFund>>(emptyList())
     val mutualFunds: StateFlow<List<MutualFund>> = _mutualFunds.asStateFlow()
 
+    private val _mutualFundCompare = MutableStateFlow<MutualFundCompareResponse?>(null)
+    val mutualFundCompare: StateFlow<MutualFundCompareResponse?> = _mutualFundCompare.asStateFlow()
+
+    private val _mutualFundRecommendations = MutableStateFlow<MutualFundRecommendationResponse?>(null)
+    val mutualFundRecommendations: StateFlow<MutualFundRecommendationResponse?> = _mutualFundRecommendations.asStateFlow()
+
     private val _ipoListings = MutableStateFlow<List<IPOListing>>(emptyList())
     val ipoListings: StateFlow<List<IPOListing>> = _ipoListings.asStateFlow()
 
@@ -769,16 +775,76 @@ class TradingViewModel(
         }
     }
 
-    fun loadMutualFunds(category: String? = null, query: String? = null) {
+    fun loadMutualFunds(
+        category: String? = null,
+        query: String? = null,
+        sortBy: String? = null,
+        sortOrder: String? = null,
+        limit: Int? = 500,
+    ) {
         viewModelScope.launch {
             _productsLoading.value = true
-            when (val r = repository.getMutualFunds(category = category, query = query)) {
+            when (val r = repository.getMutualFunds(
+                category = category,
+                query = query,
+                sortBy = sortBy,
+                sortOrder = sortOrder,
+                limit = limit,
+            )) {
                 is Result.Success -> _mutualFunds.value = r.data
                 is Result.Error -> _error.value = r.message
                 else -> {}
             }
             _productsLoading.value = false
         }
+    }
+
+    fun compareMutualFunds(schemeCodes: List<String>) {
+        viewModelScope.launch {
+            _productsLoading.value = true
+            when (val r = repository.compareMutualFunds(schemeCodes)) {
+                is Result.Success -> {
+                    _mutualFundCompare.value = r.data
+                    _productActionMessage.value = "Mutual fund comparison ready"
+                }
+                is Result.Error -> _error.value = r.message
+                else -> {}
+            }
+            _productsLoading.value = false
+        }
+    }
+
+    fun clearMutualFundCompare() {
+        _mutualFundCompare.value = null
+    }
+
+    fun loadMutualFundRecommendations(
+        riskProfile: String,
+        goal: String? = null,
+        horizonYears: Int = 5,
+        limit: Int = 5,
+    ) {
+        viewModelScope.launch {
+            _productsLoading.value = true
+            when (val r = repository.recommendMutualFunds(
+                riskProfile = riskProfile,
+                goal = goal,
+                horizonYears = horizonYears,
+                limit = limit,
+            )) {
+                is Result.Success -> {
+                    _mutualFundRecommendations.value = r.data
+                    _productActionMessage.value = "AI fit recommendations updated"
+                }
+                is Result.Error -> _error.value = r.message
+                else -> {}
+            }
+            _productsLoading.value = false
+        }
+    }
+
+    fun clearMutualFundRecommendations() {
+        _mutualFundRecommendations.value = null
     }
 
     fun loadIpoListings(status: String? = null) {

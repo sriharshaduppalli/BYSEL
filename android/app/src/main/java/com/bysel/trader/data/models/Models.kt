@@ -265,6 +265,35 @@ data class MutualFund(
     val riskLevel: String? = null
 )
 
+data class MutualFundCompareResponse(
+    val funds: List<MutualFund>,
+    val bestReturns1YSchemeCode: String? = null,
+    val bestReturns3YSchemeCode: String? = null,
+    val bestReturns5YSchemeCode: String? = null,
+    val lowestRiskSchemeCode: String? = null,
+    val summary: String
+)
+
+data class MutualFundRecommendationItem(
+    val schemeCode: String,
+    val schemeName: String,
+    val category: String,
+    val nav: Double,
+    val navDate: String,
+    val fundHouse: String? = null,
+    val riskLevel: String? = null,
+    val suitabilityScore: Double,
+    val rationale: String
+)
+
+data class MutualFundRecommendationResponse(
+    val riskProfile: String,
+    val goal: String? = null,
+    val horizonYears: Int,
+    val recommendations: List<MutualFundRecommendationItem>,
+    val generatedAt: String
+)
+
 data class SipPlanRequest(
     val schemeCode: String,
     val amount: Double,
