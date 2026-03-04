@@ -22,7 +22,8 @@ from ..models.schemas import (
     Quote, Holding, Order, OrderResponse, Alert, AlertCreate,
     AlertResponse, HealthCheck, TradeHistory, PortfolioSummary, PortfolioValue,
     Wallet, WalletTransaction, WalletResponse, MarketStatus,
-    MutualFund, SipPlanRequest, SipPlan, IPOListing,
+    MutualFund, MutualFundCompareResponse, MutualFundRecommendationItem, MutualFundRecommendationResponse,
+    SipPlanRequest, SipPlan, IPOListing,
     SipPlanUpdateRequest, IPOApplicationRequest, IPOApplicationResponse, IPOApplication, ETFInstrument
 )
 from .trading import (
@@ -43,6 +44,7 @@ logger = logging.getLogger(__name__)
 _MF_NAV_SOURCE_URL = os.getenv("MF_NAV_SOURCE_URL", "https://www.amfiindia.com/spages/NAVAll.txt")
 _MF_LIVE_CACHE_TTL_SECONDS = int(os.getenv("MF_LIVE_CACHE_TTL_SECONDS", "1800"))
 _MF_LIVE_CACHE: dict[str, object] = {"fetched_at": 0.0, "funds": []}
+_MF_SORT_FIELDS = {"name", "nav", "returns1y", "returns3y", "returns5y", "risk", "category"}
 
 
 def _normalize_nav_date(value: str) -> str:
@@ -82,6 +84,32 @@ def _derive_risk_level(category: str) -> str:
         "FOF": "MODERATE",
         "OTHER": "MODERATE",
     }.get(category, "MODERATE")
+
+
+def _risk_rank(risk_level: str | None, category: str | None = None) -> int:
+    token = (risk_level or "").strip().upper()
+    mapping = {
+        "LOW": 1,
+        "LOW_MODERATE": 1,
+        "MODERATE": 2,
+        "MODERATE_HIGH": 3,
+        "HIGH": 3,
+        "VERY_HIGH": 4,
+    }
+    if token in mapping:
+        return mapping[token]
+
+    category_token = (category or "").strip().upper()
+    category_mapping = {
+        "DEBT": 1,
+        "HYBRID": 2,
+        "SOLUTION": 2,
+        "INDEX": 3,
+        "EQUITY": 3,
+        "FOF": 2,
+        "OTHER": 2,
+    }
+    return category_mapping.get(category_token, 2)
 
 
 def _fetch_live_mutual_funds(force_refresh: bool = False) -> list[MutualFund]:
@@ -190,6 +218,38 @@ def _filter_mutual_funds(
     return filtered
 
 
+def _sort_mutual_funds(
+    funds: list[MutualFund],
+    sort_by: str,
+    sort_order: str,
+) -> list[MutualFund]:
+    field = (sort_by or "name").strip().lower()
+    if field not in _MF_SORT_FIELDS:
+        field = "name"
+
+    order = (sort_order or "asc").strip().lower()
+    reverse = order == "desc"
+
+    if field == "name":
+        key_fn = lambda item: item.schemeName.lower()
+    elif field == "nav":
+        key_fn = lambda item: float(item.nav or 0.0)
+    elif field == "returns1y":
+        key_fn = lambda item: float(item.returns1Y if item.returns1Y is not None else -999.0)
+    elif field == "returns3y":
+        key_fn = lambda item: float(item.returns3Y if item.returns3Y is not None else -999.0)
+    elif field == "returns5y":
+        key_fn = lambda item: float(item.returns5Y if item.returns5Y is not None else -999.0)
+    elif field == "risk":
+        key_fn = lambda item: _risk_rank(item.riskLevel, item.category)
+    elif field == "category":
+        key_fn = lambda item: item.category.lower()
+    else:
+        key_fn = lambda item: item.schemeName.lower()
+
+    return sorted(funds, key=key_fn, reverse=reverse)
+
+
 def _find_live_mutual_fund(scheme_code: str) -> MutualFund | None:
     target = scheme_code.strip()
     if not target:
@@ -198,6 +258,110 @@ def _find_live_mutual_fund(scheme_code: str) -> MutualFund | None:
         if fund.schemeCode == target:
             return fund
     return None
+
+
+def _funds_from_db(db: Session) -> list[MutualFund]:
+    rows = db.query(MutualFundModel).order_by(MutualFundModel.scheme_name.asc()).all()
+    return [
+        MutualFund(
+            schemeCode=row.scheme_code,
+            schemeName=row.scheme_name,
+            category=row.category,
+            nav=row.nav,
+            navDate=row.nav_date,
+            returns1Y=row.returns_1y,
+            returns3Y=row.returns_3y,
+            returns5Y=row.returns_5y,
+            fundHouse=row.fund_house,
+            riskLevel=row.risk_level,
+        )
+        for row in rows
+    ]
+
+
+def _score_recommendation(
+    fund: MutualFund,
+    risk_profile: str,
+    goal: str | None,
+    horizon_years: int,
+) -> tuple[float, str]:
+    desired_risk_rank = {
+        "LOW": 1,
+        "MODERATE": 2,
+        "HIGH": 3,
+    }.get(risk_profile, 2)
+
+    fund_risk_rank = _risk_rank(fund.riskLevel, fund.category)
+    score = 78.0 - (abs(fund_risk_rank - desired_risk_rank) * 16.0)
+    reasons: list[str] = []
+
+    if desired_risk_rank == fund_risk_rank:
+        reasons.append("Risk profile match")
+
+    category = (fund.category or "OTHER").upper()
+    scheme_name_lower = fund.schemeName.lower()
+    goal_lower = (goal or "").strip().lower()
+
+    if horizon_years <= 3:
+        if category in {"DEBT", "HYBRID", "SOLUTION"}:
+            score += 10.0
+            reasons.append("Suited for shorter horizon")
+        elif category in {"EQUITY", "INDEX"}:
+            score -= 8.0
+    elif horizon_years >= 7:
+        if category in {"EQUITY", "INDEX"}:
+            score += 10.0
+            reasons.append("Aligned with long-term growth horizon")
+
+    if goal_lower:
+        if "tax" in goal_lower and "elss" in scheme_name_lower:
+            score += 20.0
+            reasons.append("Tax-saving ELSS fit")
+        if any(term in goal_lower for term in ["income", "stability", "capital protection"]):
+            if category in {"DEBT", "HYBRID"}:
+                score += 12.0
+                reasons.append("Better stability profile")
+        if any(term in goal_lower for term in ["growth", "wealth", "long term", "long-term"]):
+            if category in {"EQUITY", "INDEX"}:
+                score += 10.0
+                reasons.append("Growth-oriented category")
+        if "index" in goal_lower and category == "INDEX":
+            score += 12.0
+            reasons.append("Index preference match")
+
+    if "index" in scheme_name_lower and category == "INDEX":
+        score += 3.0
+
+    score = max(0.0, min(100.0, round(score, 2)))
+    rationale = "; ".join(dict.fromkeys(reasons)) if reasons else "Balanced fit based on current profile inputs"
+    return score, rationale
+
+
+def _build_compare_response(funds: list[MutualFund]) -> MutualFundCompareResponse:
+    def _best_scheme_for(metric_name: str) -> str | None:
+        candidates = [
+            fund for fund in funds
+            if getattr(fund, metric_name) is not None
+        ]
+        if not candidates:
+            return None
+        best_fund = max(candidates, key=lambda fund: float(getattr(fund, metric_name) or -999.0))
+        return best_fund.schemeCode
+
+    lowest_risk = min(funds, key=lambda fund: _risk_rank(fund.riskLevel, fund.category)).schemeCode if funds else None
+    summary = (
+        f"Compared {len(funds)} funds across risk, NAV and available return metrics. "
+        "Use this with your horizon and goal for final selection."
+    )
+
+    return MutualFundCompareResponse(
+        funds=funds,
+        bestReturns1YSchemeCode=_best_scheme_for("returns1Y"),
+        bestReturns3YSchemeCode=_best_scheme_for("returns3Y"),
+        bestReturns5YSchemeCode=_best_scheme_for("returns5Y"),
+        lowestRiskSchemeCode=lowest_risk,
+        summary=summary,
+    )
 
 
 def _upsert_mutual_fund_model(db: Session, payload: MutualFund) -> MutualFundModel:
@@ -685,40 +849,118 @@ async def sector_detail_endpoint(sector_name: str):
 async def get_mutual_funds_endpoint(
     category: str | None = Query(None),
     q: str | None = Query(None),
+    sortBy: str = Query("name"),
+    sortOrder: str = Query("asc"),
+    limit: int = Query(500, ge=1, le=2000),
     db: Session = Depends(get_db)
 ):
     try:
         live_funds = _fetch_live_mutual_funds()
-        return _filter_mutual_funds(live_funds, category=category, search_query=q)
+        filtered_funds = _filter_mutual_funds(live_funds, category=category, search_query=q)
+        sorted_funds = _sort_mutual_funds(filtered_funds, sort_by=sortBy, sort_order=sortOrder)
+        return sorted_funds[:limit]
     except Exception as exc:
         logger.warning("mutual_funds.live_fetch_failed reason=%s", str(exc))
 
     _seed_phase1_master_data(db)
-    query = db.query(MutualFundModel)
-    if category:
-        query = query.filter(MutualFundModel.category.ilike(category))
-    if q:
-        needle = f"%{q}%"
-        query = query.filter(
-            (MutualFundModel.scheme_name.ilike(needle)) |
-            (MutualFundModel.scheme_code.ilike(needle))
+    db_funds = _funds_from_db(db)
+    filtered_funds = _filter_mutual_funds(db_funds, category=category, search_query=q)
+    sorted_funds = _sort_mutual_funds(filtered_funds, sort_by=sortBy, sort_order=sortOrder)
+    return sorted_funds[:limit]
+
+
+@router.get("/mutual-funds/compare", response_model=MutualFundCompareResponse)
+async def compare_mutual_funds_endpoint(
+    schemeCodes: str = Query(..., description="Comma-separated mutual fund scheme codes"),
+    db: Session = Depends(get_db),
+):
+    codes = [item.strip() for item in schemeCodes.split(",") if item.strip()]
+    deduped_codes = list(dict.fromkeys(codes))
+    if len(deduped_codes) < 2:
+        raise HTTPException(status_code=400, detail="Provide at least 2 scheme codes for comparison")
+    if len(deduped_codes) > 4:
+        raise HTTPException(status_code=400, detail="Compare up to 4 funds at a time")
+
+    try:
+        live_map = {fund.schemeCode: fund for fund in _fetch_live_mutual_funds()}
+    except Exception:
+        live_map = {}
+
+    compared_funds: list[MutualFund] = []
+    for code in deduped_codes:
+        fund = live_map.get(code)
+        if fund is None:
+            row = db.query(MutualFundModel).filter(MutualFundModel.scheme_code == code).first()
+            if row is None:
+                raise HTTPException(status_code=404, detail=f"Mutual fund '{code}' not found")
+            fund = MutualFund(
+                schemeCode=row.scheme_code,
+                schemeName=row.scheme_name,
+                category=row.category,
+                nav=row.nav,
+                navDate=row.nav_date,
+                returns1Y=row.returns_1y,
+                returns3Y=row.returns_3y,
+                returns5Y=row.returns_5y,
+                fundHouse=row.fund_house,
+                riskLevel=row.risk_level,
+            )
+        compared_funds.append(fund)
+
+    return _build_compare_response(compared_funds)
+
+
+@router.get("/mutual-funds/recommend", response_model=MutualFundRecommendationResponse)
+async def recommend_mutual_funds_endpoint(
+    riskProfile: str = Query("MODERATE", description="LOW, MODERATE, or HIGH"),
+    goal: str | None = Query(None, description="Optional goal like growth, income, tax, index"),
+    horizonYears: int = Query(5, ge=1, le=30),
+    limit: int = Query(5, ge=1, le=10),
+    db: Session = Depends(get_db),
+):
+    normalized_risk = riskProfile.strip().upper()
+    if normalized_risk not in {"LOW", "MODERATE", "HIGH"}:
+        raise HTTPException(status_code=400, detail="riskProfile must be LOW, MODERATE, or HIGH")
+
+    try:
+        all_funds = _fetch_live_mutual_funds()
+    except Exception as exc:
+        logger.warning("mutual_funds.recommend.live_fetch_failed reason=%s", str(exc))
+        _seed_phase1_master_data(db)
+        all_funds = _funds_from_db(db)
+
+    ranked: list[MutualFundRecommendationItem] = []
+    for fund in all_funds:
+        score, rationale = _score_recommendation(
+            fund=fund,
+            risk_profile=normalized_risk,
+            goal=goal,
+            horizon_years=horizonYears,
         )
-    funds = query.order_by(MutualFundModel.scheme_name.asc()).all()
-    return [
-        MutualFund(
-            schemeCode=f.scheme_code,
-            schemeName=f.scheme_name,
-            category=f.category,
-            nav=f.nav,
-            navDate=f.nav_date,
-            returns1Y=f.returns_1y,
-            returns3Y=f.returns_3y,
-            returns5Y=f.returns_5y,
-            fundHouse=f.fund_house,
-            riskLevel=f.risk_level,
+        ranked.append(
+            MutualFundRecommendationItem(
+                schemeCode=fund.schemeCode,
+                schemeName=fund.schemeName,
+                category=fund.category,
+                nav=fund.nav,
+                navDate=fund.navDate,
+                fundHouse=fund.fundHouse,
+                riskLevel=fund.riskLevel,
+                suitabilityScore=score,
+                rationale=rationale,
+            )
         )
-        for f in funds
-    ]
+
+    ranked.sort(key=lambda item: item.suitabilityScore, reverse=True)
+    recommendations = ranked[:limit]
+
+    return MutualFundRecommendationResponse(
+        riskProfile=normalized_risk,
+        goal=goal,
+        horizonYears=horizonYears,
+        recommendations=recommendations,
+        generatedAt=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
 
 
 @router.get("/mutual-funds/{scheme_code}", response_model=MutualFund)

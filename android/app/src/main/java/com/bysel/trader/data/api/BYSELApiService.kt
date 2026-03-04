@@ -106,8 +106,22 @@ interface BYSELApiService {
     @GET("/mutual-funds")
     suspend fun getMutualFunds(
         @Query("category") category: String? = null,
-        @Query("q") query: String? = null
+        @Query("q") query: String? = null,
+        @Query("sortBy") sortBy: String? = null,
+        @Query("sortOrder") sortOrder: String? = null,
+        @Query("limit") limit: Int? = null
     ): List<MutualFund>
+
+    @GET("/mutual-funds/compare")
+    suspend fun compareMutualFunds(@Query("schemeCodes") schemeCodes: String): MutualFundCompareResponse
+
+    @GET("/mutual-funds/recommend")
+    suspend fun recommendMutualFunds(
+        @Query("riskProfile") riskProfile: String,
+        @Query("goal") goal: String? = null,
+        @Query("horizonYears") horizonYears: Int = 5,
+        @Query("limit") limit: Int = 5
+    ): MutualFundRecommendationResponse
 
     @GET("/mutual-funds/{schemeCode}")
     suspend fun getMutualFundDetail(@Path("schemeCode") schemeCode: String): MutualFund
