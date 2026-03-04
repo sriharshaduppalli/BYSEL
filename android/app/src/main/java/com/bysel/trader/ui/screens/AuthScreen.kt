@@ -17,6 +17,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.repository.AuthRepository
 import com.bysel.trader.data.repository.Result
+import com.bysel.trader.ui.theme.LocalAppTheme
 import kotlinx.coroutines.launch
 
 @Composable
@@ -43,6 +45,7 @@ fun AuthScreen(
 ) {
     val authRepository = remember { AuthRepository() }
     val scope = rememberCoroutineScope()
+    val appTheme = LocalAppTheme.current
 
     var isLoginMode by remember { mutableStateOf(true) }
     var username by remember { mutableStateOf("") }
@@ -52,10 +55,27 @@ fun AuthScreen(
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
 
+    val textFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = appTheme.text,
+        unfocusedTextColor = appTheme.text,
+        disabledTextColor = appTheme.textSecondary,
+        focusedContainerColor = Color.Transparent,
+        unfocusedContainerColor = Color.Transparent,
+        disabledContainerColor = Color.Transparent,
+        focusedBorderColor = appTheme.primary,
+        unfocusedBorderColor = appTheme.textSecondary.copy(alpha = 0.6f),
+        focusedLabelColor = appTheme.primary,
+        unfocusedLabelColor = appTheme.textSecondary,
+        cursorColor = appTheme.primary,
+        focusedTrailingIconColor = appTheme.textSecondary,
+        unfocusedTrailingIconColor = appTheme.textSecondary,
+        disabledTrailingIconColor = appTheme.textSecondary
+    )
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF121212))
+            .background(appTheme.surface)
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -64,12 +84,12 @@ fun AuthScreen(
             text = "BYSEL",
             fontSize = 36.sp,
             fontWeight = FontWeight.Bold,
-            color = Color.White
+            color = appTheme.text
         )
         Spacer(modifier = Modifier.height(10.dp))
         Text(
             text = if (isLoginMode) "Sign in to continue" else "Create your account",
-            color = Color.Gray
+            color = appTheme.textSecondary
         )
 
         Spacer(modifier = Modifier.height(20.dp))
@@ -84,7 +104,8 @@ fun AuthScreen(
             label = { Text("Username") },
             isError = !message.isNullOrBlank() && username.trim().isEmpty(),
             enabled = !loading,
-            singleLine = true
+            singleLine = true,
+            colors = textFieldColors
         )
 
         if (!isLoginMode) {
@@ -99,7 +120,8 @@ fun AuthScreen(
                 label = { Text("Email") },
                 isError = !message.isNullOrBlank() && email.trim().isEmpty(),
                 enabled = !loading,
-                singleLine = true
+                singleLine = true,
+                colors = textFieldColors
             )
         }
 
@@ -123,7 +145,8 @@ fun AuthScreen(
             },
             isError = !message.isNullOrBlank() && password.isEmpty(),
             enabled = !loading,
-            singleLine = true
+            singleLine = true,
+            colors = textFieldColors
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -209,7 +232,7 @@ fun AuthScreen(
         ) {
             Text(
                 if (isLoginMode) "New user? Register" else "Already registered? Login",
-                color = Color(0xFF7C4DFF)
+                color = appTheme.primary
             )
         }
     }

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
+from sqlalchemy import text, func
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from pydantic import BaseModel
@@ -15,6 +16,11 @@ import json
 import os
 import time
 import secrets
+
+try:
+    import bcrypt as bcrypt_lib
+except Exception:
+    bcrypt_lib = None
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -87,6 +93,34 @@ class SessionsResponse(BaseModel):
     sessions: List[SessionInfo]
 
 
+def _hash_password(password: str) -> str:
+    if bcrypt_lib is not None:
+        try:
+            return bcrypt_lib.hashpw(password.encode(), bcrypt_lib.gensalt()).decode()
+        except Exception as exc:
+            logger.exception("auth.password.hash_bcrypt_failed reason=%s", str(exc))
+
+    try:
+        return pwd_context.hash(password)
+    except Exception as exc:
+        logger.exception("auth.password.hash_passlib_failed reason=%s", str(exc))
+        raise HTTPException(status_code=500, detail="Password hashing unavailable")
+
+
+def _verify_password(password: str, password_hash: str) -> bool:
+    if password_hash.startswith("$2") and bcrypt_lib is not None:
+        try:
+            return bcrypt_lib.checkpw(password.encode(), password_hash.encode())
+        except Exception as exc:
+            logger.exception("auth.password.verify_bcrypt_failed reason=%s", str(exc))
+
+    try:
+        return pwd_context.verify(password, password_hash)
+    except Exception as exc:
+        logger.exception("auth.password.verify_passlib_failed reason=%s", str(exc))
+        return False
+
+
 def _b64_encode(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode().rstrip("=")
 
@@ -145,16 +179,66 @@ def _device_info(request: Request | None) -> str | None:
 
 
 def _persist_refresh_token(db: Session, user_id: int, refresh_token: str, request: Request | None = None) -> None:
+    now = datetime.utcnow()
+    token_hash = _hash_token(refresh_token)
     token_row = RefreshTokenModel(
         user_id=user_id,
-        token_hash=_hash_token(refresh_token),
-        expires_at=datetime.utcnow() + timedelta(seconds=REFRESH_TOKEN_TTL_SECONDS),
+        token_hash=token_hash,
+        expires_at=now + timedelta(seconds=REFRESH_TOKEN_TTL_SECONDS),
         client_ip=_client_ip(request) if request is not None else None,
         device_info=_device_info(request),
     )
     db.add(token_row)
-    db.commit()
-    _enforce_active_session_cap(db, user_id, protected_session_id=token_row.id)
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.exception("auth.session.persist_failed user_id=%s reason=%s", user_id, str(exc))
+        db.execute(
+            text(
+                """
+                INSERT INTO refresh_tokens (
+                    user_id,
+                    token_hash,
+                    expires_at,
+                    created_at,
+                    used_at,
+                    revoked_at,
+                    replaced_by_hash,
+                    last_used_at,
+                    client_ip,
+                    device_info
+                ) VALUES (
+                    :user_id,
+                    :token_hash,
+                    :expires_at,
+                    :created_at,
+                    NULL,
+                    NULL,
+                    NULL,
+                    NULL,
+                    :client_ip,
+                    :device_info
+                )
+                """
+            ),
+            {
+                "user_id": user_id,
+                "token_hash": token_hash,
+                "expires_at": now + timedelta(seconds=REFRESH_TOKEN_TTL_SECONDS),
+                "created_at": now,
+                "client_ip": _client_ip(request) if request is not None else None,
+                "device_info": _device_info(request),
+            },
+        )
+        db.commit()
+        token_row = db.query(RefreshTokenModel).filter(
+            RefreshTokenModel.user_id == user_id,
+            RefreshTokenModel.token_hash == token_hash,
+        ).first()
+
+    if token_row is not None:
+        _enforce_active_session_cap(db, user_id, protected_session_id=token_row.id)
 
 
 def _enforce_rate_limit(
@@ -183,6 +267,20 @@ def _mask_identifier(value: str) -> str:
     if len(normalized) <= 2:
         return "**"
     return f"{normalized[:2]}***"
+
+
+def _normalize_username(value: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Username is required")
+    return normalized
+
+
+def _normalize_email(value: str) -> str:
+    normalized = value.strip().lower()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Email is required")
+    return normalized
 
 
 def _client_ip(request: Request) -> str:
@@ -436,51 +534,93 @@ def _get_user_id_from_authorization(authorization: str | None) -> int:
 
 @router.post("/register", response_model=AuthResponse)
 def register(user: UserRegister, request: Request):
-    # Ensure password is string and truncate to 72 chars
-    password = str(user.password)[:72]
-    if len(password) > 72:
+    normalized_username = _normalize_username(user.username)
+    normalized_email = _normalize_email(user.email)
+    raw_password = str(user.password)
+    if len(raw_password) > 72:
         _metric_inc("register.failure_password_too_long")
         raise HTTPException(status_code=400, detail="Password must be 72 characters or less.")
+    password = raw_password[:72]
+
+    stage = "init"
     db: Session = SessionLocal()
-    _prune_stale_refresh_tokens(db)
-    existing = db.query(UserModel).filter((UserModel.username == user.username) | (UserModel.email == user.email)).first()
-    if existing:
+    try:
+        stage = "prune_refresh_tokens"
+        _prune_stale_refresh_tokens(db)
+
+        stage = "check_existing_user"
+        existing = db.query(UserModel).filter(
+            (func.lower(UserModel.username) == normalized_username.lower()) |
+            (func.lower(UserModel.email) == normalized_email)
+        ).first()
+        if existing:
+            _metric_inc("register.failure_user_exists")
+            raise HTTPException(status_code=400, detail="Username or email already exists")
+
+        stage = "hash_password"
+        hashed = _hash_password(password)
+
+        stage = "insert_user"
+        new_user = UserModel(
+            username=normalized_username,
+            email=normalized_email,
+            password_hash=hashed,
+            created_at=datetime.utcnow(),
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+
+        user_id = new_user.id
+
+        stage = "init_wallet"
+        try:
+            wallet = WalletModel(user_id=user_id, balance=0.0)
+            db.add(wallet)
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            logger.exception("auth.register.wallet_init_failed user_id=%s reason=%s", user_id, str(exc))
+
+        stage = "create_tokens"
+        token_version = int(getattr(new_user, "token_version", 0) or 0)
+        access_token, refresh_token = _create_auth_tokens(user_id=user_id, token_version=token_version)
+
+        stage = "persist_refresh_token"
+        try:
+            _persist_refresh_token(db, user_id=user_id, refresh_token=refresh_token, request=request)
+        except Exception as exc:
+            db.rollback()
+            logger.exception("auth.register.session_init_failed user_id=%s reason=%s", user_id, str(exc))
+
+        stage = "respond"
+        _metric_inc("register.success")
+        logger.info("auth.register.success user_id=%s username=%s", user_id, _mask_identifier(normalized_username))
+        return AuthResponse(
+            status="ok",
+            user_id=user_id,
+            access_token=access_token,
+            refresh_token=refresh_token,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("auth.register.failed stage=%s reason=%s", stage, str(exc))
+        raise HTTPException(status_code=500, detail=f"Register failed at stage: {stage}")
+    finally:
         db.close()
-        _metric_inc("register.failure_user_exists")
-        raise HTTPException(status_code=400, detail="Username or email already exists")
-    hashed = pwd_context.hash(password)
-    new_user = UserModel(username=user.username, email=user.email, password_hash=hashed, created_at=datetime.utcnow())
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    # Create wallet for new user with zero balance
-    wallet = WalletModel(user_id=new_user.id, balance=0.0)
-    db.add(wallet)
-    db.commit()
-    user_id = new_user.id
-    token_version = int(getattr(new_user, "token_version", 0) or 0)
-    access_token, refresh_token = _create_auth_tokens(user_id=user_id, token_version=token_version)
-    _persist_refresh_token(db, user_id=user_id, refresh_token=refresh_token, request=request)
-    db.close()
-    _metric_inc("register.success")
-    logger.info("auth.register.success user_id=%s username=%s", user_id, _mask_identifier(user.username))
-    return AuthResponse(
-        status="ok",
-        user_id=user_id,
-        access_token=access_token,
-        refresh_token=refresh_token,
-    )
 
 @router.post("/login", response_model=AuthResponse)
 def login(user: UserLogin, request: Request):
     client_ip = _client_ip(request)
-    username_key = user.username.strip().lower()
+    normalized_username = _normalize_username(user.username)
+    username_key = normalized_username.lower()
     login_key = f"{client_ip}:{username_key}"
     try:
         _enforce_login_lockout(login_key)
     except HTTPException:
         _metric_inc("login.lockout_blocked")
-        logger.warning("auth.login.lockout_blocked ip=%s username=%s", client_ip, _mask_identifier(user.username))
+        logger.warning("auth.login.lockout_blocked ip=%s username=%s", client_ip, _mask_identifier(normalized_username))
         raise
 
     try:
@@ -493,37 +633,47 @@ def login(user: UserLogin, request: Request):
         )
     except HTTPException:
         _metric_inc("login.rate_limited")
-        logger.warning("auth.login.rate_limited ip=%s username=%s", client_ip, _mask_identifier(user.username))
+        logger.warning("auth.login.rate_limited ip=%s username=%s", client_ip, _mask_identifier(normalized_username))
         raise
 
     if len(user.password) > 72:
         _metric_inc("login.failure_password_too_long")
         raise HTTPException(status_code=400, detail="Password must be 72 characters or less.")
     db: Session = SessionLocal()
-    _prune_stale_refresh_tokens(db)
-    db_user = db.query(UserModel).filter(UserModel.username == user.username).first()
-    if not db_user or not pwd_context.verify(user.password, db_user.password_hash):
+    try:
+        _prune_stale_refresh_tokens(db)
+        db_user = db.query(UserModel).filter(
+            (func.lower(UserModel.username) == username_key) |
+            (func.lower(UserModel.email) == username_key)
+        ).first()
+        if not db_user or not _verify_password(user.password, db_user.password_hash):
+            _metric_inc("login.failure_invalid_credentials")
+            lockout_triggered = _record_login_failure(login_key)
+            if lockout_triggered:
+                _metric_inc("login.lockout_triggered")
+                logger.warning("auth.login.lockout_triggered ip=%s username=%s", client_ip, _mask_identifier(normalized_username))
+            logger.warning("auth.login.failed ip=%s username=%s reason=invalid_credentials", client_ip, _mask_identifier(normalized_username))
+            raise HTTPException(status_code=401, detail="Invalid username or password")
+
+        token_version = int(getattr(db_user, "token_version", 0) or 0)
+        access_token, refresh_token = _create_auth_tokens(user_id=db_user.id, token_version=token_version)
+        try:
+            _persist_refresh_token(db, user_id=db_user.id, refresh_token=refresh_token, request=request)
+        except Exception as exc:
+            db.rollback()
+            logger.exception("auth.login.session_init_failed user_id=%s reason=%s", db_user.id, str(exc))
+
+        _record_login_success(login_key)
+        _metric_inc("login.success")
+        logger.info("auth.login.success ip=%s user_id=%s username=%s", client_ip, db_user.id, _mask_identifier(normalized_username))
+        return AuthResponse(
+            status="ok",
+            user_id=db_user.id,
+            access_token=access_token,
+            refresh_token=refresh_token,
+        )
+    finally:
         db.close()
-        _metric_inc("login.failure_invalid_credentials")
-        lockout_triggered = _record_login_failure(login_key)
-        if lockout_triggered:
-            _metric_inc("login.lockout_triggered")
-            logger.warning("auth.login.lockout_triggered ip=%s username=%s", client_ip, _mask_identifier(user.username))
-        logger.warning("auth.login.failed ip=%s username=%s reason=invalid_credentials", client_ip, _mask_identifier(user.username))
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-    token_version = int(getattr(db_user, "token_version", 0) or 0)
-    access_token, refresh_token = _create_auth_tokens(user_id=db_user.id, token_version=token_version)
-    _persist_refresh_token(db, user_id=db_user.id, refresh_token=refresh_token, request=request)
-    db.close()
-    _record_login_success(login_key)
-    _metric_inc("login.success")
-    logger.info("auth.login.success ip=%s user_id=%s username=%s", client_ip, db_user.id, _mask_identifier(user.username))
-    return AuthResponse(
-        status="ok",
-        user_id=db_user.id,
-        access_token=access_token,
-        refresh_token=refresh_token,
-    )
 
 
 @router.post("/refresh", response_model=AuthResponse)

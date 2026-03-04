@@ -9,10 +9,32 @@ import com.bysel.trader.data.models.LoginRequest
 import com.bysel.trader.data.models.LogoutRequest
 import com.bysel.trader.data.models.RefreshTokenRequest
 import com.bysel.trader.data.models.RegisterRequest
+import org.json.JSONObject
+import retrofit2.HttpException
 
 class AuthRepository(
     private val apiService: BYSELApiService = RetrofitClient.apiService
 ) {
+    private fun toAuthErrorMessage(exception: Exception, fallback: String): String {
+        if (exception is HttpException) {
+            val detail = runCatching {
+                exception.response()
+                    ?.errorBody()
+                    ?.string()
+                    ?.let { body -> JSONObject(body).optString("detail") }
+                    ?.takeIf { it.isNotBlank() }
+            }.getOrNull()
+
+            return when (exception.code()) {
+                401 -> detail
+                    ?: "Invalid username or password. If this is your first login, please register first."
+                else -> detail ?: (exception.message ?: fallback)
+            }
+        }
+
+        return exception.message ?: fallback
+    }
+
     suspend fun register(username: String, email: String, password: String): Result<AuthResponse> {
         return try {
             val response = apiService.register(RegisterRequest(username = username, email = email, password = password))
@@ -23,7 +45,7 @@ class AuthRepository(
             )
             Result.Success(response)
         } catch (e: Exception) {
-            Result.Error(e.message ?: "Registration failed")
+            Result.Error(toAuthErrorMessage(e, "Registration failed"))
         }
     }
 
@@ -37,7 +59,7 @@ class AuthRepository(
             )
             Result.Success(response)
         } catch (e: Exception) {
-            Result.Error(e.message ?: "Login failed")
+            Result.Error(toAuthErrorMessage(e, "Login failed"))
         }
     }
 
@@ -55,7 +77,7 @@ class AuthRepository(
             Result.Success(response)
         } catch (e: Exception) {
             AuthSessionManager.clearSession()
-            Result.Error(e.message ?: "Session refresh failed")
+            Result.Error(toAuthErrorMessage(e, "Session refresh failed"))
         }
     }
 
@@ -88,7 +110,7 @@ class AuthRepository(
             val response = apiService.getActiveSessions()
             Result.Success(response.sessions)
         } catch (e: Exception) {
-            Result.Error(e.message ?: "Failed to load sessions")
+            Result.Error(toAuthErrorMessage(e, "Failed to load sessions"))
         }
     }
 
@@ -97,7 +119,7 @@ class AuthRepository(
             apiService.revokeSession(sessionId)
             Result.Success(Unit)
         } catch (e: Exception) {
-            Result.Error(e.message ?: "Failed to revoke session")
+            Result.Error(toAuthErrorMessage(e, "Failed to revoke session"))
         }
     }
 }
