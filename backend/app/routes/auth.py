@@ -487,20 +487,28 @@ def _get_user_id_from_authorization(authorization: str | None) -> int:
 
 @router.post("/register", response_model=AuthResponse)
 def register(user: UserRegister, request: Request):
-    # Ensure password is string and truncate to 72 chars
-    password = str(user.password)[:72]
-    if len(password) > 72:
+    raw_password = str(user.password)
+    if len(raw_password) > 72:
         _metric_inc("register.failure_password_too_long")
         raise HTTPException(status_code=400, detail="Password must be 72 characters or less.")
+    password = raw_password[:72]
+
+    stage = "init"
     db: Session = SessionLocal()
     try:
+        stage = "prune_refresh_tokens"
         _prune_stale_refresh_tokens(db)
+
+        stage = "check_existing_user"
         existing = db.query(UserModel).filter((UserModel.username == user.username) | (UserModel.email == user.email)).first()
         if existing:
             _metric_inc("register.failure_user_exists")
             raise HTTPException(status_code=400, detail="Username or email already exists")
 
+        stage = "hash_password"
         hashed = pwd_context.hash(password)
+
+        stage = "insert_user"
         new_user = UserModel(username=user.username, email=user.email, password_hash=hashed, created_at=datetime.utcnow())
         db.add(new_user)
         db.commit()
@@ -508,6 +516,7 @@ def register(user: UserRegister, request: Request):
 
         user_id = new_user.id
 
+        stage = "init_wallet"
         try:
             wallet = WalletModel(user_id=user_id, balance=0.0)
             db.add(wallet)
@@ -516,15 +525,18 @@ def register(user: UserRegister, request: Request):
             db.rollback()
             logger.exception("auth.register.wallet_init_failed user_id=%s reason=%s", user_id, str(exc))
 
+        stage = "create_tokens"
         token_version = int(getattr(new_user, "token_version", 0) or 0)
         access_token, refresh_token = _create_auth_tokens(user_id=user_id, token_version=token_version)
 
+        stage = "persist_refresh_token"
         try:
             _persist_refresh_token(db, user_id=user_id, refresh_token=refresh_token, request=request)
         except Exception as exc:
             db.rollback()
             logger.exception("auth.register.session_init_failed user_id=%s reason=%s", user_id, str(exc))
 
+        stage = "respond"
         _metric_inc("register.success")
         logger.info("auth.register.success user_id=%s username=%s", user_id, _mask_identifier(user.username))
         return AuthResponse(
@@ -533,6 +545,11 @@ def register(user: UserRegister, request: Request):
             access_token=access_token,
             refresh_token=refresh_token,
         )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("auth.register.failed stage=%s reason=%s", stage, str(exc))
+        raise HTTPException(status_code=500, detail=f"Register failed at stage: {stage}")
     finally:
         db.close()
 
