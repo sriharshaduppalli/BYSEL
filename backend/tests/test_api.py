@@ -124,3 +124,22 @@ def test_refresh_token_reuse_invalidates_active_sessions():
     )
     assert second_refresh_attempt.status_code == 401
     assert second_refresh_attempt.json()["detail"] == "Session invalidated"
+
+
+def test_login_username_is_case_insensitive():
+    username, email, password = _unique_user("CaseUser")
+
+    register_response = client.post(
+        "/auth/register",
+        json={"username": username, "email": email, "password": password}
+    )
+    assert register_response.status_code == 200
+
+    login_response = client.post(
+        "/auth/login",
+        json={"username": username.upper(), "password": password}
+    )
+    assert login_response.status_code == 200
+    payload = login_response.json()
+    assert payload["status"] == "ok"
+    assert "access_token" in payload
