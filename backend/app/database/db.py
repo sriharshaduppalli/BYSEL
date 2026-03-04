@@ -165,6 +165,9 @@ def _table_has_column(table_name: str, column_name: str) -> bool:
 
 
 def _ensure_column(table_name: str, column_name: str, column_ddl: str) -> None:
+    inspector = sa_inspect(engine)
+    if table_name not in inspector.get_table_names():
+        return
     if _table_has_column(table_name, column_name):
         return
     with engine.connect() as connection:
@@ -173,6 +176,13 @@ def _ensure_column(table_name: str, column_name: str, column_ddl: str) -> None:
 
 
 def _ensure_refresh_token_columns() -> None:
+    _ensure_column("refresh_tokens", "user_id", "user_id INTEGER NULL")
+    _ensure_column("refresh_tokens", "token_hash", "token_hash VARCHAR NULL")
+    _ensure_column("refresh_tokens", "expires_at", "expires_at TIMESTAMP NULL")
+    _ensure_column("refresh_tokens", "created_at", "created_at TIMESTAMP NULL")
+    _ensure_column("refresh_tokens", "used_at", "used_at TIMESTAMP NULL")
+    _ensure_column("refresh_tokens", "revoked_at", "revoked_at TIMESTAMP NULL")
+    _ensure_column("refresh_tokens", "replaced_by_hash", "replaced_by_hash VARCHAR NULL")
     _ensure_column("refresh_tokens", "last_used_at", "last_used_at TIMESTAMP NULL")
     _ensure_column("refresh_tokens", "client_ip", "client_ip VARCHAR NULL")
     _ensure_column("refresh_tokens", "device_info", "device_info VARCHAR NULL")

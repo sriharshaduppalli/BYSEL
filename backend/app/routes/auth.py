@@ -145,16 +145,66 @@ def _device_info(request: Request | None) -> str | None:
 
 
 def _persist_refresh_token(db: Session, user_id: int, refresh_token: str, request: Request | None = None) -> None:
+    now = datetime.utcnow()
+    token_hash = _hash_token(refresh_token)
     token_row = RefreshTokenModel(
         user_id=user_id,
-        token_hash=_hash_token(refresh_token),
-        expires_at=datetime.utcnow() + timedelta(seconds=REFRESH_TOKEN_TTL_SECONDS),
+        token_hash=token_hash,
+        expires_at=now + timedelta(seconds=REFRESH_TOKEN_TTL_SECONDS),
         client_ip=_client_ip(request) if request is not None else None,
         device_info=_device_info(request),
     )
     db.add(token_row)
-    db.commit()
-    _enforce_active_session_cap(db, user_id, protected_session_id=token_row.id)
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.exception("auth.session.persist_failed user_id=%s reason=%s", user_id, str(exc))
+        db.execute(
+            text(
+                """
+                INSERT INTO refresh_tokens (
+                    user_id,
+                    token_hash,
+                    expires_at,
+                    created_at,
+                    used_at,
+                    revoked_at,
+                    replaced_by_hash,
+                    last_used_at,
+                    client_ip,
+                    device_info
+                ) VALUES (
+                    :user_id,
+                    :token_hash,
+                    :expires_at,
+                    :created_at,
+                    NULL,
+                    NULL,
+                    NULL,
+                    NULL,
+                    :client_ip,
+                    :device_info
+                )
+                """
+            ),
+            {
+                "user_id": user_id,
+                "token_hash": token_hash,
+                "expires_at": now + timedelta(seconds=REFRESH_TOKEN_TTL_SECONDS),
+                "created_at": now,
+                "client_ip": _client_ip(request) if request is not None else None,
+                "device_info": _device_info(request),
+            },
+        )
+        db.commit()
+        token_row = db.query(RefreshTokenModel).filter(
+            RefreshTokenModel.user_id == user_id,
+            RefreshTokenModel.token_hash == token_hash,
+        ).first()
+
+    if token_row is not None:
+        _enforce_active_session_cap(db, user_id, protected_session_id=token_row.id)
 
 
 def _enforce_rate_limit(
