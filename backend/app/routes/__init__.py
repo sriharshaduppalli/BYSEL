@@ -1,12 +1,25 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Header
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from ..database.db import get_db, AlertModel, OrderModel, HoldingModel
+from datetime import datetime, timedelta
+from ..database.db import (
+    get_db,
+    AlertModel,
+    OrderModel,
+    HoldingModel,
+    MutualFundModel,
+    SipPlanModel,
+    IPOModel,
+    IPOApplicationModel,
+    ETFModel,
+)
 from .dependencies import get_current_user
 from ..models.schemas import (
     Quote, Holding, Order, OrderResponse, Alert, AlertCreate,
     AlertResponse, HealthCheck, TradeHistory, PortfolioSummary, PortfolioValue,
-    Wallet, WalletTransaction, WalletResponse, MarketStatus
+    Wallet, WalletTransaction, WalletResponse, MarketStatus,
+    MutualFund, SipPlanRequest, SipPlan, IPOListing,
+    SipPlanUpdateRequest, IPOApplicationRequest, IPOApplicationResponse, IPOApplication, ETFInstrument
 )
 from .trading import (
     get_holdings, get_holding, place_order,
@@ -21,6 +34,87 @@ from ..portfolio_scorer import calculate_portfolio_health
 from ..market_heatmap import get_market_heatmap, get_sector_detail
 
 router = APIRouter()
+
+def _seed_phase1_master_data(db: Session):
+    if db.query(MutualFundModel).count() == 0:
+        db.add_all([
+            MutualFundModel(
+                scheme_code="120503",
+                scheme_name="BYSEL Nifty 50 Index Fund - Direct Growth",
+                category="INDEX",
+                nav=102.34,
+                nav_date="2026-03-03",
+                returns_1y=14.2,
+                returns_3y=12.1,
+                returns_5y=11.3,
+                fund_house="BYSEL AM",
+                risk_level="MODERATE",
+            ),
+            MutualFundModel(
+                scheme_code="120871",
+                scheme_name="BYSEL Flexi Cap Fund - Direct Growth",
+                category="EQUITY",
+                nav=78.92,
+                nav_date="2026-03-03",
+                returns_1y=18.7,
+                returns_3y=16.5,
+                returns_5y=15.1,
+                fund_house="BYSEL AM",
+                risk_level="MODERATE_HIGH",
+            ),
+        ])
+
+    if db.query(IPOModel).count() == 0:
+        db.add_all([
+            IPOModel(
+                ipo_id="IPO-2026-001",
+                company_name="Acme Infra Limited",
+                symbol="ACME",
+                status="OPEN",
+                issue_open_date="2026-03-01",
+                issue_close_date="2026-03-05",
+                listing_date="2026-03-11",
+                price_band_min=345.0,
+                price_band_max=362.0,
+                lot_size=41,
+            ),
+            IPOModel(
+                ipo_id="IPO-2026-002",
+                company_name="Nova Renewables Limited",
+                symbol="NOVA",
+                status="UPCOMING",
+                issue_open_date="2026-03-12",
+                issue_close_date="2026-03-16",
+                listing_date="2026-03-22",
+                price_band_min=215.0,
+                price_band_max=228.0,
+                lot_size=65,
+            ),
+        ])
+
+    if db.query(ETFModel).count() == 0:
+        db.add_all([
+            ETFModel(
+                symbol="NIFTYBEES",
+                name="Nippon India ETF Nifty BeES",
+                category="INDEX",
+                last=245.75,
+                pct_change=0.62,
+                aum_cr=16250.0,
+                expense_ratio=0.05,
+            ),
+            ETFModel(
+                symbol="GOLDBEES",
+                name="Nippon India ETF Gold BeES",
+                category="GOLD",
+                last=62.13,
+                pct_change=0.21,
+                aum_cr=10850.0,
+                expense_ratio=0.79,
+            ),
+        ])
+
+    db.commit()
 
 
 # ==================== QUOTES (LIVE DATA) ====================
@@ -397,3 +491,323 @@ async def sector_detail_endpoint(sector_name: str):
     if not result:
         raise HTTPException(status_code=404, detail=f"Sector '{sector_name}' not found")
     return result
+
+
+# ==================== PHASE 1: MUTUAL FUNDS & SIP ====================
+
+@router.get("/mutual-funds", response_model=list[MutualFund])
+async def get_mutual_funds_endpoint(
+    category: str | None = Query(None),
+    q: str | None = Query(None),
+    db: Session = Depends(get_db)
+):
+    _seed_phase1_master_data(db)
+    query = db.query(MutualFundModel)
+    if category:
+        query = query.filter(MutualFundModel.category.ilike(category))
+    if q:
+        needle = f"%{q}%"
+        query = query.filter(
+            (MutualFundModel.scheme_name.ilike(needle)) |
+            (MutualFundModel.scheme_code.ilike(needle))
+        )
+    funds = query.order_by(MutualFundModel.scheme_name.asc()).all()
+    return [
+        MutualFund(
+            schemeCode=f.scheme_code,
+            schemeName=f.scheme_name,
+            category=f.category,
+            nav=f.nav,
+            navDate=f.nav_date,
+            returns1Y=f.returns_1y,
+            returns3Y=f.returns_3y,
+            returns5Y=f.returns_5y,
+            fundHouse=f.fund_house,
+            riskLevel=f.risk_level,
+        )
+        for f in funds
+    ]
+
+
+@router.get("/mutual-funds/{scheme_code}", response_model=MutualFund)
+async def get_mutual_fund_detail_endpoint(scheme_code: str, db: Session = Depends(get_db)):
+    _seed_phase1_master_data(db)
+    fund = db.query(MutualFundModel).filter(MutualFundModel.scheme_code == scheme_code).first()
+    if fund:
+        return MutualFund(
+            schemeCode=fund.scheme_code,
+            schemeName=fund.scheme_name,
+            category=fund.category,
+            nav=fund.nav,
+            navDate=fund.nav_date,
+            returns1Y=fund.returns_1y,
+            returns3Y=fund.returns_3y,
+            returns5Y=fund.returns_5y,
+            fundHouse=fund.fund_house,
+            riskLevel=fund.risk_level,
+        )
+    raise HTTPException(status_code=404, detail=f"Mutual fund '{scheme_code}' not found")
+
+
+@router.post("/sip/plans", response_model=SipPlan)
+async def create_sip_plan_endpoint(
+    request: SipPlanRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Header(1)
+):
+    _seed_phase1_master_data(db)
+    fund = db.query(MutualFundModel).filter(MutualFundModel.scheme_code == request.schemeCode).first()
+    if not fund:
+        raise HTTPException(status_code=404, detail=f"Mutual fund '{request.schemeCode}' not found")
+
+    next_date = (datetime.utcnow() + timedelta(days=30)).strftime("%Y-%m-%d")
+    plan = SipPlanModel(
+        user_id=user_id,
+        scheme_code=request.schemeCode,
+        scheme_name=fund.scheme_name,
+        amount=request.amount,
+        frequency=request.frequency,
+        day_of_month=request.dayOfMonth,
+        next_installment_date=next_date,
+        is_active=True,
+    )
+    db.add(plan)
+    db.commit()
+    db.refresh(plan)
+
+    return SipPlan(
+        id=f"SIP-{plan.id}",
+        schemeCode=plan.scheme_code,
+        schemeName=plan.scheme_name,
+        amount=plan.amount,
+        frequency=plan.frequency,
+        nextInstallmentDate=plan.next_installment_date,
+        isActive=plan.is_active,
+    )
+
+
+@router.get("/sip/plans", response_model=list[SipPlan])
+async def get_sip_plans_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
+    plans = (
+        db.query(SipPlanModel)
+        .filter(SipPlanModel.user_id == user_id)
+        .order_by(SipPlanModel.created_at.desc())
+        .all()
+    )
+    return [
+        SipPlan(
+            id=f"SIP-{item.id}",
+            schemeCode=item.scheme_code,
+            schemeName=item.scheme_name,
+            amount=item.amount,
+            frequency=item.frequency,
+            nextInstallmentDate=item.next_installment_date,
+            isActive=item.is_active,
+        )
+        for item in plans
+    ]
+
+
+@router.put("/sip/plans/{sip_id}", response_model=SipPlan)
+async def update_sip_plan_endpoint(
+    sip_id: str,
+    request: SipPlanUpdateRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Header(1)
+):
+    numeric_id = int(sip_id.replace("SIP-", "")) if sip_id.startswith("SIP-") else int(sip_id)
+    plan = db.query(SipPlanModel).filter(SipPlanModel.id == numeric_id, SipPlanModel.user_id == user_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail=f"SIP plan '{sip_id}' not found")
+
+    if request.amount is not None:
+        if request.amount <= 0:
+            raise HTTPException(status_code=400, detail="SIP amount must be positive")
+        plan.amount = request.amount
+    if request.frequency is not None:
+        plan.frequency = request.frequency.upper()
+    if request.dayOfMonth is not None:
+        if request.dayOfMonth < 1 or request.dayOfMonth > 28:
+            raise HTTPException(status_code=400, detail="Installment day must be between 1 and 28")
+        plan.day_of_month = request.dayOfMonth
+    if request.isActive is not None:
+        plan.is_active = request.isActive
+
+    db.commit()
+    db.refresh(plan)
+
+    return SipPlan(
+        id=f"SIP-{plan.id}",
+        schemeCode=plan.scheme_code,
+        schemeName=plan.scheme_name,
+        amount=plan.amount,
+        frequency=plan.frequency,
+        nextInstallmentDate=plan.next_installment_date,
+        isActive=plan.is_active,
+    )
+
+
+@router.post("/sip/plans/{sip_id}/pause", response_model=SipPlan)
+async def pause_sip_plan_endpoint(sip_id: str, db: Session = Depends(get_db), user_id: int = Header(1)):
+    return await update_sip_plan_endpoint(
+        sip_id=sip_id,
+        request=SipPlanUpdateRequest(isActive=False),
+        db=db,
+        user_id=user_id,
+    )
+
+
+@router.post("/sip/plans/{sip_id}/resume", response_model=SipPlan)
+async def resume_sip_plan_endpoint(sip_id: str, db: Session = Depends(get_db), user_id: int = Header(1)):
+    return await update_sip_plan_endpoint(
+        sip_id=sip_id,
+        request=SipPlanUpdateRequest(isActive=True),
+        db=db,
+        user_id=user_id,
+    )
+
+
+# ==================== PHASE 1: IPO ====================
+
+@router.get("/ipos", response_model=list[IPOListing])
+async def get_ipos_endpoint(status: str | None = Query(None), db: Session = Depends(get_db)):
+    _seed_phase1_master_data(db)
+    query = db.query(IPOModel)
+    if status:
+        query = query.filter(IPOModel.status.ilike(status))
+    listings = query.order_by(IPOModel.issue_open_date.asc()).all()
+    return [
+        IPOListing(
+            ipoId=item.ipo_id,
+            companyName=item.company_name,
+            symbol=item.symbol,
+            status=item.status,
+            issueOpenDate=item.issue_open_date,
+            issueCloseDate=item.issue_close_date,
+            listingDate=item.listing_date,
+            priceBandMin=item.price_band_min,
+            priceBandMax=item.price_band_max,
+            lotSize=item.lot_size,
+        )
+        for item in listings
+    ]
+
+
+@router.get("/ipos/{ipo_id}", response_model=IPOListing)
+async def get_ipo_detail_endpoint(ipo_id: str, db: Session = Depends(get_db)):
+    _seed_phase1_master_data(db)
+    item = db.query(IPOModel).filter(IPOModel.ipo_id == ipo_id).first()
+    if item:
+        return IPOListing(
+            ipoId=item.ipo_id,
+            companyName=item.company_name,
+            symbol=item.symbol,
+            status=item.status,
+            issueOpenDate=item.issue_open_date,
+            issueCloseDate=item.issue_close_date,
+            listingDate=item.listing_date,
+            priceBandMin=item.price_band_min,
+            priceBandMax=item.price_band_max,
+            lotSize=item.lot_size,
+        )
+    raise HTTPException(status_code=404, detail=f"IPO '{ipo_id}' not found")
+
+
+@router.post("/ipos/apply", response_model=IPOApplicationResponse)
+async def apply_ipo_endpoint(
+    request: IPOApplicationRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Header(1)
+):
+    _seed_phase1_master_data(db)
+    ipo = db.query(IPOModel).filter(IPOModel.ipo_id == request.ipoId).first()
+    if not ipo:
+        raise HTTPException(status_code=404, detail=f"IPO '{request.ipoId}' not found")
+
+    if ipo.status.upper() != "OPEN":
+        raise HTTPException(status_code=400, detail="IPO is not open for applications")
+
+    if request.lots <= 0:
+        raise HTTPException(status_code=400, detail="Lots must be greater than zero")
+
+    if ipo.price_band_min is not None and request.bidPrice < ipo.price_band_min:
+        raise HTTPException(status_code=400, detail=f"Bid price must be >= {ipo.price_band_min}")
+
+    if ipo.price_band_max is not None and request.bidPrice > ipo.price_band_max:
+        raise HTTPException(status_code=400, detail=f"Bid price must be <= {ipo.price_band_max}")
+
+    application = IPOApplicationModel(
+        user_id=user_id,
+        ipo_id=request.ipoId,
+        lots=request.lots,
+        bid_price=request.bidPrice,
+        upi_id=request.upiId,
+        status="PENDING",
+    )
+    db.add(application)
+    db.commit()
+    db.refresh(application)
+
+    return IPOApplicationResponse(
+        applicationId=f"APP-{application.id}",
+        status="PENDING",
+        message="IPO application accepted for processing"
+    )
+
+
+@router.get("/ipos/my-applications", response_model=list[IPOApplication])
+async def get_my_ipo_applications_endpoint(
+    db: Session = Depends(get_db),
+    user_id: int = Header(1)
+):
+    _seed_phase1_master_data(db)
+    applications = (
+        db.query(IPOApplicationModel, IPOModel)
+        .join(IPOModel, IPOApplicationModel.ipo_id == IPOModel.ipo_id)
+        .filter(IPOApplicationModel.user_id == user_id)
+        .order_by(IPOApplicationModel.created_at.desc())
+        .all()
+    )
+    return [
+        IPOApplication(
+            applicationId=f"APP-{application.id}",
+            ipoId=application.ipo_id,
+            companyName=ipo.company_name,
+            lots=application.lots,
+            bidPrice=application.bid_price,
+            upiId=application.upi_id,
+            status=application.status,
+            appliedAt=application.created_at.strftime("%Y-%m-%d %H:%M:%S") if application.created_at else "",
+        )
+        for application, ipo in applications
+    ]
+
+
+# ==================== PHASE 1: ETF ====================
+
+@router.get("/etfs", response_model=list[ETFInstrument])
+async def get_etfs_endpoint(
+    category: str | None = Query(None),
+    q: str | None = Query(None),
+    db: Session = Depends(get_db)
+):
+    _seed_phase1_master_data(db)
+    query = db.query(ETFModel)
+    if category:
+        query = query.filter(ETFModel.category.ilike(category))
+    if q:
+        needle = f"%{q}%"
+        query = query.filter((ETFModel.symbol.ilike(needle)) | (ETFModel.name.ilike(needle)))
+    etfs = query.order_by(ETFModel.symbol.asc()).all()
+    return [
+        ETFInstrument(
+            symbol=item.symbol,
+            name=item.name,
+            category=item.category,
+            last=item.last,
+            pctChange=item.pct_change,
+            aumCr=item.aum_cr,
+            expenseRatio=item.expense_ratio,
+        )
+        for item in etfs
+    ]

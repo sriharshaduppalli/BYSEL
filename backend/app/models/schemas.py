@@ -109,3 +109,87 @@ class MarketStatus(BaseModel):
     message: str
     nextOpen: Optional[str] = None
     nextClose: Optional[str] = None
+
+
+class MutualFund(BaseModel):
+    schemeCode: str
+    schemeName: str
+    category: str
+    nav: float
+    navDate: str
+    returns1Y: Optional[float] = None
+    returns3Y: Optional[float] = None
+    returns5Y: Optional[float] = None
+    fundHouse: Optional[str] = None
+    riskLevel: Optional[str] = None
+
+
+class SipPlanRequest(BaseModel):
+    schemeCode: str
+    amount: float
+    frequency: str = "MONTHLY"
+    dayOfMonth: int = 5
+
+
+class SipPlanUpdateRequest(BaseModel):
+    amount: Optional[float] = None
+    frequency: Optional[str] = None
+    dayOfMonth: Optional[int] = None
+    isActive: Optional[bool] = None
+
+
+class SipPlan(BaseModel):
+    id: str
+    schemeCode: str
+    schemeName: str
+    amount: float
+    frequency: str
+    nextInstallmentDate: str
+    isActive: bool
+
+
+class IPOListing(BaseModel):
+    ipoId: str
+    companyName: str
+    symbol: str
+    status: str
+    issueOpenDate: str
+    issueCloseDate: str
+    listingDate: Optional[str] = None
+    priceBandMin: Optional[float] = None
+    priceBandMax: Optional[float] = None
+    lotSize: Optional[int] = None
+
+
+class IPOApplicationRequest(BaseModel):
+    ipoId: str
+    lots: int
+    bidPrice: float
+    upiId: str
+
+
+class IPOApplicationResponse(BaseModel):
+    applicationId: str
+    status: str
+    message: str
+
+
+class IPOApplication(BaseModel):
+    applicationId: str
+    ipoId: str
+    companyName: str
+    lots: int
+    bidPrice: float
+    upiId: str
+    status: str
+    appliedAt: str
+
+
+class ETFInstrument(BaseModel):
+    symbol: str
+    name: str
+    category: str
+    last: float
+    pctChange: float
+    aumCr: Optional[float] = None
+    expenseRatio: Optional[float] = None

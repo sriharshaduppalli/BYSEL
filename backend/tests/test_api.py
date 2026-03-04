@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 import sys
 from pathlib import Path
+import time
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -9,6 +10,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from app import app
 
 client = TestClient(app)
+
+
+def _unique_user(prefix: str) -> tuple[str, str, str]:
+    suffix = str(int(time.time() * 1000))
+    username = f"{prefix}_{suffix}"
+    email = f"{username}@example.com"
+    password = "demo1234"
+    return username, email, password
 
 def test_health_check():
     """Test health check endpoint"""
@@ -49,3 +58,69 @@ def test_place_order():
     assert data["status"] == "ok"
     assert data["order"]["symbol"] == "TCS"
     assert data["order"]["qty"] == 1
+
+
+def test_logout_all_invalidates_old_access_token():
+    username, email, password = _unique_user("logout_all_user")
+
+    register_response = client.post(
+        "/auth/register",
+        json={"username": username, "email": email, "password": password}
+    )
+    assert register_response.status_code == 200
+    tokens = register_response.json()
+    access_token = tokens["access_token"]
+
+    sessions_before = client.get(
+        "/auth/sessions",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert sessions_before.status_code == 200
+
+    logout_all_response = client.post(
+        "/auth/logout-all",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert logout_all_response.status_code == 200
+
+    sessions_after = client.get(
+        "/auth/sessions",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert sessions_after.status_code == 401
+    assert sessions_after.json()["detail"] == "Session invalidated"
+
+
+def test_refresh_token_reuse_invalidates_active_sessions():
+    username, email, password = _unique_user("reuse_user")
+
+    register_response = client.post(
+        "/auth/register",
+        json={"username": username, "email": email, "password": password}
+    )
+    assert register_response.status_code == 200
+    register_payload = register_response.json()
+
+    first_refresh_token = register_payload["refresh_token"]
+
+    rotate_response = client.post(
+        "/auth/refresh",
+        json={"refreshToken": first_refresh_token}
+    )
+    assert rotate_response.status_code == 200
+    rotated_payload = rotate_response.json()
+    second_refresh_token = rotated_payload["refresh_token"]
+
+    reuse_response = client.post(
+        "/auth/refresh",
+        json={"refreshToken": first_refresh_token}
+    )
+    assert reuse_response.status_code == 401
+    assert "reuse" in reuse_response.json()["detail"].lower()
+
+    second_refresh_attempt = client.post(
+        "/auth/refresh",
+        json={"refreshToken": second_refresh_token}
+    )
+    assert second_refresh_attempt.status_code == 401
+    assert second_refresh_attempt.json()["detail"] == "Session invalidated"
