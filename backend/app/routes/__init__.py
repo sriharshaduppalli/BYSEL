@@ -2,6 +2,10 @@ from fastapi import APIRouter, Depends, Query, HTTPException, Header
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
+import logging
+import os
+import time
+from urllib import request as urllib_request
 from ..database.db import (
     get_db,
     AlertModel,
@@ -34,32 +38,214 @@ from ..portfolio_scorer import calculate_portfolio_health
 from ..market_heatmap import get_market_heatmap, get_sector_detail
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+_MF_NAV_SOURCE_URL = os.getenv("MF_NAV_SOURCE_URL", "https://www.amfiindia.com/spages/NAVAll.txt")
+_MF_LIVE_CACHE_TTL_SECONDS = int(os.getenv("MF_LIVE_CACHE_TTL_SECONDS", "1800"))
+_MF_LIVE_CACHE: dict[str, object] = {"fetched_at": 0.0, "funds": []}
+
+
+def _normalize_nav_date(value: str) -> str:
+    text = value.strip()
+    for date_format in ("%d-%b-%Y", "%d-%m-%Y", "%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, date_format).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return text
+
+
+def _derive_mf_category(category_context: str, scheme_name: str) -> str:
+    token = f"{category_context} {scheme_name}".lower()
+    if any(word in token for word in ["index", "nifty", "sensex", "etf"]):
+        return "INDEX"
+    if any(word in token for word in ["equity", "elss", "large cap", "mid cap", "small cap", "flexi", "focused"]):
+        return "EQUITY"
+    if any(word in token for word in ["debt", "bond", "gilt", "liquid", "money market", "ultra short", "credit risk"]):
+        return "DEBT"
+    if any(word in token for word in ["hybrid", "balanced", "arbitrage", "multi asset", "asset allocation"]):
+        return "HYBRID"
+    if any(word in token for word in ["solution", "retirement", "children"]):
+        return "SOLUTION"
+    if "fof" in token or "fund of funds" in token:
+        return "FOF"
+    return "OTHER"
+
+
+def _derive_risk_level(category: str) -> str:
+    return {
+        "EQUITY": "HIGH",
+        "INDEX": "MODERATE_HIGH",
+        "DEBT": "LOW_MODERATE",
+        "HYBRID": "MODERATE",
+        "SOLUTION": "MODERATE",
+        "FOF": "MODERATE",
+        "OTHER": "MODERATE",
+    }.get(category, "MODERATE")
+
+
+def _fetch_live_mutual_funds(force_refresh: bool = False) -> list[MutualFund]:
+    now = time.time()
+    cached_funds = _MF_LIVE_CACHE.get("funds")
+    fetched_at = float(_MF_LIVE_CACHE.get("fetched_at", 0.0) or 0.0)
+
+    if (
+        not force_refresh
+        and isinstance(cached_funds, list)
+        and len(cached_funds) > 0
+        and (now - fetched_at) < _MF_LIVE_CACHE_TTL_SECONDS
+    ):
+        return cached_funds
+
+    req = urllib_request.Request(_MF_NAV_SOURCE_URL, headers={"User-Agent": "BYSEL/1.0"})
+    with urllib_request.urlopen(req, timeout=8) as response:
+        payload = response.read().decode("utf-8", errors="ignore")
+
+    category_context = ""
+    fund_house_context = ""
+    funds: list[MutualFund] = []
+    seen_codes: set[str] = set()
+
+    for raw_line in payload.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        if ";" not in line:
+            lowered = line.lower()
+            if "schemes" in lowered and "(" in line:
+                category_context = line
+            elif "mutual fund" in lowered:
+                fund_house_context = line
+            continue
+
+        parts = [part.strip() for part in line.split(";")]
+        if len(parts) < 6:
+            continue
+
+        scheme_code = parts[0]
+        if not scheme_code.isdigit() or scheme_code in seen_codes:
+            continue
+
+        scheme_name = parts[3]
+        nav_text = parts[4]
+        nav_date_text = parts[5]
+
+        if not scheme_name:
+            continue
+
+        try:
+            nav = float(nav_text)
+        except ValueError:
+            continue
+
+        category = _derive_mf_category(category_context, scheme_name)
+        funds.append(
+            MutualFund(
+                schemeCode=scheme_code,
+                schemeName=scheme_name,
+                category=category,
+                nav=nav,
+                navDate=_normalize_nav_date(nav_date_text),
+                returns1Y=None,
+                returns3Y=None,
+                returns5Y=None,
+                fundHouse=fund_house_context or None,
+                riskLevel=_derive_risk_level(category),
+            )
+        )
+        seen_codes.add(scheme_code)
+
+    if not funds:
+        raise RuntimeError("AMFI feed returned no mutual fund rows")
+
+    funds.sort(key=lambda item: item.schemeName.lower())
+    _MF_LIVE_CACHE["funds"] = funds
+    _MF_LIVE_CACHE["fetched_at"] = now
+    return funds
+
+
+def _filter_mutual_funds(
+    funds: list[MutualFund],
+    category: str | None,
+    search_query: str | None,
+) -> list[MutualFund]:
+    filtered = funds
+    if category:
+        category_token = category.strip().lower()
+        filtered = [
+            fund
+            for fund in filtered
+            if fund.category.lower() == category_token or category_token in fund.category.lower()
+        ]
+    if search_query:
+        query_token = search_query.strip().lower()
+        filtered = [
+            fund
+            for fund in filtered
+            if query_token in fund.schemeName.lower()
+            or query_token in fund.schemeCode
+            or (fund.fundHouse and query_token in fund.fundHouse.lower())
+        ]
+    return filtered
+
+
+def _find_live_mutual_fund(scheme_code: str) -> MutualFund | None:
+    target = scheme_code.strip()
+    if not target:
+        return None
+    for fund in _fetch_live_mutual_funds():
+        if fund.schemeCode == target:
+            return fund
+    return None
+
+
+def _upsert_mutual_fund_model(db: Session, payload: MutualFund) -> MutualFundModel:
+    row = db.query(MutualFundModel).filter(MutualFundModel.scheme_code == payload.schemeCode).first()
+    if row is None:
+        row = MutualFundModel(scheme_code=payload.schemeCode)
+        db.add(row)
+
+    row.scheme_name = payload.schemeName
+    row.category = payload.category
+    row.nav = payload.nav
+    row.nav_date = payload.navDate
+    row.returns_1y = payload.returns1Y
+    row.returns_3y = payload.returns3Y
+    row.returns_5y = payload.returns5Y
+    row.fund_house = payload.fundHouse
+    row.risk_level = payload.riskLevel
+
+    db.commit()
+    db.refresh(row)
+    return row
 
 def _seed_phase1_master_data(db: Session):
     if db.query(MutualFundModel).count() == 0:
+        today = datetime.utcnow().strftime("%Y-%m-%d")
         db.add_all([
             MutualFundModel(
                 scheme_code="120503",
-                scheme_name="BYSEL Nifty 50 Index Fund - Direct Growth",
+                scheme_name="SBI Nifty Index Fund - Direct Plan - Growth",
                 category="INDEX",
                 nav=102.34,
-                nav_date="2026-03-03",
+                nav_date=today,
                 returns_1y=14.2,
                 returns_3y=12.1,
                 returns_5y=11.3,
-                fund_house="BYSEL AM",
+                fund_house="SBI Mutual Fund",
                 risk_level="MODERATE",
             ),
             MutualFundModel(
                 scheme_code="120871",
-                scheme_name="BYSEL Flexi Cap Fund - Direct Growth",
+                scheme_name="Parag Parikh Flexi Cap Fund - Direct Plan - Growth",
                 category="EQUITY",
                 nav=78.92,
-                nav_date="2026-03-03",
+                nav_date=today,
                 returns_1y=18.7,
                 returns_3y=16.5,
                 returns_5y=15.1,
-                fund_house="BYSEL AM",
+                fund_house="PPFAS Mutual Fund",
                 risk_level="MODERATE_HIGH",
             ),
         ])
@@ -501,6 +687,12 @@ async def get_mutual_funds_endpoint(
     q: str | None = Query(None),
     db: Session = Depends(get_db)
 ):
+    try:
+        live_funds = _fetch_live_mutual_funds()
+        return _filter_mutual_funds(live_funds, category=category, search_query=q)
+    except Exception as exc:
+        logger.warning("mutual_funds.live_fetch_failed reason=%s", str(exc))
+
     _seed_phase1_master_data(db)
     query = db.query(MutualFundModel)
     if category:
@@ -531,6 +723,13 @@ async def get_mutual_funds_endpoint(
 
 @router.get("/mutual-funds/{scheme_code}", response_model=MutualFund)
 async def get_mutual_fund_detail_endpoint(scheme_code: str, db: Session = Depends(get_db)):
+    try:
+        live_fund = _find_live_mutual_fund(scheme_code)
+        if live_fund is not None:
+            return live_fund
+    except Exception as exc:
+        logger.warning("mutual_fund_detail.live_fetch_failed scheme_code=%s reason=%s", scheme_code, str(exc))
+
     _seed_phase1_master_data(db)
     fund = db.query(MutualFundModel).filter(MutualFundModel.scheme_code == scheme_code).first()
     if fund:
@@ -555,8 +754,19 @@ async def create_sip_plan_endpoint(
     db: Session = Depends(get_db),
     user_id: int = Header(1)
 ):
-    _seed_phase1_master_data(db)
     fund = db.query(MutualFundModel).filter(MutualFundModel.scheme_code == request.schemeCode).first()
+    if not fund:
+        try:
+            live_fund = _find_live_mutual_fund(request.schemeCode)
+            if live_fund is not None:
+                fund = _upsert_mutual_fund_model(db, live_fund)
+        except Exception as exc:
+            logger.warning("sip_plan.live_fund_lookup_failed scheme_code=%s reason=%s", request.schemeCode, str(exc))
+
+    if not fund:
+        _seed_phase1_master_data(db)
+        fund = db.query(MutualFundModel).filter(MutualFundModel.scheme_code == request.schemeCode).first()
+
     if not fund:
         raise HTTPException(status_code=404, detail=f"Mutual fund '{request.schemeCode}' not found")
 
