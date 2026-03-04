@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from pydantic import BaseModel
@@ -492,34 +493,48 @@ def register(user: UserRegister, request: Request):
         _metric_inc("register.failure_password_too_long")
         raise HTTPException(status_code=400, detail="Password must be 72 characters or less.")
     db: Session = SessionLocal()
-    _prune_stale_refresh_tokens(db)
-    existing = db.query(UserModel).filter((UserModel.username == user.username) | (UserModel.email == user.email)).first()
-    if existing:
+    try:
+        _prune_stale_refresh_tokens(db)
+        existing = db.query(UserModel).filter((UserModel.username == user.username) | (UserModel.email == user.email)).first()
+        if existing:
+            _metric_inc("register.failure_user_exists")
+            raise HTTPException(status_code=400, detail="Username or email already exists")
+
+        hashed = pwd_context.hash(password)
+        new_user = UserModel(username=user.username, email=user.email, password_hash=hashed, created_at=datetime.utcnow())
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+
+        user_id = new_user.id
+
+        try:
+            wallet = WalletModel(user_id=user_id, balance=0.0)
+            db.add(wallet)
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            logger.exception("auth.register.wallet_init_failed user_id=%s reason=%s", user_id, str(exc))
+
+        token_version = int(getattr(new_user, "token_version", 0) or 0)
+        access_token, refresh_token = _create_auth_tokens(user_id=user_id, token_version=token_version)
+
+        try:
+            _persist_refresh_token(db, user_id=user_id, refresh_token=refresh_token, request=request)
+        except Exception as exc:
+            db.rollback()
+            logger.exception("auth.register.session_init_failed user_id=%s reason=%s", user_id, str(exc))
+
+        _metric_inc("register.success")
+        logger.info("auth.register.success user_id=%s username=%s", user_id, _mask_identifier(user.username))
+        return AuthResponse(
+            status="ok",
+            user_id=user_id,
+            access_token=access_token,
+            refresh_token=refresh_token,
+        )
+    finally:
         db.close()
-        _metric_inc("register.failure_user_exists")
-        raise HTTPException(status_code=400, detail="Username or email already exists")
-    hashed = pwd_context.hash(password)
-    new_user = UserModel(username=user.username, email=user.email, password_hash=hashed, created_at=datetime.utcnow())
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    # Create wallet for new user with zero balance
-    wallet = WalletModel(user_id=new_user.id, balance=0.0)
-    db.add(wallet)
-    db.commit()
-    user_id = new_user.id
-    token_version = int(getattr(new_user, "token_version", 0) or 0)
-    access_token, refresh_token = _create_auth_tokens(user_id=user_id, token_version=token_version)
-    _persist_refresh_token(db, user_id=user_id, refresh_token=refresh_token, request=request)
-    db.close()
-    _metric_inc("register.success")
-    logger.info("auth.register.success user_id=%s username=%s", user_id, _mask_identifier(user.username))
-    return AuthResponse(
-        status="ok",
-        user_id=user_id,
-        access_token=access_token,
-        refresh_token=refresh_token,
-    )
 
 @router.post("/login", response_model=AuthResponse)
 def login(user: UserLogin, request: Request):
@@ -550,30 +565,37 @@ def login(user: UserLogin, request: Request):
         _metric_inc("login.failure_password_too_long")
         raise HTTPException(status_code=400, detail="Password must be 72 characters or less.")
     db: Session = SessionLocal()
-    _prune_stale_refresh_tokens(db)
-    db_user = db.query(UserModel).filter(UserModel.username == user.username).first()
-    if not db_user or not pwd_context.verify(user.password, db_user.password_hash):
+    try:
+        _prune_stale_refresh_tokens(db)
+        db_user = db.query(UserModel).filter(UserModel.username == user.username).first()
+        if not db_user or not pwd_context.verify(user.password, db_user.password_hash):
+            _metric_inc("login.failure_invalid_credentials")
+            lockout_triggered = _record_login_failure(login_key)
+            if lockout_triggered:
+                _metric_inc("login.lockout_triggered")
+                logger.warning("auth.login.lockout_triggered ip=%s username=%s", client_ip, _mask_identifier(user.username))
+            logger.warning("auth.login.failed ip=%s username=%s reason=invalid_credentials", client_ip, _mask_identifier(user.username))
+            raise HTTPException(status_code=401, detail="Invalid username or password")
+
+        token_version = int(getattr(db_user, "token_version", 0) or 0)
+        access_token, refresh_token = _create_auth_tokens(user_id=db_user.id, token_version=token_version)
+        try:
+            _persist_refresh_token(db, user_id=db_user.id, refresh_token=refresh_token, request=request)
+        except Exception as exc:
+            db.rollback()
+            logger.exception("auth.login.session_init_failed user_id=%s reason=%s", db_user.id, str(exc))
+
+        _record_login_success(login_key)
+        _metric_inc("login.success")
+        logger.info("auth.login.success ip=%s user_id=%s username=%s", client_ip, db_user.id, _mask_identifier(user.username))
+        return AuthResponse(
+            status="ok",
+            user_id=db_user.id,
+            access_token=access_token,
+            refresh_token=refresh_token,
+        )
+    finally:
         db.close()
-        _metric_inc("login.failure_invalid_credentials")
-        lockout_triggered = _record_login_failure(login_key)
-        if lockout_triggered:
-            _metric_inc("login.lockout_triggered")
-            logger.warning("auth.login.lockout_triggered ip=%s username=%s", client_ip, _mask_identifier(user.username))
-        logger.warning("auth.login.failed ip=%s username=%s reason=invalid_credentials", client_ip, _mask_identifier(user.username))
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-    token_version = int(getattr(db_user, "token_version", 0) or 0)
-    access_token, refresh_token = _create_auth_tokens(user_id=db_user.id, token_version=token_version)
-    _persist_refresh_token(db, user_id=db_user.id, refresh_token=refresh_token, request=request)
-    db.close()
-    _record_login_success(login_key)
-    _metric_inc("login.success")
-    logger.info("auth.login.success ip=%s user_id=%s username=%s", client_ip, db_user.id, _mask_identifier(user.username))
-    return AuthResponse(
-        status="ok",
-        user_id=db_user.id,
-        access_token=access_token,
-        refresh_token=refresh_token,
-    )
 
 
 @router.post("/refresh", response_model=AuthResponse)
