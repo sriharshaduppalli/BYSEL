@@ -160,6 +160,14 @@ class TradingViewModel(
     private val AUTO_REFRESH_INTERVAL = 15_000L
     private val FAST_REFRESH_INTERVAL = 1_000L
     private val defaultSymbols = listOf("RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN")
+
+    private fun trackedSymbols(additional: List<String> = emptyList()): List<String> {
+        return (defaultSymbols + _watchlist.value + additional)
+            .map { it.trim().uppercase() }
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
+
     // Paging state for quotes list
     private val _pagedQuotes = MutableStateFlow<List<Quote>>(emptyList())
     val pagedQuotes: StateFlow<List<Quote>> = _pagedQuotes.asStateFlow()
@@ -185,7 +193,7 @@ class TradingViewModel(
             try {
                 // prefer watchlist symbols if available
                 val wl = watchlistPrefs.getStringSet("symbols", emptySet())?.toList() ?: emptyList()
-                val symbolsToLoad = if (wl.isNotEmpty()) wl else defaultSymbols
+                val symbolsToLoad = trackedSymbols(wl)
                 repository.getCachedQuotes(symbolsToLoad).collectLatest { cached ->
                     if (cached.isNotEmpty()) _quotes.value = cached
                 }
@@ -208,6 +216,7 @@ class TradingViewModel(
         if (current.add(normalized)) {
             watchlistPrefs.edit().putStringSet("symbols", current).apply()
             _watchlist.value = current.toList()
+            refreshQuotes()
         }
     }
 
@@ -217,6 +226,7 @@ class TradingViewModel(
         if (current.remove(normalized)) {
             watchlistPrefs.edit().putStringSet("symbols", current).apply()
             _watchlist.value = current.toList()
+            refreshQuotes()
         }
     }
 
@@ -270,9 +280,10 @@ class TradingViewModel(
 
     // --- Quotes / holdings / wallet ---
     fun refreshQuotes() {
+        val symbols = trackedSymbols()
         viewModelScope.launch {
             _isLoading.value = true
-            repository.getQuotes(defaultSymbols).collect { result ->
+            repository.getQuotes(symbols).collect { result ->
                 when (result) {
                     is Result.Loading -> _isLoading.value = true
                     is Result.Success -> {
@@ -429,14 +440,16 @@ class TradingViewModel(
      * dashboard or detail screens. It will only perform network refreshes while
      * the market appears open (`marketStatus.isOpen == true`).
      */
-    fun startFastRefresh(intervalMs: Long = FAST_REFRESH_INTERVAL, symbols: List<String> = defaultSymbols) {
+    fun startFastRefresh(intervalMs: Long = FAST_REFRESH_INTERVAL, symbols: List<String>? = null) {
+        val symbolsToTrack = symbols?.map { it.trim().uppercase() }?.filter { it.isNotBlank() }?.distinct()
+            ?: trackedSymbols()
         // avoid starting multiple jobs
         if (autoRefreshJob?.isActive == true) return
         // respect global enabled flag
         if (!_fastRefreshEnabled.value) return
         autoRefreshJob = viewModelScope.launch {
             try {
-                repository.streamLiveQuotes(symbols).collectLatest { result ->
+                repository.streamLiveQuotes(symbolsToTrack).collectLatest { result ->
                     if (!_fastRefreshPlaying.value) return@collectLatest
                     if (_requireCharging.value && !isDeviceCharging()) return@collectLatest
                     if (_requireUnmetered.value && !isOnUnmeteredNetwork()) return@collectLatest
