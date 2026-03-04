@@ -1,0 +1,11 @@
+# Ignore keystore and signing artifacts
+keystore.p12
+keystore.jks
+keystore.properties
+app/keystore.p12
+*.jks
+*.p12
+
+# Ignore any local signing helper files
+keystore_base64.txt
+create_keystore.py

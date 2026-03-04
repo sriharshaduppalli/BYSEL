@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    
+    <!-- Shortcut 1: View Portfolio -->
+    <shortcut
+        android:shortcutId="open_portfolio"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:shortcutShortLabel="@string/shortcut_portfolio_short"
+        android:shortcutLongLabel="@string/shortcut_portfolio_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.bysel.trader"
+            android:targetClass="com.bysel.trader.MainActivity">
+            <extra android:name="shortcut_action" android:value="open_portfolio" />
+        </intent>
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <!-- Shortcut 2: Buy Stocks -->
+    <shortcut
+        android:shortcutId="buy_stock"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:shortcutShortLabel="@string/shortcut_buy_short"
+        android:shortcutLongLabel="@string/shortcut_buy_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.bysel.trader"
+            android:targetClass="com.bysel.trader.MainActivity">
+            <extra android:name="shortcut_action" android:value="buy_stock" />
+        </intent>
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <!-- Shortcut 3: Market Status -->
+    <shortcut
+        android:shortcutId="market_status"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:shortcutShortLabel="@string/shortcut_market_short"
+        android:shortcutLongLabel="@string/shortcut_market_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.bysel.trader"
+            android:targetClass="com.bysel.trader.MainActivity">
+            <extra android:name="shortcut_action" android:value="market_status" />
+        </intent>
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <!-- Shortcut 4: Price Alerts -->
+    <shortcut
+        android:shortcutId="price_alerts"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:shortcutShortLabel="@string/shortcut_alerts_short"
+        android:shortcutLongLabel="@string/shortcut_alerts_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.bysel.trader"
+            android:targetClass="com.bysel.trader.MainActivity">
+            <extra android:name="shortcut_action" android:value="price_alerts" />
+        </intent>
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+</shortcuts>

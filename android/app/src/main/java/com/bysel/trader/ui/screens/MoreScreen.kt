@@ -22,7 +22,13 @@ import com.bysel.trader.ui.theme.LocalAppTheme
 fun MoreScreen(
     onSearchClick: () -> Unit,
     onAlertsClick: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onAchievementsClick: () -> Unit,
+    onMutualFundsClick: () -> Unit,
+    onIpoClick: () -> Unit,
+    onEtfClick: () -> Unit,
+    onSipClick: () -> Unit,
+    onMyIpoApplicationsClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -62,6 +68,66 @@ fun MoreScreen(
             subtitle = "Customize themes and preferences",
             gradientColors = listOf(Color(0xFF424242), Color(0xFF757575)),
             onClick = onSettingsClick
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        MoreMenuItem(
+            icon = Icons.Filled.EmojiEvents,
+            title = "Achievements",
+            subtitle = "View your unlocked badges",
+            gradientColors = listOf(Color(0xFF388E3C), Color(0xFF81C784)),
+            onClick = onAchievementsClick
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        MoreMenuItem(
+            icon = Icons.Filled.AccountBalance,
+            title = "Mutual Funds",
+            subtitle = "Explore funds and start SIPs",
+            gradientColors = listOf(Color(0xFF1565C0), Color(0xFF42A5F5)),
+            onClick = onMutualFundsClick
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        MoreMenuItem(
+            icon = Icons.Filled.BusinessCenter,
+            title = "IPO Listings",
+            subtitle = "Track upcoming and open IPOs",
+            gradientColors = listOf(Color(0xFF6A1B9A), Color(0xFFAB47BC)),
+            onClick = onIpoClick
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        MoreMenuItem(
+            icon = Icons.Filled.ShowChart,
+            title = "ETFs",
+            subtitle = "Browse index and sector ETFs",
+            gradientColors = listOf(Color(0xFF00695C), Color(0xFF26A69A)),
+            onClick = onEtfClick
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        MoreMenuItem(
+            icon = Icons.Filled.Payments,
+            title = "My SIPs",
+            subtitle = "Manage your SIP plans",
+            gradientColors = listOf(Color(0xFFEF6C00), Color(0xFFFFA726)),
+            onClick = onSipClick
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        MoreMenuItem(
+            icon = Icons.Filled.Assignment,
+            title = "My IPO Applications",
+            subtitle = "Track submitted IPO applications",
+            gradientColors = listOf(Color(0xFF455A64), Color(0xFF90A4AE)),
+            onClick = onMyIpoApplicationsClick
         )
 
         Spacer(modifier = Modifier.weight(1f))

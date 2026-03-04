@@ -4,6 +4,7 @@ pluginManagement {
         mavenCentral()
         gradlePluginPortal()
     }
+    // No additional plugins declared here to avoid plugin resolution issues
 }
 
 dependencyResolutionManagement {
@@ -16,3 +17,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "BYSEL"
 include(":app")
+include(":core:auth")
+include(":core:network")

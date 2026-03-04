@@ -9,6 +9,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import com.bysel.trader.viewmodel.TradingViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -16,15 +18,30 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.Quote
+import com.bysel.trader.data.models.HistoryCandle
+import java.text.SimpleDateFormat
+import java.util.Date
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.unit.Dp
 import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
 fun StockDetailScreen(
     quote: Quote?,
+    history: List<HistoryCandle> = emptyList(),
     onBackPress: () -> Unit,
     onBuy: (String, Int) -> Unit,
-    onSell: (String, Int) -> Unit
+    onSell: (String, Int) -> Unit,
+    viewModel: TradingViewModel
 ) {
+    // start fast-refresh for this symbol while detail screen is visible
+    if (quote != null) {
+        DisposableEffect(quote.symbol, viewModel) {
+            viewModel.startFastRefresh(symbols = listOf(quote.symbol))
+            onDispose { viewModel.stopFastRefresh() }
+        }
+    }
     if (quote == null) {
         Box(
             modifier = Modifier
@@ -124,13 +141,29 @@ fun StockDetailScreen(
                 modifier = Modifier.padding(bottom = 12.dp)
             )
 
-            DetailRow(label = "Today's Open", value = "₹${String.format("%.2f", quote.last)}")
-            DetailRow(label = "Day High", value = "₹${String.format("%.2f", quote.last * 1.02)}")
-            DetailRow(label = "Day Low", value = "₹${String.format("%.2f", quote.last * 0.98)}")
-            DetailRow(label = "52 Week High", value = "₹${String.format("%.2f", quote.last * 1.15)}")
-            DetailRow(label = "52 Week Low", value = "₹${String.format("%.2f", quote.last * 0.85)}")
+            DetailRow(label = "Today's Open", value = "₹${String.format("%.2f", quote.open ?: quote.prevClose ?: quote.last)}")
+            DetailRow(label = "Day High", value = "₹${String.format("%.2f", quote.dayHigh ?: quote.last)}")
+            DetailRow(label = "Day Low", value = "₹${String.format("%.2f", quote.dayLow ?: quote.last)}")
+            DetailRow(label = "Prev Close", value = "₹${String.format("%.2f", quote.prevClose ?: quote.last)}")
+            DetailRow(label = "Bid / Ask", value = "${quote.bid?.let { "₹${String.format("%.2f", it)}" } ?: "N/A"} / ${quote.ask?.let { "₹${String.format("%.2f", it)}" } ?: "N/A"}")
+            DetailRow(label = "52 Week High", value = "₹${String.format("%.2f", quote.fiftyTwoWeekHigh ?: quote.last * 1.15)}")
+            DetailRow(label = "52 Week Low", value = "₹${String.format("%.2f", quote.fiftyTwoWeekLow ?: quote.last * 0.85)}")
 
             Spacer(modifier = Modifier.height(20.dp))
+
+            Text(
+                text = "Price History",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = LocalAppTheme.current.text,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            if (history.isEmpty()) {
+                Text(text = "No historical data", color = LocalAppTheme.current.textSecondary)
+            } else {
+                com.bysel.trader.ui.components.PriceHistoryChart(history = history, modifier = Modifier.fillMaxWidth())
+            }
 
             // Trading Volume Section
             Text(
@@ -141,9 +174,11 @@ fun StockDetailScreen(
                 modifier = Modifier.padding(bottom = 12.dp)
             )
 
-            DetailRow(label = "Volume", value = "${(Math.random() * 10000000).toInt()} shares")
-            DetailRow(label = "Avg Volume", value = "${(Math.random() * 8000000).toInt()} shares")
-            DetailRow(label = "Market Cap", value = "₹${(Math.random() * 500000).toInt()} Cr")
+            DetailRow(label = "Volume", value = "${quote.volume?.toString() ?: "N/A"} shares")
+            DetailRow(label = "Avg Volume", value = "${quote.avgVolume?.toString() ?: "N/A"} shares")
+            DetailRow(label = "Market Cap", value = "${quote.marketCap?.let { "₹${it}" } ?: "N/A"}")
+            DetailRow(label = "EPS", value = "${quote.eps?.let { String.format("%.2f", it) } ?: "N/A"}")
+            DetailRow(label = "Target Price", value = "${quote.targetMeanPrice?.let { "₹${String.format("%.2f", it)}" } ?: "N/A"}")
 
             Spacer(modifier = Modifier.height(20.dp))
 
@@ -156,11 +191,18 @@ fun StockDetailScreen(
                 modifier = Modifier.padding(bottom = 12.dp)
             )
 
-            DetailRow(label = "P/E Ratio", value = "${String.format("%.2f", 15.5 + Math.random() * 10)}")
-            DetailRow(label = "Dividend Yield", value = "${String.format("%.2f", 2.5 + Math.random() * 3)}%")
-            DetailRow(label = "Book Value", value = "₹${String.format("%.2f", quote.last * 0.8)}")
+            DetailRow(label = "P/E Ratio", value = "${quote.trailingPE?.let { String.format("%.2f", it) } ?: "N/A"}")
+            DetailRow(label = "Dividend Yield", value = "${quote.dividendYield?.let { String.format("%.2f", it) + "%" } ?: "N/A"}")
+            DetailRow(label = "Book Value", value = "₹${String.format("%.2f", (quote.last * 0.8))}")
 
             Spacer(modifier = Modifier.height(30.dp))
+
+            val lastUpdated = try {
+                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+                sdf.format(Date(quote.timestamp))
+            } catch (e: Exception) { "" }
+
+            DetailRow(label = "Last Updated", value = lastUpdated)
 
             // Action Buttons
             Row(
@@ -169,7 +211,7 @@ fun StockDetailScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Button(
-                    onClick = { },
+                    onClick = { onBuy(quote.symbol, 1) },
                     modifier = Modifier
                         .weight(1f)
                         .height(50.dp),
@@ -180,7 +222,7 @@ fun StockDetailScreen(
                 }
 
                 Button(
-                    onClick = { },
+                    onClick = { onSell(quote.symbol, 1) },
                     modifier = Modifier
                         .weight(1f)
                         .height(50.dp),

@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.HeatmapSector
 import com.bysel.trader.data.models.HeatmapStock
 import com.bysel.trader.data.models.MarketHeatmap
+import com.bysel.trader.ui.components.PullToRefreshBox
 import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
@@ -33,10 +34,20 @@ fun HeatmapScreen(
     heatmap: MarketHeatmap?,
     isLoading: Boolean,
     onRefresh: () -> Unit,
-    onStockClick: (String) -> Unit
+    onStockClick: (String) -> Unit,
+    heatmapInterval: Int = 2000
 ) {
+    // Initial load
     LaunchedEffect(Unit) {
         if (heatmap == null) onRefresh()
+    }
+
+    // Periodic refresh using user interval
+    LaunchedEffect(heatmapInterval) {
+        while (true) {
+            onRefresh()
+            kotlinx.coroutines.delay(heatmapInterval.toLong())
+        }
     }
 
     Column(
@@ -59,11 +70,16 @@ fun HeatmapScreen(
                 }
             }
         } else if (heatmap != null) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            PullToRefreshBox(
+                isRefreshing = isLoading,
+                onRefresh = onRefresh,
+                enabled = true
             ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                 // Market Breadth Card
                 item {
                     MarketBreadthCard(heatmap)
@@ -73,6 +89,7 @@ fun HeatmapScreen(
                 items(heatmap.sectors) { sector ->
                     SectorHeatmapCard(sector, onStockClick)
                 }
+            }
             }
         }
     }

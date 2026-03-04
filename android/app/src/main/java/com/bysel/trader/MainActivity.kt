@@ -1,43 +1,74 @@
 package com.bysel.trader
 import androidx.compose.material.icons.automirrored.filled.ShowChart
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import com.bysel.trader.security.BiometricAuthManager
 
 import android.content.Context
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import android.widget.Toast
 import androidx.activity.compose.setContent
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
+import com.bysel.trader.data.auth.AuthSessionManager
 import com.bysel.trader.data.local.BYSELDatabase
+import com.bysel.trader.data.repository.AuthRepository
 import com.bysel.trader.data.repository.TradingRepository
 import com.bysel.trader.ui.screens.*
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.theme.getTheme
 import com.bysel.trader.viewmodel.TradingViewModel
 import com.bysel.trader.viewmodel.TradingViewModelFactory
+import kotlinx.coroutines.launch
 
-class MainActivity : ComponentActivity() {
+@OptIn(ExperimentalFoundationApi::class)
+class MainActivity : FragmentActivity() {
     private var upiResultCallback: ((Boolean) -> Unit)? = null
+    private lateinit var biometricAuthManager: BiometricAuthManager
+    private var isAuthenticated = false
 
 
 
     private lateinit var upiLauncher: androidx.activity.result.ActivityResultLauncher<android.content.Intent>
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Install modern splash screen (Material You)
+        val splashScreen = installSplashScreen()
+        
         super.onCreate(savedInstanceState)
+        
+        // Initialize biometric auth manager
+        biometricAuthManager = BiometricAuthManager(this)
+        
+        // Keep splash screen visible while checking biometric auth
+        var keepSplashScreen = true
+        splashScreen.setKeepOnScreenCondition { keepSplashScreen }
 
         upiLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
             val data = result.data
@@ -47,19 +78,135 @@ class MainActivity : ComponentActivity() {
             upiResultCallback = null
         }
 
+        AuthSessionManager.init(applicationContext)
+
         val database = BYSELDatabase.getInstance(this)
         val repository = TradingRepository(database)
+        val factory = TradingViewModelFactory(repository)
+        factory.initApplication(application)
         val viewModel = ViewModelProvider(
             this,
-            TradingViewModelFactory(repository)
+            factory
         ).get(TradingViewModel::class.java)
+        
+        // Handle app shortcuts
+        val shortcutAction = intent.getStringExtra("shortcut_action")
 
         setContent {
-            BYSELApp(viewModel) { amount, upiPackageName ->
-                launchUpiPayment(amount, upiPackageName) { success ->
-                    if (success) viewModel.addFunds(amount)
+            val authRepository = remember { AuthRepository() }
+            val scope = rememberCoroutineScope()
+            val isLoggedIn by AuthSessionManager.sessionState.collectAsState()
+            var wasLoggedIn by remember { mutableStateOf(isLoggedIn) }
+            var manualLogoutInProgress by remember { mutableStateOf(false) }
+
+            // Show biometric lock screen if enabled and not authenticated
+            var showLockScreen by remember { mutableStateOf(
+                isLoggedIn && biometricAuthManager.isBiometricEnabled() && !isAuthenticated
+            ) }
+            
+            // Determine initial tab based on shortcut
+            val initialTab = remember {
+                when (shortcutAction) {
+                    "open_portfolio" -> 3  // Portfolio tab
+                    "buy_stock" -> 2       // Trading tab
+                    "market_status" -> 4   // Heatmap tab
+                    "price_alerts" -> 7    // Alerts screen
+                    else -> 0              // Default: Home
                 }
             }
+            
+            LaunchedEffect(isLoggedIn) {
+                keepSplashScreen = false // Dismiss splash screen
+
+                if (wasLoggedIn && !isLoggedIn && !manualLogoutInProgress) {
+                    isAuthenticated = false
+                    showLockScreen = false
+                    Toast.makeText(this@MainActivity, "Session expired. Please sign in again.", Toast.LENGTH_SHORT).show()
+                }
+
+                if (!isLoggedIn) {
+                    manualLogoutInProgress = false
+                }
+                wasLoggedIn = isLoggedIn
+                
+                // Trigger biometric auth if enabled
+                if (isLoggedIn && biometricAuthManager.isBiometricEnabled() && !isAuthenticated) {
+                    biometricAuthManager.authenticateForAppUnlock(
+                        activity = this@MainActivity,
+                        onSuccess = {
+                            isAuthenticated = true
+                            showLockScreen = false
+                        },
+                        onCancel = {
+                            // User cancelled - exit app
+                            finish()
+                        }
+                    )
+                }
+            }
+
+            if (!isLoggedIn) {
+                AuthScreen(
+                    onAuthenticated = {
+                        isAuthenticated = !biometricAuthManager.isBiometricEnabled()
+                        showLockScreen = biometricAuthManager.isBiometricEnabled() && !isAuthenticated
+                    }
+                )
+            } else if (showLockScreen) {
+                BiometricLockScreen(
+                    onRetry = {
+                        biometricAuthManager.authenticateForAppUnlock(
+                            activity = this@MainActivity,
+                            onSuccess = {
+                                isAuthenticated = true
+                                showLockScreen = false
+                            },
+                            onCancel = { finish() }
+                        )
+                    }
+                )
+            } else {
+                BYSELApp(
+                    viewModel = viewModel,
+                    biometricAuthManager = biometricAuthManager,
+                    initialTab = initialTab,
+                    onUpiPay = { amount, upiPackageName ->
+                        launchUpiPayment(amount, upiPackageName) { success ->
+                            if (success) viewModel.addFunds(amount)
+                        }
+                    },
+                    onLogout = {
+                        manualLogoutInProgress = true
+                        scope.launch {
+                            authRepository.logout()
+                            isAuthenticated = false
+                            showLockScreen = false
+                            Toast.makeText(this@MainActivity, "Logged out successfully", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onLogoutAllDevices = {
+                        manualLogoutInProgress = true
+                        scope.launch {
+                            authRepository.logoutAllDevices()
+                            isAuthenticated = false
+                            showLockScreen = false
+                            Toast.makeText(this@MainActivity, "Logged out from all devices", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-check authentication when app returns from background
+        if (AuthSessionManager.hasSession() && biometricAuthManager.isBiometricEnabled() && !isAuthenticated) {
+            biometricAuthManager.authenticateForAppUnlock(
+                activity = this,
+                onSuccess = { isAuthenticated = true },
+                onCancel = { finish() }
+            )
         }
     }
 
@@ -79,13 +226,78 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun BYSELApp(viewModel: TradingViewModel, onUpiPay: (Double, String) -> Unit) {
+fun BiometricLockScreen(onRetry: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF121212)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Lock,
+                contentDescription = "Locked",
+                modifier = Modifier.size(80.dp),
+                tint = Color(0xFF7C4DFF)
+            )
+            
+            Text(
+                text = "BYSEL is Locked",
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+            
+            Text(
+                text = "Authenticate to access your portfolio",
+                fontSize = 14.sp,
+                color = Color.Gray,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 32.dp)
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Button(
+                onClick = onRetry,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF7C4DFF)
+                ),
+                modifier = Modifier.height(48.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Fingerprint,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Unlock with Biometric", fontSize = 16.sp)
+            }
+        }
+    }
+}
+
+@Composable
+fun BYSELApp(
+    viewModel: TradingViewModel, 
+    biometricAuthManager: BiometricAuthManager,
+    onUpiPay: (Double, String) -> Unit,
+    onLogout: () -> Unit = {},
+    onLogoutAllDevices: () -> Unit = {},
+    initialTab: Int = 0
+) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("bysel_settings", Context.MODE_PRIVATE) }
     var currentThemeName by remember { mutableStateOf(prefs.getString("theme", "Default") ?: "Default") }
     val appTheme = remember(currentThemeName) { getTheme(currentThemeName.lowercase()) }
 
-    var selectedTab by remember { mutableStateOf(0) }
+    // Onboarding state
+    var showOnboarding by remember { mutableStateOf(prefs.getBoolean("onboarding_complete", false).not()) }
+
+    var selectedTab by remember { mutableStateOf(initialTab) }
     var previousTab by remember { mutableIntStateOf(0) }
     
     val quotes by viewModel.quotes.collectAsState()
@@ -108,16 +320,26 @@ fun BYSELApp(viewModel: TradingViewModel, onUpiPay: (Double, String) -> Unit) {
     val marketStatus by viewModel.marketStatus.collectAsState()
 
     CompositionLocalProvider(LocalAppTheme provides appTheme) {
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = appTheme.surface
-    ) {
-        Scaffold(
-            bottomBar = {
-                NavigationBar(
-                    modifier = Modifier.background(appTheme.card),
-                    containerColor = appTheme.card
-                ) {
+        if (showOnboarding) {
+            com.bysel.trader.ui.screens.OnboardingScreen(
+                onFinish = {
+                    // Do NOT auto-initialize demo funds. Keep wallet at 0 by default.
+                    // User can opt-in to demo from Settings or explicit UI action.
+                    showOnboarding = false
+                    prefs.edit().putBoolean("onboarding_complete", true).apply()
+                }
+            )
+        } else {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = appTheme.surface
+            ) {
+                Scaffold(
+                    bottomBar = {
+                        NavigationBar(
+                            modifier = Modifier.background(appTheme.card),
+                            containerColor = appTheme.card
+                        ) {
                     // Tab 0: Dashboard
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.Home, contentDescription = "Dashboard", modifier = Modifier.size(22.dp)) },
@@ -192,7 +414,7 @@ fun BYSELApp(viewModel: TradingViewModel, onUpiPay: (Double, String) -> Unit) {
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.MoreHoriz, contentDescription = "More", modifier = Modifier.size(22.dp)) },
                         label = { Text("More", fontSize = 10.sp) },
-                        selected = selectedTab in 5..9,
+                        selected = selectedTab in 5..15,
                         onClick = { selectedTab = 5 },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = Color(0xFF7C4DFF),
@@ -202,132 +424,181 @@ fun BYSELApp(viewModel: TradingViewModel, onUpiPay: (Double, String) -> Unit) {
                             indicatorColor = Color.Transparent
                         )
                     )
-                }
-            }
-        ) { paddingValues ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .background(appTheme.surface)
-            ) {
-                when (selectedTab) {
-                    0 -> DashboardScreen(
-                        holdings = holdings,
-                        quotes = quotes,
-                        isLoading = isLoading,
-                        error = error,
-                        onRefresh = { viewModel.refreshQuotes() },
-                        onTradeClick = { selectedTab = 2 },
-                        onErrorDismiss = { viewModel.clearError() }
-                    )
-                    1 -> AiAssistantScreen(
-                        chatHistory = chatHistory,
-                        isLoading = aiLoading,
-                        onSendQuery = { query -> viewModel.askAi(query) },
-                        onSuggestionClick = { suggestion -> viewModel.askAi(suggestion) },
-                        onClearChat = { viewModel.clearChatHistory() }
-                    )
-                    2 -> TradingScreen(
-                        quotes = quotes,
-                        isLoading = isLoading,
-                        error = error,
-                        walletBalance = walletBalance,
-                        marketStatus = marketStatus,
-                        onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
-                        onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") },
-                        onRefresh = {
-                            viewModel.refreshQuotes()
-                            viewModel.refreshWallet()
-                            viewModel.refreshMarketStatus()
-                        },
-                        onAddFunds = { amount, upiProvider -> onUpiPay(amount, upiProvider) },
-                        onErrorDismiss = { viewModel.clearError() }
-                    )
-                    3 -> PortfolioScreen(
-                        holdings = holdings,
-                        quotes = quotes,
-                        isLoading = isLoading,
-                        error = error,
-                        portfolioHealth = portfolioHealth,
-                        healthLoading = healthLoading,
-                        onRefresh = { viewModel.refreshHoldings() },
-                        onRefreshHealth = { viewModel.loadPortfolioHealth() },
-                        onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
-                        onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") },
-                        onErrorDismiss = { viewModel.clearError() }
-                    )
-                    4 -> HeatmapScreen(
-                        heatmap = marketHeatmap,
-                        isLoading = heatmapLoading,
-                        onRefresh = { viewModel.loadMarketHeatmap() },
-                        onStockClick = { symbol ->
-                            previousTab = selectedTab
-                            viewModel.fetchAndSelectQuote(symbol)
-                            selectedTab = 9
                         }
-                    )
-                    5 -> MoreScreen(
-                        onSearchClick = { selectedTab = 6 },
-                        onAlertsClick = { selectedTab = 7 },
-                        onSettingsClick = { selectedTab = 8 }
-                    )
-                    6 -> SearchScreen(
-                        quotes = quotes,
-                        searchResults = searchResults,
-                        isSearching = isSearching,
-                        onSearchQuery = { query -> viewModel.searchStocks(query) },
-                        onClearSearch = { viewModel.clearSearchResults() },
-                        onQuoteClick = { quote ->
-                            previousTab = selectedTab
-                            viewModel.setSelectedQuote(quote)
-                            selectedTab = 9
-                        },
-                        onSymbolClick = { symbol ->
-                            previousTab = selectedTab
-                            viewModel.fetchAndSelectQuote(symbol)
-                            selectedTab = 9
-                        }
-                    )
-                    7 -> AlertsScreen(
-                        alerts = alerts,
-                        isLoading = isLoading,
-                        onCreateAlert = { symbol, price, type ->
-                            viewModel.createAlert(symbol, price, type)
-                        },
-                        onDeleteAlert = { alertId ->
-                            viewModel.deleteAlert(alertId)
-                        }
-                    )
-                    8 -> SettingsScreen(
-                        currentTheme = currentThemeName,
-                        onThemeChange = { theme ->
-                            currentThemeName = theme
-                            prefs.edit().putString("theme", theme).apply()
-                        }
-                    )
-                    9 -> {
-                        if (detailLoading) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(appTheme.surface),
-                                contentAlignment = androidx.compose.ui.Alignment.Center
-                            ) {
-                                CircularProgressIndicator(color = appTheme.primary)
+                    }
+                ) { paddingValues ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(paddingValues)
+                            .background(appTheme.surface)
+                    ) {
+                        // Swipeable tabs for main 5 tabs (0-4)
+                        if (selectedTab in 0..4) {
+                            val pagerState = rememberPagerState(
+                                initialPage = selectedTab,
+                                pageCount = { 5 }
+                            )
+                            
+                            // Sync pager with bottom nav
+                            LaunchedEffect(selectedTab) {
+                                if (selectedTab != pagerState.currentPage) {
+                                    pagerState.animateScrollToPage(selectedTab)
+                                }
+                            }
+                            
+                            LaunchedEffect(pagerState.currentPage) {
+                                if (selectedTab != pagerState.currentPage) {
+                                    selectedTab = pagerState.currentPage
+                                }
+                            }
+                            
+                            HorizontalPager(
+                                state = pagerState,
+                                modifier = Modifier.fillMaxSize(),
+                                beyondBoundsPageCount = 1
+                            ) { page ->
+                                when (page) {
+                                    0 -> DashboardScreen(
+                                        holdings = holdings,
+                                        quotes = quotes,
+                                        isLoading = isLoading,
+                                        error = error,
+                                        onRefresh = { viewModel.refreshQuotes() },
+                                        onTradeClick = { selectedTab = 2 },
+                                        onErrorDismiss = { viewModel.clearError() }
+                                    )
+                                    1 -> AiAssistantScreen(
+                                        chatHistory = chatHistory,
+                                        isLoading = aiLoading,
+                                        onSendQuery = { query -> viewModel.askAi(query) },
+                                        onSuggestionClick = { suggestion -> viewModel.askAi(suggestion) },
+                                        onClearChat = { viewModel.clearChatHistory() }
+                                    )
+                                    2 -> TradingScreen(
+                                        isLoading = isLoading,
+                                        error = error,
+                                        walletBalance = walletBalance,
+                                        marketStatus = marketStatus,
+                                        onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
+                                        onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") },
+                                        onRefresh = {
+                                            viewModel.refreshQuotes()
+                                            viewModel.refreshWallet()
+                                            viewModel.refreshMarketStatus()
+                                        },
+                                        onAddFunds = { amount, upiProvider -> onUpiPay(amount, upiProvider) },
+                                        onErrorDismiss = { viewModel.clearError() },
+                                        viewModel = viewModel
+                                    )
+                                    3 -> PortfolioScreen(
+                                        holdings = holdings,
+                                        quotes = quotes,
+                                        isLoading = isLoading,
+                                        error = error,
+                                        portfolioHealth = portfolioHealth,
+                                        healthLoading = healthLoading,
+                                        onRefresh = { viewModel.refreshHoldings() },
+                                        onRefreshHealth = { viewModel.loadPortfolioHealth() },
+                                        onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
+                                        onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") },
+                                        onErrorDismiss = { viewModel.clearError() }
+                                    )
+                                    4 -> HeatmapScreen(
+                                        heatmap = marketHeatmap,
+                                        isLoading = heatmapLoading,
+                                        onRefresh = { viewModel.loadMarketHeatmap() },
+                                        onStockClick = { symbol ->
+                                            previousTab = selectedTab
+                                            viewModel.fetchAndSelectQuote(symbol)
+                                            selectedTab = 9
+                                        }
+                                    )
+                                }
                             }
                         } else {
-                            StockDetailScreen(
-                                quote = selectedQuote,
-                                onBackPress = { selectedTab = previousTab },
-                                onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
-                                onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") }
-                            )
+                            // Non-swipeable screens (More, Search, Alerts, Settings, Detail, Achievements)
+                            when (selectedTab) {
+                                5 -> MoreScreen(
+                                    onSearchClick = { selectedTab = 6 },
+                                    onAlertsClick = { selectedTab = 7 },
+                                    onSettingsClick = { selectedTab = 8 },
+                                    onAchievementsClick = { selectedTab = 10 },
+                                    onMutualFundsClick = { selectedTab = 11 },
+                                    onIpoClick = { selectedTab = 12 },
+                                    onEtfClick = { selectedTab = 13 },
+                                    onSipClick = { selectedTab = 14 },
+                                    onMyIpoApplicationsClick = { selectedTab = 15 }
+                                )
+                                10 -> com.bysel.trader.ui.screens.AchievementsScreen(viewModel)
+                                11 -> MutualFundsScreen(viewModel)
+                                12 -> IpoListingsScreen(viewModel)
+                                13 -> EtfScreen(viewModel)
+                                14 -> SipPlansScreen(viewModel)
+                                15 -> MyIpoApplicationsScreen(viewModel)
+                                6 -> SearchScreen(
+                                    quotes = quotes,
+                                    searchResults = searchResults,
+                                    isSearching = isSearching,
+                                    onSearchQuery = { query -> viewModel.searchStocks(query) },
+                                    onClearSearch = { viewModel.clearSearchResults() },
+                                    onQuoteClick = { quote ->
+                                        previousTab = selectedTab
+                                        viewModel.setSelectedQuote(quote)
+                                        selectedTab = 9
+                                    },
+                                    onSymbolClick = { symbol ->
+                                        previousTab = selectedTab
+                                        viewModel.fetchAndSelectQuote(symbol)
+                                        selectedTab = 9
+                                    }
+                                )
+                                7 -> AlertsScreen(
+                                    alerts = alerts,
+                                    isLoading = isLoading,
+                                    onCreateAlert = { symbol, price, type ->
+                                        viewModel.createAlert(symbol, price, type)
+                                    },
+                                    onDeleteAlert = { alertId ->
+                                        viewModel.deleteAlert(alertId)
+                                    }
+                                )
+                                8 -> SettingsScreen(
+                                    currentTheme = currentThemeName,
+                                    biometricAuthManager = biometricAuthManager,
+                                    onThemeChange = { theme ->
+                                        currentThemeName = theme
+                                        prefs.edit().putString("theme", theme).apply()
+                                    },
+                                    onLogout = onLogout,
+                                    onLogoutAllDevices = onLogoutAllDevices
+                                )
+                                9 -> {
+                                    if (detailLoading) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(appTheme.surface),
+                                            contentAlignment = androidx.compose.ui.Alignment.Center
+                                        ) {
+                                            CircularProgressIndicator(color = appTheme.primary)
+                                        }
+                                    } else {
+                                        StockDetailScreen(
+                                            quote = selectedQuote,
+                                            history = viewModel.quoteHistory.value,
+                                            onBackPress = { selectedTab = previousTab },
+                                            onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
+                                            onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") },
+                                            viewModel = viewModel
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
         }
-    }
     } // end CompositionLocalProvider
 }

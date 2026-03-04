@@ -4,12 +4,41 @@ import com.bysel.trader.data.models.*
 import retrofit2.http.*
 
 interface BYSELApiService {
+    // ==================== AUTH ====================
+    @POST("/auth/register")
+    suspend fun register(@Body request: RegisterRequest): AuthResponse
+
+    @POST("/auth/login")
+    suspend fun login(@Body request: LoginRequest): AuthResponse
+
+    @POST("/auth/refresh")
+    suspend fun refreshToken(@Body request: RefreshTokenRequest): AuthResponse
+
+    @POST("/auth/logout")
+    suspend fun logout(@Body request: LogoutRequest): Map<String, String>
+
+    @POST("/auth/logout-all")
+    suspend fun logoutAllDevices(): Map<String, String>
+
+    @GET("/auth/sessions")
+    suspend fun getActiveSessions(): AuthSessionsResponse
+
+    @DELETE("/auth/sessions/{sessionId}")
+    suspend fun revokeSession(@Path("sessionId") sessionId: Int): Map<String, String>
+
     // ==================== QUOTES ====================
     @GET("/quotes")
     suspend fun getQuotes(@Query("symbols") symbols: String): List<Quote>
 
     @GET("/quotes/{symbol}")
     suspend fun getQuote(@Path("symbol") symbol: String): Quote
+
+    @GET("/quotes/{symbol}/history")
+    suspend fun getQuoteHistory(
+        @Path("symbol") symbol: String,
+        @Query("period") period: String = "1mo",
+        @Query("interval") interval: String = "1d"
+    ): List<HistoryCandle>
 
     @GET("/quotes/all")
     suspend fun getAllQuotes(): List<Quote>
@@ -72,6 +101,54 @@ interface BYSELApiService {
 
     @DELETE("/alert/{id}")
     suspend fun deleteAlert(@Path("id") alertId: Int): AlertResponse
+
+    // ==================== MUTUAL FUNDS & SIP ====================
+    @GET("/mutual-funds")
+    suspend fun getMutualFunds(
+        @Query("category") category: String? = null,
+        @Query("q") query: String? = null
+    ): List<MutualFund>
+
+    @GET("/mutual-funds/{schemeCode}")
+    suspend fun getMutualFundDetail(@Path("schemeCode") schemeCode: String): MutualFund
+
+    @POST("/sip/plans")
+    suspend fun createSipPlan(@Body request: SipPlanRequest): SipPlan
+
+    @GET("/sip/plans")
+    suspend fun getSipPlans(): List<SipPlan>
+
+    @PUT("/sip/plans/{sipId}")
+    suspend fun updateSipPlan(
+        @Path("sipId") sipId: String,
+        @Body request: SipPlanUpdateRequest
+    ): SipPlan
+
+    @POST("/sip/plans/{sipId}/pause")
+    suspend fun pauseSipPlan(@Path("sipId") sipId: String): SipPlan
+
+    @POST("/sip/plans/{sipId}/resume")
+    suspend fun resumeSipPlan(@Path("sipId") sipId: String): SipPlan
+
+    // ==================== IPO ====================
+    @GET("/ipos")
+    suspend fun getIpoListings(@Query("status") status: String? = null): List<IPOListing>
+
+    @GET("/ipos/{ipoId}")
+    suspend fun getIpoDetail(@Path("ipoId") ipoId: String): IPOListing
+
+    @POST("/ipos/apply")
+    suspend fun applyIpo(@Body request: IPOApplicationRequest): IPOApplicationResponse
+
+    @GET("/ipos/my-applications")
+    suspend fun getMyIpoApplications(): List<IPOApplication>
+
+    // ==================== ETF ====================
+    @GET("/etfs")
+    suspend fun getEtfInstruments(
+        @Query("category") category: String? = null,
+        @Query("q") query: String? = null
+    ): List<ETFInstrument>
 
     // ==================== HEALTH ====================
     @GET("/health")

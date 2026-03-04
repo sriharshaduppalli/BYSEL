@@ -10,9 +10,40 @@ data class Quote(
     @SerializedName("symbol")
     val symbol: String,
     @SerializedName("last")
-    val last: Double,
+    val last: Double = 0.0,
     @SerializedName("pctChange")
-    val pctChange: Double,
+    val pctChange: Double = 0.0,
+    // additional fields commonly returned by market data APIs (Yahoo/others)
+    @SerializedName("open")
+    val open: Double? = null,
+    @SerializedName("prevClose")
+    val prevClose: Double? = null,
+    @SerializedName("high")
+    val dayHigh: Double? = null,
+    @SerializedName("low")
+    val dayLow: Double? = null,
+    @SerializedName("volume")
+    val volume: Long? = null,
+    @SerializedName("avgVolume")
+    val avgVolume: Long? = null,
+    @SerializedName("marketCap")
+    val marketCap: Long? = null,
+    @SerializedName("trailingPE")
+    val trailingPE: Double? = null,
+    @SerializedName("eps")
+    val eps: Double? = null,
+    @SerializedName("fiftyTwoWeekHigh")
+    val fiftyTwoWeekHigh: Double? = null,
+    @SerializedName("fiftyTwoWeekLow")
+    val fiftyTwoWeekLow: Double? = null,
+    @SerializedName("targetMeanPrice")
+    val targetMeanPrice: Double? = null,
+    @SerializedName("bid")
+    val bid: Double? = null,
+    @SerializedName("ask")
+    val ask: Double? = null,
+    @SerializedName("dividendYield")
+    val dividendYield: Double? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
  
@@ -136,6 +167,28 @@ data class StockPredictionResponse(
     val disclaimer: String = ""
 )
 
+data class HistoryCandle(
+    val timestamp: Long = 0L,
+    val open: Double = 0.0,
+    val high: Double = 0.0,
+    val low: Double = 0.0,
+    val close: Double = 0.0,
+    val volume: Long = 0
+)
+
+@Entity(tableName = "history")
+data class HistoryEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Int = 0,
+    val symbol: String,
+    val timestamp: Long,
+    val open: Double,
+    val high: Double,
+    val low: Double,
+    val close: Double,
+    val volume: Long
+)
+
 data class PortfolioHealthScore(
     val overallScore: Int = 0,
     val grade: String = "",
@@ -197,4 +250,128 @@ data class MarketHeatmap(
 data class SectorSummary(
     val name: String = "",
     val change: Double = 0.0
+)
+
+data class MutualFund(
+    val schemeCode: String,
+    val schemeName: String,
+    val category: String,
+    val nav: Double,
+    val navDate: String,
+    val returns1Y: Double? = null,
+    val returns3Y: Double? = null,
+    val returns5Y: Double? = null,
+    val fundHouse: String? = null,
+    val riskLevel: String? = null
+)
+
+data class SipPlanRequest(
+    val schemeCode: String,
+    val amount: Double,
+    val frequency: String = "MONTHLY",
+    val dayOfMonth: Int = 5
+)
+
+data class SipPlanUpdateRequest(
+    val amount: Double? = null,
+    val frequency: String? = null,
+    val dayOfMonth: Int? = null,
+    val isActive: Boolean? = null
+)
+
+data class SipPlan(
+    val id: String,
+    val schemeCode: String,
+    val schemeName: String,
+    val amount: Double,
+    val frequency: String,
+    val nextInstallmentDate: String,
+    val isActive: Boolean
+)
+
+data class IPOListing(
+    val ipoId: String,
+    val companyName: String,
+    val symbol: String,
+    val status: String,
+    val issueOpenDate: String,
+    val issueCloseDate: String,
+    val listingDate: String? = null,
+    val priceBandMin: Double? = null,
+    val priceBandMax: Double? = null,
+    val lotSize: Int? = null
+)
+
+data class IPOApplicationRequest(
+    val ipoId: String,
+    val lots: Int,
+    val bidPrice: Double,
+    val upiId: String
+)
+
+data class IPOApplicationResponse(
+    val applicationId: String,
+    val status: String,
+    val message: String
+)
+
+data class IPOApplication(
+    val applicationId: String,
+    val ipoId: String,
+    val companyName: String,
+    val lots: Int,
+    val bidPrice: Double,
+    val upiId: String,
+    val status: String,
+    val appliedAt: String
+)
+
+data class ETFInstrument(
+    val symbol: String,
+    val name: String,
+    val category: String,
+    val last: Double,
+    val pctChange: Double,
+    val aumCr: Double? = null,
+    val expenseRatio: Double? = null
+)
+
+data class RegisterRequest(
+    val username: String,
+    val email: String,
+    val password: String
+)
+
+data class LoginRequest(
+    val username: String,
+    val password: String
+)
+
+data class RefreshTokenRequest(
+    val refreshToken: String
+)
+
+data class LogoutRequest(
+    val refreshToken: String
+)
+
+data class AuthResponse(
+    val status: String,
+    val user_id: Int,
+    val access_token: String,
+    val refresh_token: String
+)
+
+data class AuthSessionItem(
+    val session_id: Int,
+    val created_at: String,
+    val expires_at: String,
+    val last_used_at: String? = null,
+    val client_ip: String? = null,
+    val device_info: String? = null
+)
+
+data class AuthSessionsResponse(
+    val status: String,
+    val sessions: List<AuthSessionItem>
 )

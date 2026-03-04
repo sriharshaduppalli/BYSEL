@@ -565,9 +565,20 @@ def ai_assistant(query: str) -> Dict:
     elif any(w in query_lower for w in ["buy", "sell", "should i", "invest", "good time"]):
         return _handle_buy_sell_query(symbols, query)
 
-    elif any(w in query_lower for w in ["best", "top", "undervalued", "overvalued", "cheap", "value"]):
-        return _handle_screening_query(query_lower, symbols)
-
+    elif any(w in query_lower for w in ["best", "top", "undervalued", "overvalued", "cheap", "value", "recommend", "suggest", "portfolio", "watchlist"]):
+        # Personalized recommendation logic
+        import inspect
+        db = None
+        # Try to get DB/session from caller context
+        for frame in inspect.stack():
+            if 'db' in frame.frame.f_locals:
+                db = frame.frame.f_locals['db']
+                break
+        user_portfolio = _get_user_portfolio(db)
+        if user_portfolio:
+            return _handle_personalized_recommendation(query_lower, symbols, user_portfolio)
+        else:
+            return _handle_screening_query(query_lower, symbols)
     elif any(w in query_lower for w in ["analyze", "analysis", "detail", "about", "tell me"]):
         return _handle_analysis_query(symbols, query)
 
@@ -594,6 +605,37 @@ def ai_assistant(query: str) -> Dict:
                 "Analyze HDFCBANK",
             ],
         }
+
+
+def _get_user_portfolio(db=None):
+    """Fetch user's portfolio or watchlist for personalized recommendations."""
+    if db is not None:
+        try:
+            from .routes.trading import get_holdings
+            holdings = get_holdings(db)
+            return [h.symbol for h in holdings]
+        except Exception:
+            pass
+    return ["RELIANCE", "TCS", "HDFCBANK"]
+
+
+def _handle_personalized_recommendation(query, symbols, portfolio):
+    """Recommend stocks based on user's portfolio/watchlist."""
+    from .market_data import INDIAN_STOCKS
+    portfolio_set = set(portfolio)
+    recommendations = []
+    for sym, (ticker, name) in INDIAN_STOCKS.items():
+        if sym not in portfolio_set:
+            recommendations.append({"symbol": sym, "name": name})
+            if len(recommendations) >= 5:
+                break
+    answer = "Top recommendations based on your portfolio: " + ", ".join([r["symbol"] for r in recommendations])
+    return {
+        "type": "recommendation",
+        "answer": answer,
+        "suggestions": [r["symbol"] for r in recommendations],
+        "stocks": recommendations
+    }
 
 
 def _extract_symbols(query: str) -> List[str]:

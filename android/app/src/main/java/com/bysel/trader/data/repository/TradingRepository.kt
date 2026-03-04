@@ -4,17 +4,25 @@ import com.bysel.trader.data.api.BYSELApiService
 import com.bysel.trader.data.api.PortfolioSummary
 import com.bysel.trader.data.api.PortfolioValue
 import com.bysel.trader.data.api.RetrofitClient
+import com.bysel.trader.data.live.LiveMarketDataClient
 import com.bysel.trader.data.api.TradeHistory
 import com.bysel.trader.data.local.BYSELDatabase
 import com.bysel.trader.data.models.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
-class TradingRepository(private val database: BYSELDatabase) {
+open class TradingRepository(private val database: BYSELDatabase) {
+
+        suspend fun setDemoHoldings(holdings: List<Holding>) {
+            // Overwrite holdings in local DB for demo
+            database.holdingDao().clearAll()
+            database.holdingDao().insertHoldings(holdings)
+        }
     private val apiService: BYSELApiService = RetrofitClient.apiService
+    private val liveMarketDataClient = LiveMarketDataClient(apiService)
 
     // ==================== QUOTES ====================
-    fun getQuotes(symbols: List<String>): Flow<Result<List<Quote>>> = flow {
+    open fun getQuotes(symbols: List<String>): Flow<Result<List<Quote>>> = flow {
         try {
             emit(Result.Loading)
             val symbolString = symbols.joinToString(",")
@@ -37,12 +45,36 @@ class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
+    fun streamLiveQuotes(symbols: List<String>): Flow<Result<List<Quote>>> = flow {
+        emit(Result.Loading)
+        try {
+            liveMarketDataClient.streamQuotes(symbols).collect { quotes ->
+                if (quotes.isNotEmpty()) {
+                    database.quoteDao().insertQuotes(quotes)
+                    emit(Result.Success(quotes))
+                }
+            }
+        } catch (_: Exception) {
+            liveMarketDataClient.pollQuotes(symbols).collect { quotes ->
+                if (quotes.isNotEmpty()) {
+                    database.quoteDao().insertQuotes(quotes)
+                    emit(Result.Success(quotes))
+                }
+            }
+        }
+    }
+
     fun getCachedQuotes(symbols: List<String>): Flow<List<Quote>> {
         return database.quoteDao().getQuotesBySymbols(symbols)
     }
 
     fun getAllQuotes(): Flow<List<Quote>> {
         return database.quoteDao().getAllQuotes()
+    }
+
+    fun getQuotesPage(page: Int, pageSize: Int): Flow<List<Quote>> {
+        val offset = page * pageSize
+        return database.quoteDao().getQuotesPaged(pageSize, offset)
     }
 
     suspend fun getQuote(symbol: String): Result<Quote> {
@@ -52,6 +84,64 @@ class TradingRepository(private val database: BYSELDatabase) {
             Result.Success(quote)
         } catch (e: Exception) {
             Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getQuoteHistory(symbol: String, period: String = "1mo", interval: String = "1d"): Result<List<HistoryCandle>> {
+        return try {
+            val history = apiService.getQuoteHistory(symbol, period, interval)
+            // persist fetched history to local DB
+            try {
+                val entities = history.map { h ->
+                    com.bysel.trader.data.models.HistoryEntity(
+                        symbol = symbol,
+                        timestamp = h.timestamp,
+                        open = h.open,
+                        high = h.high,
+                        low = h.low,
+                        close = h.close,
+                        volume = h.volume
+                    )
+                }
+                database.historyDao().deleteHistoryForSymbol(symbol)
+                database.historyDao().insertCandles(entities)
+            } catch (_: Exception) {
+                // ignore persistence errors
+            }
+            Result.Success(history)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    // Return locally cached history as a Flow
+    fun getCachedHistory(symbol: String) = kotlinx.coroutines.flow.flow {
+        try {
+            val rows = database.historyDao().getHistoryForSymbol(symbol)
+            val candles = rows.map { r -> HistoryCandle(timestamp = r.timestamp, open = r.open, high = r.high, low = r.low, close = r.close, volume = r.volume) }
+            emit(candles)
+        } catch (e: Exception) {
+            emit(emptyList<HistoryCandle>())
+        }
+    }
+
+    suspend fun saveHistory(symbol: String, candles: List<HistoryCandle>) {
+        try {
+            val entities = candles.map { h ->
+                com.bysel.trader.data.models.HistoryEntity(
+                    symbol = symbol,
+                    timestamp = h.timestamp,
+                    open = h.open,
+                    high = h.high,
+                    low = h.low,
+                    close = h.close,
+                    volume = h.volume
+                )
+            }
+            database.historyDao().deleteHistoryForSymbol(symbol)
+            database.historyDao().insertCandles(entities)
+        } catch (_: Exception) {
+            // ignore
         }
     }
 
@@ -177,6 +267,16 @@ class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
+    suspend fun deactivateAlert(alertId: Int): Result<Unit> {
+        return try {
+            // Deactivate without deleting - useful for triggered alerts
+            database.alertDao().deactivateAlert(alertId)
+            Result.Success(Unit)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
     suspend fun getAllAlerts(): Result<List<Alert>> {
         return try {
             val alerts = apiService.getAlerts()
@@ -274,6 +374,115 @@ class TradingRepository(private val database: BYSELDatabase) {
         return try {
             val health = apiService.getPortfolioHealth()
             Result.Success(health)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    // ==================== PHASE 1: MF, SIP, IPO, ETF ====================
+    suspend fun getMutualFunds(category: String? = null, query: String? = null): Result<List<MutualFund>> {
+        return try {
+            val funds = apiService.getMutualFunds(category = category, query = query)
+            Result.Success(funds)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getMutualFundDetail(schemeCode: String): Result<MutualFund> {
+        return try {
+            val fund = apiService.getMutualFundDetail(schemeCode)
+            Result.Success(fund)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun createSipPlan(request: SipPlanRequest): Result<SipPlan> {
+        return try {
+            val plan = apiService.createSipPlan(request)
+            Result.Success(plan)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getSipPlans(): Result<List<SipPlan>> {
+        return try {
+            val plans = apiService.getSipPlans()
+            Result.Success(plans)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun updateSipPlan(sipId: String, request: SipPlanUpdateRequest): Result<SipPlan> {
+        return try {
+            val plan = apiService.updateSipPlan(sipId, request)
+            Result.Success(plan)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun pauseSipPlan(sipId: String): Result<SipPlan> {
+        return try {
+            val plan = apiService.pauseSipPlan(sipId)
+            Result.Success(plan)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun resumeSipPlan(sipId: String): Result<SipPlan> {
+        return try {
+            val plan = apiService.resumeSipPlan(sipId)
+            Result.Success(plan)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getIpoListings(status: String? = null): Result<List<IPOListing>> {
+        return try {
+            val listings = apiService.getIpoListings(status)
+            Result.Success(listings)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getIpoDetail(ipoId: String): Result<IPOListing> {
+        return try {
+            val listing = apiService.getIpoDetail(ipoId)
+            Result.Success(listing)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun applyIpo(request: IPOApplicationRequest): Result<IPOApplicationResponse> {
+        return try {
+            val response = apiService.applyIpo(request)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getMyIpoApplications(): Result<List<IPOApplication>> {
+        return try {
+            val applications = apiService.getMyIpoApplications()
+            Result.Success(applications)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getEtfInstruments(category: String? = null, query: String? = null): Result<List<ETFInstrument>> {
+        return try {
+            val etfs = apiService.getEtfInstruments(category = category, query = query)
+            Result.Success(etfs)
         } catch (e: Exception) {
             Result.Error(e.message ?: "Unknown error")
         }

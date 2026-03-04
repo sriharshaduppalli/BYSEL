@@ -1,9 +1,19 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
-    id("com.android.application") version "8.4.0"
-    id("org.jetbrains.kotlin.android") version "1.9.23"
-    id("org.jetbrains.kotlin.kapt") version "1.9.23"
-    id("com.google.dagger.hilt.android") version "2.51.1"
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.kapt")
+    id("com.google.dagger.hilt.android")
+    // Google services plugin is applied via apply() below to ensure google-services.json is present
 }
+
+// Note: `google-services` plugin intentionally not applied here to avoid
+// build-time plugin resolution issues in this mono-repo environment.
+// The app can still use `firebase-messaging` runtime APIs; to enable the
+// Gradle plugin, add the plugin classpath in the root buildscript or
+// declare the plugin in `settings.gradle.kts` if your CI supports it.
 
 apply {
     plugin("kotlin-kapt")
@@ -22,21 +32,84 @@ android {
         applicationId = "com.bysel.trader"
         minSdk = 24
         targetSdk = 36
-        versionCode = 40
-        versionName = "2.6.0"
+        // read version from root gradle.properties (VERSION_CODE, VERSION_NAME)
+        val verCodeProp = rootProject.findProperty("VERSION_CODE") ?: "44"
+        val verNameProp = rootProject.findProperty("VERSION_NAME") ?: "2.6.4"
+        versionCode = verCodeProp.toString().toInt()
+        versionName = verNameProp.toString()
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        buildConfigField("String", "MARKET_REST_URL", "\"https://bysel-backend.onrender.com/\"")
+        buildConfigField("String", "MARKET_WS_URL", "\"wss://bysel-backend.onrender.com/ws/quotes\"")
+        buildConfigField("String", "MARKET_DATA_PROVIDER", "\"REST_FALLBACK\"")
+        buildConfigField("String", "MARKET_TRUEDATA_WS_URL", "\"wss://push.truedata.in\"")
+        buildConfigField("String", "MARKET_TRUEDATA_TOKEN", "\"\"")
+        buildConfigField("String", "CHART_ENGINE", "\"COMPOSE\"")
+    }
+
+        // --- Auto-increment version before bundleRelease ---
+        // This task updates root gradle.properties VERSION_CODE and VERSION_NAME.
+        // It increments VERSION_CODE by 1 and bumps the patch of VERSION_NAME (x.y.z -> x.y.(z+1)).
+        val incrementVersion by tasks.registering {
+            doLast {
+                val propsFile = rootProject.file("gradle.properties")
+                if (!propsFile.exists()) {
+                    println("gradle.properties not found at ${propsFile.absolutePath}")
+                    return@doLast
+                }
+                val props = Properties()
+                props.load(propsFile.inputStream())
+                val code = (props.getProperty("VERSION_CODE") ?: "0").toInt()
+                val name = props.getProperty("VERSION_NAME") ?: "0.0.0"
+                val newCode = code + 1
+                val parts = name.split('.').toMutableList()
+                if (parts.size >= 3) {
+                    val patch = parts.last().toIntOrNull() ?: 0
+                    parts[parts.size - 1] = (patch + 1).toString()
+                } else {
+                    // ensure at least 3 parts
+                    while (parts.size < 3) parts.add("0")
+                    val patch = parts.last().toIntOrNull() ?: 0
+                    parts[parts.size - 1] = (patch + 1).toString()
+                }
+                val newName = parts.joinToString(".")
+                props.setProperty("VERSION_CODE", newCode.toString())
+                props.setProperty("VERSION_NAME", newName)
+                props.store(propsFile.outputStream(), null)
+                println("Bumped VERSION_CODE: $code -> $newCode, VERSION_NAME: $name -> $newName")
+            }
+        }
+
+        // Ensure bundleRelease depends on incrementVersion so version is bumped automatically.
+        tasks.matching { it.name == "bundleRelease" }.configureEach {
+            dependsOn(incrementVersion)
+        }
+
+    // Load keystore properties from project root `keystore.properties` or environment variables.
+    val keystorePropsFile = rootProject.file("keystore.properties")
+    val keystoreProps = Properties().apply {
+        if (keystorePropsFile.exists()) {
+            load(FileInputStream(keystorePropsFile))
+        }
     }
 
     signingConfigs {
         create("release") {
-            storeFile = file(System.getenv("KEYSTORE_PATH") ?: "keystore.jks")
-            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "BYSEL@2026"
-            keyAlias = System.getenv("KEY_ALIAS") ?: "bysel_key"
-            keyPassword = System.getenv("KEY_PASSWORD") ?: "BYSEL@2026"
+            val storeFilePath = keystoreProps.getProperty("storeFile") ?: System.getenv("KEYSTORE_PATH")
+            if (storeFilePath == null) {
+                throw GradleException("Keystore not configured. Create keystore.properties (see android/keystore.properties.example) or set KEYSTORE_PATH env var.")
+            }
+            storeFile = file(storeFilePath)
+            storePassword = keystoreProps.getProperty("storePassword") ?: System.getenv("KEYSTORE_PASSWORD")
+                ?: throw GradleException("Keystore storePassword missing. Set in keystore.properties or KEYSTORE_PASSWORD env var.")
+            keyAlias = keystoreProps.getProperty("keyAlias") ?: System.getenv("KEY_ALIAS")
+                ?: throw GradleException("Keystore keyAlias missing. Set in keystore.properties or KEY_ALIAS env var.")
+            keyPassword = keystoreProps.getProperty("keyPassword") ?: System.getenv("KEY_PASSWORD")
+                ?: throw GradleException("Keystore keyPassword missing. Set in keystore.properties or KEY_PASSWORD env var.")
         }
     }
 
@@ -58,6 +131,10 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+        freeCompilerArgs += listOf(
+            "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi",
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api"
+        )
     }
 
     buildFeatures {
@@ -76,6 +153,9 @@ android {
 }
 
 dependencies {
+    implementation(project(":core:auth"))
+    implementation(project(":core:network"))
+
     // Core Android
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
@@ -94,6 +174,16 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0")
     implementation("androidx.compose.runtime:runtime-livedata")
+    
+    // Gesture support - HorizontalPager for swipeable tabs
+    implementation("androidx.compose.foundation:foundation:1.6.8")
+    
+    // Modern splash screen API
+    implementation("androidx.core:core-splashscreen:1.0.1")
+    
+    // Biometric authentication
+    implementation("androidx.biometric:biometric:1.2.0-alpha05")
+    
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     implementation("androidx.navigation:navigation-compose:2.7.7")
@@ -111,7 +201,15 @@ dependencies {
     kapt("com.google.dagger:hilt-compiler:2.51.1")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
     implementation("androidx.work:work-runtime-ktx:2.8.1")
+    // Firebase Cloud Messaging
+    implementation("com.google.firebase:firebase-messaging:23.2.1")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.11")
+    testImplementation("androidx.work:work-testing:2.8.1")
+    testImplementation("org.mockito:mockito-core:5.5.0")
+    testImplementation("androidx.test:core:1.5.0")
+    testImplementation("androidx.test:core-ktx:1.5.0")
+    testImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.06.00"))

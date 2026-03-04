@@ -22,6 +22,12 @@ interface QuoteDao {
     @Query("SELECT * FROM quotes")
     fun getAllQuotes(): Flow<List<Quote>>
 
+    // Use a deterministic ordering (timestamp + symbol) so pagination via LIMIT/OFFSET
+    // is stable even when rows are updated or reinserted. Timestamp DESC shows
+    // newest updates first; symbol provides a unique tie-breaker.
+    @Query("SELECT * FROM quotes ORDER BY timestamp DESC, symbol ASC LIMIT :limit OFFSET :offset")
+    fun getQuotesPaged(limit: Int, offset: Int): Flow<List<Quote>>
+
     @Query("DELETE FROM quotes")
     suspend fun clearAll()
 }

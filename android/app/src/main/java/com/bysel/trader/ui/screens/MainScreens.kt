@@ -31,7 +31,11 @@ import com.bysel.trader.data.models.PortfolioHealthScore
 import com.bysel.trader.ui.components.QuoteCard
 import com.bysel.trader.ui.components.ErrorScreen
 import com.bysel.trader.ui.components.LoadingScreen
+import com.bysel.trader.ui.components.PullToRefreshBox
+import com.bysel.trader.ui.components.SwipeToDismissItem
 import com.bysel.trader.ui.theme.LocalAppTheme
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.Refresh
 
 @Composable
 fun WatchlistScreen(
@@ -90,14 +94,20 @@ fun WatchlistScreen(
                 }
             }
 
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 8.dp)
+            PullToRefreshBox(
+                isRefreshing = isLoading,
+                onRefresh = onRefresh,
+                enabled = true
             ) {
-                items(quotes) { quote ->
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 8.dp)
+                ) {
+                items(items = quotes, key = { it.symbol }) { quote ->
                     UpgradedQuoteCard(quote) { onQuoteClick(quote) }
                 }
+            }
             }
         }
     }
@@ -184,7 +194,7 @@ fun UpgradedQuoteCard(quote: Quote, onClick: () -> Unit) {
 @Composable
 fun PortfolioScreen(
     holdings: List<Holding>,
-    quotes: List<Quote>,
+    @Suppress("UNUSED_PARAMETER") quotes: List<Quote>,
     isLoading: Boolean,
     error: String?,
     portfolioHealth: PortfolioHealthScore?,
@@ -200,6 +210,8 @@ fun PortfolioScreen(
             onRefreshHealth()
         }
     }
+
+    // `quotes` parameter intentionally kept for future use (API stability)
 
     if (isLoading && holdings.isEmpty()) {
         LoadingScreen()
@@ -278,11 +290,16 @@ fun PortfolioScreen(
                     }
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 8.dp)
+                PullToRefreshBox(
+                    isRefreshing = isLoading,
+                    onRefresh = onRefresh,
+                    enabled = true
                 ) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 8.dp)
+                    ) {
                     // Portfolio Health Score Card
                     if (portfolioHealth != null || healthLoading) {
                         item {
@@ -294,13 +311,20 @@ fun PortfolioScreen(
                         }
                     }
 
-                    items(holdings) { holding ->
-                        UpgradedPortfolioHoldingItem(
-                            holding = holding,
-                            onBuy = { onBuy(holding.symbol, 1) },
-                            onSell = { onSell(holding.symbol, 1) }
-                        )
+                    items(items = holdings, key = { it.symbol }) { holding ->
+                        SwipeToDismissItem(
+                            item = holding,
+                            onDismiss = { onSell(it.symbol, it.qty) },
+                            enabled = true
+                        ) {
+                            UpgradedPortfolioHoldingItem(
+                                holding = holding,
+                                onBuy = { onBuy(holding.symbol, 1) },
+                                onSell = { onSell(holding.symbol, 1) }
+                            )
+                        }
                     }
+                }
                 }
             }
         }
@@ -511,6 +535,10 @@ fun PortfolioHealthCard(
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 18.sp
                         )
+                    }
+                    // Refresh action for the health card
+                    IconButton(onClick = onRefresh) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh health", tint = LocalAppTheme.current.text)
                     }
                 }
 
