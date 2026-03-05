@@ -10,6 +10,17 @@ Source: docs/COMPETITIVE_ROADMAP_90_DAYS.md
 2. Track status as `todo`, `in_progress`, `blocked`, `done`.
 3. Keep weekly KPI snapshot in each sprint review.
 
+## Release Calendar (Proposed)
+
+| Sprint | Start Date | End Date | Production Release Window | Primary Owners | Core Milestone |
+| --- | --- | --- | --- | --- | --- |
+| Sprint 1 | 2026-03-09 | 2026-03-22 | 2026-03-20 to 2026-03-22 | Backend, Android, DevOps, QA | Idempotent order flow and reconnect-safe streaming |
+| Sprint 2 | 2026-03-23 | 2026-04-05 | 2026-04-03 to 2026-04-05 | Android, Backend, QA | Margin and charges transparency with rejection mapping |
+| Sprint 3 | 2026-04-06 | 2026-04-19 | 2026-04-17 to 2026-04-19 | Android, Backend | Dedicated Futures and options risk depth |
+| Sprint 4 | 2026-04-20 | 2026-05-03 | 2026-05-01 to 2026-05-03 | Android, Backend, Compliance | KYC hardening and sell authorization controls |
+| Sprint 5 | 2026-05-04 | 2026-05-17 | 2026-05-15 to 2026-05-17 | Android, Backend, QA | SGB module and reporting center |
+| Sprint 6 | 2026-05-18 | 2026-05-31 | 2026-05-29 to 2026-05-31 | Android, Data, DevOps, QA | Performance hardening and growth features |
+
 ## Sprint 1 (Weeks 1-2): Reliability Baseline
 
 ### Epic S1-E1: Order Flow Reliability
