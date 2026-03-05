@@ -22,13 +22,29 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Check signing configuration
+        id: signing
+        run: |
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ] && \
+             [ -n "${{ secrets.KEYSTORE_PASSWORD }}" ] && \
+             [ -n "${{ secrets.KEY_ALIAS }}" ] && \
+             [ -n "${{ secrets.KEY_PASSWORD }}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "Release signing secrets detected."
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "Release signing secrets are missing; release build will be skipped."
+          fi
+
       - name: Decode keystore from secrets
+        if: steps.signing.outputs.available == 'true'
         run: |
           echo "Decoding keystore to android/keystore.jks"
           mkdir -p android
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/keystore.jks
 
       - name: Write keystore.properties
+        if: steps.signing.outputs.available == 'true'
         run: |
           cat > android/keystore.properties <<EOF
           storeFile=${{ github.workspace }}/android/keystore.jks
@@ -41,10 +57,17 @@ jobs:
         run: chmod +x android/gradlew || true
 
       - name: Build release bundle
+        if: steps.signing.outputs.available == 'true'
         run: cd android && ./gradlew :app:bundleRelease --no-daemon --warning-mode all
 
       - name: Upload AAB artifact
+        if: steps.signing.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: app-release.aab
           path: android/app/build/outputs/bundle/release/app-release.aab
+
+      - name: Skip release build (missing signing secrets)
+        if: steps.signing.outputs.available != 'true'
+        run: |
+          echo "Skipping release bundle build because signing secrets are not configured."
