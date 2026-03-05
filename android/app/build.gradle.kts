@@ -97,19 +97,35 @@ android {
         }
     }
 
+    val requestedTasks = gradle.startParameter.taskNames.joinToString(" ").lowercase()
+    val requiresReleaseSigning = requestedTasks.contains("release") || requestedTasks.contains("bundle") || requestedTasks.contains("publish")
+    val configuredStoreFilePath = keystoreProps.getProperty("storeFile") ?: System.getenv("KEYSTORE_PATH")
+    val configuredStorePassword = keystoreProps.getProperty("storePassword") ?: System.getenv("KEYSTORE_PASSWORD")
+    val configuredKeyAlias = keystoreProps.getProperty("keyAlias") ?: System.getenv("KEY_ALIAS")
+    val configuredKeyPassword = keystoreProps.getProperty("keyPassword") ?: System.getenv("KEY_PASSWORD")
+    val hasReleaseSigningConfig = !configuredStoreFilePath.isNullOrBlank() &&
+        !configuredStorePassword.isNullOrBlank() &&
+        !configuredKeyAlias.isNullOrBlank() &&
+        !configuredKeyPassword.isNullOrBlank()
+
+    if (requiresReleaseSigning && !hasReleaseSigningConfig) {
+        throw GradleException(
+            "Keystore not configured for release build. " +
+                "Create android/keystore.properties (see android/keystore.properties.example) " +
+                "or set KEYSTORE_PATH, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD env vars."
+        )
+    }
+
     signingConfigs {
         create("release") {
-            val storeFilePath = keystoreProps.getProperty("storeFile") ?: System.getenv("KEYSTORE_PATH")
-            if (storeFilePath == null) {
-                throw GradleException("Keystore not configured. Create keystore.properties (see android/keystore.properties.example) or set KEYSTORE_PATH env var.")
+            if (!hasReleaseSigningConfig) {
+                return@create
             }
-            storeFile = file(storeFilePath)
-            storePassword = keystoreProps.getProperty("storePassword") ?: System.getenv("KEYSTORE_PASSWORD")
-                ?: throw GradleException("Keystore storePassword missing. Set in keystore.properties or KEYSTORE_PASSWORD env var.")
-            keyAlias = keystoreProps.getProperty("keyAlias") ?: System.getenv("KEY_ALIAS")
-                ?: throw GradleException("Keystore keyAlias missing. Set in keystore.properties or KEY_ALIAS env var.")
-            keyPassword = keystoreProps.getProperty("keyPassword") ?: System.getenv("KEY_PASSWORD")
-                ?: throw GradleException("Keystore keyPassword missing. Set in keystore.properties or KEY_PASSWORD env var.")
+
+            storeFile = file(configuredStoreFilePath!!)
+            storePassword = configuredStorePassword
+            keyAlias = configuredKeyAlias
+            keyPassword = configuredKeyPassword
         }
     }
 
@@ -117,7 +133,12 @@ android {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (hasReleaseSigningConfig) {
+                signingConfigs.getByName("release")
+            } else {
+                // Allow debug/CI tasks to configure the project without release secrets.
+                signingConfigs.getByName("debug")
+            }
         }
         debug {
             isDebuggable = true
