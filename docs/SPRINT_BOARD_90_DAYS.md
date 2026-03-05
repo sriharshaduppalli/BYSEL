@@ -10,6 +10,13 @@ Source: docs/COMPETITIVE_ROADMAP_90_DAYS.md
 2. Track status as `todo`, `in_progress`, `blocked`, `done`.
 3. Keep weekly KPI snapshot in each sprint review.
 
+## Execution Pack
+
+1. Roadmap: `docs/COMPETITIVE_ROADMAP_90_DAYS.md`
+2. Sprint board: `docs/SPRINT_BOARD_90_DAYS.md`
+3. Jira CSV import: `docs/JIRA_IMPORT_90_DAYS.csv`
+4. Sprint 1 kickoff plan: `docs/SPRINT_1_KICKOFF_PLAYBOOK.md`
+
 ## Release Calendar (Proposed)
 
 | Sprint | Start Date | End Date | Production Release Window | Primary Owners | Core Milestone |
