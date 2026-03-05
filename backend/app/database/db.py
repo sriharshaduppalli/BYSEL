@@ -44,12 +44,89 @@ class OrderModel(Base):
     __tablename__ = "orders"
     id = Column(Integer, primary_key=True, index=True)
     symbol = Column(String, index=True)
+    user_id = Column(Integer, nullable=False, index=True, default=1)
     quantity = Column(Integer)
     side = Column(String)  # BUY or SELL
+    order_type = Column(String, default="MARKET")
+    validity = Column(String, default="DAY")
+    limit_price = Column(Float, nullable=True)
+    trigger_price = Column(Float, nullable=True)
+    basket_id = Column(Integer, nullable=True)
+    tag = Column(String, nullable=True)
     price = Column(Float, default=0.0)
     total = Column(Float, default=0.0)
     status = Column(String, default="COMPLETED")
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class TriggerOrderModel(Base):
+    __tablename__ = "trigger_orders"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True, default=1)
+    symbol = Column(String, nullable=False, index=True)
+    quantity = Column(Integer, nullable=False)
+    side = Column(String, nullable=False)
+    order_type = Column(String, nullable=False, default="LIMIT")
+    validity = Column(String, nullable=False, default="GTC")
+    limit_price = Column(Float, nullable=True)
+    trigger_price = Column(Float, nullable=True)
+    status = Column(String, nullable=False, default="PENDING")
+    tag = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class BasketOrderModel(Base):
+    __tablename__ = "basket_orders"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True, default=1)
+    name = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="DRAFT")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class BasketOrderLegModel(Base):
+    __tablename__ = "basket_order_legs"
+    id = Column(Integer, primary_key=True, index=True)
+    basket_id = Column(Integer, nullable=False, index=True)
+    symbol = Column(String, nullable=False, index=True)
+    quantity = Column(Integer, nullable=False)
+    side = Column(String, nullable=False)
+    order_type = Column(String, nullable=False, default="MARKET")
+    validity = Column(String, nullable=False, default="DAY")
+    limit_price = Column(Float, nullable=True)
+    trigger_price = Column(Float, nullable=True)
+    tag = Column(String, nullable=True)
+
+
+class FamilyMemberModel(Base):
+    __tablename__ = "family_members"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True, default=1)
+    name = Column(String, nullable=False)
+    relation = Column(String, nullable=False)
+    equity_value = Column(Float, nullable=False, default=0.0)
+    mutual_fund_value = Column(Float, nullable=False, default=0.0)
+    us_value = Column(Float, nullable=False, default=0.0)
+    cash_value = Column(Float, nullable=False, default=0.0)
+    liabilities_value = Column(Float, nullable=False, default=0.0)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class GoalPlanModel(Base):
+    __tablename__ = "goal_plans"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True, default=1)
+    goal_name = Column(String, nullable=False)
+    target_amount = Column(Float, nullable=False)
+    current_amount = Column(Float, nullable=False, default=0.0)
+    target_date = Column(String, nullable=False)
+    monthly_contribution = Column(Float, nullable=False, default=0.0)
+    risk_profile = Column(String, nullable=False, default="MODERATE")
+    linked_instruments = Column(String, nullable=False, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 # --- User Model ---
@@ -195,8 +272,19 @@ def _ensure_user_columns() -> None:
     _ensure_column("users", "token_version", "token_version INTEGER NOT NULL DEFAULT 0")
 
 
+def _ensure_order_columns() -> None:
+    _ensure_column("orders", "user_id", "user_id INTEGER NOT NULL DEFAULT 1")
+    _ensure_column("orders", "order_type", "order_type VARCHAR NULL")
+    _ensure_column("orders", "validity", "validity VARCHAR NULL")
+    _ensure_column("orders", "limit_price", "limit_price FLOAT NULL")
+    _ensure_column("orders", "trigger_price", "trigger_price FLOAT NULL")
+    _ensure_column("orders", "basket_id", "basket_id INTEGER NULL")
+    _ensure_column("orders", "tag", "tag VARCHAR NULL")
+
+
 _ensure_refresh_token_columns()
 _ensure_user_columns()
+_ensure_order_columns()
 
 def get_db():
     db = SessionLocal()

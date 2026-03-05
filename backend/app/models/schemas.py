@@ -53,6 +53,11 @@ class OrderBase(BaseModel):
     symbol: str
     qty: int
     side: str
+    orderType: str = "MARKET"
+    validity: str = "DAY"
+    limitPrice: Optional[float] = None
+    triggerPrice: Optional[float] = None
+    tag: Optional[str] = None
 
 class Order(OrderBase):
     pass
@@ -222,3 +227,197 @@ class ETFInstrument(BaseModel):
     pctChange: float
     aumCr: Optional[float] = None
     expenseRatio: Optional[float] = None
+
+
+class AdvancedOrderResponse(BaseModel):
+    status: str
+    orderId: Optional[int] = None
+    order: Order
+    message: str
+    executedPrice: Optional[float] = None
+    triggerStatus: Optional[str] = None
+    riskFlags: List[str] = []
+
+
+class TriggerOrderSummary(BaseModel):
+    id: int
+    symbol: str
+    qty: int
+    side: str
+    orderType: str
+    validity: str
+    limitPrice: Optional[float] = None
+    triggerPrice: Optional[float] = None
+    status: str
+    createdAt: str
+
+
+class BasketOrderLegRequest(BaseModel):
+    symbol: str
+    qty: int
+    side: str
+    orderType: str = "MARKET"
+    validity: str = "DAY"
+    limitPrice: Optional[float] = None
+    triggerPrice: Optional[float] = None
+    tag: Optional[str] = None
+
+
+class BasketOrderRequest(BaseModel):
+    name: str
+    legs: List[BasketOrderLegRequest]
+
+
+class BasketLegExecution(BaseModel):
+    symbol: str
+    side: str
+    qty: int
+    status: str
+    message: str
+    orderId: Optional[int] = None
+
+
+class BasketOrderResponse(BaseModel):
+    basketId: int
+    name: str
+    status: str
+    message: str
+    legResults: List[BasketLegExecution] = []
+
+
+class OptionContract(BaseModel):
+    strike: float
+    callLtp: float
+    putLtp: float
+    callOi: int
+    putOi: int
+    callOiChange: int
+    putOiChange: int
+    impliedVolatility: float
+    callDelta: float
+    putDelta: float
+    gamma: float
+    theta: float
+    vega: float
+
+
+class OptionChainResponse(BaseModel):
+    symbol: str
+    expiry: str
+    spot: float
+    generatedAt: str
+    contracts: List[OptionContract]
+
+
+class StrategyLeg(BaseModel):
+    optionType: str
+    side: str
+    strike: float
+    premium: float
+    quantity: int = 1
+    lotSize: int = 1
+
+
+class StrategyPreviewRequest(BaseModel):
+    symbol: str
+    spot: float
+    legs: List[StrategyLeg]
+
+
+class StrategyPayoffPoint(BaseModel):
+    spot: float
+    payoff: float
+
+
+class StrategyPreviewResponse(BaseModel):
+    symbol: str
+    maxProfit: float
+    maxLoss: float
+    breakevenPoints: List[float]
+    marginEstimate: float
+    riskRewardRatio: float
+    payoffCurve: List[StrategyPayoffPoint]
+    notes: List[str]
+
+
+class FamilyMemberRequest(BaseModel):
+    name: str
+    relation: str
+    equityValue: float = 0.0
+    mutualFundValue: float = 0.0
+    usValue: float = 0.0
+    cashValue: float = 0.0
+    liabilitiesValue: float = 0.0
+
+
+class FamilyMemberSummary(BaseModel):
+    id: int
+    name: str
+    relation: str
+    netWorth: float
+    totalAssets: float
+    liabilitiesValue: float
+
+
+class FamilyDashboardResponse(BaseModel):
+    userId: int
+    consolidatedNetWorth: float
+    totalAssets: float
+    totalLiabilities: float
+    allocation: dict[str, float]
+    members: List[FamilyMemberSummary]
+
+
+class GoalPlanRequest(BaseModel):
+    goalName: str
+    targetAmount: float
+    targetDate: str
+    monthlyContribution: float = 0.0
+    riskProfile: str = "MODERATE"
+
+
+class GoalLinkRequest(BaseModel):
+    instruments: List[str]
+    incrementAmount: float = 0.0
+
+
+class GoalPlanResponse(BaseModel):
+    id: int
+    goalName: str
+    targetAmount: float
+    currentAmount: float
+    targetDate: str
+    monthlyContribution: float
+    progressPercent: float
+    riskProfile: str
+    linkedInstruments: List[str]
+
+
+class CopilotSignal(BaseModel):
+    verdict: str
+    confidence: int
+    flags: List[str]
+    guidance: List[str]
+
+
+class CopilotPreTradeRequest(BaseModel):
+    order: Order
+    walletBalance: Optional[float] = None
+    marketOpen: Optional[bool] = None
+
+
+class CopilotPostTradeRequest(BaseModel):
+    orderId: int
+    note: Optional[str] = None
+
+
+class CopilotPostTradeResponse(BaseModel):
+    summary: str
+    pnlNow: float
+    coaching: List[str]
+
+
+class CopilotPortfolioActionsResponse(BaseModel):
+    actions: List[str]
+    priority: str
+    rationale: str

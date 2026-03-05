@@ -414,7 +414,7 @@ fun BYSELApp(
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.MoreHoriz, contentDescription = "More", modifier = Modifier.size(22.dp)) },
                         label = { Text("More", fontSize = 10.sp) },
-                        selected = selectedTab in 5..15,
+                        selected = selectedTab in 5..19,
                         onClick = { selectedTab = 5 },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = Color(0xFF7C4DFF),
@@ -528,7 +528,11 @@ fun BYSELApp(
                                     onIpoClick = { selectedTab = 12 },
                                     onEtfClick = { selectedTab = 13 },
                                     onSipClick = { selectedTab = 14 },
-                                    onMyIpoApplicationsClick = { selectedTab = 15 }
+                                    onMyIpoApplicationsClick = { selectedTab = 15 },
+                                    onAdvancedOrdersClick = { selectedTab = 16 },
+                                    onDerivativesClick = { selectedTab = 17 },
+                                    onWealthOsClick = { selectedTab = 18 },
+                                    onCopilotCenterClick = { selectedTab = 19 }
                                 )
                                 10 -> com.bysel.trader.ui.screens.AchievementsScreen(viewModel)
                                 11 -> MutualFundsScreen(viewModel)
@@ -536,6 +540,10 @@ fun BYSELApp(
                                 13 -> EtfScreen(viewModel)
                                 14 -> SipPlansScreen(viewModel)
                                 15 -> MyIpoApplicationsScreen(viewModel)
+                                16 -> AdvancedOrdersScreen(viewModel)
+                                17 -> DerivativesIntelligenceScreen(viewModel)
+                                18 -> WealthOsScreen(viewModel)
+                                19 -> CopilotCenterScreen(viewModel)
                                 6 -> SearchScreen(
                                     quotes = quotes,
                                     searchResults = searchResults,

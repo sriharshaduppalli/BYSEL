@@ -5,17 +5,23 @@ from datetime import datetime, timedelta
 import logging
 import os
 import time
+from math import erf, exp, log, sqrt
 from urllib import request as urllib_request
 from ..database.db import (
     get_db,
     AlertModel,
     OrderModel,
+    TriggerOrderModel,
+    BasketOrderModel,
+    BasketOrderLegModel,
     HoldingModel,
     MutualFundModel,
     SipPlanModel,
     IPOModel,
     IPOApplicationModel,
     ETFModel,
+    FamilyMemberModel,
+    GoalPlanModel,
 )
 from .dependencies import get_current_user
 from ..models.schemas import (
@@ -24,11 +30,33 @@ from ..models.schemas import (
     Wallet, WalletTransaction, WalletResponse, MarketStatus,
     MutualFund, MutualFundCompareResponse, MutualFundRecommendationItem, MutualFundRecommendationResponse,
     SipPlanRequest, SipPlan, IPOListing,
-    SipPlanUpdateRequest, IPOApplicationRequest, IPOApplicationResponse, IPOApplication, ETFInstrument
+    SipPlanUpdateRequest, IPOApplicationRequest, IPOApplicationResponse, IPOApplication, ETFInstrument,
+    AdvancedOrderResponse,
+    TriggerOrderSummary,
+    BasketOrderRequest,
+    BasketOrderResponse,
+    BasketLegExecution,
+    OptionContract,
+    OptionChainResponse,
+    StrategyPreviewRequest,
+    StrategyPreviewResponse,
+    StrategyPayoffPoint,
+    FamilyMemberRequest,
+    FamilyMemberSummary,
+    FamilyDashboardResponse,
+    GoalPlanRequest,
+    GoalLinkRequest,
+    GoalPlanResponse,
+    CopilotPreTradeRequest,
+    CopilotSignal,
+    CopilotPostTradeRequest,
+    CopilotPostTradeResponse,
+    CopilotPortfolioActionsResponse,
 )
 from .trading import (
     get_holdings, get_holding, place_order,
-    is_market_open, get_wallet, add_funds, withdraw_funds
+    is_market_open, get_wallet, add_funds, withdraw_funds,
+    evaluate_pending_triggers, build_pretrade_signal,
 )
 from ..market_data import (
     fetch_quote, fetch_quotes, get_all_symbols, get_default_symbols,
@@ -467,6 +495,207 @@ def _seed_phase1_master_data(db: Session):
     db.commit()
 
 
+def _normal_cdf(x: float) -> float:
+    return 0.5 * (1.0 + erf(x / sqrt(2.0)))
+
+
+def _normal_pdf(x: float) -> float:
+    return (1.0 / sqrt(2.0 * 3.141592653589793)) * exp(-0.5 * x * x)
+
+
+def _black_scholes_greeks(spot: float, strike: float, time_years: float, rate: float, iv: float) -> dict[str, float]:
+    if spot <= 0 or strike <= 0 or time_years <= 0 or iv <= 0:
+        return {
+            "callPrice": 0.0,
+            "putPrice": 0.0,
+            "callDelta": 0.0,
+            "putDelta": 0.0,
+            "gamma": 0.0,
+            "theta": 0.0,
+            "vega": 0.0,
+        }
+
+    sqrt_t = sqrt(time_years)
+    d1 = (log(spot / strike) + (rate + 0.5 * iv * iv) * time_years) / (iv * sqrt_t)
+    d2 = d1 - iv * sqrt_t
+
+    call_price = spot * _normal_cdf(d1) - strike * exp(-rate * time_years) * _normal_cdf(d2)
+    put_price = strike * exp(-rate * time_years) * _normal_cdf(-d2) - spot * _normal_cdf(-d1)
+    gamma = _normal_pdf(d1) / (spot * iv * sqrt_t)
+    vega = (spot * _normal_pdf(d1) * sqrt_t) / 100.0
+    theta = (
+        (-spot * _normal_pdf(d1) * iv / (2.0 * sqrt_t))
+        - (rate * strike * exp(-rate * time_years) * _normal_cdf(d2))
+    ) / 365.0
+
+    return {
+        "callPrice": round(max(call_price, 0.01), 2),
+        "putPrice": round(max(put_price, 0.01), 2),
+        "callDelta": round(_normal_cdf(d1), 4),
+        "putDelta": round(_normal_cdf(d1) - 1.0, 4),
+        "gamma": round(gamma, 5),
+        "theta": round(theta, 4),
+        "vega": round(vega, 4),
+    }
+
+
+def _generate_option_chain(symbol: str, expiry: str) -> OptionChainResponse:
+    quote = fetch_quote(symbol.upper())
+    spot = float(quote.get("last") or 0.0)
+    if spot <= 0:
+        raise HTTPException(status_code=404, detail=f"Could not fetch live spot for {symbol}")
+
+    step = 50.0 if spot >= 1000 else 20.0 if spot >= 300 else 10.0
+    atm = round(spot / step) * step
+    base_seed = sum(ord(ch) for ch in f"{symbol.upper()}:{expiry}")
+    contracts: list[OptionContract] = []
+    for index in range(-10, 11):
+        strike = round(atm + (index * step), 2)
+        strike_seed = base_seed + int(strike * 10)
+        iv = max(0.12, min(0.55, 0.22 + (abs(index) * 0.01) + ((strike_seed % 17) / 1000.0)))
+        greeks = _black_scholes_greeks(
+            spot=spot,
+            strike=strike,
+            time_years=21 / 365,
+            rate=0.065,
+            iv=iv,
+        )
+        call_oi = max(250, int(15000 - (abs(index) * 780) + (strike_seed % 500)))
+        put_oi = max(250, int(14800 - (abs(index) * 760) + ((strike_seed + 37) % 500)))
+        call_oi_change = int((strike_seed % 240) - 120)
+        put_oi_change = int(((strike_seed + 77) % 240) - 120)
+
+        contracts.append(
+            OptionContract(
+                strike=strike,
+                callLtp=greeks["callPrice"],
+                putLtp=greeks["putPrice"],
+                callOi=call_oi,
+                putOi=put_oi,
+                callOiChange=call_oi_change,
+                putOiChange=put_oi_change,
+                impliedVolatility=round(iv, 4),
+                callDelta=greeks["callDelta"],
+                putDelta=greeks["putDelta"],
+                gamma=greeks["gamma"],
+                theta=greeks["theta"],
+                vega=greeks["vega"],
+            )
+        )
+
+    return OptionChainResponse(
+        symbol=symbol.upper(),
+        expiry=expiry,
+        spot=round(spot, 2),
+        generatedAt=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        contracts=contracts,
+    )
+
+
+def _strategy_leg_payoff(option_type: str, side: str, strike: float, premium: float, quantity: int, lot_size: int, spot: float) -> float:
+    option_type = option_type.strip().upper()
+    side = side.strip().upper()
+    if option_type == "CALL":
+        intrinsic = max(spot - strike, 0.0)
+    else:
+        intrinsic = max(strike - spot, 0.0)
+
+    per_unit = intrinsic - premium if side == "BUY" else premium - intrinsic
+    return per_unit * quantity * lot_size
+
+
+def _preview_strategy(payload: StrategyPreviewRequest) -> StrategyPreviewResponse:
+    if not payload.legs:
+        raise HTTPException(status_code=400, detail="At least one strategy leg is required")
+
+    strikes = [leg.strike for leg in payload.legs]
+    min_spot = min(strikes + [payload.spot]) * 0.75
+    max_spot = max(strikes + [payload.spot]) * 1.25
+    points = 25
+    step = (max_spot - min_spot) / max(points - 1, 1)
+
+    payoff_curve: list[StrategyPayoffPoint] = []
+    values: list[float] = []
+    for idx in range(points):
+        spot = round(min_spot + (idx * step), 2)
+        payoff = 0.0
+        for leg in payload.legs:
+            payoff += _strategy_leg_payoff(
+                option_type=leg.optionType,
+                side=leg.side,
+                strike=leg.strike,
+                premium=leg.premium,
+                quantity=leg.quantity,
+                lot_size=leg.lotSize,
+                spot=spot,
+            )
+        payoff = round(payoff, 2)
+        values.append(payoff)
+        payoff_curve.append(StrategyPayoffPoint(spot=spot, payoff=payoff))
+
+    max_profit = round(max(values), 2)
+    max_loss = round(min(values), 2)
+
+    breakeven_points: list[float] = []
+    for i in range(1, len(payoff_curve)):
+        previous = payoff_curve[i - 1]
+        current = payoff_curve[i]
+        if previous.payoff == 0:
+            breakeven_points.append(previous.spot)
+        elif (previous.payoff < 0 <= current.payoff) or (previous.payoff > 0 >= current.payoff):
+            denominator = (current.payoff - previous.payoff)
+            if denominator != 0:
+                ratio = abs(previous.payoff) / abs(denominator)
+                breakeven_points.append(round(previous.spot + (current.spot - previous.spot) * ratio, 2))
+
+    credit = sum(
+        (leg.premium * leg.quantity * leg.lotSize)
+        for leg in payload.legs if leg.side.strip().upper() == "SELL"
+    )
+    debit = sum(
+        (leg.premium * leg.quantity * leg.lotSize)
+        for leg in payload.legs if leg.side.strip().upper() == "BUY"
+    )
+    margin_estimate = round(max(0.0, (debit * 1.05) + (credit * 0.35)), 2)
+
+    downside = abs(min(0.0, max_loss))
+    upside = max(0.0, max_profit)
+    risk_reward = round((upside / downside), 2) if downside > 0 else 0.0
+    notes = [
+        "Payoff preview is indicative and excludes taxes, slippage and impact costs.",
+        "Use this with live OI/Greeks context before execution.",
+    ]
+
+    return StrategyPreviewResponse(
+        symbol=payload.symbol.upper(),
+        maxProfit=max_profit,
+        maxLoss=max_loss,
+        breakevenPoints=sorted(list(dict.fromkeys(breakeven_points))),
+        marginEstimate=margin_estimate,
+        riskRewardRatio=risk_reward,
+        payoffCurve=payoff_curve,
+        notes=notes,
+    )
+
+
+def _goal_to_response(goal: GoalPlanModel) -> GoalPlanResponse:
+    progress = 0.0
+    if goal.target_amount > 0:
+        progress = min(100.0, round((goal.current_amount / goal.target_amount) * 100.0, 2))
+    linked = [item for item in goal.linked_instruments.split(",") if item]
+    return GoalPlanResponse(
+        id=goal.id,
+        goalName=goal.goal_name,
+        targetAmount=goal.target_amount,
+        currentAmount=goal.current_amount,
+        targetDate=goal.target_date,
+        monthlyContribution=goal.monthly_contribution,
+        progressPercent=progress,
+        riskProfile=goal.risk_profile,
+        linkedInstruments=linked,
+    )
+
+
 # ==================== QUOTES (LIVE DATA) ====================
 
 @router.get("/quotes", response_model=list[Quote])
@@ -481,6 +710,10 @@ async def get_quotes_endpoint(
         sym_list = get_default_symbols()
 
     raw_quotes = fetch_quotes(sym_list)
+    try:
+        evaluate_pending_triggers(db=db, user_id=None, symbols=sym_list)
+    except Exception as exc:
+        logger.warning("trigger_evaluation_failed reason=%s", str(exc))
     return [Quote(
         symbol=q["symbol"],
         last=q["last"],
@@ -532,23 +765,23 @@ async def get_holding_endpoint(symbol: str, db: Session = Depends(get_db)):
 # ==================== TRADING ====================
 
 @router.post("/order", response_model=OrderResponse)
-async def place_order_endpoint(order: Order, db: Session = Depends(get_db)):
+async def place_order_endpoint(order: Order, db: Session = Depends(get_db), user_id: int = Header(1)):
     """Place a buy or sell order at live market price."""
-    return place_order(db, order)
+    return place_order(db, order, user_id=user_id)
 
 
 @router.post("/trade/buy", response_model=OrderResponse)
-async def buy_stock_endpoint(order: Order, db: Session = Depends(get_db)):
+async def buy_stock_endpoint(order: Order, db: Session = Depends(get_db), user_id: int = Header(1)):
     """Buy stock at live market price."""
     order.side = "BUY"
-    return place_order(db, order)
+    return place_order(db, order, user_id=user_id)
 
 
 @router.post("/trade/sell", response_model=OrderResponse)
-async def sell_stock_endpoint(order: Order, db: Session = Depends(get_db)):
+async def sell_stock_endpoint(order: Order, db: Session = Depends(get_db), user_id: int = Header(1)):
     """Sell stock at live market price."""
     order.side = "SELL"
-    return place_order(db, order)
+    return place_order(db, order, user_id=user_id)
 
 
 @router.get("/trades/history", response_model=list[TradeHistory])
@@ -1263,3 +1496,517 @@ async def get_etfs_endpoint(
         )
         for item in etfs
     ]
+
+
+# ==================== ADVANCED ORDER ENGINE ====================
+
+@router.post("/orders/advanced", response_model=AdvancedOrderResponse)
+async def place_advanced_order_endpoint(
+    order: Order,
+    db: Session = Depends(get_db),
+    user_id: int = Header(1),
+):
+    market = is_market_open()
+    quote = fetch_quote(order.symbol.upper())
+    live_price = float(quote.get("last") or 0.0)
+    wallet_balance = get_wallet(db, user_id).balance
+    signal_data = build_pretrade_signal(
+        order=order,
+        live_price=live_price,
+        wallet_balance=wallet_balance,
+        market_open=market.isOpen,
+    )
+
+    response = place_order(db, order, user_id=user_id)
+
+    trigger_status: str | None = None
+    order_id: int | None = None
+    executed_price: float | None = None
+
+    if "server-side trigger" in response.message:
+        trigger = (
+            db.query(TriggerOrderModel)
+            .filter(TriggerOrderModel.user_id == user_id, TriggerOrderModel.symbol == order.symbol.upper())
+            .order_by(TriggerOrderModel.id.desc())
+            .first()
+        )
+        trigger_status = "PENDING" if trigger else "PENDING"
+    else:
+        order_row = (
+            db.query(OrderModel)
+            .filter(OrderModel.user_id == user_id, OrderModel.symbol == order.symbol.upper())
+            .order_by(OrderModel.id.desc())
+            .first()
+        )
+        if order_row:
+            order_id = order_row.id
+            executed_price = order_row.price
+            trigger_status = order_row.status
+
+    return AdvancedOrderResponse(
+        status=response.status,
+        orderId=order_id,
+        order=order,
+        message=response.message or "Order processed",
+        executedPrice=executed_price,
+        triggerStatus=trigger_status,
+        riskFlags=signal_data["flags"],
+    )
+
+
+@router.post("/orders/triggers", response_model=TriggerOrderSummary)
+async def create_trigger_order_endpoint(
+    order: Order,
+    db: Session = Depends(get_db),
+    user_id: int = Header(1),
+):
+    order_type = (order.orderType or "").strip().upper()
+    validity = (order.validity or "DAY").strip().upper()
+    if order_type not in {"LIMIT", "SL", "SLM"}:
+        raise HTTPException(status_code=400, detail="orderType must be LIMIT, SL or SLM for trigger orders")
+    if validity not in {"DAY", "IOC", "GTC"}:
+        raise HTTPException(status_code=400, detail="validity must be DAY, IOC or GTC")
+
+    trigger = TriggerOrderModel(
+        user_id=user_id,
+        symbol=order.symbol.upper(),
+        quantity=order.qty,
+        side=order.side.upper(),
+        order_type=order_type,
+        validity=validity,
+        limit_price=order.limitPrice,
+        trigger_price=order.triggerPrice,
+        status="PENDING",
+        tag=order.tag,
+    )
+    db.add(trigger)
+    db.commit()
+    db.refresh(trigger)
+
+    return TriggerOrderSummary(
+        id=trigger.id,
+        symbol=trigger.symbol,
+        qty=trigger.quantity,
+        side=trigger.side,
+        orderType=trigger.order_type,
+        validity=trigger.validity,
+        limitPrice=trigger.limit_price,
+        triggerPrice=trigger.trigger_price,
+        status=trigger.status,
+        createdAt=trigger.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+    )
+
+
+@router.get("/orders/triggers", response_model=list[TriggerOrderSummary])
+async def get_trigger_orders_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
+    rows = (
+        db.query(TriggerOrderModel)
+        .filter(TriggerOrderModel.user_id == user_id)
+        .order_by(TriggerOrderModel.created_at.desc())
+        .all()
+    )
+    return [
+        TriggerOrderSummary(
+            id=row.id,
+            symbol=row.symbol,
+            qty=row.quantity,
+            side=row.side,
+            orderType=row.order_type,
+            validity=row.validity,
+            limitPrice=row.limit_price,
+            triggerPrice=row.trigger_price,
+            status=row.status,
+            createdAt=row.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+        )
+        for row in rows
+    ]
+
+
+@router.post("/orders/triggers/evaluate")
+async def evaluate_trigger_orders_endpoint(
+    symbols: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user_id: int = Header(1),
+):
+    symbol_list = [item.strip().upper() for item in (symbols or "").split(",") if item.strip()]
+    processed = evaluate_pending_triggers(db=db, user_id=user_id, symbols=symbol_list)
+    return {
+        "status": "ok",
+        "processedCount": len(processed),
+        "processed": processed,
+    }
+
+
+@router.post("/orders/baskets", response_model=BasketOrderResponse)
+async def create_basket_order_endpoint(
+    request: BasketOrderRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Header(1),
+):
+    if not request.legs:
+        raise HTTPException(status_code=400, detail="Basket must contain at least one leg")
+
+    basket = BasketOrderModel(
+        user_id=user_id,
+        name=request.name.strip() or "Untitled Basket",
+        status="DRAFT",
+    )
+    db.add(basket)
+    db.commit()
+    db.refresh(basket)
+
+    for leg in request.legs:
+        db.add(
+            BasketOrderLegModel(
+                basket_id=basket.id,
+                symbol=leg.symbol.upper(),
+                quantity=leg.qty,
+                side=leg.side.upper(),
+                order_type=(leg.orderType or "MARKET").upper(),
+                validity=(leg.validity or "DAY").upper(),
+                limit_price=leg.limitPrice,
+                trigger_price=leg.triggerPrice,
+                tag=leg.tag,
+            )
+        )
+    db.commit()
+
+    return BasketOrderResponse(
+        basketId=basket.id,
+        name=basket.name,
+        status=basket.status,
+        message="Basket created",
+        legResults=[],
+    )
+
+
+@router.get("/orders/baskets", response_model=list[BasketOrderResponse])
+async def get_baskets_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
+    rows = (
+        db.query(BasketOrderModel)
+        .filter(BasketOrderModel.user_id == user_id)
+        .order_by(BasketOrderModel.created_at.desc())
+        .all()
+    )
+    return [
+        BasketOrderResponse(
+            basketId=row.id,
+            name=row.name,
+            status=row.status,
+            message="Basket snapshot",
+            legResults=[],
+        )
+        for row in rows
+    ]
+
+
+@router.post("/orders/baskets/{basket_id}/execute", response_model=BasketOrderResponse)
+async def execute_basket_endpoint(
+    basket_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Header(1),
+):
+    basket = db.query(BasketOrderModel).filter(BasketOrderModel.id == basket_id, BasketOrderModel.user_id == user_id).first()
+    if not basket:
+        raise HTTPException(status_code=404, detail=f"Basket '{basket_id}' not found")
+
+    legs = db.query(BasketOrderLegModel).filter(BasketOrderLegModel.basket_id == basket_id).all()
+    if not legs:
+        raise HTTPException(status_code=400, detail="Basket has no legs")
+
+    results: list[BasketLegExecution] = []
+    for leg in legs:
+        response = place_order(
+            db,
+            Order(
+                symbol=leg.symbol,
+                qty=leg.quantity,
+                side=leg.side,
+                orderType=leg.order_type,
+                validity=leg.validity,
+                limitPrice=leg.limit_price,
+                triggerPrice=leg.trigger_price,
+                tag=leg.tag,
+            ),
+            user_id=user_id,
+        )
+        order_row = (
+            db.query(OrderModel)
+            .filter(OrderModel.user_id == user_id, OrderModel.symbol == leg.symbol)
+            .order_by(OrderModel.id.desc())
+            .first()
+        )
+        results.append(
+            BasketLegExecution(
+                symbol=leg.symbol,
+                side=leg.side,
+                qty=leg.quantity,
+                status=response.status,
+                message=response.message or "",
+                orderId=order_row.id if order_row else None,
+            )
+        )
+
+    if all(item.status == "ok" for item in results):
+        basket.status = "EXECUTED"
+        message = "Basket executed"
+    elif any(item.status == "ok" for item in results):
+        basket.status = "PARTIAL"
+        message = "Basket partially executed"
+    else:
+        basket.status = "FAILED"
+        message = "Basket execution failed"
+    db.commit()
+
+    return BasketOrderResponse(
+        basketId=basket.id,
+        name=basket.name,
+        status=basket.status,
+        message=message,
+        legResults=results,
+    )
+
+
+# ==================== DERIVATIVES INTELLIGENCE ====================
+
+@router.get("/derivatives/option-chain", response_model=OptionChainResponse)
+async def get_option_chain_endpoint(
+    symbol: str = Query(...),
+    expiry: str = Query(..., description="Expiry in YYYY-MM-DD"),
+):
+    return _generate_option_chain(symbol=symbol, expiry=expiry)
+
+
+@router.post("/derivatives/strategy/preview", response_model=StrategyPreviewResponse)
+async def strategy_preview_endpoint(payload: StrategyPreviewRequest):
+    return _preview_strategy(payload)
+
+
+# ==================== WEALTH OS ====================
+
+@router.post("/wealth/family/members", response_model=FamilyMemberSummary)
+async def upsert_family_member_endpoint(
+    request: FamilyMemberRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Header(1),
+):
+    row = FamilyMemberModel(
+        user_id=user_id,
+        name=request.name.strip(),
+        relation=request.relation.strip(),
+        equity_value=request.equityValue,
+        mutual_fund_value=request.mutualFundValue,
+        us_value=request.usValue,
+        cash_value=request.cashValue,
+        liabilities_value=request.liabilitiesValue,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+
+    total_assets = row.equity_value + row.mutual_fund_value + row.us_value + row.cash_value
+    net_worth = total_assets - row.liabilities_value
+    return FamilyMemberSummary(
+        id=row.id,
+        name=row.name,
+        relation=row.relation,
+        netWorth=round(net_worth, 2),
+        totalAssets=round(total_assets, 2),
+        liabilitiesValue=round(row.liabilities_value, 2),
+    )
+
+
+@router.get("/wealth/family/dashboard", response_model=FamilyDashboardResponse)
+async def family_dashboard_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
+    members = db.query(FamilyMemberModel).filter(FamilyMemberModel.user_id == user_id).all()
+    holdings = get_holdings(db)
+    holdings_value = sum((item.last * item.qty) for item in holdings)
+    wallet_balance = get_wallet(db, user_id).balance
+
+    summaries: list[FamilyMemberSummary] = []
+    family_assets = 0.0
+    family_liabilities = 0.0
+    for member in members:
+        total_assets = member.equity_value + member.mutual_fund_value + member.us_value + member.cash_value
+        net_worth = total_assets - member.liabilities_value
+        family_assets += total_assets
+        family_liabilities += member.liabilities_value
+        summaries.append(
+            FamilyMemberSummary(
+                id=member.id,
+                name=member.name,
+                relation=member.relation,
+                netWorth=round(net_worth, 2),
+                totalAssets=round(total_assets, 2),
+                liabilitiesValue=round(member.liabilities_value, 2),
+            )
+        )
+
+    total_assets = family_assets + holdings_value + wallet_balance
+    total_liabilities = family_liabilities
+    consolidated = total_assets - total_liabilities
+
+    equity_total = holdings_value + sum(m.equity_value for m in members)
+    mf_total = sum(m.mutual_fund_value for m in members)
+    us_total = sum(m.us_value for m in members)
+    cash_total = wallet_balance + sum(m.cash_value for m in members)
+    denominator = total_assets if total_assets > 0 else 1.0
+    allocation = {
+        "equity": round((equity_total / denominator) * 100.0, 2),
+        "mutualFunds": round((mf_total / denominator) * 100.0, 2),
+        "us": round((us_total / denominator) * 100.0, 2),
+        "cash": round((cash_total / denominator) * 100.0, 2),
+    }
+
+    return FamilyDashboardResponse(
+        userId=user_id,
+        consolidatedNetWorth=round(consolidated, 2),
+        totalAssets=round(total_assets, 2),
+        totalLiabilities=round(total_liabilities, 2),
+        allocation=allocation,
+        members=summaries,
+    )
+
+
+@router.post("/wealth/goals", response_model=GoalPlanResponse)
+async def create_goal_endpoint(
+    request: GoalPlanRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Header(1),
+):
+    if request.targetAmount <= 0:
+        raise HTTPException(status_code=400, detail="targetAmount must be > 0")
+    goal = GoalPlanModel(
+        user_id=user_id,
+        goal_name=request.goalName.strip(),
+        target_amount=request.targetAmount,
+        current_amount=0.0,
+        target_date=request.targetDate,
+        monthly_contribution=request.monthlyContribution,
+        risk_profile=request.riskProfile.strip().upper(),
+        linked_instruments="",
+    )
+    db.add(goal)
+    db.commit()
+    db.refresh(goal)
+    return _goal_to_response(goal)
+
+
+@router.get("/wealth/goals", response_model=list[GoalPlanResponse])
+async def get_goals_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
+    goals = (
+        db.query(GoalPlanModel)
+        .filter(GoalPlanModel.user_id == user_id)
+        .order_by(GoalPlanModel.created_at.desc())
+        .all()
+    )
+    return [_goal_to_response(goal) for goal in goals]
+
+
+@router.post("/wealth/goals/{goal_id}/link-investments", response_model=GoalPlanResponse)
+async def link_goal_investments_endpoint(
+    goal_id: int,
+    request: GoalLinkRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Header(1),
+):
+    goal = db.query(GoalPlanModel).filter(GoalPlanModel.id == goal_id, GoalPlanModel.user_id == user_id).first()
+    if not goal:
+        raise HTTPException(status_code=404, detail=f"Goal '{goal_id}' not found")
+
+    current = {item for item in goal.linked_instruments.split(",") if item}
+    current.update({item.strip().upper() for item in request.instruments if item.strip()})
+    goal.linked_instruments = ",".join(sorted(current))
+    if request.incrementAmount > 0:
+        goal.current_amount = round(goal.current_amount + request.incrementAmount, 2)
+    db.commit()
+    db.refresh(goal)
+    return _goal_to_response(goal)
+
+
+# ==================== AI COPILOT FLOWS ====================
+
+@router.post("/ai/copilot/pre-trade-check", response_model=CopilotSignal)
+async def copilot_pre_trade_endpoint(
+    payload: CopilotPreTradeRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Header(1),
+):
+    quote = fetch_quote(payload.order.symbol.upper())
+    live_price = float(quote.get("last") or 0.0)
+    market = is_market_open()
+    wallet_balance = payload.walletBalance if payload.walletBalance is not None else get_wallet(db, user_id).balance
+    signal = build_pretrade_signal(
+        order=payload.order,
+        live_price=live_price,
+        wallet_balance=wallet_balance,
+        market_open=payload.marketOpen if payload.marketOpen is not None else market.isOpen,
+    )
+    return CopilotSignal(
+        verdict=signal["verdict"],
+        confidence=signal["confidence"],
+        flags=signal["flags"],
+        guidance=signal["guidance"],
+    )
+
+
+@router.post("/ai/copilot/post-trade-review", response_model=CopilotPostTradeResponse)
+async def copilot_post_trade_endpoint(payload: CopilotPostTradeRequest, db: Session = Depends(get_db)):
+    order = db.query(OrderModel).filter(OrderModel.id == payload.orderId).first()
+    if not order:
+        raise HTTPException(status_code=404, detail=f"Order '{payload.orderId}' not found")
+
+    quote = fetch_quote(order.symbol)
+    live_price = float(quote.get("last") or order.price or 0.0)
+    signed_qty = order.quantity if order.side.upper() == "BUY" else -order.quantity
+    pnl_now = round((live_price - float(order.price or 0.0)) * signed_qty, 2)
+
+    coaching: list[str] = []
+    if order.order_type != "MARKET":
+        coaching.append("Review whether execution quality improved versus market entries.")
+    if abs(pnl_now) > (float(order.total or 0.0) * 0.02):
+        coaching.append("Large move detected after execution; reassess stop and target levels.")
+    else:
+        coaching.append("Move remains within expected range; avoid over-managing early noise.")
+    coaching.append("Log your setup and confidence to improve AI post-trade learning loops.")
+
+    return CopilotPostTradeResponse(
+        summary=f"Order {order.id} ({order.side} {order.quantity} {order.symbol}) reviewed at live price ₹{live_price:.2f}.",
+        pnlNow=pnl_now,
+        coaching=coaching,
+    )
+
+
+@router.get("/ai/copilot/portfolio-actions", response_model=CopilotPortfolioActionsResponse)
+async def copilot_portfolio_actions_endpoint(db: Session = Depends(get_db)):
+    holdings = get_holdings(db)
+    if not holdings:
+        return CopilotPortfolioActionsResponse(
+            actions=["Start with staggered entries in 2-3 diversified large-cap names.", "Create one downside alert before first trade."],
+            priority="LOW",
+            rationale="Portfolio is empty; focus on disciplined onboarding and risk scaffolding.",
+        )
+
+    total_value = sum(item.last * item.qty for item in holdings)
+    largest = max(holdings, key=lambda item: item.last * item.qty)
+    concentration = ((largest.last * largest.qty) / total_value) * 100.0 if total_value > 0 else 0.0
+    actions = [
+        "Rebalance if single-position concentration exceeds your policy threshold.",
+        "Set bracket-style exit plan (target + stop) on top 3 holdings.",
+        "Run weekly AI post-trade review for positions with >2% move.",
+    ]
+    if concentration >= 35:
+        priority = "HIGH"
+        rationale = f"{largest.symbol} concentration is {concentration:.1f}% of portfolio value."
+    elif concentration >= 25:
+        priority = "MEDIUM"
+        rationale = f"Moderate concentration risk observed at {concentration:.1f}%."
+    else:
+        priority = "LOW"
+        rationale = "Diversification levels are healthy relative to current holdings mix."
+
+    return CopilotPortfolioActionsResponse(
+        actions=actions,
+        priority=priority,
+        rationale=rationale,
+    )

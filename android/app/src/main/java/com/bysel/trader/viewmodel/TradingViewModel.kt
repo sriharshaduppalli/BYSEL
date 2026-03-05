@@ -156,6 +156,52 @@ class TradingViewModel(
     private val _productActionMessage = MutableStateFlow<String?>(null)
     val productActionMessage: StateFlow<String?> = _productActionMessage.asStateFlow()
 
+    // Advanced order engine / derivatives / wealth / copilot
+    private val _advancedOrderResponse = MutableStateFlow<AdvancedOrderResponse?>(null)
+    val advancedOrderResponse: StateFlow<AdvancedOrderResponse?> = _advancedOrderResponse.asStateFlow()
+
+    private val _triggerOrders = MutableStateFlow<List<TriggerOrderSummary>>(emptyList())
+    val triggerOrders: StateFlow<List<TriggerOrderSummary>> = _triggerOrders.asStateFlow()
+
+    private val _triggerEvaluation = MutableStateFlow<TriggerEvaluationResponse?>(null)
+    val triggerEvaluation: StateFlow<TriggerEvaluationResponse?> = _triggerEvaluation.asStateFlow()
+
+    private val _basketOrders = MutableStateFlow<List<BasketOrderResponse>>(emptyList())
+    val basketOrders: StateFlow<List<BasketOrderResponse>> = _basketOrders.asStateFlow()
+
+    private val _optionChain = MutableStateFlow<OptionChainResponse?>(null)
+    val optionChain: StateFlow<OptionChainResponse?> = _optionChain.asStateFlow()
+
+    private val _strategyPreview = MutableStateFlow<StrategyPreviewResponse?>(null)
+    val strategyPreview: StateFlow<StrategyPreviewResponse?> = _strategyPreview.asStateFlow()
+
+    private val _familyDashboard = MutableStateFlow<FamilyDashboardResponse?>(null)
+    val familyDashboard: StateFlow<FamilyDashboardResponse?> = _familyDashboard.asStateFlow()
+
+    private val _goalPlans = MutableStateFlow<List<GoalPlanResponse>>(emptyList())
+    val goalPlans: StateFlow<List<GoalPlanResponse>> = _goalPlans.asStateFlow()
+
+    private val _copilotPreTradeSignal = MutableStateFlow<CopilotSignal?>(null)
+    val copilotPreTradeSignal: StateFlow<CopilotSignal?> = _copilotPreTradeSignal.asStateFlow()
+
+    private val _copilotPostTradeReview = MutableStateFlow<CopilotPostTradeResponse?>(null)
+    val copilotPostTradeReview: StateFlow<CopilotPostTradeResponse?> = _copilotPostTradeReview.asStateFlow()
+
+    private val _copilotPortfolioActions = MutableStateFlow<CopilotPortfolioActionsResponse?>(null)
+    val copilotPortfolioActions: StateFlow<CopilotPortfolioActionsResponse?> = _copilotPortfolioActions.asStateFlow()
+
+    private val _advancedLoading = MutableStateFlow(false)
+    val advancedLoading: StateFlow<Boolean> = _advancedLoading.asStateFlow()
+
+    private val _derivativesLoading = MutableStateFlow(false)
+    val derivativesLoading: StateFlow<Boolean> = _derivativesLoading.asStateFlow()
+
+    private val _wealthLoading = MutableStateFlow(false)
+    val wealthLoading: StateFlow<Boolean> = _wealthLoading.asStateFlow()
+
+    private val _copilotLoading = MutableStateFlow(false)
+    val copilotLoading: StateFlow<Boolean> = _copilotLoading.asStateFlow()
+
     private var autoRefreshJob: Job? = null
     private val AUTO_REFRESH_INTERVAL = 15_000L
     private val FAST_REFRESH_INTERVAL = 1_000L
@@ -563,12 +609,480 @@ class TradingViewModel(
                         _error.value = null
                         refreshHoldings(); refreshWallet(); unlockAchievement("first_trade")
                         fetchTradeCoachTip(symbol, quantity, side)
+                        loadPortfolioCopilotActions()
                     }
                 }
                 is Result.Error -> _error.value = r.message
                 else -> { }
             }
         }
+    }
+
+    fun placeAdvancedOrder(
+        symbol: String,
+        quantity: Int,
+        side: String,
+        orderType: String = "MARKET",
+        validity: String = "DAY",
+        limitPrice: Double? = null,
+        triggerPrice: Double? = null,
+        tag: String? = null,
+    ) {
+        if (symbol.isBlank()) {
+            _error.value = "Symbol is required"
+            return
+        }
+        if (quantity <= 0) {
+            _error.value = "Quantity must be greater than 0"
+            return
+        }
+
+        val request = AdvancedOrderRequest(
+            symbol = symbol.trim().uppercase(),
+            qty = quantity,
+            side = side.trim().uppercase(),
+            orderType = orderType.trim().uppercase(),
+            validity = validity.trim().uppercase(),
+            limitPrice = limitPrice,
+            triggerPrice = triggerPrice,
+            tag = tag?.trim()?.takeIf { it.isNotBlank() },
+        )
+
+        viewModelScope.launch {
+            _advancedLoading.value = true
+            _copilotLoading.value = true
+            when (
+                val preTrade = repository.preTradeCopilot(
+                    order = request,
+                    walletBalance = _walletBalance.value,
+                    marketOpen = _marketStatus.value?.isOpen,
+                )
+            ) {
+                is Result.Success -> _copilotPreTradeSignal.value = preTrade.data
+                is Result.Error -> _productActionMessage.value = "Copilot pre-check unavailable"
+                else -> {}
+            }
+            _copilotLoading.value = false
+
+            when (val response = repository.placeAdvancedOrder(request)) {
+                is Result.Success -> {
+                    _advancedOrderResponse.value = response.data
+                    _productActionMessage.value = response.data.message
+
+                    if (!response.data.status.equals("error", ignoreCase = true)) {
+                        _error.value = null
+                        refreshHoldings()
+                        refreshWallet()
+                        refreshTriggerOrders()
+                        refreshBasketOrders()
+                        unlockAchievement("first_trade")
+                        loadPortfolioCopilotActions()
+                        response.data.orderId?.let { orderId ->
+                            fetchPostTradeCopilot(orderId)
+                        }
+                    } else {
+                        _error.value = response.data.message
+                    }
+                }
+                is Result.Error -> _error.value = response.message
+                else -> {}
+            }
+            _advancedLoading.value = false
+        }
+    }
+
+    fun createTriggerOrder(
+        symbol: String,
+        quantity: Int,
+        side: String,
+        triggerPrice: Double,
+        orderType: String = "SL",
+        validity: String = "DAY",
+        limitPrice: Double? = null,
+        tag: String? = null,
+    ) {
+        if (symbol.isBlank()) {
+            _error.value = "Symbol is required"
+            return
+        }
+        if (quantity <= 0) {
+            _error.value = "Quantity must be greater than 0"
+            return
+        }
+        if (triggerPrice <= 0.0) {
+            _error.value = "Trigger price must be greater than 0"
+            return
+        }
+
+        val request = AdvancedOrderRequest(
+            symbol = symbol.trim().uppercase(),
+            qty = quantity,
+            side = side.trim().uppercase(),
+            orderType = orderType.trim().uppercase(),
+            validity = validity.trim().uppercase(),
+            limitPrice = limitPrice,
+            triggerPrice = triggerPrice,
+            tag = tag?.trim()?.takeIf { it.isNotBlank() },
+        )
+
+        viewModelScope.launch {
+            _advancedLoading.value = true
+            when (val response = repository.createTriggerOrder(request)) {
+                is Result.Success -> {
+                    _productActionMessage.value = "Trigger queued: ${response.data.symbol} @ ${response.data.triggerPrice ?: triggerPrice}"
+                    _error.value = null
+                    refreshTriggerOrders()
+                }
+                is Result.Error -> _error.value = response.message
+                else -> {}
+            }
+            _advancedLoading.value = false
+        }
+    }
+
+    fun refreshTriggerOrders() {
+        viewModelScope.launch {
+            when (val response = repository.getTriggerOrders()) {
+                is Result.Success -> _triggerOrders.value = response.data
+                is Result.Error -> _error.value = response.message
+                else -> {}
+            }
+        }
+    }
+
+    fun evaluateTriggerOrders(symbols: List<String> = emptyList()) {
+        viewModelScope.launch {
+            _advancedLoading.value = true
+            when (val response = repository.evaluateTriggerOrders(symbols)) {
+                is Result.Success -> {
+                    _triggerEvaluation.value = response.data
+                    _productActionMessage.value = "Trigger scan processed ${response.data.processedCount} orders"
+                    refreshTriggerOrders()
+                    if (response.data.processedCount > 0) {
+                        refreshHoldings()
+                        refreshWallet()
+                        loadPortfolioCopilotActions()
+                    }
+                }
+                is Result.Error -> _error.value = response.message
+                else -> {}
+            }
+            _advancedLoading.value = false
+        }
+    }
+
+    fun createBasketOrder(name: String, legs: List<BasketOrderLegRequest>) {
+        if (name.isBlank()) {
+            _error.value = "Basket name is required"
+            return
+        }
+        if (legs.isEmpty()) {
+            _error.value = "Add at least one basket leg"
+            return
+        }
+
+        viewModelScope.launch {
+            _advancedLoading.value = true
+            when (val response = repository.createBasketOrder(BasketOrderRequest(name = name.trim(), legs = legs))) {
+                is Result.Success -> {
+                    _productActionMessage.value = response.data.message
+                    _error.value = null
+                    refreshBasketOrders()
+                }
+                is Result.Error -> _error.value = response.message
+                else -> {}
+            }
+            _advancedLoading.value = false
+        }
+    }
+
+    fun refreshBasketOrders() {
+        viewModelScope.launch {
+            when (val response = repository.getBasketOrders()) {
+                is Result.Success -> _basketOrders.value = response.data
+                is Result.Error -> _error.value = response.message
+                else -> {}
+            }
+        }
+    }
+
+    fun executeBasketOrder(basketId: Int) {
+        if (basketId <= 0) {
+            _error.value = "Invalid basket id"
+            return
+        }
+        viewModelScope.launch {
+            _advancedLoading.value = true
+            when (val response = repository.executeBasketOrder(basketId)) {
+                is Result.Success -> {
+                    _productActionMessage.value = response.data.message
+                    _error.value = null
+                    refreshBasketOrders()
+                    refreshHoldings()
+                    refreshWallet()
+                    loadPortfolioCopilotActions()
+                }
+                is Result.Error -> _error.value = response.message
+                else -> {}
+            }
+            _advancedLoading.value = false
+        }
+    }
+
+    fun loadOptionChain(symbol: String, expiry: String) {
+        if (symbol.isBlank() || expiry.isBlank()) {
+            _error.value = "Symbol and expiry are required"
+            return
+        }
+        viewModelScope.launch {
+            _derivativesLoading.value = true
+            when (val response = repository.getOptionChain(symbol.trim().uppercase(), expiry.trim())) {
+                is Result.Success -> {
+                    _optionChain.value = response.data
+                    _error.value = null
+                }
+                is Result.Error -> _error.value = response.message
+                else -> {}
+            }
+            _derivativesLoading.value = false
+        }
+    }
+
+    fun previewStrategy(symbol: String, spot: Double, legs: List<StrategyLeg>) {
+        if (symbol.isBlank()) {
+            _error.value = "Symbol is required"
+            return
+        }
+        if (spot <= 0.0) {
+            _error.value = "Spot must be greater than 0"
+            return
+        }
+        if (legs.isEmpty()) {
+            _error.value = "Add at least one strategy leg"
+            return
+        }
+
+        viewModelScope.launch {
+            _derivativesLoading.value = true
+            when (val response = repository.previewStrategy(StrategyPreviewRequest(symbol = symbol.trim().uppercase(), spot = spot, legs = legs))) {
+                is Result.Success -> {
+                    _strategyPreview.value = response.data
+                    _error.value = null
+                }
+                is Result.Error -> _error.value = response.message
+                else -> {}
+            }
+            _derivativesLoading.value = false
+        }
+    }
+
+    fun addFamilyMember(
+        name: String,
+        relation: String,
+        equityValue: Double = 0.0,
+        mutualFundValue: Double = 0.0,
+        usValue: Double = 0.0,
+        cashValue: Double = 0.0,
+        liabilitiesValue: Double = 0.0,
+    ) {
+        if (name.isBlank() || relation.isBlank()) {
+            _error.value = "Name and relation are required"
+            return
+        }
+        viewModelScope.launch {
+            _wealthLoading.value = true
+            when (
+                val response = repository.addFamilyMember(
+                    FamilyMemberRequest(
+                        name = name.trim(),
+                        relation = relation.trim(),
+                        equityValue = equityValue,
+                        mutualFundValue = mutualFundValue,
+                        usValue = usValue,
+                        cashValue = cashValue,
+                        liabilitiesValue = liabilitiesValue,
+                    )
+                )
+            ) {
+                is Result.Success -> {
+                    _productActionMessage.value = "Family member added: ${response.data.name}"
+                    _error.value = null
+                    loadFamilyDashboard()
+                }
+                is Result.Error -> _error.value = response.message
+                else -> {}
+            }
+            _wealthLoading.value = false
+        }
+    }
+
+    fun loadFamilyDashboard() {
+        viewModelScope.launch {
+            _wealthLoading.value = true
+            when (val response = repository.getFamilyDashboard()) {
+                is Result.Success -> {
+                    _familyDashboard.value = response.data
+                    _error.value = null
+                }
+                is Result.Error -> _error.value = response.message
+                else -> {}
+            }
+            _wealthLoading.value = false
+        }
+    }
+
+    fun createGoalPlan(
+        goalName: String,
+        targetAmount: Double,
+        targetDate: String,
+        monthlyContribution: Double = 0.0,
+        riskProfile: String = "MODERATE",
+    ) {
+        if (goalName.isBlank() || targetDate.isBlank()) {
+            _error.value = "Goal name and target date are required"
+            return
+        }
+        if (targetAmount <= 0.0) {
+            _error.value = "Target amount must be greater than 0"
+            return
+        }
+
+        viewModelScope.launch {
+            _wealthLoading.value = true
+            when (
+                val response = repository.createGoal(
+                    GoalPlanRequest(
+                        goalName = goalName.trim(),
+                        targetAmount = targetAmount,
+                        targetDate = targetDate.trim(),
+                        monthlyContribution = monthlyContribution,
+                        riskProfile = riskProfile.trim().uppercase(),
+                    )
+                )
+            ) {
+                is Result.Success -> {
+                    _productActionMessage.value = "Goal created: ${response.data.goalName}"
+                    _error.value = null
+                    loadGoalPlans()
+                }
+                is Result.Error -> _error.value = response.message
+                else -> {}
+            }
+            _wealthLoading.value = false
+        }
+    }
+
+    fun loadGoalPlans() {
+        viewModelScope.launch {
+            _wealthLoading.value = true
+            when (val response = repository.getGoals()) {
+                is Result.Success -> {
+                    _goalPlans.value = response.data
+                    _error.value = null
+                }
+                is Result.Error -> _error.value = response.message
+                else -> {}
+            }
+            _wealthLoading.value = false
+        }
+    }
+
+    fun linkGoalInvestments(goalId: Int, instruments: List<String>, incrementAmount: Double = 0.0) {
+        if (goalId <= 0) {
+            _error.value = "Invalid goal id"
+            return
+        }
+        val cleanedInstruments = instruments.map { it.trim().uppercase() }.filter { it.isNotBlank() }
+        if (cleanedInstruments.isEmpty()) {
+            _error.value = "Add at least one instrument"
+            return
+        }
+
+        viewModelScope.launch {
+            _wealthLoading.value = true
+            when (
+                val response = repository.linkGoalInvestment(
+                    goalId = goalId,
+                    request = GoalLinkRequest(
+                        instruments = cleanedInstruments,
+                        incrementAmount = incrementAmount,
+                    )
+                )
+            ) {
+                is Result.Success -> {
+                    _productActionMessage.value = "Linked instruments to ${response.data.goalName}"
+                    _error.value = null
+                    loadGoalPlans()
+                    loadPortfolioCopilotActions()
+                }
+                is Result.Error -> _error.value = response.message
+                else -> {}
+            }
+            _wealthLoading.value = false
+        }
+    }
+
+    fun runPreTradeCopilot(order: AdvancedOrderRequest) {
+        viewModelScope.launch {
+            _copilotLoading.value = true
+            when (
+                val response = repository.preTradeCopilot(
+                    order = order,
+                    walletBalance = _walletBalance.value,
+                    marketOpen = _marketStatus.value?.isOpen,
+                )
+            ) {
+                is Result.Success -> {
+                    _copilotPreTradeSignal.value = response.data
+                    _error.value = null
+                }
+                is Result.Error -> _error.value = response.message
+                else -> {}
+            }
+            _copilotLoading.value = false
+        }
+    }
+
+    fun fetchPostTradeCopilot(orderId: Int, note: String? = null) {
+        if (orderId <= 0) {
+            _error.value = "Invalid order id"
+            return
+        }
+        viewModelScope.launch {
+            _copilotLoading.value = true
+            when (val response = repository.postTradeCopilot(orderId = orderId, note = note)) {
+                is Result.Success -> {
+                    _copilotPostTradeReview.value = response.data
+                    _error.value = null
+                }
+                is Result.Error -> _error.value = response.message
+                else -> {}
+            }
+            _copilotLoading.value = false
+        }
+    }
+
+    fun loadPortfolioCopilotActions() {
+        viewModelScope.launch {
+            _copilotLoading.value = true
+            when (val response = repository.portfolioCopilotActions()) {
+                is Result.Success -> {
+                    _copilotPortfolioActions.value = response.data
+                    _error.value = null
+                }
+                is Result.Error -> _error.value = response.message
+                else -> {}
+            }
+            _copilotLoading.value = false
+        }
+    }
+
+    fun clearAdvancedInsights() {
+        _advancedOrderResponse.value = null
+        _triggerEvaluation.value = null
+        _strategyPreview.value = null
+        _copilotPreTradeSignal.value = null
+        _copilotPostTradeReview.value = null
     }
 
     private fun fetchTradeCoachTip(symbol: String, quantity: Int, side: String) {

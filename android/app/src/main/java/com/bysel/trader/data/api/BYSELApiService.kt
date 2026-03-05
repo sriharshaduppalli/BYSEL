@@ -73,6 +73,27 @@ interface BYSELApiService {
     @POST("/trade/sell")
     suspend fun sellStock(@Body order: Order): OrderResponse
 
+    @POST("/orders/advanced")
+    suspend fun placeAdvancedOrder(@Body order: AdvancedOrderRequest): AdvancedOrderResponse
+
+    @POST("/orders/triggers")
+    suspend fun createTriggerOrder(@Body order: AdvancedOrderRequest): TriggerOrderSummary
+
+    @GET("/orders/triggers")
+    suspend fun getTriggerOrders(): List<TriggerOrderSummary>
+
+    @POST("/orders/triggers/evaluate")
+    suspend fun evaluateTriggers(@Query("symbols") symbols: String? = null): TriggerEvaluationResponse
+
+    @POST("/orders/baskets")
+    suspend fun createBasketOrder(@Body request: BasketOrderRequest): BasketOrderResponse
+
+    @GET("/orders/baskets")
+    suspend fun getBasketOrders(): List<BasketOrderResponse>
+
+    @POST("/orders/baskets/{basketId}/execute")
+    suspend fun executeBasketOrder(@Path("basketId") basketId: Int): BasketOrderResponse
+
     @GET("/trades/history")
     suspend fun getTradeHistory(): List<TradeHistory>
 
@@ -202,6 +223,45 @@ interface BYSELApiService {
 
     @GET("/market/sector/{sectorName}")
     suspend fun getSectorDetail(@Path("sectorName") sectorName: String): HeatmapSector
+
+    // ==================== DERIVATIVES INTELLIGENCE ====================
+    @GET("/derivatives/option-chain")
+    suspend fun getOptionChain(
+        @Query("symbol") symbol: String,
+        @Query("expiry") expiry: String
+    ): OptionChainResponse
+
+    @POST("/derivatives/strategy/preview")
+    suspend fun previewStrategy(@Body request: StrategyPreviewRequest): StrategyPreviewResponse
+
+    // ==================== WEALTH OS ====================
+    @POST("/wealth/family/members")
+    suspend fun addFamilyMember(@Body request: FamilyMemberRequest): FamilyMemberSummary
+
+    @GET("/wealth/family/dashboard")
+    suspend fun getFamilyDashboard(): FamilyDashboardResponse
+
+    @POST("/wealth/goals")
+    suspend fun createGoal(@Body request: GoalPlanRequest): GoalPlanResponse
+
+    @GET("/wealth/goals")
+    suspend fun getGoals(): List<GoalPlanResponse>
+
+    @POST("/wealth/goals/{goalId}/link-investments")
+    suspend fun linkGoalInvestment(
+        @Path("goalId") goalId: Int,
+        @Body request: GoalLinkRequest
+    ): GoalPlanResponse
+
+    // ==================== AI COPILOT ====================
+    @POST("/ai/copilot/pre-trade-check")
+    suspend fun getPreTradeCopilot(@Body request: CopilotPreTradeRequest): CopilotSignal
+
+    @POST("/ai/copilot/post-trade-review")
+    suspend fun getPostTradeCopilot(@Body request: CopilotPostTradeRequest): CopilotPostTradeResponse
+
+    @GET("/ai/copilot/portfolio-actions")
+    suspend fun getPortfolioCopilotActions(): CopilotPortfolioActionsResponse
 }
 
 // Trading and Portfolio data classes
