@@ -2,6 +2,33 @@ name: BYSEL Play Store Release
 
 on:
   workflow_dispatch:   # manual trigger
+    inputs:
+      track:
+        description: "Play track to publish"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+          - internal
+          - beta
+      release_status:
+        description: "Release status for selected track"
+        required: true
+        default: "completed"
+        type: choice
+        options:
+          - completed
+          - draft
+          - inProgress
+      changes_not_sent_for_review:
+        description: "Set true to upload without immediately sending for review"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
   push:
     tags:
       - 'v*.*.*'       # e.g. v1.0.0
@@ -154,15 +181,16 @@ jobs:
       - name: Preview generated release notes
         run: cat distribution/whatsnew/whatsnew-en-US
 
-      - name: Upload to Google Play (internal)
+      - name: Upload to Google Play
         if: ${{ env.PLAYSTORE_SERVICE_ACCOUNT != '' }}
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAYSTORE_SERVICE_ACCOUNT }}
           packageName: com.bysel.trader
           releaseFiles: build/app-release.aab
-          track: internal
-          status: completed
+          track: ${{ github.event.inputs.track || 'internal' }}
+          status: ${{ github.event.inputs.release_status || 'completed' }}
+          changesNotSentForReview: ${{ github.event.inputs.changes_not_sent_for_review == 'true' }}
           whatsNewDirectory: distribution/whatsnew
 
       - name: Skip upload if Play credentials are missing
