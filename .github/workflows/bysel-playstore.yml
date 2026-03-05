@@ -9,6 +9,8 @@ on:
 jobs:
   build-release:
     runs-on: ubuntu-latest
+    outputs:
+      signing_available: ${{ steps.signing.outputs.available }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -25,11 +27,27 @@ jobs:
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v2
 
+      - name: Check signing configuration
+        id: signing
+        run: |
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ] && \
+             [ -n "${{ secrets.KEYSTORE_PASSWORD }}" ] && \
+             [ -n "${{ secrets.KEY_ALIAS }}" ] && \
+             [ -n "${{ secrets.KEY_PASSWORD }}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "Release signing secrets detected."
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "Release signing secrets are missing; release build and deploy will be skipped."
+          fi
+
       - name: Decode Keystore
+        if: steps.signing.outputs.available == 'true'
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > keystore.jks
 
       - name: Gradle build (AAB)
+        if: steps.signing.outputs.available == 'true'
         run: |
           cd android
           chmod +x ./gradlew
@@ -41,12 +59,19 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
       - name: Upload AAB artifact
+        if: steps.signing.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: BYSEL-release-aab
           path: android/app/build/outputs/bundle/release/app-release.aab
 
+      - name: Skip release build (missing signing secrets)
+        if: steps.signing.outputs.available != 'true'
+        run: |
+          echo "Skipping release build because signing secrets are not configured."
+
   deploy-playstore:
+    if: ${{ needs.build-release.outputs.signing_available == 'true' }}
     runs-on: ubuntu-latest
     needs: build-release
     env:
