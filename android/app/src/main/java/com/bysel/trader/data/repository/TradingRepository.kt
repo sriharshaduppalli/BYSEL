@@ -550,6 +550,174 @@ open class TradingRepository(private val database: BYSELDatabase) {
             Result.Error(e.message ?: "Unknown error")
         }
     }
+
+    // ==================== ADVANCED ORDER ENGINE ====================
+    suspend fun placeAdvancedOrder(request: AdvancedOrderRequest): Result<AdvancedOrderResponse> {
+        return try {
+            val response = apiService.placeAdvancedOrder(request)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun createTriggerOrder(request: AdvancedOrderRequest): Result<TriggerOrderSummary> {
+        return try {
+            val response = apiService.createTriggerOrder(request)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getTriggerOrders(): Result<List<TriggerOrderSummary>> {
+        return try {
+            val response = apiService.getTriggerOrders()
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun evaluateTriggerOrders(symbols: List<String> = emptyList()): Result<TriggerEvaluationResponse> {
+        return try {
+            val symbolQuery = symbols.joinToString(",").takeIf { it.isNotBlank() }
+            val response = apiService.evaluateTriggers(symbolQuery)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun createBasketOrder(request: BasketOrderRequest): Result<BasketOrderResponse> {
+        return try {
+            val response = apiService.createBasketOrder(request)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getBasketOrders(): Result<List<BasketOrderResponse>> {
+        return try {
+            val response = apiService.getBasketOrders()
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun executeBasketOrder(basketId: Int): Result<BasketOrderResponse> {
+        return try {
+            val response = apiService.executeBasketOrder(basketId)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    // ==================== DERIVATIVES INTELLIGENCE ====================
+    suspend fun getOptionChain(symbol: String, expiry: String): Result<OptionChainResponse> {
+        return try {
+            val response = apiService.getOptionChain(symbol = symbol, expiry = expiry)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun previewStrategy(request: StrategyPreviewRequest): Result<StrategyPreviewResponse> {
+        return try {
+            val response = apiService.previewStrategy(request)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    // ==================== WEALTH OS ====================
+    suspend fun addFamilyMember(request: FamilyMemberRequest): Result<FamilyMemberSummary> {
+        return try {
+            val response = apiService.addFamilyMember(request)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getFamilyDashboard(): Result<FamilyDashboardResponse> {
+        return try {
+            val response = apiService.getFamilyDashboard()
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun createGoal(request: GoalPlanRequest): Result<GoalPlanResponse> {
+        return try {
+            val response = apiService.createGoal(request)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getGoals(): Result<List<GoalPlanResponse>> {
+        return try {
+            val response = apiService.getGoals()
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun linkGoalInvestment(goalId: Int, request: GoalLinkRequest): Result<GoalPlanResponse> {
+        return try {
+            val response = apiService.linkGoalInvestment(goalId, request)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    // ==================== AI COPILOT ====================
+    suspend fun preTradeCopilot(
+        order: AdvancedOrderRequest,
+        walletBalance: Double? = null,
+        marketOpen: Boolean? = null,
+    ): Result<CopilotSignal> {
+        return try {
+            val response = apiService.getPreTradeCopilot(
+                CopilotPreTradeRequest(
+                    order = order,
+                    walletBalance = walletBalance,
+                    marketOpen = marketOpen,
+                )
+            )
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun postTradeCopilot(orderId: Int, note: String? = null): Result<CopilotPostTradeResponse> {
+        return try {
+            val response = apiService.getPostTradeCopilot(CopilotPostTradeRequest(orderId = orderId, note = note))
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun portfolioCopilotActions(): Result<CopilotPortfolioActionsResponse> {
+        return try {
+            val response = apiService.getPortfolioCopilotActions()
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
 }
 
 sealed class Result<out T> {

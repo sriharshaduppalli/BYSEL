@@ -365,6 +365,217 @@ data class ETFInstrument(
     val expenseRatio: Double? = null
 )
 
+data class AdvancedOrderRequest(
+    val symbol: String,
+    val qty: Int,
+    val side: String,
+    val orderType: String = "MARKET",
+    val validity: String = "DAY",
+    val limitPrice: Double? = null,
+    val triggerPrice: Double? = null,
+    val tag: String? = null
+)
+
+data class AdvancedOrderResponse(
+    val status: String,
+    val orderId: Int? = null,
+    val order: AdvancedOrderRequest,
+    val message: String,
+    val executedPrice: Double? = null,
+    val triggerStatus: String? = null,
+    val riskFlags: List<String> = emptyList()
+)
+
+data class TriggerOrderSummary(
+    val id: Int,
+    val symbol: String,
+    val qty: Int,
+    val side: String,
+    val orderType: String,
+    val validity: String,
+    val limitPrice: Double? = null,
+    val triggerPrice: Double? = null,
+    val status: String,
+    val createdAt: String
+)
+
+data class TriggerEvaluationResponse(
+    val status: String,
+    val processedCount: Int,
+    val processed: List<Map<String, Any>> = emptyList()
+)
+
+data class BasketOrderLegRequest(
+    val symbol: String,
+    val qty: Int,
+    val side: String,
+    val orderType: String = "MARKET",
+    val validity: String = "DAY",
+    val limitPrice: Double? = null,
+    val triggerPrice: Double? = null,
+    val tag: String? = null
+)
+
+data class BasketOrderRequest(
+    val name: String,
+    val legs: List<BasketOrderLegRequest>
+)
+
+data class BasketLegExecution(
+    val symbol: String,
+    val side: String,
+    val qty: Int,
+    val status: String,
+    val message: String,
+    val orderId: Int? = null
+)
+
+data class BasketOrderResponse(
+    val basketId: Int,
+    val name: String,
+    val status: String,
+    val message: String,
+    val legResults: List<BasketLegExecution> = emptyList()
+)
+
+data class OptionContract(
+    val strike: Double,
+    val callLtp: Double,
+    val putLtp: Double,
+    val callOi: Int,
+    val putOi: Int,
+    val callOiChange: Int,
+    val putOiChange: Int,
+    val impliedVolatility: Double,
+    val callDelta: Double,
+    val putDelta: Double,
+    val gamma: Double,
+    val theta: Double,
+    val vega: Double
+)
+
+data class OptionChainResponse(
+    val symbol: String,
+    val expiry: String,
+    val spot: Double,
+    val generatedAt: String,
+    val contracts: List<OptionContract>
+)
+
+data class StrategyLeg(
+    val optionType: String,
+    val side: String,
+    val strike: Double,
+    val premium: Double,
+    val quantity: Int = 1,
+    val lotSize: Int = 1
+)
+
+data class StrategyPreviewRequest(
+    val symbol: String,
+    val spot: Double,
+    val legs: List<StrategyLeg>
+)
+
+data class StrategyPayoffPoint(
+    val spot: Double,
+    val payoff: Double
+)
+
+data class StrategyPreviewResponse(
+    val symbol: String,
+    val maxProfit: Double,
+    val maxLoss: Double,
+    val breakevenPoints: List<Double> = emptyList(),
+    val marginEstimate: Double,
+    val riskRewardRatio: Double,
+    val payoffCurve: List<StrategyPayoffPoint> = emptyList(),
+    val notes: List<String> = emptyList()
+)
+
+data class FamilyMemberRequest(
+    val name: String,
+    val relation: String,
+    val equityValue: Double = 0.0,
+    val mutualFundValue: Double = 0.0,
+    val usValue: Double = 0.0,
+    val cashValue: Double = 0.0,
+    val liabilitiesValue: Double = 0.0
+)
+
+data class FamilyMemberSummary(
+    val id: Int,
+    val name: String,
+    val relation: String,
+    val netWorth: Double,
+    val totalAssets: Double,
+    val liabilitiesValue: Double
+)
+
+data class FamilyDashboardResponse(
+    val userId: Int,
+    val consolidatedNetWorth: Double,
+    val totalAssets: Double,
+    val totalLiabilities: Double,
+    val allocation: Map<String, Double> = emptyMap(),
+    val members: List<FamilyMemberSummary> = emptyList()
+)
+
+data class GoalPlanRequest(
+    val goalName: String,
+    val targetAmount: Double,
+    val targetDate: String,
+    val monthlyContribution: Double = 0.0,
+    val riskProfile: String = "MODERATE"
+)
+
+data class GoalLinkRequest(
+    val instruments: List<String>,
+    val incrementAmount: Double = 0.0
+)
+
+data class GoalPlanResponse(
+    val id: Int,
+    val goalName: String,
+    val targetAmount: Double,
+    val currentAmount: Double,
+    val targetDate: String,
+    val monthlyContribution: Double,
+    val progressPercent: Double,
+    val riskProfile: String,
+    val linkedInstruments: List<String> = emptyList()
+)
+
+data class CopilotSignal(
+    val verdict: String,
+    val confidence: Int,
+    val flags: List<String> = emptyList(),
+    val guidance: List<String> = emptyList()
+)
+
+data class CopilotPreTradeRequest(
+    val order: AdvancedOrderRequest,
+    val walletBalance: Double? = null,
+    val marketOpen: Boolean? = null
+)
+
+data class CopilotPostTradeRequest(
+    val orderId: Int,
+    val note: String? = null
+)
+
+data class CopilotPostTradeResponse(
+    val summary: String,
+    val pnlNow: Double,
+    val coaching: List<String> = emptyList()
+)
+
+data class CopilotPortfolioActionsResponse(
+    val actions: List<String> = emptyList(),
+    val priority: String,
+    val rationale: String
+)
+
 data class RegisterRequest(
     val username: String,
     val email: String,

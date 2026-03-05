@@ -22,6 +22,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,12 +34,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.bysel.trader.data.models.ETFInstrument
-import com.bysel.trader.data.models.IPOListing
-import com.bysel.trader.data.models.MutualFund
+import com.bysel.trader.data.models.*
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.viewmodel.TradingViewModel
 
@@ -132,6 +132,19 @@ fun MutualFundsScreen(viewModel: TradingViewModel) {
                             onValueChange = { searchQuery = it },
                             modifier = Modifier.fillMaxWidth(),
                             label = { Text("Search funds or fund house") },
+                            placeholder = { Text("Type scheme name, code, or fund house") },
+                            textStyle = TextStyle(color = LocalAppTheme.current.text),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = LocalAppTheme.current.text,
+                                unfocusedTextColor = LocalAppTheme.current.text,
+                                focusedLabelColor = LocalAppTheme.current.primary,
+                                unfocusedLabelColor = LocalAppTheme.current.textSecondary,
+                                focusedPlaceholderColor = LocalAppTheme.current.textSecondary,
+                                unfocusedPlaceholderColor = LocalAppTheme.current.textSecondary,
+                                focusedBorderColor = LocalAppTheme.current.primary,
+                                unfocusedBorderColor = LocalAppTheme.current.textSecondary,
+                                cursorColor = LocalAppTheme.current.primary,
+                            ),
                             singleLine = true,
                         )
 
@@ -724,4 +737,889 @@ private fun IpoApplyDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
+}
+
+@Composable
+fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
+    val loading by viewModel.advancedLoading.collectAsState()
+    val advancedResponse by viewModel.advancedOrderResponse.collectAsState()
+    val triggerOrders by viewModel.triggerOrders.collectAsState()
+    val triggerEvaluation by viewModel.triggerEvaluation.collectAsState()
+    val basketOrders by viewModel.basketOrders.collectAsState()
+    val preTradeSignal by viewModel.copilotPreTradeSignal.collectAsState()
+
+    var symbol by remember { mutableStateOf("RELIANCE") }
+    var quantityInput by remember { mutableStateOf("1") }
+    var side by remember { mutableStateOf("BUY") }
+    var orderType by remember { mutableStateOf("MARKET") }
+    var validity by remember { mutableStateOf("DAY") }
+    var limitPriceInput by remember { mutableStateOf("") }
+    var triggerPriceInput by remember { mutableStateOf("") }
+    var tag by remember { mutableStateOf("manual") }
+
+    var basketName by remember { mutableStateOf("Momentum Basket") }
+    var basketLegsInput by remember { mutableStateOf("RELIANCE:1:BUY\nTCS:1:BUY") }
+
+    LaunchedEffect(Unit) {
+        viewModel.refreshTriggerOrders()
+        viewModel.refreshBasketOrders()
+    }
+
+    val quantity = quantityInput.toIntOrNull() ?: 0
+    val limitPrice = limitPriceInput.toDoubleOrNull()
+    val triggerPrice = triggerPriceInput.toDoubleOrNull()
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LocalAppTheme.current.surface)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Text(
+                "Advanced Orders",
+                color = LocalAppTheme.current.text,
+                fontWeight = FontWeight.Bold,
+                fontSize = 24.sp
+            )
+        }
+        item { ActionBanner(viewModel) }
+
+        if (loading) {
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                    Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(color = LocalAppTheme.current.primary)
+                        Text("Processing advanced workflow...", color = LocalAppTheme.current.text)
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Order Ticket", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+
+                    OutlinedTextField(
+                        value = symbol,
+                        onValueChange = { symbol = it.uppercase() },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Symbol") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = quantityInput,
+                        onValueChange = { quantityInput = it.filter { ch -> ch.isDigit() }.take(6) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Quantity") },
+                        singleLine = true,
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("BUY", "SELL").forEach { option ->
+                            TextButton(onClick = { side = option }) {
+                                Text(if (side == option) "● $option" else option)
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("MARKET", "LIMIT", "SL", "SLM").forEach { option ->
+                            TextButton(onClick = { orderType = option }) {
+                                Text(if (orderType == option) "● $option" else option)
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("DAY", "IOC", "GTC").forEach { option ->
+                            TextButton(onClick = { validity = option }) {
+                                Text(if (validity == option) "● $option" else option)
+                            }
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = limitPriceInput,
+                        onValueChange = { limitPriceInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Limit Price (optional)") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = triggerPriceInput,
+                        onValueChange = { triggerPriceInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Trigger Price (optional)") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = tag,
+                        onValueChange = { tag = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Tag (optional)") },
+                        singleLine = true,
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                viewModel.runPreTradeCopilot(
+                                    AdvancedOrderRequest(
+                                        symbol = symbol,
+                                        qty = quantity,
+                                        side = side,
+                                        orderType = orderType,
+                                        validity = validity,
+                                        limitPrice = limitPrice,
+                                        triggerPrice = triggerPrice,
+                                        tag = tag.takeIf { it.isNotBlank() },
+                                    )
+                                )
+                            },
+                            enabled = quantity > 0 && symbol.isNotBlank(),
+                        ) {
+                            Text("Pre-Trade Check")
+                        }
+                        Button(
+                            onClick = {
+                                viewModel.placeAdvancedOrder(
+                                    symbol = symbol,
+                                    quantity = quantity,
+                                    side = side,
+                                    orderType = orderType,
+                                    validity = validity,
+                                    limitPrice = limitPrice,
+                                    triggerPrice = triggerPrice,
+                                    tag = tag,
+                                )
+                            },
+                            enabled = quantity > 0 && symbol.isNotBlank(),
+                        ) {
+                            Text("Place")
+                        }
+                    }
+
+                    TextButton(
+                        onClick = {
+                            if (triggerPrice != null) {
+                                viewModel.createTriggerOrder(
+                                    symbol = symbol,
+                                    quantity = quantity,
+                                    side = side,
+                                    triggerPrice = triggerPrice,
+                                    orderType = orderType,
+                                    validity = validity,
+                                    limitPrice = limitPrice,
+                                    tag = tag,
+                                )
+                            }
+                        },
+                        enabled = quantity > 0 && symbol.isNotBlank() && triggerPrice != null,
+                    ) {
+                        Text("Queue Trigger Instead")
+                    }
+                }
+            }
+        }
+
+        preTradeSignal?.let { signal ->
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Copilot Pre-Trade", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                        Text("Verdict: ${signal.verdict} • Confidence: ${signal.confidence}%", color = LocalAppTheme.current.text)
+                        if (signal.flags.isNotEmpty()) {
+                            Text("Flags: ${signal.flags.joinToString(", ")}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        }
+                        signal.guidance.take(3).forEach {
+                            Text("• $it", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        advancedResponse?.let { response ->
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Latest Advanced Order", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                        Text("${response.status.uppercase()} • ${response.order.symbol} ${response.order.side}", color = LocalAppTheme.current.text)
+                        Text(response.message, color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        response.executedPrice?.let {
+                            Text("Executed Price: ₹${String.format("%.2f", it)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        }
+                        if (response.riskFlags.isNotEmpty()) {
+                            Text("Risk Flags: ${response.riskFlags.joinToString(", ")}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        triggerEvaluation?.let { evaluation ->
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Trigger Evaluation", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                        Text("Processed: ${evaluation.processedCount}", color = LocalAppTheme.current.text)
+                        Text("Status: ${evaluation.status}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Basket Builder", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(
+                        value = basketName,
+                        onValueChange = { basketName = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Basket Name") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = basketLegsInput,
+                        onValueChange = { basketLegsInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Legs (SYMBOL:QTY:SIDE per line)") },
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                viewModel.createBasketOrder(
+                                    name = basketName,
+                                    legs = parseBasketLegs(basketLegsInput)
+                                )
+                            }
+                        ) {
+                            Text("Save Basket")
+                        }
+                        TextButton(onClick = { viewModel.evaluateTriggerOrders() }) {
+                            Text("Evaluate Triggers")
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Saved Baskets", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    if (basketOrders.isEmpty()) {
+                        Text("No baskets yet.", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                    } else {
+                        basketOrders.take(6).forEach { basket ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("${basket.name} • ${basket.status}", color = LocalAppTheme.current.text, fontSize = 13.sp)
+                                    Text(basket.message, color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
+                                }
+                                TextButton(onClick = { viewModel.executeBasketOrder(basket.basketId) }) {
+                                    Text("Execute")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Pending Triggers", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    if (triggerOrders.isEmpty()) {
+                        Text("No pending trigger orders.", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                    } else {
+                        triggerOrders.take(8).forEach { trigger ->
+                            Text(
+                                "• ${trigger.symbol} ${trigger.side} ${trigger.qty} @ ${trigger.triggerPrice ?: trigger.limitPrice ?: "MKT"} (${trigger.status})",
+                                color = LocalAppTheme.current.textSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
+    val optionChain by viewModel.optionChain.collectAsState()
+    val strategyPreview by viewModel.strategyPreview.collectAsState()
+    val loading by viewModel.derivativesLoading.collectAsState()
+
+    var symbol by remember { mutableStateOf("NIFTY") }
+    var expiry by remember { mutableStateOf("2026-03-26") }
+    var strategySpotInput by remember { mutableStateOf("") }
+    var strategyLegsInput by remember {
+        mutableStateOf("CALL:BUY:22500:120\nCALL:SELL:23000:80")
+    }
+
+    LaunchedEffect(optionChain?.spot) {
+        val spot = optionChain?.spot
+        if (spot != null && spot > 0.0 && strategySpotInput.isBlank()) {
+            strategySpotInput = String.format("%.2f", spot)
+        }
+    }
+
+    val chainContracts = remember(optionChain) {
+        val chain = optionChain ?: return@remember emptyList()
+        chain.contracts.sortedBy { kotlin.math.abs(it.strike - chain.spot) }.take(10)
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LocalAppTheme.current.surface)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Text(
+                "Derivatives Intelligence",
+                color = LocalAppTheme.current.text,
+                fontWeight = FontWeight.Bold,
+                fontSize = 24.sp
+            )
+        }
+        item { ActionBanner(viewModel) }
+
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Option Chain", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(
+                        value = symbol,
+                        onValueChange = { symbol = it.uppercase() },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Underlying") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = expiry,
+                        onValueChange = { expiry = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Expiry (YYYY-MM-DD)") },
+                        singleLine = true,
+                    )
+                    Button(onClick = { viewModel.loadOptionChain(symbol, expiry) }) {
+                        Text("Load Chain")
+                    }
+                    if (loading) {
+                        CircularProgressIndicator(color = LocalAppTheme.current.primary)
+                    }
+                }
+            }
+        }
+
+        optionChain?.let { chain ->
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("${chain.symbol} Spot: ₹${String.format("%.2f", chain.spot)}", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                        Text("Expiry: ${chain.expiry} • Contracts: ${chain.contracts.size}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        chainContracts.forEach { contract ->
+                            Text(
+                                "Strike ${contract.strike}: CE Δ ${String.format("%.2f", contract.callDelta)} OI ${contract.callOi} | PE Δ ${String.format("%.2f", contract.putDelta)} OI ${contract.putOi}",
+                                color = LocalAppTheme.current.textSecondary,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Strategy Builder", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(
+                        value = strategySpotInput,
+                        onValueChange = { strategySpotInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Spot") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = strategyLegsInput,
+                        onValueChange = { strategyLegsInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Legs (CALL/PUT:SIDE:STRIKE:PREMIUM)") },
+                    )
+                    Button(
+                        onClick = {
+                            val spot = strategySpotInput.toDoubleOrNull() ?: optionChain?.spot ?: 0.0
+                            val legs = parseStrategyLegs(strategyLegsInput)
+                            viewModel.previewStrategy(symbol = symbol, spot = spot, legs = legs)
+                        }
+                    ) {
+                        Text("Preview Risk")
+                    }
+                }
+            }
+        }
+
+        strategyPreview?.let { preview ->
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Strategy Risk Preview", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                        Text("Max Profit: ₹${String.format("%.2f", preview.maxProfit)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        Text("Max Loss: ₹${String.format("%.2f", preview.maxLoss)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        Text("Margin Estimate: ₹${String.format("%.2f", preview.marginEstimate)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        Text("Risk/Reward: ${String.format("%.2f", preview.riskRewardRatio)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        if (preview.breakevenPoints.isNotEmpty()) {
+                            Text("Breakeven: ${preview.breakevenPoints.joinToString { String.format("%.2f", it) }}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        }
+                        preview.notes.take(4).forEach {
+                            Text("• $it", color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun WealthOsScreen(viewModel: TradingViewModel) {
+    val dashboard by viewModel.familyDashboard.collectAsState()
+    val goals by viewModel.goalPlans.collectAsState()
+    val loading by viewModel.wealthLoading.collectAsState()
+
+    var memberName by remember { mutableStateOf("") }
+    var memberRelation by remember { mutableStateOf("SELF") }
+    var memberEquityInput by remember { mutableStateOf("0") }
+    var memberMfInput by remember { mutableStateOf("0") }
+    var memberCashInput by remember { mutableStateOf("0") }
+    var memberLiabilityInput by remember { mutableStateOf("0") }
+
+    var goalName by remember { mutableStateOf("") }
+    var targetAmountInput by remember { mutableStateOf("500000") }
+    var targetDate by remember { mutableStateOf("2030-12-31") }
+    var monthlyContributionInput by remember { mutableStateOf("10000") }
+    var riskProfile by remember { mutableStateOf("MODERATE") }
+
+    var linkInstrumentsInput by remember { mutableStateOf("NIFTYBEES,PPFAS") }
+    var incrementAmountInput by remember { mutableStateOf("2000") }
+
+    LaunchedEffect(Unit) {
+        viewModel.loadFamilyDashboard()
+        viewModel.loadGoalPlans()
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LocalAppTheme.current.surface)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Text("Wealth OS", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold, fontSize = 24.sp)
+        }
+        item { ActionBanner(viewModel) }
+
+        if (loading) {
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                    Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(color = LocalAppTheme.current.primary)
+                        Text("Syncing family wealth data...", color = LocalAppTheme.current.text)
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Add Family Member", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(value = memberName, onValueChange = { memberName = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true)
+                    OutlinedTextField(value = memberRelation, onValueChange = { memberRelation = it.uppercase() }, modifier = Modifier.fillMaxWidth(), label = { Text("Relation") }, singleLine = true)
+                    OutlinedTextField(value = memberEquityInput, onValueChange = { memberEquityInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Equity Value") }, singleLine = true)
+                    OutlinedTextField(value = memberMfInput, onValueChange = { memberMfInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Mutual Fund Value") }, singleLine = true)
+                    OutlinedTextField(value = memberCashInput, onValueChange = { memberCashInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Cash Value") }, singleLine = true)
+                    OutlinedTextField(value = memberLiabilityInput, onValueChange = { memberLiabilityInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Liabilities") }, singleLine = true)
+                    Button(
+                        onClick = {
+                            viewModel.addFamilyMember(
+                                name = memberName,
+                                relation = memberRelation,
+                                equityValue = memberEquityInput.toDoubleOrNull() ?: 0.0,
+                                mutualFundValue = memberMfInput.toDoubleOrNull() ?: 0.0,
+                                cashValue = memberCashInput.toDoubleOrNull() ?: 0.0,
+                                liabilitiesValue = memberLiabilityInput.toDoubleOrNull() ?: 0.0,
+                            )
+                            memberName = ""
+                            memberRelation = "SELF"
+                        },
+                        enabled = memberName.isNotBlank() && memberRelation.isNotBlank(),
+                    ) {
+                        Text("Add Member")
+                    }
+                }
+            }
+        }
+
+        dashboard?.let { summary ->
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text("Family Dashboard", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                        Text("Consolidated Net Worth: ₹${String.format("%,.2f", summary.consolidatedNetWorth)}", color = LocalAppTheme.current.text)
+                        Text("Assets: ₹${String.format("%,.2f", summary.totalAssets)} • Liabilities: ₹${String.format("%,.2f", summary.totalLiabilities)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        if (summary.allocation.isNotEmpty()) {
+                            Text("Allocation: ${summary.allocation.entries.joinToString { "${it.key} ${String.format("%.1f", it.value)}%" }}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        }
+                        summary.members.forEach { member ->
+                            Text(
+                                "• ${member.name} (${member.relation}) Net: ₹${String.format("%,.2f", member.netWorth)}",
+                                color = LocalAppTheme.current.textSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Goal Planner", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(value = goalName, onValueChange = { goalName = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Goal Name") }, singleLine = true)
+                    OutlinedTextField(value = targetAmountInput, onValueChange = { targetAmountInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Target Amount") }, singleLine = true)
+                    OutlinedTextField(value = targetDate, onValueChange = { targetDate = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Target Date (YYYY-MM-DD)") }, singleLine = true)
+                    OutlinedTextField(value = monthlyContributionInput, onValueChange = { monthlyContributionInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Monthly Contribution") }, singleLine = true)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("LOW", "MODERATE", "HIGH").forEach { option ->
+                            TextButton(onClick = { riskProfile = option }) {
+                                Text(if (riskProfile == option) "● $option" else option)
+                            }
+                        }
+                    }
+                    Button(
+                        onClick = {
+                            viewModel.createGoalPlan(
+                                goalName = goalName,
+                                targetAmount = targetAmountInput.toDoubleOrNull() ?: 0.0,
+                                targetDate = targetDate,
+                                monthlyContribution = monthlyContributionInput.toDoubleOrNull() ?: 0.0,
+                                riskProfile = riskProfile,
+                            )
+                            goalName = ""
+                        },
+                        enabled = goalName.isNotBlank() && (targetAmountInput.toDoubleOrNull() ?: 0.0) > 0.0,
+                    ) {
+                        Text("Create Goal")
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Goal Linking", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(
+                        value = linkInstrumentsInput,
+                        onValueChange = { linkInstrumentsInput = it.uppercase() },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Instruments (comma separated)") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = incrementAmountInput,
+                        onValueChange = { incrementAmountInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Increment Amount") },
+                        singleLine = true,
+                    )
+                }
+            }
+        }
+
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Goals", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    if (goals.isEmpty()) {
+                        Text("No goals yet.", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                    } else {
+                        goals.forEach { goal ->
+                            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(goal.goalName, color = LocalAppTheme.current.text, fontWeight = FontWeight.Medium)
+                                Text(
+                                    "Progress ${String.format("%.1f", goal.progressPercent)}% • ₹${String.format("%,.0f", goal.currentAmount)} / ₹${String.format("%,.0f", goal.targetAmount)}",
+                                    color = LocalAppTheme.current.textSecondary,
+                                    fontSize = 12.sp
+                                )
+                                Text("Risk: ${goal.riskProfile} • Target: ${goal.targetDate}", color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
+                                TextButton(
+                                    onClick = {
+                                        val instruments = linkInstrumentsInput
+                                            .split(",")
+                                            .map { it.trim() }
+                                            .filter { it.isNotBlank() }
+                                        viewModel.linkGoalInvestments(
+                                            goalId = goal.id,
+                                            instruments = instruments,
+                                            incrementAmount = incrementAmountInput.toDoubleOrNull() ?: 0.0,
+                                        )
+                                    }
+                                ) {
+                                    Text("Link Instruments")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CopilotCenterScreen(viewModel: TradingViewModel) {
+    val loading by viewModel.copilotLoading.collectAsState()
+    val preTradeSignal by viewModel.copilotPreTradeSignal.collectAsState()
+    val postTradeReview by viewModel.copilotPostTradeReview.collectAsState()
+    val portfolioActions by viewModel.copilotPortfolioActions.collectAsState()
+
+    var symbol by remember { mutableStateOf("RELIANCE") }
+    var quantityInput by remember { mutableStateOf("1") }
+    var side by remember { mutableStateOf("BUY") }
+    var orderType by remember { mutableStateOf("MARKET") }
+    var validity by remember { mutableStateOf("DAY") }
+    var limitInput by remember { mutableStateOf("") }
+    var triggerInput by remember { mutableStateOf("") }
+    var orderIdInput by remember { mutableStateOf("") }
+    var noteInput by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        viewModel.loadPortfolioCopilotActions()
+    }
+
+    val quantity = quantityInput.toIntOrNull() ?: 0
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LocalAppTheme.current.surface)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Text("Copilot Center", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold, fontSize = 24.sp)
+        }
+        item { ActionBanner(viewModel) }
+
+        if (loading) {
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                    Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(color = LocalAppTheme.current.primary)
+                        Text("Running copilot...", color = LocalAppTheme.current.text)
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Pre-Trade Check", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(value = symbol, onValueChange = { symbol = it.uppercase() }, modifier = Modifier.fillMaxWidth(), label = { Text("Symbol") }, singleLine = true)
+                    OutlinedTextField(value = quantityInput, onValueChange = { quantityInput = it.filter { ch -> ch.isDigit() }.take(6) }, modifier = Modifier.fillMaxWidth(), label = { Text("Quantity") }, singleLine = true)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("BUY", "SELL").forEach { option ->
+                            TextButton(onClick = { side = option }) {
+                                Text(if (side == option) "● $option" else option)
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("MARKET", "LIMIT", "SL", "SLM").forEach { option ->
+                            TextButton(onClick = { orderType = option }) {
+                                Text(if (orderType == option) "● $option" else option)
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("DAY", "IOC", "GTC").forEach { option ->
+                            TextButton(onClick = { validity = option }) {
+                                Text(if (validity == option) "● $option" else option)
+                            }
+                        }
+                    }
+                    OutlinedTextField(value = limitInput, onValueChange = { limitInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Limit Price (optional)") }, singleLine = true)
+                    OutlinedTextField(value = triggerInput, onValueChange = { triggerInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Trigger Price (optional)") }, singleLine = true)
+                    Button(
+                        onClick = {
+                            viewModel.runPreTradeCopilot(
+                                AdvancedOrderRequest(
+                                    symbol = symbol,
+                                    qty = quantity,
+                                    side = side,
+                                    orderType = orderType,
+                                    validity = validity,
+                                    limitPrice = limitInput.toDoubleOrNull(),
+                                    triggerPrice = triggerInput.toDoubleOrNull(),
+                                )
+                            )
+                        },
+                        enabled = symbol.isNotBlank() && quantity > 0,
+                    ) {
+                        Text("Run Pre-Trade Copilot")
+                    }
+                }
+            }
+        }
+
+        preTradeSignal?.let { signal ->
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Pre-Trade Verdict", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                        Text("${signal.verdict} • ${signal.confidence}% confidence", color = LocalAppTheme.current.text)
+                        if (signal.flags.isNotEmpty()) {
+                            Text("Flags: ${signal.flags.joinToString(", ")}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        }
+                        signal.guidance.take(4).forEach {
+                            Text("• $it", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Post-Trade Review", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(value = orderIdInput, onValueChange = { orderIdInput = it.filter { ch -> ch.isDigit() }.take(10) }, modifier = Modifier.fillMaxWidth(), label = { Text("Order ID") }, singleLine = true)
+                    OutlinedTextField(value = noteInput, onValueChange = { noteInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Note (optional)") })
+                    Button(
+                        onClick = {
+                            val orderId = orderIdInput.toIntOrNull() ?: 0
+                            viewModel.fetchPostTradeCopilot(orderId = orderId, note = noteInput.takeIf { it.isNotBlank() })
+                        },
+                        enabled = (orderIdInput.toIntOrNull() ?: 0) > 0,
+                    ) {
+                        Text("Run Post-Trade Review")
+                    }
+                }
+            }
+        }
+
+        postTradeReview?.let { review ->
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Post-Trade Summary", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                        Text(review.summary, color = LocalAppTheme.current.text)
+                        Text("PnL Now: ₹${String.format("%.2f", review.pnlNow)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        review.coaching.take(4).forEach {
+                            Text("• $it", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Portfolio Actions", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    Button(onClick = { viewModel.loadPortfolioCopilotActions() }) {
+                        Text("Refresh Actions")
+                    }
+                    if (portfolioActions == null) {
+                        Text("No portfolio recommendations yet.", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                    } else {
+                        Text("Priority: ${portfolioActions?.priority}", color = LocalAppTheme.current.text)
+                        Text(portfolioActions?.rationale.orEmpty(), color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        portfolioActions?.actions?.take(6)?.forEach {
+                            Text("• $it", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun parseBasketLegs(rawInput: String): List<BasketOrderLegRequest> {
+    return rawInput
+        .lines()
+        .mapNotNull { line ->
+            val tokens = line.split(":").map { it.trim() }
+            if (tokens.size < 3) return@mapNotNull null
+            val symbol = tokens[0].uppercase()
+            val quantity = tokens[1].toIntOrNull() ?: return@mapNotNull null
+            val side = tokens[2].uppercase()
+            val orderType = tokens.getOrNull(3)?.uppercase() ?: "MARKET"
+            if (symbol.isBlank() || quantity <= 0 || (side != "BUY" && side != "SELL")) return@mapNotNull null
+            BasketOrderLegRequest(
+                symbol = symbol,
+                qty = quantity,
+                side = side,
+                orderType = orderType,
+            )
+        }
+}
+
+private fun parseStrategyLegs(rawInput: String): List<StrategyLeg> {
+    return rawInput
+        .lines()
+        .mapNotNull { line ->
+            val tokens = line.split(":").map { it.trim() }
+            if (tokens.size < 4) return@mapNotNull null
+
+            val optionType = when (tokens[0].uppercase()) {
+                "C", "CE", "CALL" -> "CALL"
+                "P", "PE", "PUT" -> "PUT"
+                else -> return@mapNotNull null
+            }
+            val side = tokens[1].uppercase()
+            val strike = tokens[2].toDoubleOrNull() ?: return@mapNotNull null
+            val premium = tokens[3].toDoubleOrNull() ?: return@mapNotNull null
+            val quantity = tokens.getOrNull(4)?.toIntOrNull() ?: 1
+            val lotSize = tokens.getOrNull(5)?.toIntOrNull() ?: 1
+
+            if ((side != "BUY" && side != "SELL") || strike <= 0.0 || premium < 0.0 || quantity <= 0 || lotSize <= 0) {
+                return@mapNotNull null
+            }
+
+            StrategyLeg(
+                optionType = optionType,
+                side = side,
+                strike = strike,
+                premium = premium,
+                quantity = quantity,
+                lotSize = lotSize,
+            )
+        }
 }

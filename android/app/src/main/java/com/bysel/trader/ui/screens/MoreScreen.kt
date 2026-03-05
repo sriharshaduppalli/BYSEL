@@ -28,7 +28,11 @@ fun MoreScreen(
     onIpoClick: () -> Unit,
     onEtfClick: () -> Unit,
     onSipClick: () -> Unit,
-    onMyIpoApplicationsClick: () -> Unit
+    onMyIpoApplicationsClick: () -> Unit,
+    onAdvancedOrdersClick: () -> Unit,
+    onDerivativesClick: () -> Unit,
+    onWealthOsClick: () -> Unit,
+    onCopilotCenterClick: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -128,6 +132,46 @@ fun MoreScreen(
             subtitle = "Track submitted IPO applications",
             gradientColors = listOf(Color(0xFF455A64), Color(0xFF90A4AE)),
             onClick = onMyIpoApplicationsClick
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        MoreMenuItem(
+            icon = Icons.Filled.Settings,
+            title = "Advanced Orders",
+            subtitle = "Order types, triggers, and baskets",
+            gradientColors = listOf(Color(0xFF283593), Color(0xFF5C6BC0)),
+            onClick = onAdvancedOrdersClick
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        MoreMenuItem(
+            icon = Icons.Filled.ShowChart,
+            title = "Derivatives Intelligence",
+            subtitle = "Option chain, Greeks, and strategy risk",
+            gradientColors = listOf(Color(0xFF00838F), Color(0xFF4DD0E1)),
+            onClick = onDerivativesClick
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        MoreMenuItem(
+            icon = Icons.Filled.AccountBalance,
+            title = "Wealth OS",
+            subtitle = "Family net worth and goal-linked investing",
+            gradientColors = listOf(Color(0xFF2E7D32), Color(0xFF66BB6A)),
+            onClick = onWealthOsClick
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        MoreMenuItem(
+            icon = Icons.Filled.Psychology,
+            title = "Copilot Center",
+            subtitle = "Pre-trade, post-trade, and portfolio guidance",
+            gradientColors = listOf(Color(0xFF6A1B9A), Color(0xFFBA68C8)),
+            onClick = onCopilotCenterClick
         )
 
         Spacer(modifier = Modifier.weight(1f))
