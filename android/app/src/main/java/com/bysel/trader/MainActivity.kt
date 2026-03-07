@@ -13,6 +13,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,7 +33,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -301,6 +304,9 @@ fun BYSELApp(
     var selectedTab by remember { mutableStateOf(initialTab) }
     var previousTab by remember { mutableIntStateOf(0) }
     var lastBackPressAt by remember { mutableLongStateOf(0L) }
+    val density = LocalDensity.current
+    val edgeThresholdPx = with(density) { 28.dp.toPx() }
+    val swipeTriggerPx = with(density) { 110.dp.toPx() }
     
     val quotes by viewModel.quotes.collectAsState()
     val holdings by viewModel.holdings.collectAsState()
@@ -455,10 +461,55 @@ fun BYSELApp(
                         }
                     }
                 ) { paddingValues ->
+                    val edgeGestureModifier = if (selectedTab !in 0..4) {
+                        Modifier.pointerInput(selectedTab, previousTab) {
+                            var dragStartX = 0f
+                            var totalDragX = 0f
+                            var handled = false
+
+                            detectHorizontalDragGestures(
+                                onDragStart = { offset ->
+                                    dragStartX = offset.x
+                                    totalDragX = 0f
+                                    handled = false
+                                },
+                                onHorizontalDrag = { change, dragAmount ->
+                                    if (handled) {
+                                        return@detectHorizontalDragGestures
+                                    }
+
+                                    val canSwipeBack = selectedTab == 9 || selectedTab in 6..8 || selectedTab in 10..19
+                                    val canSwipeForwardFromMore = selectedTab == 5
+                                    val startedFromLeftEdge = dragStartX <= edgeThresholdPx
+                                    val startedFromRightEdge = dragStartX >= size.width - edgeThresholdPx
+
+                                    totalDragX += dragAmount
+
+                                    if (canSwipeBack && startedFromLeftEdge && totalDragX > swipeTriggerPx) {
+                                        handled = true
+                                        change.consume()
+                                        selectedTab = if (selectedTab == 9) previousTab else 5
+                                    } else if (
+                                        canSwipeForwardFromMore &&
+                                        startedFromRightEdge &&
+                                        totalDragX < -swipeTriggerPx
+                                    ) {
+                                        handled = true
+                                        change.consume()
+                                        selectedTab = 6
+                                    }
+                                },
+                            )
+                        }
+                    } else {
+                        Modifier
+                    }
+
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(paddingValues)
+                            .then(edgeGestureModifier)
                             .background(appTheme.surface)
                     ) {
                         // Swipeable tabs for main 5 tabs (0-4)

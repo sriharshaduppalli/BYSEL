@@ -2,14 +2,43 @@ package com.bysel.trader.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.automirrored.filled.Assignment
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.BusinessCenter
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -20,6 +49,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.BuildConfig
 import com.bysel.trader.ui.theme.LocalAppTheme
+
+private data class MoreMenuEntry(
+    val icon: ImageVector,
+    val title: String,
+    val subtitle: String,
+    val gradientColors: List<Color>,
+    val onClick: () -> Unit,
+)
 
 @Composable
 fun MoreScreen(
@@ -37,216 +74,252 @@ fun MoreScreen(
     onWealthOsClick: () -> Unit,
     onCopilotCenterClick: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(LocalAppTheme.current.surface)
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp)
-    ) {
-        Text(
-            text = "More",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            color = LocalAppTheme.current.text
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-
-        MoreMenuItem(
+    val utilityEntries = listOf(
+        MoreMenuEntry(
             icon = Icons.Filled.Search,
             title = "Search Stocks",
-            subtitle = "Find any Indian stock from 363+ companies",
+            subtitle = "Find any Indian stock quickly",
             gradientColors = listOf(Color(0xFF1A237E), Color(0xFF7C4DFF)),
-            onClick = onSearchClick
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-
-        MoreMenuItem(
+            onClick = onSearchClick,
+        ),
+        MoreMenuEntry(
             icon = Icons.Filled.Notifications,
             title = "Price Alerts",
-            subtitle = "Set up alerts for price movements",
+            subtitle = "Real-time trigger notifications",
             gradientColors = listOf(Color(0xFFE65100), Color(0xFFFFB300)),
-            onClick = onAlertsClick
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-
-        MoreMenuItem(
+            onClick = onAlertsClick,
+        ),
+        MoreMenuEntry(
             icon = Icons.Filled.Settings,
             title = "Settings",
-            subtitle = "Customize themes and preferences",
+            subtitle = "Theme, privacy, and app preferences",
             gradientColors = listOf(Color(0xFF424242), Color(0xFF757575)),
-            onClick = onSettingsClick
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        MoreMenuItem(
+            onClick = onSettingsClick,
+        ),
+        MoreMenuEntry(
             icon = Icons.Filled.EmojiEvents,
             title = "Achievements",
-            subtitle = "View your unlocked badges",
-            gradientColors = listOf(Color(0xFF388E3C), Color(0xFF81C784)),
-            onClick = onAchievementsClick
-        )
+            subtitle = "Your milestones and streaks",
+            gradientColors = listOf(Color(0xFF2E7D32), Color(0xFF81C784)),
+            onClick = onAchievementsClick,
+        ),
+    )
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        MoreMenuItem(
+    val investingEntries = listOf(
+        MoreMenuEntry(
             icon = Icons.Filled.AccountBalance,
             title = "Mutual Funds",
             subtitle = "Explore funds and start SIPs",
             gradientColors = listOf(Color(0xFF1565C0), Color(0xFF42A5F5)),
-            onClick = onMutualFundsClick
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        MoreMenuItem(
+            onClick = onMutualFundsClick,
+        ),
+        MoreMenuEntry(
             icon = Icons.Filled.BusinessCenter,
             title = "IPO Listings",
-            subtitle = "Track upcoming and open IPOs",
+            subtitle = "Upcoming, open, and listed IPOs",
             gradientColors = listOf(Color(0xFF6A1B9A), Color(0xFFAB47BC)),
-            onClick = onIpoClick
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        MoreMenuItem(
-            icon = Icons.Filled.ShowChart,
+            onClick = onIpoClick,
+        ),
+        MoreMenuEntry(
+            icon = Icons.AutoMirrored.Filled.ShowChart,
             title = "ETFs",
-            subtitle = "Browse index and sector ETFs",
+            subtitle = "Index and sector ETF baskets",
             gradientColors = listOf(Color(0xFF00695C), Color(0xFF26A69A)),
-            onClick = onEtfClick
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        MoreMenuItem(
+            onClick = onEtfClick,
+        ),
+        MoreMenuEntry(
             icon = Icons.Filled.Payments,
             title = "My SIPs",
-            subtitle = "Manage your SIP plans",
+            subtitle = "Track and manage SIP plans",
             gradientColors = listOf(Color(0xFFEF6C00), Color(0xFFFFA726)),
-            onClick = onSipClick
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        MoreMenuItem(
-            icon = Icons.Filled.Assignment,
+            onClick = onSipClick,
+        ),
+        MoreMenuEntry(
+            icon = Icons.AutoMirrored.Filled.Assignment,
             title = "My IPO Applications",
-            subtitle = "Track submitted IPO applications",
+            subtitle = "Application status and allotment",
             gradientColors = listOf(Color(0xFF455A64), Color(0xFF90A4AE)),
-            onClick = onMyIpoApplicationsClick
-        )
+            onClick = onMyIpoApplicationsClick,
+        ),
+    )
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        MoreMenuItem(
+    val advancedEntries = listOf(
+        MoreMenuEntry(
             icon = Icons.Filled.Settings,
             title = "Advanced Orders",
-            subtitle = "Order types, triggers, and baskets",
+            subtitle = "Triggers, baskets, and execution controls",
             gradientColors = listOf(Color(0xFF283593), Color(0xFF5C6BC0)),
-            onClick = onAdvancedOrdersClick
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        MoreMenuItem(
-            icon = Icons.Filled.ShowChart,
+            onClick = onAdvancedOrdersClick,
+        ),
+        MoreMenuEntry(
+            icon = Icons.AutoMirrored.Filled.ShowChart,
             title = "Derivatives Intelligence",
             subtitle = "Option chain, Greeks, and strategy risk",
             gradientColors = listOf(Color(0xFF00838F), Color(0xFF4DD0E1)),
-            onClick = onDerivativesClick
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        MoreMenuItem(
+            onClick = onDerivativesClick,
+        ),
+        MoreMenuEntry(
             icon = Icons.Filled.AccountBalance,
             title = "Wealth OS",
-            subtitle = "Family net worth and goal-linked investing",
+            subtitle = "Family goals and net-worth planning",
             gradientColors = listOf(Color(0xFF2E7D32), Color(0xFF66BB6A)),
-            onClick = onWealthOsClick
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        MoreMenuItem(
+            onClick = onWealthOsClick,
+        ),
+        MoreMenuEntry(
             icon = Icons.Filled.Psychology,
             title = "Copilot Center",
-            subtitle = "Pre-trade, post-trade, and portfolio guidance",
+            subtitle = "Pre-trade and post-trade guidance",
             gradientColors = listOf(Color(0xFF6A1B9A), Color(0xFFBA68C8)),
-            onClick = onCopilotCenterClick
-        )
+            onClick = onCopilotCenterClick,
+        ),
+    )
 
-        Spacer(modifier = Modifier.height(16.dp))
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LocalAppTheme.current.surface),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Text(
+                text = "More",
+                fontSize = 30.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = LocalAppTheme.current.text,
+            )
+        }
 
-        // App info
-        Text(
-            "BYSEL v${BuildConfig.VERSION_NAME} — AI-Powered Stock Trading",
-            color = LocalAppTheme.current.textSecondary,
-            fontSize = 12.sp,
-            modifier = Modifier.align(Alignment.CenterHorizontally)
-        )
-        Spacer(modifier = Modifier.height(8.dp))
+        item {
+            Text(
+                text = "Faster gestures: swipe left-right between Home tabs, swipe back inside feature screens",
+                color = LocalAppTheme.current.textSecondary,
+                fontSize = 12.sp,
+            )
+        }
+
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                QuickInfoChip(label = "Live Quotes")
+                QuickInfoChip(label = "ETF")
+                QuickInfoChip(label = "F&O")
+                QuickInfoChip(label = "SIP")
+                QuickInfoChip(label = "AI Copilot")
+            }
+        }
+
+        item { SectionHeader("Utility") }
+        items(utilityEntries) { entry ->
+            MoreMenuItem(entry = entry)
+        }
+
+        item { SectionHeader("Invest") }
+        items(investingEntries) { entry ->
+            MoreMenuItem(entry = entry)
+        }
+
+        item { SectionHeader("Pro Tools") }
+        items(advancedEntries) { entry ->
+            MoreMenuItem(entry = entry)
+        }
+
+        item {
+            Text(
+                text = "BYSEL v${BuildConfig.VERSION_NAME} - AI-Powered Trading",
+                color = LocalAppTheme.current.textSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+            )
+        }
     }
 }
 
 @Composable
-private fun MoreMenuItem(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    gradientColors: List<Color>,
-    onClick: () -> Unit
-) {
+private fun SectionHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleSmall,
+        color = LocalAppTheme.current.primary,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(top = 4.dp),
+    )
+}
+
+@Composable
+private fun QuickInfoChip(label: String) {
+    AssistChip(
+        onClick = {},
+        label = { Text(label) },
+        colors = AssistChipDefaults.assistChipColors(
+            containerColor = LocalAppTheme.current.card,
+            labelColor = LocalAppTheme.current.text,
+        ),
+        border = null,
+    )
+}
+
+@Composable
+private fun MoreMenuItem(entry: MoreMenuEntry) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E))
+            .clickable(onClick = entry.onClick),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
                     .size(48.dp)
                     .background(
-                        Brush.linearGradient(gradientColors),
-                        RoundedCornerShape(12.dp)
+                        brush = Brush.linearGradient(entry.gradientColors),
+                        shape = CircleShape,
                     ),
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    icon,
+                    imageVector = entry.icon,
                     contentDescription = null,
-                    tint = LocalAppTheme.current.text,
-                    modifier = Modifier.size(24.dp)
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp),
                 )
             }
-            Spacer(modifier = Modifier.width(16.dp))
+
+            Spacer(modifier = Modifier.width(14.dp))
+
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    title,
+                    text = entry.title,
                     color = LocalAppTheme.current.text,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
+                    fontSize = 16.sp,
                 )
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    subtitle,
+                    text = entry.subtitle,
                     color = LocalAppTheme.current.textSecondary,
-                    fontSize = 12.sp
+                    fontSize = 12.sp,
                 )
             }
+
             Icon(
-                Icons.Filled.ChevronRight,
+                imageVector = Icons.Filled.ChevronRight,
                 contentDescription = null,
                 tint = LocalAppTheme.current.textSecondary,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(22.dp),
             )
         }
     }
