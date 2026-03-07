@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bysel.trader.BuildConfig
 import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
@@ -181,7 +182,7 @@ fun MoreScreen(
 
         // App info
         Text(
-            "BYSEL v2.4 — AI-Powered Stock Trading",
+            "BYSEL v${BuildConfig.VERSION_NAME} — AI-Powered Stock Trading",
             color = LocalAppTheme.current.textSecondary,
             fontSize = 12.sp,
             modifier = Modifier.align(Alignment.CenterHorizontally)

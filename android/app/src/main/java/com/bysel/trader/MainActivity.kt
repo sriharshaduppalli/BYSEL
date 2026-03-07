@@ -9,6 +9,7 @@ import com.bysel.trader.security.BiometricAuthManager
 import android.content.Context
 import android.os.Bundle
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.background
@@ -299,6 +300,7 @@ fun BYSELApp(
 
     var selectedTab by remember { mutableStateOf(initialTab) }
     var previousTab by remember { mutableIntStateOf(0) }
+    var lastBackPressAt by remember { mutableLongStateOf(0L) }
     
     val quotes by viewModel.quotes.collectAsState()
     val holdings by viewModel.holdings.collectAsState()
@@ -318,6 +320,32 @@ fun BYSELApp(
     val detailLoading by viewModel.detailLoading.collectAsState()
     val walletBalance by viewModel.walletBalance.collectAsState()
     val marketStatus by viewModel.marketStatus.collectAsState()
+
+    BackHandler(enabled = true) {
+        when {
+            selectedTab == 9 -> {
+                selectedTab = previousTab
+            }
+
+            selectedTab in 6..8 || selectedTab in 10..19 -> {
+                selectedTab = 5
+            }
+
+            selectedTab in 1..5 -> {
+                selectedTab = 0
+            }
+
+            else -> {
+                val now = System.currentTimeMillis()
+                if (now - lastBackPressAt < 1500L) {
+                    (context as? androidx.activity.ComponentActivity)?.finish()
+                } else {
+                    lastBackPressAt = now
+                    Toast.makeText(context, "Swipe back again to exit", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
 
     CompositionLocalProvider(LocalAppTheme provides appTheme) {
         if (showOnboarding) {
