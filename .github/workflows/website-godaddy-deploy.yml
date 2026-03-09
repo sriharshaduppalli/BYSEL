@@ -1,0 +1,92 @@
+name: website-godaddy-deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      clean_slate:
+        description: "Delete all files in target directory before upload (use carefully)"
+        required: true
+        default: false
+        type: boolean
+  push:
+    branches:
+      - main
+    paths:
+      - "website/**"
+      - ".github/workflows/website-godaddy-deploy.yml"
+
+concurrency:
+  group: website-godaddy-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Lint
+        working-directory: website
+        run: npm run lint
+
+      - name: Build static export
+        working-directory: website
+        run: npm run build
+
+      - name: Add Apache route fallback config
+        working-directory: website
+        run: |
+          cat > out/.htaccess <<'EOF'
+          DirectoryIndex index.html
+          Options -MultiViews
+
+          RewriteEngine On
+          RewriteBase /
+
+          # Serve existing files and directories directly.
+          RewriteCond %{REQUEST_FILENAME} -f [OR]
+          RewriteCond %{REQUEST_FILENAME} -d
+          RewriteRule ^ - [L]
+
+          # If path has no extension, try directory-style URL.
+          RewriteCond %{REQUEST_URI} !\.[a-zA-Z0-9]{1,6}$
+          RewriteRule ^(.+)$ $1/ [R=302,L]
+
+          # Final fallback for unmatched routes.
+          RewriteRule ^ index.html [L]
+          EOF
+
+      - name: Deploy to GoDaddy via FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.GODADDY_FTP_SERVER }}
+          username: ${{ secrets.GODADDY_FTP_USERNAME }}
+          password: ${{ secrets.GODADDY_FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: ./website/out/
+          server-dir: ${{ secrets.GODADDY_FTP_TARGET_DIR }}
+          dangerous-clean-slate: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.clean_slate == 'true' }}
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+
+      - name: Deployment summary
+        run: |
+          echo "Website deploy completed to GoDaddy target directory." >> $GITHUB_STEP_SUMMARY
+          echo "Target directory: ${GODADDY_FTP_TARGET_DIR}" >> $GITHUB_STEP_SUMMARY
+        env:
+          GODADDY_FTP_TARGET_DIR: ${{ secrets.GODADDY_FTP_TARGET_DIR }}
