@@ -56,6 +56,13 @@ jobs:
           RewriteEngine On
           RewriteBase /
 
+          # Keep ACME HTTP-01 challenge paths reachable for SSL issuance/renewal.
+          RewriteRule ^\.well-known/acme-challenge/ - [L]
+
+          # Enforce HTTPS once a trusted certificate is installed.
+          RewriteCond %{HTTPS} !=on
+          RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
           # Serve existing files and directories directly.
           RewriteCond %{REQUEST_FILENAME} -f [OR]
           RewriteCond %{REQUEST_FILENAME} -d

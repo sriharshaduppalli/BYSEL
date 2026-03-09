@@ -43,6 +43,23 @@ Expected homepage marker:
 
 - `Train your trading process before risking real capital.`
 
+## 5. SSL Setup In cPanel (Required)
+
+If browser or tools show certificate trust errors, issue a trusted cert in cPanel:
+
+1. Open `cPanel Admin` for `byseltrader.com`.
+2. Go to `ACME Automation` (or `SSL/TLS Status` and run `AutoSSL`).
+3. Issue/renew certs for both:
+  - `byseltrader.com`
+  - `www.byseltrader.com`
+4. Confirm cert is installed for Apache virtual host.
+
+Notes:
+
+- A self-signed cert (issuer equals your own domain) will still show HTTPS warnings.
+- DNS for root and `www` must point to your hosting IP before issuance.
+- The deploy workflow writes `.htaccess` with an ACME challenge bypass so renewals keep working.
+
 ## Safety Notes
 
 - `clean_slate=true` deletes files in the target directory before upload.
