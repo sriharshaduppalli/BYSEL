@@ -443,14 +443,14 @@ fun TradingQuoteCard(quote: Quote, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(8.dp),
+            .padding(horizontal = 6.dp, vertical = 4.dp),
         colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(12.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -460,13 +460,13 @@ fun TradingQuoteCard(quote: Quote, onClick: () -> Unit) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = quote.symbol,
-                        fontSize = 18.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = LocalAppTheme.current.text
                     )
                     Text(
                         text = "₹${String.format("%.2f", quote.last)}",
-                        fontSize = 16.sp,
+                        fontSize = 13.sp,
                         color = LocalAppTheme.current.textSecondary,
                         modifier = Modifier.padding(top = 4.dp)
                     )
@@ -475,17 +475,17 @@ fun TradingQuoteCard(quote: Quote, onClick: () -> Unit) {
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = "${if (quote.pctChange > 0) "+" else ""}${String.format("%.2f", quote.pctChange)}%",
-                        fontSize = 16.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (quote.pctChange > 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.End) {
-                        Text(text = "O: ₹${String.format("%.2f", quote.open ?: quote.prevClose ?: quote.last)}", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
+                        Text(text = "O: ₹${String.format("%.2f", quote.open ?: quote.prevClose ?: quote.last)}", fontSize = 11.sp, color = LocalAppTheme.current.textSecondary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = "H/L: ₹${String.format("%.2f", quote.dayHigh ?: quote.last)}/${String.format("%.2f", quote.dayLow ?: quote.last)}", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
+                        Text(text = "H/L: ₹${String.format("%.2f", quote.dayHigh ?: quote.last)}/${String.format("%.2f", quote.dayLow ?: quote.last)}", fontSize = 11.sp, color = LocalAppTheme.current.textSecondary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = "Vol: ${formatVolume(quote.volume)}", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
+                        Text(text = "Vol: ${formatVolume(quote.volume)}", fontSize = 11.sp, color = LocalAppTheme.current.textSecondary)
                     }
                 }
             }

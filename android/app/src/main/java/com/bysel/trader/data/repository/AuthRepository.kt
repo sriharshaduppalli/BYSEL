@@ -36,8 +36,16 @@ class AuthRepository(
     }
 
     suspend fun register(username: String, email: String, password: String): Result<AuthResponse> {
+        val normalizedUsername = username.trim()
+        val normalizedEmail = email.trim()
         return try {
-            val response = apiService.register(RegisterRequest(username = username, email = email, password = password))
+            val response = apiService.register(
+                RegisterRequest(
+                    username = normalizedUsername,
+                    email = normalizedEmail,
+                    password = password,
+                )
+            )
             AuthSessionManager.saveSession(
                 accessToken = response.access_token,
                 refreshToken = response.refresh_token,
@@ -50,16 +58,37 @@ class AuthRepository(
     }
 
     suspend fun login(username: String, password: String): Result<AuthResponse> {
+        val normalizedUsername = username.trim()
+        val trimmedPassword = password.trim()
         return try {
-            val response = apiService.login(LoginRequest(username = username, password = password))
+            val response = apiService.login(LoginRequest(username = normalizedUsername, password = password))
             AuthSessionManager.saveSession(
                 accessToken = response.access_token,
                 refreshToken = response.refresh_token,
                 userId = response.user_id
             )
             Result.Success(response)
-        } catch (e: Exception) {
-            Result.Error(toAuthErrorMessage(e, "Login failed"))
+        } catch (firstAttemptError: Exception) {
+            if (trimmedPassword != password) {
+                try {
+                    val retryResponse = apiService.login(
+                        LoginRequest(
+                            username = normalizedUsername,
+                            password = trimmedPassword,
+                        )
+                    )
+                    AuthSessionManager.saveSession(
+                        accessToken = retryResponse.access_token,
+                        refreshToken = retryResponse.refresh_token,
+                        userId = retryResponse.user_id
+                    )
+                    return Result.Success(retryResponse)
+                } catch (_: Exception) {
+                    // Fall through to canonical error for the original login attempt.
+                }
+            }
+
+            Result.Error(toAuthErrorMessage(firstAttemptError, "Login failed"))
         }
     }
 

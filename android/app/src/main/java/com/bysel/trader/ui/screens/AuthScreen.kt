@@ -183,7 +183,7 @@ fun AuthScreen(
                     message = "Password is required"
                     return@Button
                 }
-                if (password.length < 6) {
+                if (!isLoginMode && password.length < 6) {
                     message = "Password must be at least 6 characters"
                     return@Button
                 }
