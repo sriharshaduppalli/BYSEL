@@ -8,6 +8,8 @@ import time
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app import app
+from app.database.db import SessionLocal, WalletModel
+from app.models.schemas import MarketStatus
 
 client = TestClient(app)
 
@@ -18,6 +20,28 @@ def _unique_user(prefix: str) -> tuple[str, str, str]:
     email = f"{username}@example.com"
     password = "demo1234"
     return username, email, password
+
+
+def _seed_trading_wallet(user_id: int = 1, balance: float = 1_000_000.0) -> None:
+    db = SessionLocal()
+    try:
+        db.query(WalletModel).filter(WalletModel.user_id == user_id).delete(synchronize_session=False)
+        wallet = WalletModel(user_id=user_id, balance=balance)
+        db.add(wallet)
+        db.commit()
+    finally:
+        db.close()
+
+
+def _mock_live_market(monkeypatch, price: float = 100.0) -> None:
+    monkeypatch.setattr(
+        "app.routes.trading.is_market_open",
+        lambda: MarketStatus(isOpen=True, message="Market is OPEN"),
+    )
+    monkeypatch.setattr(
+        "app.routes.trading.fetch_quote",
+        lambda symbol: {"symbol": symbol.upper(), "last": price, "pctChange": 0.0},
+    )
 
 def test_health_check():
     """Test health check endpoint"""
@@ -45,8 +69,11 @@ def test_get_holdings_empty():
     data = response.json()
     assert isinstance(data, list)
 
-def test_place_order():
+def test_place_order(monkeypatch):
     """Test placing an order"""
+    _seed_trading_wallet(user_id=1)
+    _mock_live_market(monkeypatch, price=100.0)
+
     order_data = {
         "symbol": "TCS",
         "qty": 1,
