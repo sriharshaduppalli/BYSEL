@@ -299,6 +299,10 @@ fun BYSELApp(
 
     var selectedTab by remember { mutableStateOf(initialTab) }
     var previousTab by remember { mutableIntStateOf(0) }
+    val pagerState = rememberPagerState(
+        initialPage = selectedTab.coerceIn(0, 4),
+        pageCount = { 5 }
+    )
     
     val quotes by viewModel.quotes.collectAsState()
     val holdings by viewModel.holdings.collectAsState()
@@ -318,6 +322,21 @@ fun BYSELApp(
     val detailLoading by viewModel.detailLoading.collectAsState()
     val walletBalance by viewModel.walletBalance.collectAsState()
     val marketStatus by viewModel.marketStatus.collectAsState()
+
+    LaunchedEffect(selectedTab) {
+        if (selectedTab in 0..4 && pagerState.settledPage != selectedTab) {
+            pagerState.animateScrollToPage(selectedTab)
+        }
+    }
+
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }
+            .collect { settledPage ->
+                if (selectedTab in 0..4 && selectedTab != settledPage) {
+                    selectedTab = settledPage
+                }
+            }
+    }
 
     CompositionLocalProvider(LocalAppTheme provides appTheme) {
         if (showOnboarding) {
@@ -435,24 +454,6 @@ fun BYSELApp(
                     ) {
                         // Swipeable tabs for main 5 tabs (0-4)
                         if (selectedTab in 0..4) {
-                            val pagerState = rememberPagerState(
-                                initialPage = selectedTab,
-                                pageCount = { 5 }
-                            )
-                            
-                            // Sync pager with bottom nav
-                            LaunchedEffect(selectedTab) {
-                                if (selectedTab != pagerState.currentPage) {
-                                    pagerState.animateScrollToPage(selectedTab)
-                                }
-                            }
-                            
-                            LaunchedEffect(pagerState.currentPage) {
-                                if (selectedTab != pagerState.currentPage) {
-                                    selectedTab = pagerState.currentPage
-                                }
-                            }
-                            
                             HorizontalPager(
                                 state = pagerState,
                                 modifier = Modifier.fillMaxSize(),

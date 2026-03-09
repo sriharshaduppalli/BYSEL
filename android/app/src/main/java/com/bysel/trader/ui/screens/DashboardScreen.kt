@@ -134,13 +134,13 @@ fun DashboardContent(
         quotes
             .sortedByDescending { it.pctChange }
             .filter { !pinnedStocks.contains(it.symbol) }
-            .take(3)
+            .take(8)
     }
     val topLosers = remember(quotes, pinnedStocks) {
         quotes
             .sortedBy { it.pctChange }
             .filter { !pinnedStocks.contains(it.symbol) }
-            .take(3)
+            .take(8)
     }
     
     Column(
@@ -472,7 +472,7 @@ fun GainerLosersCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 12.dp)
+            .padding(bottom = 8.dp)
             .clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
         shape = RoundedCornerShape(10.dp)
@@ -480,20 +480,20 @@ fun GainerLosersCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = quote.symbol,
-                    fontSize = 16.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = LocalAppTheme.current.text
                 )
                 Text(
                     text = "₹${String.format("%.2f", quote.last)}",
-                    fontSize = 14.sp,
+                    fontSize = 12.sp,
                     color = LocalAppTheme.current.textSecondary,
                     modifier = Modifier.padding(top = 4.dp)
                 )

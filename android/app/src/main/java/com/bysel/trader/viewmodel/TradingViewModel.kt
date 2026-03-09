@@ -205,7 +205,12 @@ class TradingViewModel(
     private var autoRefreshJob: Job? = null
     private val AUTO_REFRESH_INTERVAL = 15_000L
     private val FAST_REFRESH_INTERVAL = 1_000L
-    private val defaultSymbols = listOf("RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN")
+    private val defaultSymbols = listOf(
+        "RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN",
+        "ICICIBANK", "ITC", "LT", "KOTAKBANK", "HINDUNILVR",
+        "BHARTIARTL", "AXISBANK", "BAJFINANCE", "ASIANPAINT", "MARUTI",
+        "WIPRO", "NTPC", "POWERGRID", "ULTRACEMCO", "TITAN"
+    )
 
     private fun trackedSymbols(additional: List<String> = emptyList()): List<String> {
         return (defaultSymbols + _watchlist.value + additional)
@@ -252,6 +257,7 @@ class TradingViewModel(
         refreshMarketStatus()
         refreshHoldings()
         refreshQuotes()
+        loadAllQuotes()
     }
 
     
@@ -333,9 +339,17 @@ class TradingViewModel(
                 when (result) {
                     is Result.Loading -> _isLoading.value = true
                     is Result.Success -> {
-                        _quotes.value = result.data
+                        val existing = _quotes.value
+                        _quotes.value = if (existing.size > result.data.size) {
+                            val merged = existing.associateBy { it.symbol }.toMutableMap()
+                            result.data.forEach { quote -> merged[quote.symbol] = quote }
+                            merged.values.sortedBy { it.symbol }
+                        } else {
+                            result.data
+                        }
                         _isLoading.value = false
                         // Reset paging after success
+                        _pagedQuotes.value = emptyList()
                         currentPage = 0
                         loadNextQuotesPage()
                     }

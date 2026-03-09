@@ -2,9 +2,22 @@ from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, create
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
+from pathlib import Path
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./bysel.db")
+def _select_default_sqlite_path() -> Path:
+    backend_db = Path(__file__).resolve().parents[2] / "bysel.db"
+    root_db = Path(__file__).resolve().parents[3] / "bysel.db"
+    candidates = [backend_db, root_db]
+    existing = [path for path in candidates if path.exists()]
+    if not existing:
+        return backend_db
+    return max(existing, key=lambda path: path.stat().st_mtime)
+
+
+_DEFAULT_SQLITE_DB = _select_default_sqlite_path()
+_DEFAULT_DATABASE_URL = f"sqlite:///{_DEFAULT_SQLITE_DB.as_posix()}"
+DATABASE_URL = os.getenv("DATABASE_URL", _DEFAULT_DATABASE_URL)
 
 engine = create_engine(
     DATABASE_URL, 
@@ -49,6 +62,9 @@ class OrderModel(Base):
     price = Column(Float, default=0.0)
     total = Column(Float, default=0.0)
     status = Column(String, default="COMPLETED")
+    idempotency_key = Column(String, nullable=True, index=True)
+    request_fingerprint = Column(String, nullable=True, index=True)
+    trace_id = Column(String, nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -182,8 +198,15 @@ def _ensure_user_columns() -> None:
     _ensure_column("users", "token_version", "token_version INTEGER NOT NULL DEFAULT 0")
 
 
+def _ensure_order_columns() -> None:
+    _ensure_column("orders", "idempotency_key", "idempotency_key VARCHAR NULL")
+    _ensure_column("orders", "request_fingerprint", "request_fingerprint VARCHAR NULL")
+    _ensure_column("orders", "trace_id", "trace_id VARCHAR NULL")
+
+
 _ensure_refresh_token_columns()
 _ensure_user_columns()
+_ensure_order_columns()
 
 def get_db():
     db = SessionLocal()
