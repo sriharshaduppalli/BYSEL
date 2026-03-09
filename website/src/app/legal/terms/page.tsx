@@ -1,16 +1,59 @@
+import Link from "next/link";
+
 export default function TermsOfService() {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center bg-[var(--background)] text-[var(--text)]">
-      <div className="w-full max-w-3xl px-6 py-16 text-center">
-        <h1 className="text-3xl md:text-4xl font-bold mb-4 text-[var(--primary)]">Terms of Service</h1>
-        <p className="text-lg mb-8">Please read our terms before using BYSEL.</p>
-        <div className="bg-[var(--background)] border border-[var(--primary)] rounded-xl p-6 shadow text-left">
-          <h2 className="text-xl font-semibold mb-2 text-[var(--primary)]">Usage</h2>
-          <p>BYSEL is for educational and simulation purposes only. No real trading or financial advice is provided.</p>
-          <h2 className="text-xl font-semibold mt-6 mb-2 text-[var(--primary)]">User Conduct</h2>
-          <p>Users must not misuse the platform or attempt unauthorized access. Violations may result in account suspension.</p>
+    <main>
+      <section className="section-wrap">
+        <div className="site-container">
+          <span className="eyebrow">Legal</span>
+          <h1 className="page-title" style={{ fontSize: "clamp(1.9rem, 5vw, 3rem)" }}>
+            Terms of Service
+          </h1>
+          <p className="lead">These terms explain how BYSEL services can be used and what responsibilities apply to all users.</p>
+
+          <div className="legal-stack" style={{ marginTop: "1rem" }}>
+            <article className="glass-card legal-card">
+              <h2 className="feature-title">Educational use only</h2>
+              <p className="feature-copy">
+                BYSEL is a simulation and education platform. It does not execute live brokerage orders and does not provide personalized financial advice.
+              </p>
+            </article>
+
+            <article className="glass-card legal-card">
+              <h2 className="feature-title">Account responsibilities</h2>
+              <ul className="list-tight">
+                <li>Provide accurate registration details.</li>
+                <li>Protect your account credentials and access devices.</li>
+                <li>Report suspicious activity immediately to support.</li>
+              </ul>
+            </article>
+
+            <article className="glass-card legal-card">
+              <h2 className="feature-title">Acceptable conduct</h2>
+              <ul className="list-tight">
+                <li>No abuse, reverse engineering, or unauthorized access attempts.</li>
+                <li>No content that violates applicable laws or third-party rights.</li>
+                <li>Violations can lead to temporary or permanent account suspension.</li>
+              </ul>
+            </article>
+
+            <article className="glass-card legal-card">
+              <h2 className="feature-title">Changes and contact</h2>
+              <p className="feature-copy">
+                Terms may be updated as features evolve. Continued use after updates means acceptance of the revised terms.
+              </p>
+              <div className="btn-row" style={{ marginTop: "0.8rem" }}>
+                <Link href="/legal/privacy" className="btn-neutral">
+                  View Privacy Policy
+                </Link>
+                <Link href="/support" className="btn-primary">
+                  Contact Support
+                </Link>
+              </div>
+            </article>
+          </div>
         </div>
-      </div>
+      </section>
     </main>
   );
 }

@@ -1,18 +1,53 @@
+import Link from "next/link";
+
+const LICENSES = [
+  "Next.js - MIT License",
+  "React - MIT License",
+  "Tailwind CSS - MIT License",
+  "TypeScript - Apache License 2.0",
+  "Other dependencies - See package-level license references",
+];
+
 export default function Licenses() {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center bg-[var(--background)] text-[var(--text)]">
-      <div className="w-full max-w-3xl px-6 py-16 text-center">
-        <h1 className="text-3xl md:text-4xl font-bold mb-4 text-[var(--primary)]">Open Source Licenses</h1>
-        <p className="text-lg mb-8">BYSEL uses open source software. See below for license details.</p>
-        <div className="bg-[var(--background)] border border-[var(--primary)] rounded-xl p-6 shadow text-left">
-          <h2 className="text-xl font-semibold mb-2 text-[var(--primary)]">Licenses</h2>
-          <ul className="list-disc ml-6">
-            <li>Next.js - MIT License</li>
-            <li>Tailwind CSS - MIT License</li>
-            <li>Other dependencies - See package documentation</li>
-          </ul>
+    <main>
+      <section className="section-wrap">
+        <div className="site-container">
+          <span className="eyebrow">Legal</span>
+          <h1 className="page-title" style={{ fontSize: "clamp(1.9rem, 5vw, 3rem)" }}>
+            Open Source Licenses
+          </h1>
+          <p className="lead">
+            BYSEL is built with open source technologies. We acknowledge and respect the licensing terms of these components.
+          </p>
+
+          <div className="legal-stack" style={{ marginTop: "1rem" }}>
+            <article className="glass-card legal-card">
+              <h2 className="feature-title">Primary dependencies</h2>
+              <ul className="list-tight">
+                {LICENSES.map((license) => (
+                  <li key={license}>{license}</li>
+                ))}
+              </ul>
+            </article>
+
+            <article className="glass-card legal-card">
+              <h2 className="feature-title">Additional attribution</h2>
+              <p className="feature-copy">
+                For complete third-party notices, review the dependency manifests distributed with each release.
+              </p>
+              <div className="btn-row" style={{ marginTop: "0.8rem" }}>
+                <Link href="/legal/terms" className="btn-neutral">
+                  Terms of Service
+                </Link>
+                <Link href="/legal/privacy" className="btn-primary">
+                  Privacy Policy
+                </Link>
+              </div>
+            </article>
+          </div>
         </div>
-      </div>
+      </section>
     </main>
   );
 }

@@ -1,24 +1,107 @@
+import Link from "next/link";
+import LiveHeatmap from "../../components/LiveHeatmap";
+
+const MARKET_MODULES = [
+  {
+    title: "Top Movers",
+    copy: "Rank symbols by momentum and participation to avoid chasing thin, low-conviction moves.",
+  },
+  {
+    title: "Breadth Snapshot",
+    copy: "Track advance/decline trends and detect when index strength is diverging from broader participation.",
+  },
+  {
+    title: "Event Watch",
+    copy: "Earnings windows, policy updates, and macro events are surfaced so risk can be adjusted in time.",
+  },
+  {
+    title: "Sector Momentum",
+    copy: "Identify leadership rotation across financials, IT, autos, pharma, and energy in near real-time.",
+  },
+];
+
+const COVERAGE_TAGS = ["NSE Equities", "Index Derivatives", "Sector Heatmap", "Sentiment Layer", "Intraday Alerts"];
+
 export default function Markets() {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center bg-[var(--background)] text-[var(--text)]">
-      <div className="w-full max-w-3xl px-6 py-16 text-center">
-        <h1 className="text-3xl md:text-4xl font-bold mb-4 text-[var(--primary)]">Markets</h1>
-        <p className="text-lg mb-8">Live market widgets, news, sentiment, and heatmap preview.</p>
-        <div className="bg-[var(--background)] border border-[var(--primary)] rounded-xl p-6 shadow mb-8">
-          <h2 className="text-xl font-semibold mb-2 text-[var(--primary)]">Live Market Heatmap</h2>
-          <div className="h-32 flex items-center justify-center text-[var(--accent)] text-lg">[Heatmap Widget Placeholder]</div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div className="bg-[var(--background)] border border-[var(--primary)] rounded-xl p-6 shadow">
-            <h2 className="text-xl font-semibold mb-2 text-[var(--primary)]">Trending Stocks</h2>
-            <div className="h-16 flex items-center justify-center text-[var(--secondary)]">[Trending Stocks Placeholder]</div>
+    <main>
+      <section className="section-wrap">
+        <div className="site-container">
+          <span className="eyebrow">Market Center</span>
+          <h1 className="page-title" style={{ fontSize: "clamp(2rem, 5vw, 3.15rem)" }}>
+            Real-time context for better simulated decisions.
+          </h1>
+          <p className="lead">
+            BYSEL surfaces market structure, sector participation, and event risk in one view so you can practice with intent.
+          </p>
+
+          <div className="pill-row">
+            {COVERAGE_TAGS.map((tag) => (
+              <span key={tag} className="tag-pill">
+                {tag}
+              </span>
+            ))}
           </div>
-          <div className="bg-[var(--background)] border border-[var(--primary)] rounded-xl p-6 shadow">
-            <h2 className="text-xl font-semibold mb-2 text-[var(--primary)]">Market News & Sentiment</h2>
-            <div className="h-16 flex items-center justify-center text-[var(--accent)]">[News & Sentiment Placeholder]</div>
+        </div>
+      </section>
+
+      <section className="section-wrap" style={{ paddingTop: "0.2rem" }}>
+        <div className="site-container split-grid">
+          <div data-animate>
+            <LiveHeatmap />
+          </div>
+
+          <article className="glass-card hero-panel" data-animate data-delay="1">
+            <div className="panel-head">
+              <h2 className="panel-title">Signal Overview</h2>
+              <span className="status-chip live">Realtime</span>
+            </div>
+            <div className="stack-grid">
+              <div className="info-row">
+                <p className="info-title">Index Pulse</p>
+                <p className="info-copy">Track NIFTY and BANKNIFTY behavior with breadth and volatility overlays.</p>
+              </div>
+              <div className="info-row">
+                <p className="info-title">Liquidity Lens</p>
+                <p className="info-copy">Spot where participation is strong enough to support clean entries and exits.</p>
+              </div>
+              <div className="info-row">
+                <p className="info-title">Bias Guardrails</p>
+                <p className="info-copy">Get prompts when market internals disagree with your directional thesis.</p>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section className="section-wrap" style={{ paddingTop: "0.3rem" }}>
+        <div className="site-container">
+          <div className="section-head">
+            <div>
+              <h2 className="section-title">Modules inside Markets</h2>
+              <p className="section-copy">Every panel is tuned to help you build better trade selection and timing decisions.</p>
+            </div>
+          </div>
+
+          <div className="feature-grid">
+            {MARKET_MODULES.map((item, index) => (
+              <article key={item.title} className="glass-card feature-card" data-animate data-delay={String(Math.min(index + 1, 4))}>
+                <h3 className="feature-title">{item.title}</h3>
+                <p className="feature-copy">{item.copy}</p>
+              </article>
+            ))}
+          </div>
+
+          <div className="btn-row" style={{ marginTop: "1rem" }}>
+            <Link href="/features" className="btn-neutral">
+              Explore Product Features
+            </Link>
+            <Link href="/pricing" className="btn-primary">
+              Unlock Full Access
+            </Link>
           </div>
         </div>
-      </div>
+      </section>
     </main>
   );
 }

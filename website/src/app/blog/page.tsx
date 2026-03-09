@@ -1,14 +1,65 @@
+import Link from "next/link";
+
+const POSTS = [
+  {
+    title: "How to build an intraday checklist that actually improves results",
+    excerpt: "A practical framework to reduce impulsive entries and improve execution consistency.",
+    tag: "Execution",
+  },
+  {
+    title: "Reading market breadth before committing to directional trades",
+    excerpt: "Use participation depth to validate your thesis before taking size.",
+    tag: "Market Context",
+  },
+  {
+    title: "Post-trade reviews: what top learners track every day",
+    excerpt: "Move beyond PnL and evaluate behavior, setup quality, and adherence metrics.",
+    tag: "Performance",
+  },
+];
+
+const TOPICS = ["Risk Management", "Trade Psychology", "System Design", "Portfolio Structure", "Volatility Playbooks"];
+
 export default function Blog() {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center bg-[var(--background)] text-[var(--text)]">
-      <div className="w-full max-w-3xl px-6 py-16 text-center">
-        <h1 className="text-3xl md:text-4xl font-bold mb-4 text-[var(--primary)]">Blog</h1>
-        <p className="text-lg mb-8">Insights, tutorials, and updates from BYSEL.</p>
-        <div className="bg-[var(--background)] border border-[var(--primary)] rounded-xl p-6 shadow mb-8">
-          <h2 className="text-xl font-semibold mb-2 text-[var(--primary)]">Latest Posts</h2>
-          <div className="h-32 flex items-center justify-center text-[var(--accent)] text-lg">[Blog Posts Placeholder]</div>
+    <main>
+      <section className="section-wrap">
+        <div className="site-container">
+          <span className="eyebrow">BYSEL Journal</span>
+          <h1 className="page-title" style={{ fontSize: "clamp(2rem, 5vw, 3.1rem)" }}>
+            Insights for disciplined market learners.
+          </h1>
+          <p className="lead">
+            Practical frameworks, trade-behavior lessons, and product updates designed to sharpen your simulation workflow.
+          </p>
+
+          <div className="feature-grid" style={{ marginTop: "1.2rem" }}>
+            {POSTS.map((post, index) => (
+              <article key={post.title} className="glass-card feature-card" data-animate data-delay={String(Math.min(index, 4))}>
+                <p className="feature-kicker">{post.tag}</p>
+                <h2 className="feature-title">{post.title}</h2>
+                <p className="feature-copy">{post.excerpt}</p>
+                <div className="btn-row" style={{ marginTop: "0.8rem" }}>
+                  <Link href="/support" className="btn-neutral">
+                    Request Full Article
+                  </Link>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <div className="glass-card cta-block" style={{ marginTop: "1rem" }}>
+            <h2 className="panel-title">Explore topics</h2>
+            <div className="pill-row">
+              {TOPICS.map((topic) => (
+                <span key={topic} className="tag-pill">
+                  {topic}
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
     </main>
   );
 }

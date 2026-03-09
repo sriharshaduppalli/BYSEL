@@ -1,36 +1,95 @@
+import Link from "next/link";
+
+const PRINCIPLES = [
+  {
+    title: "Process over prediction",
+    copy: "We teach routines that survive uncertain markets instead of relying on one-off calls.",
+  },
+  {
+    title: "Simulation before capital",
+    copy: "Confidence should come from repeatable behavior in realistic conditions before real money is at risk.",
+  },
+  {
+    title: "Clarity in every metric",
+    copy: "Users deserve clear explanations, not black-box numbers that cannot guide better action.",
+  },
+];
+
 export default function About() {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center bg-[var(--background)] text-[var(--text)]">
-      <div className="w-full max-w-3xl px-6 py-16 text-center">
-        <h1 className="text-3xl md:text-4xl font-bold mb-4 text-[var(--primary)]">About BYSEL</h1>
-        <p className="text-lg mb-8">
-          BYSEL is an innovative platform dedicated to democratizing access to financial markets. Founded with the vision to empower individuals, BYSEL leverages cutting-edge AI-driven tools to help users learn, practice, and excel in trading. Our story began with a mission to bridge the gap between technology and finance, making trading education and market insights accessible to everyone.
-        </p>
-        <div className="bg-[var(--background)] border border-[var(--primary)] rounded-xl p-6 shadow mb-8">
-          <h2 className="text-xl font-semibold mb-2 text-[var(--primary)]">Our Mission</h2>
-          <div className="min-h-16 flex items-center justify-center text-[var(--accent)] text-lg">
-            Empowering users to learn and practice trading with AI-driven tools, fostering financial literacy and confidence for all.
+    <main>
+      <section className="section-wrap">
+        <div className="site-container">
+          <span className="eyebrow">About BYSEL</span>
+          <h1 className="page-title" style={{ fontSize: "clamp(2rem, 5vw, 3.2rem)" }}>
+            Building confident traders through structured practice.
+          </h1>
+          <p className="lead">
+            BYSEL started with one conviction: trading education should be practical, measurable, and accessible to anyone serious about the craft.
+          </p>
+
+          <div className="split-grid" style={{ marginTop: "1.15rem" }}>
+            <article className="glass-card hero-panel" data-animate>
+              <h2 className="panel-title">Our Mission</h2>
+              <p className="feature-copy" style={{ marginTop: "0.55rem" }}>
+                Help users develop disciplined execution habits with AI-assisted simulation, live market context, and clear feedback loops.
+              </p>
+            </article>
+
+            <article className="glass-card hero-panel" data-animate data-delay="1">
+              <h2 className="panel-title">Our Vision</h2>
+              <p className="feature-copy" style={{ marginTop: "0.55rem" }}>
+                Become the most trusted simulation-first platform for market learners and trading teams across India.
+              </p>
+            </article>
           </div>
         </div>
-        <div className="bg-[var(--background)] border border-[var(--primary)] rounded-xl p-6 shadow mb-8">
-          <h2 className="text-xl font-semibold mb-2 text-[var(--primary)]">Our Vision</h2>
-          <div className="min-h-16 flex items-center justify-center text-[var(--accent)] text-lg">
-            To become the leading platform for AI-powered trading education and market analysis, enabling users to make informed decisions and achieve their financial goals.
-          </div>
-        </div>
-        <div className="bg-[var(--background)] border border-[var(--primary)] rounded-xl p-6 shadow">
-          <h2 className="text-xl font-semibold mb-2 text-[var(--primary)]">Our Team</h2>
-          <div className="min-h-16 flex flex-col items-center justify-center text-[var(--secondary)] text-lg">
-            <div className="mb-4">
-              <span className="font-bold">CEO: SRI HARSHA DUPPALLI</span><br />
-              SRI HARSHA DUPPALLI is the visionary founder and CEO of BYSEL. With a strong background in technology and finance, Harsha leads the team with a passion for innovation and user empowerment. His mission is to make trading education and market intelligence accessible to everyone.
-            </div>
+      </section>
+
+      <section className="section-wrap" style={{ paddingTop: "0.2rem" }}>
+        <div className="site-container">
+          <div className="section-head">
             <div>
-              <span className="font-bold">Team Members:</span> [Team Members Placeholder]
+              <h2 className="section-title">Principles that shape the product</h2>
             </div>
           </div>
+
+          <div className="feature-grid">
+            {PRINCIPLES.map((item, index) => (
+              <article key={item.title} className="glass-card feature-card" data-animate data-delay={String(Math.min(index + 1, 4))}>
+                <h3 className="feature-title">{item.title}</h3>
+                <p className="feature-copy">{item.copy}</p>
+              </article>
+            ))}
+          </div>
         </div>
-      </div>
+      </section>
+
+      <section className="section-wrap" style={{ paddingTop: "0.2rem" }}>
+        <div className="site-container split-grid">
+          <article className="glass-card hero-panel" data-animate>
+            <h2 className="panel-title">Leadership</h2>
+            <p className="feature-copy" style={{ marginTop: "0.55rem" }}>
+              Sri Harsha Duppalli leads BYSEL with a blend of technology depth and market-learning focus, pushing for a product that teaches execution discipline at scale.
+            </p>
+          </article>
+
+          <article className="glass-card hero-panel" data-animate data-delay="1">
+            <h2 className="panel-title">Work with us</h2>
+            <p className="feature-copy" style={{ marginTop: "0.55rem" }}>
+              We are building a product-led team across engineering, design, and market education.
+            </p>
+            <div className="btn-row" style={{ marginTop: "0.95rem" }}>
+              <Link href="/careers" className="btn-primary">
+                View Careers
+              </Link>
+              <Link href="/support" className="btn-neutral">
+                Contact Team
+              </Link>
+            </div>
+          </article>
+        </div>
+      </section>
     </main>
   );
 }

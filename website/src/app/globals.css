@@ -1,30 +1,656 @@
 @import "tailwindcss";
 
-/* BYSEL Branding Colors */
 :root {
-  --primary: #7C4DFF;
-  --secondary: #00B050;
-  --accent: #FFB300;
-  --background: #1A1A2E;
-  --text: #FFFFFF;
+  --bg-1: #f4f8f6;
+  --bg-2: #eaf2f5;
+  --bg-3: #fdf4eb;
+  --surface: rgba(255, 255, 255, 0.78);
+  --surface-strong: rgba(255, 255, 255, 0.92);
+  --ink-strong: #10222f;
+  --ink: #1a3545;
+  --ink-muted: #5a6c78;
+  --line: #c6d8df;
+  --brand: #0e636f;
+  --brand-strong: #0a4c55;
+  --accent: #f06b45;
+  --accent-soft: #f8c5ad;
+  --success: #2b8a57;
+  --warning: #d88a1d;
+  --shadow: 0 16px 50px rgba(15, 43, 62, 0.12);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: var(--bg-1);
+  --color-foreground: var(--ink-strong);
+  --font-sans: var(--font-manrope);
+  --font-mono: var(--font-ibm-plex-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #1A1A2E;
-    --text: #FFFFFF;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--text);
-  font-family: 'Inter', 'Roboto', Arial, Helvetica, sans-serif;
+  margin: 0;
+  color: var(--ink-strong);
+  background:
+    radial-gradient(900px 500px at -8% -10%, rgba(14, 99, 111, 0.2), transparent 55%),
+    radial-gradient(800px 420px at 108% 8%, rgba(240, 107, 69, 0.18), transparent 58%),
+    linear-gradient(145deg, var(--bg-1) 0%, var(--bg-2) 45%, var(--bg-3) 100%);
+  font-family: var(--font-manrope), "Segoe UI", Tahoma, sans-serif;
+  line-height: 1.5;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.site-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.site-content {
+  flex: 1;
+}
+
+.site-container {
+  width: min(1120px, 92vw);
+  margin: 0 auto;
+}
+
+.top-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  border-bottom: 1px solid rgba(16, 34, 47, 0.08);
+  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.top-nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 74px;
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.brand-title {
+  font-family: var(--font-syne), "Trebuchet MS", sans-serif;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--brand-strong);
+}
+
+.brand-tag {
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+}
+
+.nav-desktop {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nav-link {
+  padding: 0.5rem 0.8rem;
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 0.92rem;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.nav-link:hover {
+  background: rgba(14, 99, 111, 0.09);
+  color: var(--brand-strong);
+}
+
+.nav-link.active {
+  background: rgba(14, 99, 111, 0.14);
+  color: var(--brand-strong);
+}
+
+.nav-pill {
+  border: 1px solid rgba(14, 99, 111, 0.3);
+  color: var(--brand-strong);
+  font-weight: 700;
+  padding: 0.55rem 0.95rem;
+  border-radius: 999px;
+  background: var(--surface-strong);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.nav-pill:hover {
+  transform: translateY(-1px);
+  border-color: rgba(14, 99, 111, 0.6);
+}
+
+.mobile-toggle {
+  display: none;
+}
+
+.mobile-menu {
+  display: none;
+  padding-bottom: 1rem;
+}
+
+.hero-wrap {
+  padding: 4.2rem 0 2.5rem;
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 1.25rem;
+  align-items: stretch;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid rgba(14, 99, 111, 0.25);
+  border-radius: 999px;
+  padding: 0.34rem 0.72rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brand-strong);
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.page-title {
+  margin: 0.95rem 0 0.8rem;
+  font-family: var(--font-syne), "Trebuchet MS", sans-serif;
+  font-size: clamp(2.2rem, 6vw, 4.2rem);
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+  color: var(--ink-strong);
+}
+
+.lead {
+  color: var(--ink);
+  font-size: clamp(1rem, 2vw, 1.22rem);
+  max-width: 63ch;
+}
+
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.4rem;
+}
+
+.btn-primary,
+.btn-secondary,
+.btn-neutral {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 12px;
+  padding: 0.78rem 1.15rem;
+  font-weight: 700;
+  transition: transform 0.18s ease, box-shadow 0.2s ease;
+}
+
+.btn-primary {
+  background: linear-gradient(120deg, var(--brand) 0%, #1690a0 100%);
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(14, 99, 111, 0.25);
+}
+
+.btn-secondary {
+  background: linear-gradient(120deg, var(--accent) 0%, #ff9366 100%);
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(240, 107, 69, 0.24);
+}
+
+.btn-neutral {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  color: var(--ink-strong);
+}
+
+.btn-primary:hover,
+.btn-secondary:hover,
+.btn-neutral:hover {
+  transform: translateY(-1px);
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin-top: 1.2rem;
+}
+
+.stat-item {
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  padding: 0.7rem 0.75rem;
+}
+
+.stat-value {
+  display: block;
+  font-family: var(--font-syne), "Trebuchet MS", sans-serif;
+  font-size: 1.35rem;
+  line-height: 1;
+  color: var(--brand-strong);
+}
+
+.stat-label {
+  display: block;
+  margin-top: 0.3rem;
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+}
+
+.glass-card {
+  border: 1px solid rgba(198, 216, 223, 0.95);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(7px);
+}
+
+.hero-panel {
+  padding: 1rem;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.panel-title {
+  margin: 0;
+  font-family: var(--font-syne), "Trebuchet MS", sans-serif;
+  color: var(--ink-strong);
+  font-size: 1.15rem;
+}
+
+.mini-muted {
+  color: var(--ink-muted);
+  font-size: 0.82rem;
+}
+
+.section-wrap {
+  padding: 2.7rem 0;
+}
+
+.section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.section-title {
+  margin: 0;
+  font-family: var(--font-syne), "Trebuchet MS", sans-serif;
+  font-size: clamp(1.5rem, 3vw, 2.2rem);
+  color: var(--ink-strong);
+}
+
+.section-copy {
+  color: var(--ink);
+  max-width: 66ch;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.feature-card {
+  padding: 1rem;
+}
+
+.feature-kicker {
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--brand);
+  font-weight: 700;
+}
+
+.feature-title {
+  margin: 0.4rem 0 0.35rem;
+  font-family: var(--font-syne), "Trebuchet MS", sans-serif;
+  color: var(--ink-strong);
+  font-size: 1.1rem;
+}
+
+.feature-copy {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.95rem;
+}
+
+.timeline {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.timeline-step {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 0.75rem;
+  align-items: start;
+  padding: 0.9rem;
+}
+
+.timeline-index {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(130deg, var(--brand) 0%, var(--accent) 100%);
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid transparent;
+}
+
+.status-chip.live {
+  color: var(--success);
+  border-color: rgba(43, 138, 87, 0.3);
+  background: rgba(43, 138, 87, 0.1);
+}
+
+.status-chip.warn {
+  color: var(--warning);
+  border-color: rgba(216, 138, 29, 0.33);
+  background: rgba(216, 138, 29, 0.1);
+}
+
+.cta-block {
+  margin: 1.2rem 0 2.4rem;
+  padding: 1.15rem;
+}
+
+.site-footer {
+  margin-top: 1.8rem;
+  border-top: 1px solid rgba(16, 34, 47, 0.1);
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.footer-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 1rem;
+  padding: 1.2rem 0 1.4rem;
+}
+
+.footer-title {
+  margin: 0 0 0.4rem;
+  font-family: var(--font-syne), "Trebuchet MS", sans-serif;
+  color: var(--ink-strong);
+}
+
+.footer-link {
+  color: var(--ink);
+  font-size: 0.94rem;
+  display: block;
+  margin-bottom: 0.38rem;
+}
+
+.footer-link:hover {
+  color: var(--brand-strong);
+}
+
+.heatmap-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.heatmap-tile {
+  border-radius: 11px;
+  padding: 0.5rem;
+  color: #f8fbfd;
+  min-height: 54px;
+}
+
+.heatmap-symbol {
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  font-size: 0.8rem;
+}
+
+.heatmap-move {
+  margin-top: 0.25rem;
+  font-size: 0.74rem;
+  opacity: 0.92;
+}
+
+.split-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 0.9rem;
+  align-items: start;
+}
+
+.stack-grid {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.info-row {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-strong);
+  padding: 0.75rem 0.8rem;
+}
+
+.info-title {
+  margin: 0;
+  font-size: 0.94rem;
+  color: var(--ink-strong);
+  font-weight: 700;
+}
+
+.info-copy {
+  margin: 0.3rem 0 0;
+  color: var(--ink);
+  font-size: 0.88rem;
+}
+
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.72rem;
+}
+
+.tag-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.25rem 0.62rem;
+  border: 1px solid rgba(14, 99, 111, 0.27);
+  color: var(--brand-strong);
+  background: rgba(255, 255, 255, 0.68);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.price-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.price-card {
+  padding: 1rem;
+}
+
+.price-card.featured {
+  border-color: rgba(14, 99, 111, 0.48);
+  box-shadow: 0 20px 44px rgba(14, 99, 111, 0.18);
+}
+
+.price-label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--brand);
+  font-weight: 700;
+}
+
+.price-value {
+  margin: 0.35rem 0 0.22rem;
+  font-family: var(--font-syne), "Trebuchet MS", sans-serif;
+  font-size: 1.9rem;
+  color: var(--ink-strong);
+}
+
+.list-tight {
+  margin: 0.45rem 0 0;
+  padding-left: 1rem;
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.list-tight li {
+  margin-bottom: 0.34rem;
+}
+
+.legal-stack {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.legal-card {
+  padding: 0.95rem;
+}
+
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+[data-animate] {
+  opacity: 0;
+  transform: translateY(14px);
+  animation: riseIn 0.68s ease forwards;
+}
+
+[data-delay="1"] {
+  animation-delay: 0.08s;
+}
+
+[data-delay="2"] {
+  animation-delay: 0.16s;
+}
+
+[data-delay="3"] {
+  animation-delay: 0.24s;
+}
+
+[data-delay="4"] {
+  animation-delay: 0.32s;
+}
+
+@media (max-width: 980px) {
+  .nav-desktop,
+  .nav-pill {
+    display: none;
+  }
+
+  .mobile-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--surface-strong);
+    color: var(--ink-strong);
+    font-weight: 700;
+  }
+
+  .mobile-menu {
+    display: grid;
+    gap: 0.45rem;
+  }
+
+  .hero-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .split-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .feature-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .price-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .footer-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .hero-wrap {
+    padding-top: 3.1rem;
+  }
+
+  .feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .price-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stat-grid,
+  .heatmap-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
