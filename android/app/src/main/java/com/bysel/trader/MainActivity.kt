@@ -552,7 +552,8 @@ fun BYSELApp(
                                         isLoading = aiLoading,
                                         onSendQuery = { query -> viewModel.askAi(query) },
                                         onSuggestionClick = { suggestion -> viewModel.askAi(suggestion) },
-                                        onClearChat = { viewModel.clearChatHistory() }
+                                        onClearChat = { viewModel.clearChatHistory() },
+                                        selectedSymbol = selectedQuote?.symbol
                                     )
                                     2 -> TradingScreen(
                                         isLoading = isLoading,

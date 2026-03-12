@@ -661,6 +661,107 @@ _SORTED_SYMBOL_ALIASES = sorted(
     reverse=True,
 )
 
+# Sector peer map: symbol → list of comparable peer symbols
+_SECTOR_PEERS: Dict[str, List[str]] = {
+    # Banks
+    "HDFCBANK":    ["ICICIBANK", "KOTAKBANK", "AXISBANK", "SBIN"],
+    "ICICIBANK":   ["HDFCBANK", "KOTAKBANK", "AXISBANK", "SBIN"],
+    "KOTAKBANK":   ["HDFCBANK", "ICICIBANK", "AXISBANK"],
+    "AXISBANK":    ["HDFCBANK", "ICICIBANK", "KOTAKBANK"],
+    "SBIN":        ["HDFCBANK", "ICICIBANK", "PNB", "BANKBARODA"],
+    "INDUSINDBK":  ["HDFCBANK", "ICICIBANK", "AXISBANK"],
+    "PNB":         ["SBIN", "BANKBARODA", "CANARABANK"],
+    "BANKBARODA":  ["SBIN", "PNB", "CANARABANK"],
+    # IT
+    "TCS":         ["INFY", "WIPRO", "HCLTECH", "TECHM"],
+    "INFY":        ["TCS", "WIPRO", "HCLTECH", "TECHM"],
+    "WIPRO":       ["TCS", "INFY", "HCLTECH", "TECHM"],
+    "HCLTECH":     ["TCS", "INFY", "WIPRO", "TECHM"],
+    "TECHM":       ["TCS", "INFY", "WIPRO", "HCLTECH"],
+    "LTIM":        ["TCS", "INFY", "WIPRO", "MPHASIS"],
+    "MPHASIS":     ["TCS", "INFY", "LTIM", "COFORGE"],
+    "COFORGE":     ["MPHASIS", "LTIM", "INFY"],
+    # Energy / Oil
+    "RELIANCE":    ["ONGC", "BPCL", "IOC"],
+    "ONGC":        ["RELIANCE", "BPCL", "IOC"],
+    "BPCL":        ["RELIANCE", "ONGC", "IOC"],
+    "IOC":         ["RELIANCE", "ONGC", "BPCL"],
+    "ADANIGREEN":  ["NTPC", "TATAPOWER", "POWERGRID"],
+    "NTPC":        ["POWERGRID", "ADANIGREEN", "TATAPOWER"],
+    "TATAPOWER":   ["NTPC", "ADANIGREEN", "POWERGRID"],
+    "POWERGRID":   ["NTPC", "TATAPOWER", "ADANIGREEN"],
+    # Auto
+    "TATAMOTORS":  ["MARUTI", "BAJAJ-AUTO", "HEROMOTOCO", "EICHERMOT"],
+    "MARUTI":      ["TATAMOTORS", "BAJAJ-AUTO", "HEROMOTOCO"],
+    "BAJAJ-AUTO":  ["MARUTI", "TATAMOTORS", "HEROMOTOCO", "EICHERMOT"],
+    "HEROMOTOCO":  ["BAJAJ-AUTO", "MARUTI", "EICHERMOT"],
+    "EICHERMOT":   ["BAJAJ-AUTO", "HEROMOTOCO", "TVSMOTOR"],
+    "TVSMOTOR":    ["BAJAJ-AUTO", "HEROMOTOCO", "EICHERMOT"],
+    "ASHOKLEY":    ["TATAMOTORS", "MARUTI", "BAJAJ-AUTO"],
+    # Pharma
+    "SUNPHARMA":   ["DRREDDY", "CIPLA", "LUPIN", "DIVISLAB"],
+    "DRREDDY":     ["SUNPHARMA", "CIPLA", "LUPIN"],
+    "CIPLA":       ["SUNPHARMA", "DRREDDY", "LUPIN"],
+    "LUPIN":       ["SUNPHARMA", "DRREDDY", "CIPLA"],
+    "DIVISLAB":    ["SUNPHARMA", "DRREDDY", "CIPLA"],
+    "AUROPHARMA":  ["SUNPHARMA", "CIPLA", "LUPIN"],
+    "BIOCON":      ["SUNPHARMA", "DRREDDY", "CIPLA"],
+    # FMCG
+    "HINDUNILVR":  ["ITC", "NESTLEIND", "BRITANNIA", "DABUR"],
+    "ITC":         ["HINDUNILVR", "BRITANNIA", "DABUR"],
+    "NESTLEIND":   ["HINDUNILVR", "BRITANNIA", "DABUR"],
+    "BRITANNIA":   ["HINDUNILVR", "ITC", "NESTLEIND"],
+    "DABUR":       ["HINDUNILVR", "ITC", "NESTLEIND"],
+    "MARICO":      ["HINDUNILVR", "DABUR", "COLPAL"],
+    "COLPAL":      ["HINDUNILVR", "MARICO", "DABUR"],
+    # Metals
+    "TATASTEEL":   ["JSWSTEEL", "HINDALCO", "VEDL", "SAIL"],
+    "JSWSTEEL":    ["TATASTEEL", "HINDALCO", "SAIL"],
+    "HINDALCO":    ["TATASTEEL", "JSWSTEEL", "VEDL", "NATIONALUM"],
+    "VEDL":        ["HINDALCO", "TATASTEEL", "JSWSTEEL"],
+    "SAIL":        ["TATASTEEL", "JSWSTEEL"],
+    # Infra / Conglomerates
+    "LT":          ["ADANIENT", "ADANIPORTS", "IRCON"],
+    "ADANIENT":    ["LT", "ADANIPORTS", "NTPC"],
+    "ADANIPORTS":  ["LT", "ADANIENT"],
+    # Real Estate
+    "DLF":         ["GODREJPROP", "OBEROIRLTY", "PRESTIGE"],
+    "GODREJPROP":  ["DLF", "OBEROIRLTY", "PRESTIGE"],
+    "OBEROIRLTY":  ["DLF", "GODREJPROP", "PRESTIGE"],
+    # Defence
+    "HAL":         ["BEL", "BDL", "MAZAGON"],
+    "BEL":         ["HAL", "BDL", "DATAPATTNS"],
+}
+
+
+def _build_stock_suggestions(symbol: str, exclude: str = "") -> List[str]:
+    """
+    Build 4-5 diverse follow-up prompt suggestions for a given stock.
+    `exclude` can be 'analysis','prediction','buy_sell','compare' to avoid
+    repeating the type the user just asked about.
+    """
+    candidates: List[str] = []
+
+    if exclude != "buy_sell":
+        candidates.append(f"Should I buy {symbol}?")
+    if exclude != "prediction":
+        candidates.append(f"Predict {symbol} price")
+    if exclude != "analysis":
+        candidates.append(f"Analyze {symbol}")
+    if exclude != "overvaluation":
+        candidates.append(f"Is {symbol} overvalued?")
+
+    peers = _SECTOR_PEERS.get(symbol, [])
+    if peers:
+        candidates.append(f"Compare {symbol} with {peers[0]}")
+        if len(peers) > 1 and len(candidates) < 6:
+            candidates.append(f"Compare {symbol} and {peers[1]}")
+
+    if not peers:
+        candidates.append(f"Technical analysis of {symbol}")
+
+    return candidates[:5]
+
 
 def _build_help_response() -> Dict:
     return {
@@ -671,14 +772,19 @@ def _build_help_response() -> Dict:
                   "• \"Compare INFY and TCS\"\n"
                   "• \"Best bank stocks\"\n"
                   "• \"Analyze SBIN\"\n"
-                  "• \"Is HDFCBANK overvalued?\"\n\n"
+                  "• \"Is HDFCBANK overvalued?\"\n"
+                  "• \"Technical analysis of WIPRO\"\n"
+                  "• \"Top pharma stocks\"\n\n"
                   "I cover 363+ Indian stocks with live data!",
         "suggestions": [
             "Should I buy RELIANCE?",
             "Predict TCS price",
-            "Best pharma stocks",
             "Compare INFY and TCS",
-            "Analyze HDFCBANK",
+            "Best bank stocks",
+            "Is HDFCBANK overvalued?",
+            "Top pharma stocks",
+            "Analyze SBIN",
+            "Compare TATAMOTORS with MARUTI",
         ],
     }
 
@@ -848,11 +954,7 @@ def _handle_prediction_query(symbols: List[str], query: str) -> Dict:
         "symbol": symbol,
         "answer": "\n".join(answer_parts),
         "data": pred,
-        "suggestions": [
-            f"Should I buy {symbol}?",
-            f"Analyze {symbol}",
-            f"Compare {symbol} with peers",
-        ],
+        "suggestions": _build_stock_suggestions(symbol, exclude="prediction"),
     }
 
 
@@ -890,11 +992,21 @@ def _handle_compare_query(symbols: List[str], query: str) -> Dict:
         winner = max(valid, key=lambda s: valid[s].get("score", 0))
         answer_parts.append(f"\n🏆 **Winner: {winner}** (Score: {valid[winner].get('score', 0)}/100)")
 
+    follow_ups: List[str] = []
+    for s in symbols[:2]:
+        follow_ups.append(f"Should I buy {s}?")
+        follow_ups.append(f"Predict {s} price")
+    if len(symbols) >= 2:
+        peers_a = _SECTOR_PEERS.get(symbols[0], [])
+        for p in peers_a:
+            if p not in symbols:
+                follow_ups.append(f"Compare {symbols[0]} with {p}")
+                break
     return {
         "type": "comparison",
         "answer": "\n".join(answer_parts),
         "data": analyses,
-        "suggestions": [f"Predict {s} price" for s in symbols[:2]],
+        "suggestions": follow_ups[:5],
     }
 
 
@@ -916,10 +1028,7 @@ def _handle_buy_sell_query(symbols: List[str], query: str) -> Dict:
         "score": analysis.get("score", 0),
         "signal": analysis.get("signal", "HOLD"),
         "data": analysis,
-        "suggestions": [
-            f"Predict {symbol} price",
-            f"Compare {symbol} with peers",
-        ],
+        "suggestions": _build_stock_suggestions(symbol, exclude="buy_sell"),
     }
 
 
@@ -941,10 +1050,7 @@ def _handle_analysis_query(symbols: List[str], query: str) -> Dict:
         "score": analysis.get("score", 0),
         "signal": analysis.get("signal", "HOLD"),
         "data": analysis,
-        "suggestions": [
-            f"Predict {symbol} price",
-            f"Should I buy {symbol}?",
-        ],
+        "suggestions": _build_stock_suggestions(symbol, exclude="analysis"),
     }
 
 
@@ -1002,9 +1108,16 @@ def _handle_screening_query(query_lower: str, symbols: List[str]) -> Dict:
             f"₹{r['price']:.2f} ({r['pctChange']:+.2f}%)"
         )
 
+    screen_suggestions: List[str] = []
+    for r in results[:3]:
+        screen_suggestions.append(f"Analyze {r['symbol']}")
+    if len(results) >= 2:
+        screen_suggestions.append(f"Compare {results[0]['symbol']} and {results[1]['symbol']}")
+    if not screen_suggestions:
+        screen_suggestions = ["Analyze RELIANCE", "Best bank stocks"]
     return {
         "type": "screening",
         "answer": "\n".join(answer_parts),
         "stocks": results,
-        "suggestions": [f"Analyze {results[0]['symbol']}" if results else "Analyze RELIANCE"],
+        "suggestions": screen_suggestions[:5],
     }

@@ -40,7 +40,8 @@ fun AiAssistantScreen(
     isLoading: Boolean,
     onSendQuery: (String) -> Unit,
     onSuggestionClick: (String) -> Unit,
-    onClearChat: () -> Unit
+    onClearChat: () -> Unit,
+    selectedSymbol: String? = null
 ) {
     var query by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -120,7 +121,8 @@ fun AiAssistantScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                onSuggestionClick = onSuggestionClick
+                onSuggestionClick = onSuggestionClick,
+                selectedSymbol = selectedSymbol
             )
         } else {
             LazyColumn(
@@ -212,29 +214,72 @@ fun AiAssistantScreen(
         }
     }
 
+private fun buildSymbolSuggestions(symbol: String): List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>> = listOf(
+    "Should I buy $symbol?" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Predict $symbol price" to Icons.Filled.Timeline,
+    "Analyze $symbol" to Icons.Filled.Analytics,
+    "Is $symbol overvalued?" to Icons.Filled.PriceCheck,
+    "Technical analysis of $symbol" to Icons.Filled.Analytics,
+    "Compare $symbol with peers" to Icons.AutoMirrored.Filled.CompareArrows,
+)
+
+private fun buildDefaultSuggestionPool(): List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>> = listOf(
+    // Buy / Invest
+    "Should I buy RELIANCE?" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Should I buy TCS?" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Should I buy HDFCBANK?" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Should I buy SBIN?" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Is Infosys a good investment?" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Should I invest in Tata Motors?" to Icons.AutoMirrored.Filled.TrendingUp,
+    // Predict
+    "Predict TCS price" to Icons.Filled.Timeline,
+    "Predict RELIANCE price" to Icons.Filled.Timeline,
+    "Predict WIPRO price" to Icons.Filled.Timeline,
+    "Predict SUNPHARMA price" to Icons.Filled.Timeline,
+    "Predict TATAMOTORS price" to Icons.Filled.Timeline,
+    "Predict ICICIBANK price" to Icons.Filled.Timeline,
+    // Compare
+    "Compare INFY and TCS" to Icons.AutoMirrored.Filled.CompareArrows,
+    "Compare ICICI Bank and HDFC Bank" to Icons.AutoMirrored.Filled.CompareArrows,
+    "Compare TCS with Wipro" to Icons.AutoMirrored.Filled.CompareArrows,
+    "Compare TATAMOTORS and MARUTI" to Icons.AutoMirrored.Filled.CompareArrows,
+    "Compare SBIN and HDFCBANK" to Icons.AutoMirrored.Filled.CompareArrows,
+    "Compare SUNPHARMA and DRREDDY" to Icons.AutoMirrored.Filled.CompareArrows,
+    // Sector screens
+    "Best bank stocks" to Icons.Filled.AccountBalance,
+    "Top IT stocks" to Icons.Filled.Analytics,
+    "Best pharma stocks" to Icons.Filled.Analytics,
+    "Top energy stocks" to Icons.Filled.Bolt,
+    "Best auto stocks" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Top FMCG stocks" to Icons.Filled.Analytics,
+    "Best defence stocks" to Icons.Filled.Analytics,
+    // Analyze
+    "Analyze HDFCBANK" to Icons.Filled.Analytics,
+    "Analyze Larsen and Toubro" to Icons.Filled.Analytics,
+    "Analyze ICICIBANK" to Icons.Filled.Analytics,
+    "Analyze WIPRO" to Icons.Filled.Analytics,
+    "Analyze SUNPHARMA" to Icons.Filled.Analytics,
+    // Overvaluation
+    "Is SBIN overvalued?" to Icons.Filled.PriceCheck,
+    "Is Wipro undervalued?" to Icons.Filled.PriceCheck,
+    "Is TCS fairly valued?" to Icons.Filled.PriceCheck,
+    "Is RELIANCE overvalued?" to Icons.Filled.PriceCheck,
+)
+
 @Composable
 private fun WelcomeContent(
     modifier: Modifier = Modifier,
-    onSuggestionClick: (String) -> Unit
+    onSuggestionClick: (String) -> Unit,
+    selectedSymbol: String? = null
 ) {
-    val suggestionPool = listOf(
-        "Should I buy RELIANCE?" to Icons.AutoMirrored.Filled.TrendingUp,
-        "Predict TCS price" to Icons.Filled.Timeline,
-        "Compare INFY and TCS" to Icons.AutoMirrored.Filled.CompareArrows,
-        "Best bank stocks" to Icons.Filled.AccountBalance,
-        "Analyze HDFCBANK" to Icons.Filled.Analytics,
-        "Is SBIN overvalued?" to Icons.Filled.PriceCheck,
-        "Analyze Tata Motors" to Icons.Filled.Analytics,
-        "Should I buy Infosys?" to Icons.AutoMirrored.Filled.TrendingUp,
-        "Compare ICICI Bank and HDFC Bank" to Icons.AutoMirrored.Filled.CompareArrows,
-        "Top energy stocks" to Icons.Filled.Bolt,
-        "Predict Wipro price" to Icons.Filled.Timeline,
-        "Analyze Larsen and Toubro" to Icons.Filled.Analytics,
-    )
-    val suggestions = remember {
-        suggestionPool
-            .shuffled(Random(System.currentTimeMillis()))
-            .take(6)
+    val suggestions = remember(selectedSymbol) {
+        if (selectedSymbol != null) {
+            buildSymbolSuggestions(selectedSymbol)
+        } else {
+            buildDefaultSuggestionPool()
+                .shuffled(Random(System.currentTimeMillis()))
+                .take(6)
+        }
     }
 
     Column(
