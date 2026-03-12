@@ -48,6 +48,7 @@ fun AiAssistantScreen(
     var query by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val focusManager = LocalFocusManager.current
+    val appTheme = LocalAppTheme.current
 
     // Auto-scroll to bottom when new messages arrive
     LaunchedEffect(chatHistory.size) {
@@ -59,7 +60,7 @@ fun AiAssistantScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(LocalAppTheme.current.surface)
+            .background(appTheme.surface)
     ) {
         // Header
         Row(
@@ -85,7 +86,7 @@ fun AiAssistantScreen(
                     Icon(
                         Icons.Filled.Psychology,
                         contentDescription = null,
-                        tint = LocalAppTheme.current.text,
+                        tint = Color.White,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -93,13 +94,13 @@ fun AiAssistantScreen(
                 Column {
                     Text(
                         "BYSEL AI Assistant",
-                        color = LocalAppTheme.current.text,
+                        color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp
                     )
                     Text(
                         "Your smart stock advisor",
-                        color = LocalAppTheme.current.text.copy(alpha = 0.7f),
+                        color = Color.White.copy(alpha = 0.78f),
                         fontSize = 12.sp
                     )
                 }
@@ -109,7 +110,7 @@ fun AiAssistantScreen(
                     Icon(
                         Icons.Filled.DeleteSweep,
                         contentDescription = "Clear chat",
-                        tint = LocalAppTheme.current.text.copy(alpha = 0.7f)
+                        tint = Color.White.copy(alpha = 0.78f)
                     )
                 }
             }
@@ -146,7 +147,7 @@ fun AiAssistantScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(LocalAppTheme.current.card)
+                .background(appTheme.card)
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -156,20 +157,20 @@ fun AiAssistantScreen(
                 placeholder = {
                     Text(
                         "Ask about any stock...",
-                        color = LocalAppTheme.current.textSecondary
+                        color = appTheme.textSecondary
                     )
                 },
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(min = 48.dp, max = 120.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = LocalAppTheme.current.text,
-                    unfocusedTextColor = LocalAppTheme.current.text,
-                    focusedBorderColor = Color(0xFF7C4DFF),
-                    unfocusedBorderColor = Color(0xFF333333),
-                    cursorColor = Color(0xFF7C4DFF),
-                    focusedContainerColor = Color(0xFF222222),
-                    unfocusedContainerColor = Color(0xFF222222)
+                    focusedTextColor = appTheme.text,
+                    unfocusedTextColor = appTheme.text,
+                    focusedBorderColor = appTheme.primary,
+                    unfocusedBorderColor = appTheme.textSecondary.copy(alpha = 0.35f),
+                    cursorColor = appTheme.primary,
+                    focusedContainerColor = appTheme.card,
+                    unfocusedContainerColor = appTheme.card
                 ),
                 shape = RoundedCornerShape(24.dp),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -195,14 +196,14 @@ fun AiAssistantScreen(
                 enabled = query.isNotBlank() && !isLoading,
                 modifier = Modifier.size(48.dp),
                 colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = Color(0xFF7C4DFF),
-                    disabledContainerColor = Color(0xFF333333)
+                    containerColor = appTheme.primary,
+                    disabledContainerColor = appTheme.textSecondary.copy(alpha = 0.35f)
                 )
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.Send,
                     contentDescription = "Send",
-                    tint = LocalAppTheme.current.text
+                    tint = Color.White
                 )
             }
             }
@@ -310,10 +311,10 @@ private fun SuggestionChip(
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF1A1A2E)
+            containerColor = LocalAppTheme.current.card
         ),
         border = androidx.compose.foundation.BorderStroke(
-            1.dp, Color(0xFF7C4DFF).copy(alpha = 0.3f)
+            1.dp, LocalAppTheme.current.primary.copy(alpha = 0.3f)
         )
     ) {
         Row(
@@ -323,7 +324,7 @@ private fun SuggestionChip(
             Icon(
                 icon,
                 contentDescription = null,
-                tint = Color(0xFF7C4DFF),
+                tint = LocalAppTheme.current.primary,
                 modifier = Modifier.size(16.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
@@ -357,13 +358,12 @@ private fun ChatBubble(
                 bottomEnd = if (message.isUser) 4.dp else 16.dp
             ),
             colors = CardDefaults.cardColors(
-                containerColor = if (message.isUser) Color(0xFF7C4DFF)
-                else Color(0xFF1A1A2E)
+                containerColor = if (message.isUser) LocalAppTheme.current.primary else LocalAppTheme.current.card
             )
         ) {
             Text(
                 text = message.text,
-                color = LocalAppTheme.current.text,
+                color = if (message.isUser) Color.White else LocalAppTheme.current.text,
                 fontSize = 14.sp,
                 modifier = Modifier.padding(12.dp),
                 lineHeight = 20.sp
@@ -383,14 +383,14 @@ private fun ChatBubble(
                             Text(
                                 suggestion,
                                 fontSize = 11.sp,
-                                color = Color(0xFF7C4DFF)
+                                color = LocalAppTheme.current.primary
                             )
                         },
                         colors = AssistChipDefaults.assistChipColors(
-                            containerColor = Color(0xFF1A1A2E)
+                            containerColor = LocalAppTheme.current.card
                         ),
                         border = AssistChipDefaults.assistChipBorder(
-                            borderColor = Color(0xFF7C4DFF).copy(alpha = 0.3f),
+                            borderColor = LocalAppTheme.current.primary.copy(alpha = 0.3f),
                             enabled = true
                         ),
                         shape = RoundedCornerShape(20.dp)
@@ -410,7 +410,7 @@ private fun TypingIndicator() {
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(
-                containerColor = Color(0xFF1A1A2E)
+                containerColor = LocalAppTheme.current.card
             )
         ) {
             Row(
@@ -422,7 +422,7 @@ private fun TypingIndicator() {
                         modifier = Modifier
                             .size(8.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF7C4DFF).copy(alpha = 0.6f))
+                            .background(LocalAppTheme.current.primary.copy(alpha = 0.6f))
                     )
                 }
             }
