@@ -22,12 +22,25 @@ def _unique_user(prefix: str) -> tuple[str, str, str]:
     return username, email, password
 
 
+def _register_and_get_access_token(prefix: str) -> str:
+    username, email, password = _unique_user(prefix)
+    register_response = client.post(
+        "/auth/register",
+        json={"username": username, "email": email, "password": password},
+    )
+    assert register_response.status_code == 200
+    return register_response.json()["access_token"]
+
+
 def _seed_trading_wallet(user_id: int = 1, balance: float = 1_000_000.0) -> None:
     db = SessionLocal()
     try:
-        db.query(WalletModel).filter(WalletModel.user_id == user_id).delete(synchronize_session=False)
-        wallet = WalletModel(user_id=user_id, balance=balance)
-        db.add(wallet)
+        wallet = db.query(WalletModel).filter(WalletModel.user_id == user_id).first()
+        if not wallet:
+            wallet = WalletModel(user_id=user_id, balance=balance)
+            db.add(wallet)
+        else:
+            wallet.balance = balance
         db.commit()
     finally:
         db.close()
@@ -85,6 +98,64 @@ def test_place_order(monkeypatch):
     assert data["status"] == "ok"
     assert data["order"]["symbol"] == "TCS"
     assert data["order"]["qty"] == 1
+
+
+def test_place_order_is_idempotent(monkeypatch):
+    _seed_trading_wallet()
+    _mock_live_market(monkeypatch, price=250.0)
+
+    order_data = {"symbol": "INFY", "qty": 2, "side": "BUY"}
+    headers = {"X-Idempotency-Key": "test-order-key-001", "X-Trace-Id": "trace-test-001"}
+
+    first = client.post("/order", json=order_data, headers=headers)
+    second = client.post("/order", json=order_data, headers=headers)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+
+    first_data = first.json()
+    second_data = second.json()
+
+    assert first_data["status"] == "ok"
+    assert second_data["status"] == "ok"
+    assert first_data["orderId"] == second_data["orderId"]
+    assert first_data["idempotencyKey"] == second_data["idempotencyKey"]
+    assert second_data["isDuplicate"] is True
+
+
+def test_place_order_invalid_side_has_deterministic_error_code():
+    order_data = {"symbol": "TCS", "qty": 1, "side": "HOLD"}
+
+    response = client.post("/order", json=order_data)
+    assert response.status_code == 200
+
+    payload = response.json()
+    assert payload["status"] == "error"
+    assert payload["errorCode"] == "INVALID_SIDE"
+
+
+def test_sip_plans_require_authentication():
+    response = client.get("/sip/plans")
+    assert response.status_code == 401
+
+
+def test_sip_plans_accessible_with_bearer_token():
+    access_token = _register_and_get_access_token("sip_auth_user")
+    response = client.get("/sip/plans", headers={"Authorization": f"Bearer {access_token}"})
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+
+def test_ipo_my_applications_require_authentication():
+    response = client.get("/ipos/my-applications")
+    assert response.status_code == 401
+
+
+def test_ipo_my_applications_accessible_with_bearer_token():
+    access_token = _register_and_get_access_token("ipo_auth_user")
+    response = client.get("/ipos/my-applications", headers={"Authorization": f"Bearer {access_token}"})
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
 
 
 def test_logout_all_invalidates_old_access_token():

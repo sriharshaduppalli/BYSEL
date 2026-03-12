@@ -10,8 +10,25 @@ import com.bysel.trader.data.local.BYSELDatabase
 import com.bysel.trader.data.models.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import java.util.UUID
 
 open class TradingRepository(private val database: BYSELDatabase) {
+
+    private companion object {
+        const val IDEMPOTENCY_WINDOW_MILLIS = 10_000L
+    }
+
+    private fun normalizeSymbol(value: String): String = value.trim().uppercase()
+
+    private fun normalizeSide(value: String): String = value.trim().uppercase()
+
+    private fun buildIdempotencyKey(order: Order): String {
+        val windowBucket = System.currentTimeMillis() / IDEMPOTENCY_WINDOW_MILLIS
+        val seed = "${normalizeSymbol(order.symbol)}|${normalizeSide(order.side)}|${order.qty}|$windowBucket"
+        return "ord-${UUID.nameUUIDFromBytes(seed.toByteArray())}"
+    }
+
+    private fun buildTraceId(): String = "trc-${UUID.randomUUID()}"
 
         suspend fun setDemoHoldings(holdings: List<Holding>) {
             // Overwrite holdings in local DB for demo
@@ -174,7 +191,17 @@ open class TradingRepository(private val database: BYSELDatabase) {
     // ==================== TRADING OPERATIONS ====================
     suspend fun placeOrder(order: Order): Result<OrderResponse> {
         return try {
-            val response = apiService.placeOrder(order)
+            val normalizedOrder = order.copy(
+                symbol = normalizeSymbol(order.symbol),
+                side = normalizeSide(order.side),
+            )
+            val idempotencyKey = normalizedOrder.idempotencyKey ?: buildIdempotencyKey(normalizedOrder)
+            val traceId = buildTraceId()
+            val response = apiService.placeOrder(
+                order = normalizedOrder.copy(idempotencyKey = idempotencyKey),
+                idempotencyKey = idempotencyKey,
+                traceId = traceId,
+            )
             Result.Success(response)
         } catch (e: Exception) {
             Result.Error(e.message ?: "Unknown error")
@@ -183,8 +210,14 @@ open class TradingRepository(private val database: BYSELDatabase) {
 
     suspend fun buyStock(symbol: String, quantity: Int): Result<OrderResponse> {
         return try {
-            val order = Order(symbol = symbol, qty = quantity, side = "BUY")
-            val response = apiService.buyStock(order)
+            val order = Order(symbol = normalizeSymbol(symbol), qty = quantity, side = "BUY")
+            val idempotencyKey = order.idempotencyKey ?: buildIdempotencyKey(order)
+            val traceId = buildTraceId()
+            val response = apiService.buyStock(
+                order = order.copy(idempotencyKey = idempotencyKey),
+                idempotencyKey = idempotencyKey,
+                traceId = traceId,
+            )
             Result.Success(response)
         } catch (e: Exception) {
             Result.Error(e.message ?: "Unknown error")
@@ -193,8 +226,14 @@ open class TradingRepository(private val database: BYSELDatabase) {
 
     suspend fun sellStock(symbol: String, quantity: Int): Result<OrderResponse> {
         return try {
-            val order = Order(symbol = symbol, qty = quantity, side = "SELL")
-            val response = apiService.sellStock(order)
+            val order = Order(symbol = normalizeSymbol(symbol), qty = quantity, side = "SELL")
+            val idempotencyKey = order.idempotencyKey ?: buildIdempotencyKey(order)
+            val traceId = buildTraceId()
+            val response = apiService.sellStock(
+                order = order.copy(idempotencyKey = idempotencyKey),
+                idempotencyKey = idempotencyKey,
+                traceId = traceId,
+            )
             Result.Success(response)
         } catch (e: Exception) {
             Result.Error(e.message ?: "Unknown error")

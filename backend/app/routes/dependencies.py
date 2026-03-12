@@ -1,7 +1,16 @@
+import os
+
 from fastapi import Header, HTTPException, Depends
 from sqlalchemy.orm import Session
 from ..database.db import SessionLocal, UserModel
 from .auth import validate_access_token_and_get_user
+
+
+def _is_truthy_env(value: str | None) -> bool:
+    return (value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+ALLOW_USER_ID_HEADER_FALLBACK = _is_truthy_env(os.getenv("ALLOW_USER_ID_HEADER_FALLBACK"))
 
 def get_db():
     db = SessionLocal()
@@ -21,7 +30,7 @@ def get_current_user(
         token = authorization.split(" ", 1)[1].strip()
         user = validate_access_token_and_get_user(token, db)
         resolved_user_id = int(user.id)
-    elif user_id is not None:
+    elif ALLOW_USER_ID_HEADER_FALLBACK and user_id is not None:
         resolved_user_id = user_id
 
     if resolved_user_id is None:

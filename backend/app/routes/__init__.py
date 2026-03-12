@@ -52,6 +52,28 @@ from ..models.schemas import (
     CopilotPostTradeRequest,
     CopilotPostTradeResponse,
     CopilotPortfolioActionsResponse,
+    SipPlanUpdateRequest, IPOApplicationRequest, IPOApplicationResponse, IPOApplication, ETFInstrument,
+    AdvancedOrderResponse,
+    TriggerOrderSummary,
+    BasketOrderRequest,
+    BasketOrderResponse,
+    BasketLegExecution,
+    OptionContract,
+    OptionChainResponse,
+    StrategyPreviewRequest,
+    StrategyPreviewResponse,
+    StrategyPayoffPoint,
+    FamilyMemberRequest,
+    FamilyMemberSummary,
+    FamilyDashboardResponse,
+    GoalPlanRequest,
+    GoalLinkRequest,
+    GoalPlanResponse,
+    CopilotPreTradeRequest,
+    CopilotSignal,
+    CopilotPostTradeRequest,
+    CopilotPostTradeResponse,
+    CopilotPortfolioActionsResponse,
 )
 from .trading import (
     get_holdings, get_holding, place_order,
@@ -765,23 +787,41 @@ async def get_holding_endpoint(symbol: str, db: Session = Depends(get_db)):
 # ==================== TRADING ====================
 
 @router.post("/order", response_model=OrderResponse)
-async def place_order_endpoint(order: Order, db: Session = Depends(get_db), user_id: int = Header(1)):
+async def place_order_endpoint(
+    order: Order,
+    user_id: int = Header(1),
+    x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
+    x_trace_id: str | None = Header(default=None, alias="X-Trace-Id"),
+    db: Session = Depends(get_db),
+):
     """Place a buy or sell order at live market price."""
-    return place_order(db, order, user_id=user_id)
+    return place_order(db, order, user_id=user_id, idempotency_key=x_idempotency_key, trace_id=x_trace_id)
 
 
 @router.post("/trade/buy", response_model=OrderResponse)
-async def buy_stock_endpoint(order: Order, db: Session = Depends(get_db), user_id: int = Header(1)):
+async def buy_stock_endpoint(
+    order: Order,
+    user_id: int = Header(1),
+    x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
+    x_trace_id: str | None = Header(default=None, alias="X-Trace-Id"),
+    db: Session = Depends(get_db),
+):
     """Buy stock at live market price."""
     order.side = "BUY"
-    return place_order(db, order, user_id=user_id)
+    return place_order(db, order, user_id=user_id, idempotency_key=x_idempotency_key, trace_id=x_trace_id)
 
 
 @router.post("/trade/sell", response_model=OrderResponse)
-async def sell_stock_endpoint(order: Order, db: Session = Depends(get_db), user_id: int = Header(1)):
+async def sell_stock_endpoint(
+    order: Order,
+    user_id: int = Header(1),
+    x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
+    x_trace_id: str | None = Header(default=None, alias="X-Trace-Id"),
+    db: Session = Depends(get_db),
+):
     """Sell stock at live market price."""
     order.side = "SELL"
-    return place_order(db, order, user_id=user_id)
+    return place_order(db, order, user_id=user_id, idempotency_key=x_idempotency_key, trace_id=x_trace_id)
 
 
 @router.get("/trades/history", response_model=list[TradeHistory])
@@ -1227,7 +1267,7 @@ async def get_mutual_fund_detail_endpoint(scheme_code: str, db: Session = Depend
 async def create_sip_plan_endpoint(
     request: SipPlanRequest,
     db: Session = Depends(get_db),
-    user_id: int = Header(1)
+    user=Depends(get_current_user),
 ):
     fund = db.query(MutualFundModel).filter(MutualFundModel.scheme_code == request.schemeCode).first()
     if not fund:
@@ -1247,7 +1287,7 @@ async def create_sip_plan_endpoint(
 
     next_date = (datetime.utcnow() + timedelta(days=30)).strftime("%Y-%m-%d")
     plan = SipPlanModel(
-        user_id=user_id,
+        user_id=int(user.id),
         scheme_code=request.schemeCode,
         scheme_name=fund.scheme_name,
         amount=request.amount,
@@ -1272,10 +1312,10 @@ async def create_sip_plan_endpoint(
 
 
 @router.get("/sip/plans", response_model=list[SipPlan])
-async def get_sip_plans_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
+async def get_sip_plans_endpoint(db: Session = Depends(get_db), user=Depends(get_current_user)):
     plans = (
         db.query(SipPlanModel)
-        .filter(SipPlanModel.user_id == user_id)
+        .filter(SipPlanModel.user_id == int(user.id))
         .order_by(SipPlanModel.created_at.desc())
         .all()
     )
@@ -1298,10 +1338,10 @@ async def update_sip_plan_endpoint(
     sip_id: str,
     request: SipPlanUpdateRequest,
     db: Session = Depends(get_db),
-    user_id: int = Header(1)
+    user=Depends(get_current_user),
 ):
     numeric_id = int(sip_id.replace("SIP-", "")) if sip_id.startswith("SIP-") else int(sip_id)
-    plan = db.query(SipPlanModel).filter(SipPlanModel.id == numeric_id, SipPlanModel.user_id == user_id).first()
+    plan = db.query(SipPlanModel).filter(SipPlanModel.id == numeric_id, SipPlanModel.user_id == int(user.id)).first()
     if not plan:
         raise HTTPException(status_code=404, detail=f"SIP plan '{sip_id}' not found")
 
@@ -1333,22 +1373,22 @@ async def update_sip_plan_endpoint(
 
 
 @router.post("/sip/plans/{sip_id}/pause", response_model=SipPlan)
-async def pause_sip_plan_endpoint(sip_id: str, db: Session = Depends(get_db), user_id: int = Header(1)):
+async def pause_sip_plan_endpoint(sip_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
     return await update_sip_plan_endpoint(
         sip_id=sip_id,
         request=SipPlanUpdateRequest(isActive=False),
         db=db,
-        user_id=user_id,
+        user=user,
     )
 
 
 @router.post("/sip/plans/{sip_id}/resume", response_model=SipPlan)
-async def resume_sip_plan_endpoint(sip_id: str, db: Session = Depends(get_db), user_id: int = Header(1)):
+async def resume_sip_plan_endpoint(sip_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
     return await update_sip_plan_endpoint(
         sip_id=sip_id,
         request=SipPlanUpdateRequest(isActive=True),
         db=db,
-        user_id=user_id,
+        user=user,
     )
 
 
@@ -1378,6 +1418,34 @@ async def get_ipos_endpoint(status: str | None = Query(None), db: Session = Depe
     ]
 
 
+@router.get("/ipos/my-applications", response_model=list[IPOApplication])
+async def get_my_ipo_applications_endpoint(
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    _seed_phase1_master_data(db)
+    applications = (
+        db.query(IPOApplicationModel, IPOModel)
+        .join(IPOModel, IPOApplicationModel.ipo_id == IPOModel.ipo_id)
+        .filter(IPOApplicationModel.user_id == int(user.id))
+        .order_by(IPOApplicationModel.created_at.desc())
+        .all()
+    )
+    return [
+        IPOApplication(
+            applicationId=f"APP-{application.id}",
+            ipoId=application.ipo_id,
+            companyName=ipo.company_name,
+            lots=application.lots,
+            bidPrice=application.bid_price,
+            upiId=application.upi_id,
+            status=application.status,
+            appliedAt=application.created_at.strftime("%Y-%m-%d %H:%M:%S") if application.created_at else "",
+        )
+        for application, ipo in applications
+    ]
+
+
 @router.get("/ipos/{ipo_id}", response_model=IPOListing)
 async def get_ipo_detail_endpoint(ipo_id: str, db: Session = Depends(get_db)):
     _seed_phase1_master_data(db)
@@ -1402,7 +1470,7 @@ async def get_ipo_detail_endpoint(ipo_id: str, db: Session = Depends(get_db)):
 async def apply_ipo_endpoint(
     request: IPOApplicationRequest,
     db: Session = Depends(get_db),
-    user_id: int = Header(1)
+    user=Depends(get_current_user),
 ):
     _seed_phase1_master_data(db)
     ipo = db.query(IPOModel).filter(IPOModel.ipo_id == request.ipoId).first()
@@ -1422,7 +1490,7 @@ async def apply_ipo_endpoint(
         raise HTTPException(status_code=400, detail=f"Bid price must be <= {ipo.price_band_max}")
 
     application = IPOApplicationModel(
-        user_id=user_id,
+        user_id=int(user.id),
         ipo_id=request.ipoId,
         lots=request.lots,
         bid_price=request.bidPrice,
@@ -1438,34 +1506,6 @@ async def apply_ipo_endpoint(
         status="PENDING",
         message="IPO application accepted for processing"
     )
-
-
-@router.get("/ipos/my-applications", response_model=list[IPOApplication])
-async def get_my_ipo_applications_endpoint(
-    db: Session = Depends(get_db),
-    user_id: int = Header(1)
-):
-    _seed_phase1_master_data(db)
-    applications = (
-        db.query(IPOApplicationModel, IPOModel)
-        .join(IPOModel, IPOApplicationModel.ipo_id == IPOModel.ipo_id)
-        .filter(IPOApplicationModel.user_id == user_id)
-        .order_by(IPOApplicationModel.created_at.desc())
-        .all()
-    )
-    return [
-        IPOApplication(
-            applicationId=f"APP-{application.id}",
-            ipoId=application.ipo_id,
-            companyName=ipo.company_name,
-            lots=application.lots,
-            bidPrice=application.bid_price,
-            upiId=application.upi_id,
-            status=application.status,
-            appliedAt=application.created_at.strftime("%Y-%m-%d %H:%M:%S") if application.created_at else "",
-        )
-        for application, ipo in applications
-    ]
 
 
 # ==================== PHASE 1: ETF ====================

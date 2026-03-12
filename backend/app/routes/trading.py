@@ -6,7 +6,9 @@ Enforces market hours and wallet balance checks.
 
 from datetime import datetime, time
 from typing import Iterable
+import hashlib
 import pytz
+from uuid import uuid4
 from sqlalchemy.orm import Session
 from ..database.db import (
     HoldingModel,
@@ -23,6 +25,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 IST = pytz.timezone("Asia/Kolkata")
+ORDER_STATUS_TRANSITIONS: dict[str, set[str]] = {
+    "PENDING": {"COMPLETED", "REJECTED", "TRIGGER_EXECUTED"},
+    "COMPLETED": set(),
+    "REJECTED": set(),
+    "TRIGGER_EXECUTED": set(),
+}
+MAX_IDEMPOTENCY_KEY_LENGTH = 128
+TRADING_WALLET_USER_ID = 0
+DEFAULT_TRADING_WALLET_BALANCE = 100000.0
 
 # NSE market holidays 2026 (approximate - major holidays)
 NSE_HOLIDAYS_2026 = {
@@ -47,6 +58,38 @@ NSE_HOLIDAYS_2026 = {
     "2026-11-27",  # Guru Nanak Jayanti
     "2026-12-25",  # Christmas
 }
+
+
+def _normalize_order_payload(order: Order, idempotency_key: str | None = None) -> Order:
+    """Normalize order payload for deterministic processing."""
+    symbol = (order.symbol or "").strip().upper()
+    side = (order.side or "").strip().upper()
+    resolved_key = (idempotency_key or order.idempotencyKey or "").strip() or None
+    return Order(
+        symbol=symbol,
+        qty=order.qty,
+        side=side,
+        orderType=getattr(order, "orderType", "MARKET"),
+        validity=getattr(order, "validity", "DAY"),
+        limitPrice=getattr(order, "limitPrice", None),
+        triggerPrice=getattr(order, "triggerPrice", None),
+        tag=getattr(order, "tag", None),
+        idempotencyKey=resolved_key,
+    )
+
+
+def _build_request_fingerprint(order: Order) -> str:
+    payload = f"{order.symbol}|{order.side}|{order.qty}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _transition_order_status(order_db: OrderModel, next_status: str) -> None:
+    current_status = (order_db.status or "PENDING").upper()
+    target_status = next_status.upper()
+    allowed = ORDER_STATUS_TRANSITIONS.get(current_status, set())
+    if target_status not in allowed:
+        raise ValueError(f"Invalid transition from {current_status} to {target_status}")
+    order_db.status = target_status
 
 
 def is_market_open() -> MarketStatus:
@@ -122,7 +165,7 @@ def _normalize_validity(value: str | None) -> str:
 def _wallet_for_user(db: Session, user_id: int) -> WalletModel:
     wallet = db.query(WalletModel).filter(WalletModel.user_id == user_id).first()
     if not wallet:
-        wallet = WalletModel(user_id=user_id, balance=0.0)
+        wallet = WalletModel(user_id=user_id, balance=DEFAULT_TRADING_WALLET_BALANCE)
         db.add(wallet)
         db.commit()
         db.refresh(wallet)
@@ -316,39 +359,49 @@ def _execute_order_at_price(
     user_id: int = 1,
     basket_id: int | None = None,
     status: str = "COMPLETED",
+    idempotency_key: str | None = None,
+    trace_id: str | None = None,
 ) -> tuple[OrderResponse, OrderModel]:
-    side = _normalize_side(order.side)
-    order_type = _normalize_order_type(getattr(order, "orderType", "MARKET"))
-    validity = _normalize_validity(getattr(order, "validity", "DAY"))
+    normalized_order = _normalize_order_payload(order, idempotency_key=idempotency_key)
+    resolved_trace_id = (trace_id or f"trc-{uuid4().hex[:16]}").strip()
+    side = _normalize_side(normalized_order.side)
+    order_type = _normalize_order_type(getattr(normalized_order, "orderType", "MARKET"))
+    validity = _normalize_validity(getattr(normalized_order, "validity", "DAY"))
     execution_price = float(execution_price)
     if execution_price <= 0:
         raise ValueError("execution_price must be positive")
 
     wallet = _wallet_for_user(db, user_id)
-    existing = db.query(HoldingModel).filter(HoldingModel.symbol == order.symbol).first()
+    existing = db.query(HoldingModel).filter(HoldingModel.symbol == normalized_order.symbol).first()
 
     if side == "BUY":
-        order_cost = execution_price * order.qty
+        order_cost = execution_price * normalized_order.qty
         if wallet.balance < order_cost:
             response = OrderResponse(
                 status="error",
-                order=order,
-                message=f"Insufficient funds. Need ₹{order_cost:.2f} but wallet has ₹{wallet.balance:.2f}"
+                order=normalized_order,
+                message=f"Insufficient funds. Need ₹{order_cost:.2f} but wallet has ₹{wallet.balance:.2f}",
+                traceId=resolved_trace_id,
+                idempotencyKey=normalized_order.idempotencyKey,
+                errorCode="INSUFFICIENT_FUNDS",
             )
             failed_order = OrderModel(
                 user_id=user_id,
-                symbol=order.symbol,
-                quantity=order.qty,
+                symbol=normalized_order.symbol,
+                quantity=normalized_order.qty,
                 side=side,
                 order_type=order_type,
                 validity=validity,
-                limit_price=getattr(order, "limitPrice", None),
-                trigger_price=getattr(order, "triggerPrice", None),
+                limit_price=getattr(normalized_order, "limitPrice", None),
+                trigger_price=getattr(normalized_order, "triggerPrice", None),
                 basket_id=basket_id,
-                tag=getattr(order, "tag", None),
+                tag=getattr(normalized_order, "tag", None),
                 price=execution_price,
                 total=round(order_cost, 2),
                 status="REJECTED",
+                idempotency_key=normalized_order.idempotencyKey,
+                request_fingerprint=_build_request_fingerprint(normalized_order),
+                trace_id=resolved_trace_id,
             )
             db.add(failed_order)
             db.commit()
@@ -357,51 +410,57 @@ def _execute_order_at_price(
 
         wallet.balance -= order_cost
         if existing:
-            total_cost = (existing.avg_price * existing.quantity) + (execution_price * order.qty)
-            existing.quantity += order.qty
+            total_cost = (existing.avg_price * existing.quantity) + (execution_price * normalized_order.qty)
+            existing.quantity += normalized_order.qty
             existing.avg_price = round(total_cost / existing.quantity, 2)
             existing.last_price = execution_price
             existing.pnl = round((execution_price - existing.avg_price) * existing.quantity, 2)
         else:
             db.add(
                 HoldingModel(
-                    symbol=order.symbol,
-                    quantity=order.qty,
+                    symbol=normalized_order.symbol,
+                    quantity=normalized_order.qty,
                     avg_price=execution_price,
                     last_price=execution_price,
                     pnl=0.0,
                 )
             )
     else:
-        if not existing or existing.quantity < order.qty:
+        if not existing or existing.quantity < normalized_order.qty:
             response = OrderResponse(
                 status="error",
-                order=order,
-                message=f"Insufficient holdings: have {existing.quantity if existing else 0}, trying to sell {order.qty}"
+                order=normalized_order,
+                message=f"Insufficient holdings: have {existing.quantity if existing else 0}, trying to sell {normalized_order.qty}",
+                traceId=resolved_trace_id,
+                idempotencyKey=normalized_order.idempotencyKey,
+                errorCode="INSUFFICIENT_HOLDINGS",
             )
             failed_order = OrderModel(
                 user_id=user_id,
-                symbol=order.symbol,
-                quantity=order.qty,
+                symbol=normalized_order.symbol,
+                quantity=normalized_order.qty,
                 side=side,
                 order_type=order_type,
                 validity=validity,
-                limit_price=getattr(order, "limitPrice", None),
-                trigger_price=getattr(order, "triggerPrice", None),
+                limit_price=getattr(normalized_order, "limitPrice", None),
+                trigger_price=getattr(normalized_order, "triggerPrice", None),
                 basket_id=basket_id,
-                tag=getattr(order, "tag", None),
+                tag=getattr(normalized_order, "tag", None),
                 price=execution_price,
-                total=round(execution_price * order.qty, 2),
+                total=round(execution_price * normalized_order.qty, 2),
                 status="REJECTED",
+                idempotency_key=normalized_order.idempotencyKey,
+                request_fingerprint=_build_request_fingerprint(normalized_order),
+                trace_id=resolved_trace_id,
             )
             db.add(failed_order)
             db.commit()
             db.refresh(failed_order)
             return response, failed_order
 
-        sale_proceeds = execution_price * order.qty
+        sale_proceeds = execution_price * normalized_order.qty
         wallet.balance += sale_proceeds
-        existing.quantity -= order.qty
+        existing.quantity -= normalized_order.qty
         existing.last_price = execution_price
         if existing.quantity == 0:
             db.delete(existing)
@@ -410,28 +469,33 @@ def _execute_order_at_price(
 
     order_db = OrderModel(
         user_id=user_id,
-        symbol=order.symbol,
-        quantity=order.qty,
+        symbol=normalized_order.symbol,
+        quantity=normalized_order.qty,
         side=side,
         order_type=order_type,
         validity=validity,
-        limit_price=getattr(order, "limitPrice", None),
-        trigger_price=getattr(order, "triggerPrice", None),
+        limit_price=getattr(normalized_order, "limitPrice", None),
+        trigger_price=getattr(normalized_order, "triggerPrice", None),
         basket_id=basket_id,
-        tag=getattr(order, "tag", None),
+        tag=getattr(normalized_order, "tag", None),
         price=execution_price,
-        total=round(execution_price * order.qty, 2),
-        status=status,
+        total=round(execution_price * normalized_order.qty, 2),
+        status="PENDING",
+        idempotency_key=normalized_order.idempotencyKey,
+        request_fingerprint=_build_request_fingerprint(normalized_order),
+        trace_id=resolved_trace_id,
     )
     db.add(order_db)
+    _transition_order_status(order_db, status.upper())
     db.commit()
     db.refresh(order_db)
 
     logger.info(
-        "Order executed: %s %sx %s @ ₹%.2f | Wallet: ₹%.2f | user=%s",
+        "Order executed trace_id=%s: %s %sx %s @ ₹%.2f | Wallet: ₹%.2f | user=%s",
+        resolved_trace_id,
         side,
-        order.qty,
-        order.symbol,
+        normalized_order.qty,
+        normalized_order.symbol,
         execution_price,
         wallet.balance,
         user_id,
@@ -440,8 +504,15 @@ def _execute_order_at_price(
     return (
         OrderResponse(
             status="ok",
-            order=order,
-            message=f"{side} {order.qty} shares of {order.symbol} @ ₹{execution_price:.2f} = ₹{execution_price * order.qty:.2f} | Balance: ₹{wallet.balance:.2f}",
+            order=normalized_order,
+            message=f"{side} {normalized_order.qty} shares of {normalized_order.symbol} @ ₹{execution_price:.2f} = ₹{execution_price * normalized_order.qty:.2f} | Balance: ₹{wallet.balance:.2f}",
+            orderId=order_db.id,
+            executedPrice=round(order_db.price or 0.0, 2),
+            total=round(order_db.total or 0.0, 2),
+            orderStatus=order_db.status,
+            traceId=resolved_trace_id,
+            idempotencyKey=normalized_order.idempotencyKey,
+            isDuplicate=False,
         ),
         order_db,
     )
@@ -535,51 +606,155 @@ def evaluate_pending_triggers(
     return results
 
 
-def place_order(db: Session, order: Order, user_id: int = 1) -> OrderResponse:
-    """Place a buy or sell order using REAL market price.
-    Checks market hours and wallet balance."""
-    order.side = _normalize_side(order.side)
-    order.orderType = _normalize_order_type(getattr(order, "orderType", "MARKET"))
-    order.validity = _normalize_validity(getattr(order, "validity", "DAY"))
+def place_order(
+    db: Session,
+    order: Order,
+    user_id: int = 1,
+    idempotency_key: str | None = None,
+    trace_id: str | None = None,
+) -> OrderResponse:
+    """Place a buy or sell order with idempotency and deterministic status handling."""
+    normalized_order = _normalize_order_payload(order, idempotency_key=idempotency_key)
+    resolved_trace_id = (trace_id or f"trc-{uuid4().hex[:16]}").strip()
 
+    try:
+        normalized_order.side = _normalize_side(normalized_order.side)
+        normalized_order.orderType = _normalize_order_type(getattr(normalized_order, "orderType", "MARKET"))
+        normalized_order.validity = _normalize_validity(getattr(normalized_order, "validity", "DAY"))
+    except ValueError as exc:
+        message = str(exc)
+        error_code = "INVALID_SIDE"
+        if "orderType" in message:
+            error_code = "INVALID_ORDER_TYPE"
+        elif "validity" in message:
+            error_code = "INVALID_VALIDITY"
+        return OrderResponse(
+            status="error",
+            order=normalized_order,
+            message=message,
+            traceId=resolved_trace_id,
+            idempotencyKey=normalized_order.idempotencyKey,
+            errorCode=error_code,
+        )
+
+    if not normalized_order.symbol:
+        return OrderResponse(
+            status="error",
+            order=normalized_order,
+            message="Symbol is required",
+            traceId=resolved_trace_id,
+            idempotencyKey=normalized_order.idempotencyKey,
+            errorCode="INVALID_SYMBOL",
+        )
+
+    if normalized_order.qty <= 0:
+        return OrderResponse(
+            status="error",
+            order=normalized_order,
+            message="Quantity must be greater than zero",
+            traceId=resolved_trace_id,
+            idempotencyKey=normalized_order.idempotencyKey,
+            errorCode="INVALID_QUANTITY",
+        )
+
+    if normalized_order.side not in {"BUY", "SELL"}:
+        return OrderResponse(
+            status="error",
+            order=normalized_order,
+            message="Side must be BUY or SELL",
+            traceId=resolved_trace_id,
+            idempotencyKey=normalized_order.idempotencyKey,
+            errorCode="INVALID_SIDE",
+        )
+
+    if (
+        normalized_order.idempotencyKey
+        and len(normalized_order.idempotencyKey) > MAX_IDEMPOTENCY_KEY_LENGTH
+    ):
+        return OrderResponse(
+            status="error",
+            order=normalized_order,
+            message=f"Idempotency key exceeds {MAX_IDEMPOTENCY_KEY_LENGTH} characters",
+            traceId=resolved_trace_id,
+            idempotencyKey=normalized_order.idempotencyKey,
+            errorCode="INVALID_IDEMPOTENCY_KEY",
+        )
+
+    if normalized_order.idempotencyKey:
+        duplicate_order = (
+            db.query(OrderModel)
+            .filter(
+                OrderModel.idempotency_key == normalized_order.idempotencyKey,
+                OrderModel.user_id == user_id,
+            )
+            .order_by(OrderModel.id.desc())
+            .first()
+        )
+        if duplicate_order:
+            return OrderResponse(
+                status="ok",
+                order=normalized_order,
+                message="Duplicate order request acknowledged. Returning existing execution result.",
+                orderId=duplicate_order.id,
+                executedPrice=round(duplicate_order.price or 0.0, 2),
+                total=round(duplicate_order.total or 0.0, 2),
+                orderStatus=duplicate_order.status,
+                traceId=duplicate_order.trace_id or resolved_trace_id,
+                idempotencyKey=duplicate_order.idempotency_key,
+                isDuplicate=True,
+            )
     market = is_market_open()
     if not market.isOpen:
         return OrderResponse(
             status="error",
-            order=order,
-            message=f"Cannot trade: {market.message}"
+            order=normalized_order,
+            message=f"Cannot trade: {market.message}",
+            traceId=resolved_trace_id,
+            idempotencyKey=normalized_order.idempotencyKey,
+            errorCode="MARKET_CLOSED",
         )
 
-    live_quote = fetch_quote(order.symbol)
+    live_quote = fetch_quote(normalized_order.symbol)
     live_price = float(live_quote.get("last") or 0.0)
 
     if live_price <= 0:
         return OrderResponse(
             status="error",
-            order=order,
-            message=f"Could not fetch live price for {order.symbol}"
+            order=normalized_order,
+            message=f"Could not fetch live price for {normalized_order.symbol}",
+            traceId=resolved_trace_id,
+            idempotencyKey=normalized_order.idempotencyKey,
+            errorCode="PRICE_UNAVAILABLE",
         )
 
-    if order.orderType in {"LIMIT", "SL", "SLM"} and not _should_trigger(order, live_price):
-        if order.validity == "IOC":
+    if normalized_order.orderType in {"LIMIT", "SL", "SLM"} and not _should_trigger(normalized_order, live_price):
+        if normalized_order.validity == "IOC":
             return OrderResponse(
                 status="error",
-                order=order,
-                message="IOC order cancelled because trigger/limit condition was not met"
+                order=normalized_order,
+                message="IOC order cancelled because trigger/limit condition was not met",
+                traceId=resolved_trace_id,
+                idempotencyKey=normalized_order.idempotencyKey,
+                errorCode="TRIGGER_NOT_MET",
             )
 
-        trigger = _create_trigger_entry(db, order, user_id=user_id)
+        trigger = _create_trigger_entry(db, normalized_order, user_id=user_id)
         return OrderResponse(
             status="ok",
-            order=order,
-            message=f"Order accepted as server-side trigger (id={trigger.id}) and will execute when conditions are met"
+            order=normalized_order,
+            message=f"Order accepted as server-side trigger (id={trigger.id}) and will execute when conditions are met",
+            orderStatus="PENDING",
+            traceId=resolved_trace_id,
+            idempotencyKey=normalized_order.idempotencyKey,
         )
 
-    exec_price = _execution_price(order, live_price)
+    exec_price = _execution_price(normalized_order, live_price)
     response, _ = _execute_order_at_price(
         db=db,
-        order=order,
+        order=normalized_order,
         execution_price=exec_price,
         user_id=user_id,
+        idempotency_key=normalized_order.idempotencyKey,
+        trace_id=resolved_trace_id,
     )
     return response
