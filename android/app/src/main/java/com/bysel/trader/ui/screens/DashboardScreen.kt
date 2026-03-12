@@ -106,7 +106,9 @@ fun DashboardScreen(
                 newsPinned = newsPinned,
                 watchlistPinned = watchlistPinned,
                 widgetOrder = widgetOrder,
-                pinnedStocks = pinnedStocks
+                pinnedStocks = pinnedStocks,
+                showOnboarding = showOnboarding,
+                onShowOnboarding = { showOnboarding = it }
             )
         }
     }
@@ -125,7 +127,9 @@ fun DashboardContent(
     newsPinned: Boolean,
     watchlistPinned: Boolean,
     widgetOrder: List<String>,
-    pinnedStocks: Set<String>
+    pinnedStocks: Set<String>,
+    showOnboarding: Boolean = false,
+    onShowOnboarding: (Boolean) -> Unit = {}
 ) {
     // Precompute filtered/sorted lists to avoid repeated work on recomposition
     val pinnedList = remember(quotes, pinnedStocks) {
@@ -162,7 +166,7 @@ fun DashboardContent(
                 Text("Reset Layout")
             }
             // Onboarding/tutorial button
-            IconButton(onClick = { showOnboarding = true }) {
+            IconButton(onClick = { onShowOnboarding(true) }) {
                 Icon(Icons.Default.Info, contentDescription = "Show Dashboard Tutorial")
             }
         }
