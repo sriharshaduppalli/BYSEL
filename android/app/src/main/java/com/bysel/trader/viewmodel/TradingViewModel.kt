@@ -1146,9 +1146,12 @@ class TradingViewModel(
 
     // --- AI assistant ---
     fun askAi(query: String) {
+        val cleanedQuery = query.trim()
+        if (cleanedQuery.isBlank()) return
+
         viewModelScope.launch {
             _aiLoading.value = true
-            _chatHistory.value = _chatHistory.value + ChatMessage(query, isUser = true)
+            _chatHistory.value = _chatHistory.value + ChatMessage(cleanedQuery, isUser = true)
             // Build context: holdings, wallet balance, portfolio health where available
             val holdingsSummary = _holdings.value.joinToString(separator = ";") { h ->
                 "${h.symbol}:${h.qty}@${h.last}"
@@ -1197,7 +1200,7 @@ class TradingViewModel(
                 contextParts.add("history_closes=[$closesShort]")
             }
 
-            val prompt = PromptBuilder.buildPrompt(query, holdingsSummary, wallet, portfolio?.overallScore, _selectedQuote.value, recentHistory)
+            val prompt = PromptBuilder.buildPrompt(cleanedQuery, holdingsSummary, wallet, portfolio?.overallScore, _selectedQuote.value, recentHistory)
 
             when (val r = repository.aiAsk(prompt)) {
                 is Result.Success -> {

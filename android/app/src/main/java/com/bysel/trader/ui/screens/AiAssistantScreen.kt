@@ -1,8 +1,4 @@
 package com.bysel.trader.ui.screens
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
-import androidx.compose.material.icons.automirrored.filled.CompareArrows
-
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -36,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.viewmodel.ChatMessage
 import com.bysel.trader.ui.theme.LocalAppTheme
+import kotlin.random.Random
 
 @Composable
 fun AiAssistantScreen(
@@ -118,7 +115,12 @@ fun AiAssistantScreen(
         // Chat messages
         if (chatHistory.isEmpty()) {
             // Welcome screen
-            WelcomeContent(onSuggestionClick = onSuggestionClick)
+            WelcomeContent(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                onSuggestionClick = onSuggestionClick
+            )
         } else {
             LazyColumn(
                 state = listState,
@@ -174,7 +176,7 @@ fun AiAssistantScreen(
                 shape = RoundedCornerShape(24.dp),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = {
-                    if (query.isNotBlank()) {
+                    if (query.isNotBlank() && !isLoading) {
                         onSendQuery(query.trim())
                         query = ""
                         focusManager.clearFocus()
@@ -186,7 +188,7 @@ fun AiAssistantScreen(
             Spacer(modifier = Modifier.width(8.dp))
             FilledIconButton(
                 onClick = {
-                    if (query.isNotBlank()) {
+                    if (query.isNotBlank() && !isLoading) {
                         onSendQuery(query.trim())
                         query = ""
                         focusManager.clearFocus()
@@ -210,19 +212,32 @@ fun AiAssistantScreen(
     }
 
 @Composable
-private fun WelcomeContent(onSuggestionClick: (String) -> Unit) {
-    val suggestions = listOf(
+private fun WelcomeContent(
+    modifier: Modifier = Modifier,
+    onSuggestionClick: (String) -> Unit
+) {
+    val suggestionPool = listOf(
         "Should I buy RELIANCE?" to Icons.AutoMirrored.Filled.TrendingUp,
         "Predict TCS price" to Icons.Filled.Timeline,
         "Compare INFY and TCS" to Icons.AutoMirrored.Filled.CompareArrows,
         "Best bank stocks" to Icons.Filled.AccountBalance,
         "Analyze HDFCBANK" to Icons.Filled.Analytics,
         "Is SBIN overvalued?" to Icons.Filled.PriceCheck,
+        "Analyze Tata Motors" to Icons.Filled.Analytics,
+        "Should I buy Infosys?" to Icons.AutoMirrored.Filled.TrendingUp,
+        "Compare ICICI Bank and HDFC Bank" to Icons.AutoMirrored.Filled.CompareArrows,
+        "Top energy stocks" to Icons.Filled.Bolt,
+        "Predict Wipro price" to Icons.Filled.Timeline,
+        "Analyze Larsen and Toubro" to Icons.Filled.Analytics,
     )
+    val suggestions = remember {
+        suggestionPool
+            .shuffled(Random(System.currentTimeMillis()))
+            .take(6)
+    }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
+        modifier = modifier
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -263,6 +278,13 @@ private fun WelcomeContent(onSuggestionClick: (String) -> Unit) {
             fontSize = 14.sp,
             textAlign = TextAlign.Center,
             lineHeight = 20.sp
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "Or type your own question in the box below.",
+            color = LocalAppTheme.current.textSecondary,
+            fontSize = 12.sp,
+            textAlign = TextAlign.Center
         )
 
         Spacer(modifier = Modifier.height(32.dp))

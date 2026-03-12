@@ -14,6 +14,7 @@ No external AI API required — runs entirely on-device with yfinance data.
 import yfinance as yf
 import numpy as np
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from .market_data import _yf_ticker, INDIAN_STOCKS, fetch_quote
@@ -540,6 +541,140 @@ def _generate_summary(
 # NATURAL LANGUAGE ASSISTANT
 # ──────────────────────────────────────────────────────────────
 
+_COMPANY_SUFFIX_WORDS = {
+    "ltd",
+    "limited",
+    "india",
+    "ind",
+    "co",
+    "company",
+    "corporation",
+    "corp",
+    "services",
+    "service",
+    "industries",
+    "industry",
+    "enterprises",
+    "enterprise",
+    "financial",
+    "finance",
+}
+
+_MANUAL_STOCK_ALIASES = {
+    "sbi": "SBIN",
+    "state bank": "SBIN",
+    "state bank of india": "SBIN",
+    "hdfc bank": "HDFCBANK",
+    "icici bank": "ICICIBANK",
+    "kotak bank": "KOTAKBANK",
+    "axis bank": "AXISBANK",
+    "l and t": "LT",
+    "l&t": "LT",
+    "larsen and toubro": "LT",
+    "reliance": "RELIANCE",
+    "infosys": "INFY",
+    "tata motors": "TATAMOTORS",
+    "tata steel": "TATASTEEL",
+    "bharti airtel": "BHARTIARTL",
+    "sun pharma": "SUNPHARMA",
+    "adani ports": "ADANIPORTS",
+    "zomato": "ZOMATO",
+}
+
+
+def _extract_user_query(raw_query: str) -> str:
+    """Strip app-added wrapper so symbol detection sees only user text."""
+    original = (raw_query or "").strip()
+    if not original:
+        return ""
+
+    query = original
+    if query.lower().startswith("user_query:"):
+        query = query.split(":", 1)[1].strip()
+
+    if " | context:" in query:
+        query = query.split(" | context:", 1)[0].strip()
+
+    return query or original
+
+
+def _normalize_phrase(text: str) -> str:
+    normalized = (text or "").lower().replace("&", " and ")
+    normalized = re.sub(r"[^a-z0-9]+", " ", normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _strip_company_suffixes(name: str) -> str:
+    tokens = _normalize_phrase(name).split()
+    return " ".join([token for token in tokens if token not in _COMPANY_SUFFIX_WORDS])
+
+
+def _build_symbol_alias_index() -> Dict[str, str]:
+    aliases: Dict[str, str] = {}
+
+    for phrase, symbol in _MANUAL_STOCK_ALIASES.items():
+        normalized_phrase = _normalize_phrase(phrase)
+        if normalized_phrase:
+            aliases[normalized_phrase] = symbol.upper()
+
+    for symbol, (ticker, name) in INDIAN_STOCKS.items():
+        symbol_upper = symbol.upper()
+
+        normalized_symbol = _normalize_phrase(symbol)
+        if normalized_symbol:
+            aliases.setdefault(normalized_symbol, symbol_upper)
+
+        if ticker:
+            ticker_base = ticker.upper().replace(".NS", "").replace(".BO", "")
+            normalized_ticker = _normalize_phrase(ticker_base)
+            if normalized_ticker:
+                aliases.setdefault(normalized_ticker, symbol_upper)
+
+        normalized_name = _normalize_phrase(name)
+        if normalized_name:
+            aliases.setdefault(normalized_name, symbol_upper)
+
+        stripped_name = _strip_company_suffixes(name)
+        if len(stripped_name) >= 4:
+            aliases.setdefault(stripped_name, symbol_upper)
+
+            parts = stripped_name.split()
+            if len(parts) >= 2:
+                aliases.setdefault(" ".join(parts[:2]), symbol_upper)
+            if len(parts) >= 3:
+                aliases.setdefault(" ".join(parts[:3]), symbol_upper)
+
+    return aliases
+
+
+_SYMBOL_ALIAS_INDEX = _build_symbol_alias_index()
+_SORTED_SYMBOL_ALIASES = sorted(
+    _SYMBOL_ALIAS_INDEX.items(),
+    key=lambda item: len(item[0]),
+    reverse=True,
+)
+
+
+def _build_help_response() -> Dict:
+    return {
+        "type": "help",
+        "answer": "I can help you with Indian stocks! Try asking:\n\n"
+                  "• \"Should I buy RELIANCE?\"\n"
+                  "• \"Predict TCS price\"\n"
+                  "• \"Compare INFY and TCS\"\n"
+                  "• \"Best bank stocks\"\n"
+                  "• \"Analyze SBIN\"\n"
+                  "• \"Is HDFCBANK overvalued?\"\n\n"
+                  "I cover 363+ Indian stocks with live data!",
+        "suggestions": [
+            "Should I buy RELIANCE?",
+            "Predict TCS price",
+            "Best pharma stocks",
+            "Compare INFY and TCS",
+            "Analyze HDFCBANK",
+        ],
+    }
+
 def ai_assistant(query: str) -> Dict:
     """
     Process natural language queries about stocks.
@@ -550,20 +685,24 @@ def ai_assistant(query: str) -> Dict:
       - "Is SBIN overvalued?"
       - "Predict Tata Motors price"
     """
-    query_lower = query.lower().strip()
+    user_query = _extract_user_query(query)
+    query_lower = user_query.lower().strip()
+
+    if not query_lower:
+        return _build_help_response()
 
     # Extract symbol(s) from query
-    symbols = _extract_symbols(query)
+    symbols = _extract_symbols(user_query)
 
     # Route to appropriate handler
     if any(w in query_lower for w in ["predict", "forecast", "future", "target", "price prediction"]):
-        return _handle_prediction_query(symbols, query)
+        return _handle_prediction_query(symbols, user_query)
 
     elif any(w in query_lower for w in ["compare", "vs", "versus", "better"]):
-        return _handle_compare_query(symbols, query)
+        return _handle_compare_query(symbols, user_query)
 
     elif any(w in query_lower for w in ["buy", "sell", "should i", "invest", "good time"]):
-        return _handle_buy_sell_query(symbols, query)
+        return _handle_buy_sell_query(symbols, user_query)
 
     elif any(w in query_lower for w in ["best", "top", "undervalued", "overvalued", "cheap", "value", "recommend", "suggest", "portfolio", "watchlist"]):
         # Personalized recommendation logic
@@ -580,31 +719,14 @@ def ai_assistant(query: str) -> Dict:
         else:
             return _handle_screening_query(query_lower, symbols)
     elif any(w in query_lower for w in ["analyze", "analysis", "detail", "about", "tell me"]):
-        return _handle_analysis_query(symbols, query)
+        return _handle_analysis_query(symbols, user_query)
 
     elif symbols:
         # Default: analyze first symbol found
-        return _handle_analysis_query(symbols, query)
+        return _handle_analysis_query(symbols, user_query)
 
     else:
-        return {
-            "type": "help",
-            "answer": "I can help you with Indian stocks! Try asking:\n\n"
-                      "• \"Should I buy RELIANCE?\"\n"
-                      "• \"Predict TCS price\"\n"
-                      "• \"Compare INFY and TCS\"\n"
-                      "• \"Best bank stocks\"\n"
-                      "• \"Analyze SBIN\"\n"
-                      "• \"Is HDFCBANK overvalued?\"\n\n"
-                      "I cover 363+ Indian stocks with live data!",
-            "suggestions": [
-                "Should I buy RELIANCE?",
-                "Predict TCS price",
-                "Best pharma stocks",
-                "Compare INFY and TCS",
-                "Analyze HDFCBANK",
-            ],
-        }
+        return _build_help_response()
 
 
 def _get_user_portfolio(db=None):
@@ -640,29 +762,48 @@ def _handle_personalized_recommendation(query, symbols, portfolio):
 
 def _extract_symbols(query: str) -> List[str]:
     """Extract stock symbols from a natural language query."""
-    symbols = []
-    query_upper = query.upper()
-    words = query_upper.replace(",", " ").replace(".", " ").split()
+    symbols: List[str] = []
+    seen: set[str] = set()
 
-    # Direct symbol match
-    for word in words:
-        clean = word.strip("?!.,")
-        if clean in INDIAN_STOCKS:
-            symbols.append(clean)
+    def _add_symbol(symbol_value: str) -> None:
+        symbol_upper = symbol_value.upper()
+        if symbol_upper in INDIAN_STOCKS and symbol_upper not in seen:
+            seen.add(symbol_upper)
+            symbols.append(symbol_upper)
 
-    # Name-based match if no symbols found
-    if not symbols:
-        query_lower = query.lower()
-        for sym, (ticker, name) in INDIAN_STOCKS.items():
-            # Match company short names
-            short_names = name.lower().replace(" ltd", "").replace(" limited", "").split()
-            for word in short_names:
-                if len(word) > 3 and word in query_lower:
-                    if sym not in symbols:
-                        symbols.append(sym)
-                    break
+    query_text = _extract_user_query(query)
+    query_upper = query_text.upper()
 
-    return symbols[:5]  # Max 5 symbols
+    # Direct symbol and ticker token matching.
+    for raw_token in re.findall(r"[A-Za-z0-9&.\-]+", query_upper):
+        token = raw_token.strip("?!.,:;()[]{}\"' ")
+        if not token:
+            continue
+
+        if token.endswith(".NS") or token.endswith(".BO"):
+            token = token.rsplit(".", 1)[0]
+
+        if token in INDIAN_STOCKS:
+            _add_symbol(token)
+            continue
+
+        condensed = token.replace("-", "")
+        if condensed in INDIAN_STOCKS:
+            _add_symbol(condensed)
+
+    normalized_query = _normalize_phrase(query_text)
+    padded_query = f" {normalized_query} "
+
+    # Company-name alias matching to support lowercase and common names.
+    for alias, symbol in _SORTED_SYMBOL_ALIASES:
+        if not alias:
+            continue
+        if f" {alias} " in padded_query:
+            _add_symbol(symbol)
+            if len(symbols) >= 5:
+                break
+
+    return symbols[:5]
 
 
 def _handle_prediction_query(symbols: List[str], query: str) -> Dict:
