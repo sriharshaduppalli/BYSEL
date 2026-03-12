@@ -168,10 +168,10 @@ fun AiAssistantScreen(
                     focusedTextColor = LocalAppTheme.current.text,
                     unfocusedTextColor = LocalAppTheme.current.text,
                     focusedBorderColor = Color(0xFF7C4DFF),
-                    unfocusedBorderColor = Color(0xFF333333),
+                    unfocusedBorderColor = LocalAppTheme.current.textSecondary.copy(alpha = 0.5f),
                     cursorColor = Color(0xFF7C4DFF),
-                    focusedContainerColor = Color(0xFF222222),
-                    unfocusedContainerColor = Color(0xFF222222)
+                    focusedContainerColor = LocalAppTheme.current.card,
+                    unfocusedContainerColor = LocalAppTheme.current.card
                 ),
                 shape = RoundedCornerShape(24.dp),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -332,7 +332,7 @@ private fun SuggestionChip(
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF1A1A2E)
+            containerColor = LocalAppTheme.current.card
         ),
         border = androidx.compose.foundation.BorderStroke(
             1.dp, Color(0xFF7C4DFF).copy(alpha = 0.3f)
@@ -409,7 +409,7 @@ private fun ChatBubble(
                             )
                         },
                         colors = AssistChipDefaults.assistChipColors(
-                            containerColor = Color(0xFF1A1A2E)
+                            containerColor = LocalAppTheme.current.card
                         ),
                         border = AssistChipDefaults.assistChipBorder(
                             borderColor = Color(0xFF7C4DFF).copy(alpha = 0.3f),
@@ -432,7 +432,7 @@ private fun TypingIndicator() {
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(
-                containerColor = Color(0xFF1A1A2E)
+                containerColor = LocalAppTheme.current.card
             )
         ) {
             Row(

@@ -163,7 +163,7 @@ private fun MarketBreadthCard(heatmap: MarketHeatmap) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E))
+        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
@@ -288,7 +288,7 @@ private fun SectorHeatmapCard(sector: HeatmapSector, onStockClick: (String) -> U
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E))
+        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             // Sector header

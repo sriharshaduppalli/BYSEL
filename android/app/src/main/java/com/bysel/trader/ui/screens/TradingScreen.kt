@@ -327,7 +327,7 @@ fun TradingScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E)),
+            colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
             shape = RoundedCornerShape(10.dp)
         ) {
             Row(
@@ -706,7 +706,7 @@ fun TradeDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E)),
+                    colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Row(
@@ -751,7 +751,7 @@ fun TradeDialog(
                             .weight(1f)
                             .height(40.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (tradeType == "BUY") Color(0xFF00B050) else Color(0xFF2A2A2A)
+                            containerColor = if (tradeType == "BUY") Color(0xFF00B050) else LocalAppTheme.current.card
                         )
                     ) {
                         Text("Buy", fontWeight = FontWeight.Bold)
@@ -763,7 +763,7 @@ fun TradeDialog(
                             .weight(1f)
                             .height(40.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (tradeType == "SELL") LocalAppTheme.current.negative else Color(0xFF2A2A2A)
+                            containerColor = if (tradeType == "SELL") LocalAppTheme.current.negative else LocalAppTheme.current.card
                         )
                     ) {
                         Text("Sell", fontWeight = FontWeight.Bold)
@@ -787,14 +787,14 @@ fun TradeDialog(
                         onClick = { orderType = "MARKET" },
                         label = { Text("Market") },
                         colors = AssistChipDefaults.assistChipColors(
-                            containerColor = if (orderType == "MARKET") LocalAppTheme.current.primary.copy(alpha = 0.25f) else Color(0xFF2A2A2A)
+                            containerColor = if (orderType == "MARKET") LocalAppTheme.current.primary.copy(alpha = 0.25f) else LocalAppTheme.current.card
                         )
                     )
                     AssistChip(
                         onClick = { orderType = "LIMIT" },
                         label = { Text("Limit") },
                         colors = AssistChipDefaults.assistChipColors(
-                            containerColor = if (orderType == "LIMIT") LocalAppTheme.current.primary.copy(alpha = 0.25f) else Color(0xFF2A2A2A)
+                            containerColor = if (orderType == "LIMIT") LocalAppTheme.current.primary.copy(alpha = 0.25f) else LocalAppTheme.current.card
                         )
                     )
                 }

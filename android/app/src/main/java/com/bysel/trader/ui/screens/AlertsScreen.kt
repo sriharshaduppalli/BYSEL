@@ -124,8 +124,8 @@ fun CreateAlertDialog(
                     label = { Text("Symbol (e.g., TCS)") },
                     modifier = Modifier.fillMaxWidth(),
                     colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color(0xFF333333),
-                        unfocusedContainerColor = Color(0xFF333333),
+                        focusedContainerColor = LocalAppTheme.current.card,
+                        unfocusedContainerColor = LocalAppTheme.current.card,
                         focusedTextColor = LocalAppTheme.current.text,
                         unfocusedTextColor = LocalAppTheme.current.text
                     )
@@ -137,8 +137,8 @@ fun CreateAlertDialog(
                     label = { Text("Threshold Price") },
                     modifier = Modifier.fillMaxWidth(),
                     colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color(0xFF333333),
-                        unfocusedContainerColor = Color(0xFF333333),
+                        focusedContainerColor = LocalAppTheme.current.card,
+                        unfocusedContainerColor = LocalAppTheme.current.card,
                         focusedTextColor = LocalAppTheme.current.text,
                         unfocusedTextColor = LocalAppTheme.current.text
                     )
@@ -152,7 +152,7 @@ fun CreateAlertDialog(
                         onClick = { alertType = "ABOVE" },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (alertType == "ABOVE") LocalAppTheme.current.primary else Color(0xFF333333)
+                            containerColor = if (alertType == "ABOVE") LocalAppTheme.current.primary else LocalAppTheme.current.card
                         )
                     ) {
                         Text("Above")
@@ -161,7 +161,7 @@ fun CreateAlertDialog(
                         onClick = { alertType = "BELOW" },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (alertType == "BELOW") LocalAppTheme.current.primary else Color(0xFF333333)
+                            containerColor = if (alertType == "BELOW") LocalAppTheme.current.primary else LocalAppTheme.current.card
                         )
                     ) {
                         Text("Below")

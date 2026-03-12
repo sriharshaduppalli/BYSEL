@@ -49,11 +49,17 @@ fun WatchlistWidget(isPinned: Boolean, onPinClick: () -> Unit) {
                 .fillMaxWidth()
                 .padding(20.dp)
         ) {
-            // Placeholder for watchlist items
+            // Placeholder for watchlist items - shows sample format
             Text(
-                text = "- TCS: ₹3,500.00\n- INFY: ₹1,600.00\n- RELIANCE: ₹2,800.00",
+                text = "Your watchlist will appear here.",
                 fontSize = 14.sp,
-                color = LocalAppTheme.current.textSecondary
+                color = LocalAppTheme.current.textSecondary,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+            Text(
+                text = "Example format:\n• TCS: ₹3,500.00\n• INFY: ₹1,600.00\n• RELIANCE: ₹2,800.00",
+                fontSize = 12.sp,
+                color = LocalAppTheme.current.textSecondary.copy(alpha = 0.7f)
             )
         }
     }

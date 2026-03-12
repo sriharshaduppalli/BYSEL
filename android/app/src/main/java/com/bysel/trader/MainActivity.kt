@@ -304,6 +304,7 @@ fun BYSELApp(
     var selectedTab by remember { mutableStateOf(initialTab) }
     var previousTab by remember { mutableIntStateOf(0) }
     var lastBackPressAt by remember { mutableLongStateOf(0L) }
+    var heatmapInterval by remember { mutableStateOf(2000) }
     val density = LocalDensity.current
     val edgeThresholdPx = with(density) { 28.dp.toPx() }
     val swipeTriggerPx = with(density) { 110.dp.toPx() }
@@ -586,6 +587,7 @@ fun BYSELApp(
                                     4 -> HeatmapScreen(
                                         heatmap = marketHeatmap,
                                         isLoading = heatmapLoading,
+                                        heatmapInterval = heatmapInterval,
                                         onRefresh = { viewModel.loadMarketHeatmap() },
                                         onStockClick = { symbol ->
                                             previousTab = selectedTab
@@ -656,6 +658,11 @@ fun BYSELApp(
                                     onThemeChange = { theme ->
                                         currentThemeName = theme
                                         prefs.edit().putString("theme", theme).apply()
+                                    },
+                                    heatmapInterval = heatmapInterval,
+                                    onHeatmapIntervalChange = { interval ->
+                                        heatmapInterval = interval
+                                        prefs.edit().putInt("heatmapInterval", interval).apply()
                                     },
                                     onLogout = onLogout,
                                     onLogoutAllDevices = onLogoutAllDevices

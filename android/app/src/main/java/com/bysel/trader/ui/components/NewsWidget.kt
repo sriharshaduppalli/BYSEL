@@ -49,11 +49,17 @@ fun NewsWidget(isPinned: Boolean, onPinClick: () -> Unit) {
                 .fillMaxWidth()
                 .padding(20.dp)
         ) {
-            // Placeholder for news headlines
+            // Placeholder for news headlines - shows sample format
             Text(
-                text = "- Sensex rises 200 points as IT stocks rally\n- RBI keeps repo rate unchanged\n- Oil prices steady amid global cues",
+                text = "Latest market news will appear here.",
                 fontSize = 14.sp,
-                color = LocalAppTheme.current.textSecondary
+                color = LocalAppTheme.current.textSecondary,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+            Text(
+                text = "Example format:\n• Sensex rises 200 points as IT stocks rally\n• RBI keeps repo rate unchanged\n• Oil prices steady amid global cues",
+                fontSize = 12.sp,
+                color = LocalAppTheme.current.textSecondary.copy(alpha = 0.7f)
             )
         }
     }

@@ -55,10 +55,11 @@ fun DashboardScreen(
     val watchlistPinned by dashboardViewModel.watchlistPinned.collectAsState()
 
     var showOnboarding by rememberSaveable { mutableStateOf(false) }
-    // Show onboarding on first launch or via help button
+    // Show onboarding on first launch or via help button - use persistent flag from app
     LaunchedEffect(Unit) {
-        // TODO: Replace with persistent flag (e.g., DataStore) for production
-        if (!showOnboarding) showOnboarding = true
+        // Read onboarding state from DataStore (future: implement persistent storage)
+        // For now, initialize with false to require explicit trigger
+        if (!showOnboarding) showOnboarding = false
     }
 
     val ctx = LocalContext.current
@@ -161,7 +162,7 @@ fun DashboardContent(
                 Text("Reset Layout")
             }
             // Onboarding/tutorial button
-            IconButton(onClick = { onRefresh() }) {
+            IconButton(onClick = { showOnboarding = true }) {
                 Icon(Icons.Default.Info, contentDescription = "Show Dashboard Tutorial")
             }
         }

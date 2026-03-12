@@ -35,7 +35,9 @@ fun SettingsScreen(
     currentTheme: String = "Default",
     biometricAuthManager: BiometricAuthManager? = null,
     onLogout: () -> Unit = {},
-    onLogoutAllDevices: () -> Unit = {}
+    onLogoutAllDevices: () -> Unit = {},
+    heatmapInterval: Int = 2000,
+    onHeatmapIntervalChange: (Int) -> Unit = {}
 ) {
     val authRepository = remember { AuthRepository() }
     val scope = rememberCoroutineScope()
@@ -52,7 +54,7 @@ fun SettingsScreen(
     var showLogoutAllDialog by remember { mutableStateOf(false) }
     var openWebsite by remember { mutableStateOf(false) }
     var showIntervalDialog by remember { mutableStateOf(false) }
-    var heatmapInterval by remember { mutableStateOf(2000) }
+    var localHeatmapInterval by remember { mutableStateOf(heatmapInterval) }
     var showSessionsDialog by remember { mutableStateOf(false) }
     var sessionsLoading by remember { mutableStateOf(false) }
     var sessionsError by remember { mutableStateOf<String?>(null) }
@@ -73,9 +75,10 @@ fun SettingsScreen(
 
     if (showIntervalDialog) {
         IntervalSelectionDialog(
-            selectedInterval = heatmapInterval,
+            selectedInterval = localHeatmapInterval,
             onIntervalSelected = { interval ->
-                heatmapInterval = interval
+                localHeatmapInterval = interval
+                onHeatmapIntervalChange(interval)
                 showIntervalDialog = false
             },
             onDismiss = { showIntervalDialog = false }
@@ -347,7 +350,7 @@ fun SettingsScreen(
             SettingClickItem(
                 icon = Icons.Filled.Tune,
                 title = "Heatmap Refresh Interval",
-                subtitle = "${heatmapInterval / 1000}s",
+                subtitle = "${localHeatmapInterval / 1000}s",
                 onClick = { showIntervalDialog = true }
             )
         }
@@ -519,6 +522,7 @@ fun IntervalSelectionDialog(selectedInterval: Int, onIntervalSelected: (Int) -> 
 
 @Composable
 fun WebsiteDialog(onDismiss: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = LocalAppTheme.current.card,
@@ -534,12 +538,21 @@ fun WebsiteDialog(onDismiss: () -> Unit) {
             Column {
                 Text("Official BYSEL website:", fontSize = 14.sp, color = LocalAppTheme.current.text)
                 Text("https://bysel.com", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
-                Text("Click to open in browser.", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
+                Text("Tap 'Open' to visit in browser.", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
             }
         },
         confirmButton = {
+            TextButton(onClick = {
+                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://bysel.com"))
+                context.startActivity(intent)
+                onDismiss()
+            }) {
+                Text("Open", color = LocalAppTheme.current.primary)
+            }
+        },
+        dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Close", color = LocalAppTheme.current.primary)
+                Text("Cancel", color = LocalAppTheme.current.textSecondary)
             }
         }
     )
