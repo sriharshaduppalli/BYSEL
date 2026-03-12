@@ -327,8 +327,18 @@ def analyze_stock(symbol: str) -> Dict:
             pe = market_cap = dividend_yield = 0
             fifty_two_high = current * 1.15
             fifty_two_low = current * 0.85
-            sector = industry = company_name = "Unknown"
+            sector = industry = "Unknown"
+            company_name = None
             book_value = debt_to_equity = roe = revenue_growth = 0
+
+        # Resolve display name: catalog > yfinance shortName > symbol ticker
+        catalog_entry = INDIAN_STOCKS.get(symbol)
+        if catalog_entry:
+            name = catalog_entry[1]
+        elif company_name and company_name.lower() not in ("unknown", "n/a", ""):
+            name = company_name
+        else:
+            name = symbol
 
         # AI Predictions
         prediction = predict_price(symbol)
@@ -342,12 +352,9 @@ def analyze_stock(symbol: str) -> Dict:
 
         # Generate plain-English summary
         summary = _generate_summary(
-            symbol, company_name, current, score, rsi, macd,
+            symbol, name, current, score, rsi, macd,
             mas, pe, prediction, bollinger
         )
-
-        # Determine stock name from our catalog or Yahoo
-        name = INDIAN_STOCKS.get(symbol, (None, company_name))[1]
 
         return {
             "symbol": symbol,
