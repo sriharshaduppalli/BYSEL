@@ -65,13 +65,25 @@ interface BYSELApiService {
 
     // ==================== TRADING OPERATIONS ====================
     @POST("/order")
-    suspend fun placeOrder(@Body order: Order): OrderResponse
+    suspend fun placeOrder(
+        @Body order: Order,
+        @Header("X-Idempotency-Key") idempotencyKey: String? = null,
+        @Header("X-Trace-Id") traceId: String? = null,
+    ): OrderResponse
 
     @POST("/trade/buy")
-    suspend fun buyStock(@Body order: Order): OrderResponse
+    suspend fun buyStock(
+        @Body order: Order,
+        @Header("X-Idempotency-Key") idempotencyKey: String? = null,
+        @Header("X-Trace-Id") traceId: String? = null,
+    ): OrderResponse
 
     @POST("/trade/sell")
-    suspend fun sellStock(@Body order: Order): OrderResponse
+    suspend fun sellStock(
+        @Body order: Order,
+        @Header("X-Idempotency-Key") idempotencyKey: String? = null,
+        @Header("X-Trace-Id") traceId: String? = null,
+    ): OrderResponse
 
     @POST("/orders/advanced")
     suspend fun placeAdvancedOrder(@Body order: AdvancedOrderRequest): AdvancedOrderResponse

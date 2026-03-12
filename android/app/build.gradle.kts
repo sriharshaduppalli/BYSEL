@@ -32,6 +32,9 @@ android {
         applicationId = "com.bysel.trader"
         minSdk = 24
         targetSdk = 36
+        val certPinHost = System.getenv("CERT_PIN_HOST") ?: "bysel-backend.onrender.com"
+        val certPinPrimary = System.getenv("CERT_PIN_PRIMARY") ?: ""
+        val certPinBackup = System.getenv("CERT_PIN_BACKUP") ?: ""
         // read version from root gradle.properties (VERSION_CODE, VERSION_NAME)
         val verCodeProp = rootProject.findProperty("VERSION_CODE") ?: "44"
         val verNameProp = rootProject.findProperty("VERSION_NAME") ?: "2.6.4"
@@ -49,6 +52,9 @@ android {
         buildConfigField("String", "MARKET_TRUEDATA_WS_URL", "\"wss://push.truedata.in\"")
         buildConfigField("String", "MARKET_TRUEDATA_TOKEN", "\"\"")
         buildConfigField("String", "CHART_ENGINE", "\"COMPOSE\"")
+        buildConfigField("String", "CERT_PIN_HOST", "\"$certPinHost\"")
+        buildConfigField("String", "CERT_PIN_PRIMARY", "\"$certPinPrimary\"")
+        buildConfigField("String", "CERT_PIN_BACKUP", "\"$certPinBackup\"")
     }
 
         // --- Auto-increment version before bundleRelease ---

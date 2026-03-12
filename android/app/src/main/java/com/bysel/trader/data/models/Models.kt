@@ -73,13 +73,22 @@ data class Alert(
 data class Order(
     val symbol: String,
     val qty: Int,
-    val side: String // "BUY" or "SELL"
+    val side: String, // "BUY" or "SELL"
+    val idempotencyKey: String? = null,
 )
 
 data class OrderResponse(
     val status: String,
     val order: Order,
-    val message: String? = null
+    val message: String? = null,
+    val orderId: Int? = null,
+    val executedPrice: Double? = null,
+    val total: Double? = null,
+    val orderStatus: String? = null,
+    val traceId: String? = null,
+    val idempotencyKey: String? = null,
+    val isDuplicate: Boolean = false,
+    val errorCode: String? = null,
 )
 
 // ==================== WALLET & MARKET STATUS ====================

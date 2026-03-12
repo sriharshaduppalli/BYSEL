@@ -53,6 +53,7 @@ class OrderBase(BaseModel):
     symbol: str
     qty: int
     side: str
+    idempotencyKey: Optional[str] = None
 
 class Order(OrderBase):
     pass
@@ -61,6 +62,14 @@ class OrderResponse(BaseModel):
     status: str
     order: Order
     message: Optional[str] = None
+    orderId: Optional[int] = None
+    executedPrice: Optional[float] = None
+    total: Optional[float] = None
+    orderStatus: Optional[str] = None
+    traceId: Optional[str] = None
+    idempotencyKey: Optional[str] = None
+    isDuplicate: bool = False
+    errorCode: Optional[str] = None
 
 class AlertResponse(BaseModel):
     status: str
