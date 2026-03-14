@@ -105,7 +105,9 @@ class AuthRepository(
             )
             Result.Success(response)
         } catch (e: Exception) {
-            AuthSessionManager.clearSession()
+            if (e is HttpException && (e.code() == 401 || e.code() == 403)) {
+                AuthSessionManager.clearSession()
+            }
             Result.Error(toAuthErrorMessage(e, "Session refresh failed"))
         }
     }

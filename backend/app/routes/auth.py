@@ -40,6 +40,7 @@ AUTH_DEBUG_ENDPOINTS_ENABLED = os.getenv("AUTH_DEBUG_ENDPOINTS_ENABLED", "false"
 AUTH_DEBUG_TOKEN = os.getenv("AUTH_DEBUG_TOKEN", "")
 REFRESH_TOKEN_RETENTION_DAYS = int(os.getenv("REFRESH_TOKEN_RETENTION_DAYS", "30"))
 MAX_ACTIVE_SESSIONS_PER_USER = int(os.getenv("MAX_ACTIVE_SESSIONS_PER_USER", "5"))
+REFRESH_TOKEN_REPLAY_GRACE_SECONDS = int(os.getenv("REFRESH_TOKEN_REPLAY_GRACE_SECONDS", "15"))
 
 _login_rate_buckets: dict[str, deque[float]] = defaultdict(deque)
 _refresh_rate_buckets: dict[str, deque[float]] = defaultdict(deque)
@@ -455,6 +456,35 @@ def _enforce_active_session_cap(db: Session, user_id: int, protected_session_id:
     return evicted_count
 
 
+def _is_benign_refresh_replay(stored_token: RefreshTokenModel, request: Request | None, now: datetime) -> bool:
+    if stored_token.used_at is None:
+        return False
+
+    replay_marker = stored_token.last_used_at or stored_token.used_at
+    replay_age_seconds = (now - replay_marker).total_seconds()
+    if replay_age_seconds > REFRESH_TOKEN_REPLAY_GRACE_SECONDS:
+        return False
+
+    if request is None:
+        return False
+
+    # Match on whichever client markers were captured for the token.
+    if stored_token.client_ip:
+        request_ip = _client_ip(request)
+        if request_ip != stored_token.client_ip:
+            return False
+
+    if stored_token.device_info:
+        request_device = _device_info(request)
+        if request_device != stored_token.device_info:
+            return False
+
+    if not stored_token.client_ip and not stored_token.device_info:
+        return False
+
+    return True
+
+
 def _reset_debug_state() -> None:
     with _rate_limit_lock:
         _login_rate_buckets.clear()
@@ -724,17 +754,20 @@ def refresh_token(body: TokenRefreshRequest, request: Request):
         ).first()
 
         if not stored_token:
-            db_user.token_version = current_token_version + 1
-            db.query(RefreshTokenModel).filter(
-                RefreshTokenModel.user_id == user_id,
-                RefreshTokenModel.revoked_at.is_(None)
-            ).update({"revoked_at": now}, synchronize_session=False)
-            db.commit()
             _metric_inc("refresh.failure_invalid_token")
             logger.warning("auth.refresh.failed ip=%s user_id=%s reason=invalid_refresh_token", client_ip, user_id)
             raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-        if stored_token.revoked_at is not None or stored_token.used_at is not None:
+        if stored_token.used_at is not None:
+            if _is_benign_refresh_replay(stored_token, request, now):
+                _metric_inc("refresh.failure_reuse_grace")
+                logger.info(
+                    "auth.refresh.failed ip=%s user_id=%s reason=refresh_token_replay_within_grace",
+                    client_ip,
+                    user_id,
+                )
+                raise HTTPException(status_code=401, detail="Refresh token already rotated")
+
             db_user.token_version = current_token_version + 1
             db.query(RefreshTokenModel).filter(
                 RefreshTokenModel.user_id == user_id,
@@ -744,6 +777,11 @@ def refresh_token(body: TokenRefreshRequest, request: Request):
             _metric_inc("refresh.failure_reuse_detected")
             logger.warning("auth.refresh.failed ip=%s user_id=%s reason=token_reuse_detected", client_ip, user_id)
             raise HTTPException(status_code=401, detail="Refresh token reuse detected")
+
+        if stored_token.revoked_at is not None:
+            _metric_inc("refresh.failure_revoked_token")
+            logger.warning("auth.refresh.failed ip=%s user_id=%s reason=revoked_refresh_token", client_ip, user_id)
+            raise HTTPException(status_code=401, detail="Refresh token revoked")
 
         if stored_token.expires_at <= now:
             stored_token.used_at = now

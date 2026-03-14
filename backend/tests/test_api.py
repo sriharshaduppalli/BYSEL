@@ -214,12 +214,14 @@ def test_logout_all_invalidates_old_access_token():
     assert sessions_after.json()["detail"] == "Session invalidated"
 
 
-def test_refresh_token_reuse_invalidates_active_sessions():
-    username, email, password = _unique_user("reuse_user")
+def test_refresh_token_reuse_same_client_preserves_active_session():
+    username, email, password = _unique_user("reuse_same_client_user")
+    headers = {"User-Agent": "bysel-test-client-1"}
 
     register_response = client.post(
         "/auth/register",
-        json={"username": username, "email": email, "password": password}
+        json={"username": username, "email": email, "password": password},
+        headers=headers,
     )
     assert register_response.status_code == 200
     register_payload = register_response.json()
@@ -228,7 +230,8 @@ def test_refresh_token_reuse_invalidates_active_sessions():
 
     rotate_response = client.post(
         "/auth/refresh",
-        json={"refreshToken": first_refresh_token}
+        json={"refreshToken": first_refresh_token},
+        headers=headers,
     )
     assert rotate_response.status_code == 200
     rotated_payload = rotate_response.json()
@@ -236,14 +239,55 @@ def test_refresh_token_reuse_invalidates_active_sessions():
 
     reuse_response = client.post(
         "/auth/refresh",
-        json={"refreshToken": first_refresh_token}
+        json={"refreshToken": first_refresh_token},
+        headers=headers,
     )
     assert reuse_response.status_code == 401
-    assert "reuse" in reuse_response.json()["detail"].lower()
+    assert "rotated" in reuse_response.json()["detail"].lower()
 
     second_refresh_attempt = client.post(
         "/auth/refresh",
-        json={"refreshToken": second_refresh_token}
+        json={"refreshToken": second_refresh_token},
+        headers=headers,
+    )
+    assert second_refresh_attempt.status_code == 200
+    assert second_refresh_attempt.json()["status"] == "ok"
+
+
+def test_refresh_token_reuse_different_client_invalidates_active_sessions():
+    username, email, password = _unique_user("reuse_diff_client_user")
+    primary_headers = {"User-Agent": "bysel-test-client-primary"}
+    replay_headers = {"User-Agent": "bysel-test-client-secondary"}
+
+    register_response = client.post(
+        "/auth/register",
+        json={"username": username, "email": email, "password": password},
+        headers=primary_headers,
+    )
+    assert register_response.status_code == 200
+    register_payload = register_response.json()
+    first_refresh_token = register_payload["refresh_token"]
+
+    rotate_response = client.post(
+        "/auth/refresh",
+        json={"refreshToken": first_refresh_token},
+        headers=primary_headers,
+    )
+    assert rotate_response.status_code == 200
+    second_refresh_token = rotate_response.json()["refresh_token"]
+
+    replay_response = client.post(
+        "/auth/refresh",
+        json={"refreshToken": first_refresh_token},
+        headers=replay_headers,
+    )
+    assert replay_response.status_code == 401
+    assert "reuse" in replay_response.json()["detail"].lower()
+
+    second_refresh_attempt = client.post(
+        "/auth/refresh",
+        json={"refreshToken": second_refresh_token},
+        headers=primary_headers,
     )
     assert second_refresh_attempt.status_code == 401
     assert second_refresh_attempt.json()["detail"] == "Session invalidated"

@@ -5,13 +5,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def _select_default_sqlite_path() -> Path:
+	override_path = os.getenv("SQLITE_DB_PATH", "").strip()
+	if override_path:
+		return Path(override_path).expanduser().resolve()
+
 	backend_db = Path(__file__).resolve().parents[1] / "bysel.db"
 	root_db = Path(__file__).resolve().parents[2] / "bysel.db"
-	candidates = [backend_db, root_db]
-	existing = [path for path in candidates if path.exists()]
-	if not existing:
+
+	# Keep the default deterministic to avoid switching between DB files across restarts.
+	if backend_db.exists() or not root_db.exists():
 		return backend_db
-	return max(existing, key=lambda path: path.stat().st_mtime)
+	return root_db
 
 
 _DEFAULT_SQLITE_DB = _select_default_sqlite_path()

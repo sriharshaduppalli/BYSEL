@@ -55,6 +55,6 @@ object AuthSessionManager {
     }
 
     fun hasSession(): Boolean {
-        return !getAccessToken().isNullOrBlank() || getUserId() != null
+        return !getAccessToken().isNullOrBlank() || !getRefreshToken().isNullOrBlank()
     }
 }
