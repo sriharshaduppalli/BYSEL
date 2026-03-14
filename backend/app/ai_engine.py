@@ -860,13 +860,15 @@ def ai_assistant(query: str, db=None) -> Dict:
 
     elif any(w in query_lower for w in valuation_keywords):
         if symbols:
-            return _handle_analysis_query(symbols, user_query)
+            return _handle_valuation_query(symbols, user_query)
         return _handle_screening_query(query_lower, symbols)
 
     elif any(w in query_lower for w in ["buy", "sell", "should i", "invest", "good time"]):
         return _handle_buy_sell_query(symbols, user_query)
 
     elif any(w in query_lower for w in recommendation_keywords):
+        if symbols:
+            return _handle_buy_sell_query(symbols, user_query)
         # Personalized recommendation logic
         user_portfolio = _get_user_portfolio(db)
         if user_portfolio:
@@ -898,6 +900,146 @@ def _get_user_portfolio(db=None):
         except Exception:
             pass
     return []
+
+
+def _safe_float(value, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
+def _safe_int(value, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def _extract_one_month_prediction(predictions: List[Dict]) -> Optional[Dict]:
+    for entry in predictions or []:
+        if _safe_int(entry.get("days", 0), 0) == 30:
+            return entry
+    return None
+
+
+def _build_analysis_answer(symbol: str, analysis: Dict) -> str:
+    name = analysis.get("name") or symbol
+    price = _safe_float(analysis.get("currentPrice"), 0.0)
+    score = _safe_int(analysis.get("score"), 0)
+    signal = str(analysis.get("signal", "HOLD")).upper()
+    technical = analysis.get("technical", {}) or {}
+    moving_averages = technical.get("movingAverages", {}) or {}
+    trend = str(moving_averages.get("trend", "neutral")).replace("_", " ")
+    rsi = _safe_float(technical.get("rsi"), 0.0)
+    macd = technical.get("macd", {}) or {}
+    macd_trend = str(macd.get("trend", "neutral"))
+
+    fundamental = analysis.get("fundamental", {}) or {}
+    pe = _safe_float(fundamental.get("pe"), 0.0)
+    roe = _safe_float(fundamental.get("roe"), 0.0)
+    debt = _safe_float(fundamental.get("debtToEquity"), 0.0)
+
+    month_pred = _extract_one_month_prediction(analysis.get("predictions", []) or [])
+    outlook = "No 1-month model outlook available"
+    if month_pred:
+        outlook = (
+            f"1-month model outlook: ₹{_safe_float(month_pred.get('predictedPrice'), 0.0):.2f} "
+            f"({_safe_float(month_pred.get('changePercent'), 0.0):+.1f}%)"
+        )
+
+    return (
+        f"🔎 **Detailed Analysis: {name} ({symbol})**\n"
+        f"Price: ₹{price:.2f} | Signal: **{signal}** | Score: **{score}/100**\n\n"
+        f"**Technical Pulse**\n"
+        f"• RSI: {rsi:.1f}\n"
+        f"• Trend: {trend}\n"
+        f"• MACD Bias: {macd_trend}\n\n"
+        f"**Fundamental Snapshot**\n"
+        f"• P/E: {pe:.1f}\n"
+        f"• ROE: {roe:.1f}%\n"
+        f"• Debt/Equity: {debt:.1f}\n\n"
+        f"**AI Outlook**\n"
+        f"• {outlook}\n\n"
+        f"{analysis.get('summary', '')}"
+    )
+
+
+def _build_recommendation_answer(symbol: str, analysis: Dict) -> str:
+    name = analysis.get("name") or symbol
+    price = _safe_float(analysis.get("currentPrice"), 0.0)
+    score = _safe_int(analysis.get("score"), 0)
+    signal = str(analysis.get("signal", "HOLD")).upper()
+
+    technical = analysis.get("technical", {}) or {}
+    rsi = _safe_float(technical.get("rsi"), 0.0)
+    moving_averages = technical.get("movingAverages", {}) or {}
+    trend = str(moving_averages.get("trend", "neutral")).replace("_", " ")
+
+    month_pred = _extract_one_month_prediction(analysis.get("predictions", []) or [])
+    month_change = _safe_float((month_pred or {}).get("changePercent"), 0.0)
+
+    if signal in {"STRONG_BUY", "BUY"} or score >= 70:
+        stance = "BUY on staggered entries"
+    elif signal in {"STRONG_SELL", "SELL"} or score <= 40:
+        stance = "Avoid fresh entries / reduce exposure"
+    else:
+        stance = "HOLD and wait for stronger confirmation"
+
+    risk_flag = "High momentum risk (overbought)" if rsi >= 70 else "No major momentum excess"
+
+    return (
+        f"🧭 **Trade Decision: {name} ({symbol})**\n"
+        f"Current Price: ₹{price:.2f}\n"
+        f"Decision Bias: **{stance}**\n\n"
+        f"**Decision Inputs**\n"
+        f"• AI Signal: {signal}\n"
+        f"• Score: {score}/100\n"
+        f"• Trend: {trend}\n"
+        f"• 1-Month Model Move: {month_change:+.1f}%\n"
+        f"• Risk Check: {risk_flag}\n\n"
+        f"Actionable note: position-size gradually and use stop-loss discipline."
+    )
+
+
+def _build_valuation_answer(symbol: str, analysis: Dict, query: str) -> str:
+    name = analysis.get("name") or symbol
+    price = _safe_float(analysis.get("currentPrice"), 0.0)
+    score = _safe_int(analysis.get("score"), 0)
+    signal = str(analysis.get("signal", "HOLD")).upper()
+    pe = _safe_float((analysis.get("fundamental", {}) or {}).get("pe"), 0.0)
+
+    if pe <= 0:
+        valuation_read = "valuation data is incomplete"
+    elif pe >= 45 or score <= 45:
+        valuation_read = "appears expensive vs typical large-cap benchmarks"
+    elif pe <= 18 and score >= 60:
+        valuation_read = "looks relatively attractive on valuation"
+    else:
+        valuation_read = "looks roughly fairly valued"
+
+    query_lower = query.lower().strip()
+    asked_side = ""
+    if "overvalued" in query_lower or "expensive" in query_lower or "overpriced" in query_lower:
+        asked_side = "overvalued"
+    elif "undervalued" in query_lower or "cheap" in query_lower or "underpriced" in query_lower:
+        asked_side = "undervalued"
+
+    alignment_note = ""
+    if asked_side == "overvalued" and "expensive" in valuation_read:
+        alignment_note = "This aligns with your overvaluation check."
+    elif asked_side == "undervalued" and "attractive" in valuation_read:
+        alignment_note = "This aligns with your undervaluation check."
+    elif asked_side:
+        alignment_note = "The current data does not strongly support that exact valuation bias."
+
+    return (
+        f"💰 **Valuation Check: {name} ({symbol})**\n"
+        f"Price: ₹{price:.2f} | P/E: {pe:.1f} | Score: {score}/100 | Signal: {signal}\n\n"
+        f"Read: **{valuation_read}**\n"
+        f"{alignment_note}\n\n"
+        f"Practical next step: validate growth quality, margin trend, and peer-relative multiples before entry."
+    ).strip()
 
 
 def _handle_personalized_recommendation(query, symbols, portfolio):
@@ -1070,7 +1212,7 @@ def _handle_buy_sell_query(symbols: List[str], query: str) -> Dict:
     return {
         "type": "recommendation",
         "symbol": symbol,
-        "answer": analysis.get("summary", "No analysis available."),
+        "answer": _build_recommendation_answer(symbol, analysis),
         "score": analysis.get("score", 0),
         "signal": analysis.get("signal", "HOLD"),
         "data": analysis,
@@ -1092,11 +1234,31 @@ def _handle_analysis_query(symbols: List[str], query: str) -> Dict:
     return {
         "type": "analysis",
         "symbol": symbol,
-        "answer": analysis.get("summary", "No analysis available."),
+        "answer": _build_analysis_answer(symbol, analysis),
         "score": analysis.get("score", 0),
         "signal": analysis.get("signal", "HOLD"),
         "data": analysis,
         "suggestions": _build_stock_suggestions(symbol, exclude="analysis"),
+    }
+
+
+def _handle_valuation_query(symbols: List[str], query: str) -> Dict:
+    if not symbols:
+        return _handle_screening_query(query.lower(), symbols)
+
+    symbol = symbols[0]
+    analysis = analyze_stock(symbol)
+    if "error" in analysis:
+        return {"type": "error", "answer": f"Could not analyze {symbol}: {analysis['error']}"}
+
+    return {
+        "type": "analysis",
+        "symbol": symbol,
+        "answer": _build_valuation_answer(symbol, analysis, query),
+        "score": analysis.get("score", 0),
+        "signal": analysis.get("signal", "HOLD"),
+        "data": analysis,
+        "suggestions": _build_stock_suggestions(symbol, exclude="overvaluation"),
     }
 
 

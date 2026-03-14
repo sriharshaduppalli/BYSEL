@@ -387,7 +387,7 @@ def test_ai_overvalued_query_routes_to_stock_analysis(monkeypatch):
     result = ai_engine.ai_assistant("Is KAYNES overvalued?")
     assert result["type"] == "analysis"
     assert result["symbol"] == "KAYNES"
-    assert "valued" in result["answer"].lower()
+    assert "valuation" in result["answer"].lower()
     assert "portfolio" not in result["answer"].lower()
 
 
@@ -418,3 +418,71 @@ def test_ai_ask_endpoint_passes_db_context(monkeypatch):
     payload = response.json()
     assert payload["type"] == "test"
     assert payload["db_present"] is True
+
+
+def test_ai_buy_query_returns_decision_style_response(monkeypatch):
+    monkeypatch.setattr(
+        ai_engine,
+        "analyze_stock",
+        lambda symbol: {
+            "name": "Kaynes Technology India Ltd",
+            "currentPrice": 2970.0,
+            "summary": f"{symbol} has stable momentum and acceptable valuation.",
+            "score": 71,
+            "signal": "BUY",
+            "technical": {"rsi": 56.2, "movingAverages": {"trend": "bullish"}},
+            "predictions": [{"days": 30, "changePercent": 6.5, "predictedPrice": 3163.0}],
+            "fundamental": {"pe": 42.0},
+        },
+    )
+
+    result = ai_engine.ai_assistant("Should I buy KAYNES?")
+    assert result["type"] == "recommendation"
+    assert "trade decision" in result["answer"].lower()
+    assert "decision bias" in result["answer"].lower()
+
+
+def test_ai_analysis_query_returns_detailed_sections(monkeypatch):
+    monkeypatch.setattr(
+        ai_engine,
+        "analyze_stock",
+        lambda symbol: {
+            "name": "Kaynes Technology India Ltd",
+            "currentPrice": 2970.0,
+            "summary": f"{symbol} trend remains constructive.",
+            "score": 66,
+            "signal": "HOLD",
+            "technical": {"rsi": 58.4, "macd": {"trend": "bullish"}, "movingAverages": {"trend": "bullish"}},
+            "predictions": [{"days": 30, "changePercent": 3.1, "predictedPrice": 3062.0}],
+            "fundamental": {"pe": 40.0, "roe": 18.2, "debtToEquity": 15.0},
+        },
+    )
+
+    result = ai_engine.ai_assistant("Analyze KAYNES in detail")
+    assert result["type"] == "analysis"
+    assert "detailed analysis" in result["answer"].lower()
+    assert "technical pulse" in result["answer"].lower()
+    assert "fundamental snapshot" in result["answer"].lower()
+
+
+def test_ai_recommend_keyword_with_symbol_avoids_portfolio_generic(monkeypatch):
+    monkeypatch.setattr(ai_engine, "_get_user_portfolio", lambda db=None: ["RELIANCE", "INFY"])
+    monkeypatch.setattr(
+        ai_engine,
+        "analyze_stock",
+        lambda symbol: {
+            "name": "Kaynes Technology India Ltd",
+            "currentPrice": 2970.0,
+            "summary": f"{symbol} has improving setup.",
+            "score": 68,
+            "signal": "HOLD",
+            "technical": {"rsi": 55.0, "movingAverages": {"trend": "bullish"}},
+            "predictions": [{"days": 30, "changePercent": 2.0, "predictedPrice": 3029.0}],
+            "fundamental": {"pe": 43.0},
+        },
+    )
+
+    result = ai_engine.ai_assistant("Recommend KAYNES")
+    assert result["type"] == "recommendation"
+    assert result["symbol"] == "KAYNES"
+    assert "portfolio" not in result["answer"].lower()
