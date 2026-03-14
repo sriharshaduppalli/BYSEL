@@ -788,7 +788,7 @@ def _build_help_response() -> Dict:
         ],
     }
 
-def ai_assistant(query: str) -> Dict:
+def ai_assistant(query: str, db=None) -> Dict:
     """
     Process natural language queries about stocks.
     Examples:
@@ -807,6 +807,36 @@ def ai_assistant(query: str) -> Dict:
     # Extract symbol(s) from query
     symbols = _extract_symbols(user_query)
 
+    valuation_keywords = [
+        "overvalued",
+        "undervalued",
+        "overpriced",
+        "underpriced",
+        "expensive",
+        "cheap",
+        "fair value",
+        "intrinsic value",
+        "valuation",
+    ]
+
+    screening_keywords = [
+        "best",
+        "top",
+        "undervalued",
+        "overvalued",
+        "cheap",
+        "value",
+        "screen",
+        "list",
+    ]
+
+    recommendation_keywords = [
+        "recommend",
+        "suggest",
+        "portfolio",
+        "watchlist",
+    ]
+
     # Route to appropriate handler
     if any(w in query_lower for w in ["predict", "forecast", "future", "target", "price prediction"]):
         return _handle_prediction_query(symbols, user_query)
@@ -814,23 +844,25 @@ def ai_assistant(query: str) -> Dict:
     elif any(w in query_lower for w in ["compare", "vs", "versus", "better"]):
         return _handle_compare_query(symbols, user_query)
 
+    elif any(w in query_lower for w in valuation_keywords):
+        if symbols:
+            return _handle_analysis_query(symbols, user_query)
+        return _handle_screening_query(query_lower, symbols)
+
     elif any(w in query_lower for w in ["buy", "sell", "should i", "invest", "good time"]):
         return _handle_buy_sell_query(symbols, user_query)
 
-    elif any(w in query_lower for w in ["best", "top", "undervalued", "overvalued", "cheap", "value", "recommend", "suggest", "portfolio", "watchlist"]):
+    elif any(w in query_lower for w in recommendation_keywords):
         # Personalized recommendation logic
-        import inspect
-        db = None
-        # Try to get DB/session from caller context
-        for frame in inspect.stack():
-            if 'db' in frame.frame.f_locals:
-                db = frame.frame.f_locals['db']
-                break
         user_portfolio = _get_user_portfolio(db)
         if user_portfolio:
             return _handle_personalized_recommendation(query_lower, symbols, user_portfolio)
         else:
             return _handle_screening_query(query_lower, symbols)
+
+    elif any(w in query_lower for w in screening_keywords):
+        return _handle_screening_query(query_lower, symbols)
+
     elif any(w in query_lower for w in ["analyze", "analysis", "detail", "about", "tell me"]):
         return _handle_analysis_query(symbols, user_query)
 
@@ -848,10 +880,10 @@ def _get_user_portfolio(db=None):
         try:
             from .routes.trading import get_holdings
             holdings = get_holdings(db)
-            return [h.symbol for h in holdings]
+            return [h.symbol for h in holdings if getattr(h, "symbol", None)]
         except Exception:
             pass
-    return ["RELIANCE", "TCS", "HDFCBANK"]
+    return []
 
 
 def _handle_personalized_recommendation(query, symbols, portfolio):

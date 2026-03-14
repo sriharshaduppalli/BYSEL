@@ -8,6 +8,8 @@ import time
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app import app
+from app import ai_engine
+import app.routes as routes_module
 from app.database.db import SessionLocal, WalletModel
 from app.models.schemas import MarketStatus
 from app.routes import auth as auth_routes
@@ -366,3 +368,53 @@ def test_auth_debug_session_health_endpoint(monkeypatch):
     assert payload["status"] == "ok"
     assert "session_health" in payload
     assert payload["session_health"]["active_sessions_total"] >= 1
+
+
+def test_ai_overvalued_query_routes_to_stock_analysis(monkeypatch):
+    monkeypatch.setattr(
+        ai_engine,
+        "analyze_stock",
+        lambda symbol: {
+            "name": "Kaynes Technology India Ltd",
+            "summary": f"{symbol} appears richly valued versus peers based on current P/E.",
+            "score": 64,
+            "signal": "HOLD",
+            "fundamental": {"pe": 52.3},
+            "predictions": [],
+        },
+    )
+
+    result = ai_engine.ai_assistant("Is KAYNES overvalued?")
+    assert result["type"] == "analysis"
+    assert result["symbol"] == "KAYNES"
+    assert "valued" in result["answer"].lower()
+    assert "portfolio" not in result["answer"].lower()
+
+
+def test_ai_undervalued_screening_query_stays_screening(monkeypatch):
+    monkeypatch.setattr(
+        ai_engine,
+        "fetch_quote",
+        lambda symbol: {"symbol": symbol.upper(), "last": 100.0, "pctChange": 1.25},
+    )
+
+    result = ai_engine.ai_assistant("Best undervalued IT stocks")
+    assert result["type"] == "screening"
+    assert "top" in result["answer"].lower()
+
+
+def test_ai_ask_endpoint_passes_db_context(monkeypatch):
+    def fake_ai_assistant(query: str, db=None):
+        return {
+            "type": "test",
+            "db_present": db is not None,
+            "query": query,
+        }
+
+    monkeypatch.setattr(routes_module, "ai_assistant", fake_ai_assistant)
+
+    response = client.post("/ai/ask", json={"query": "Is KAYNES overvalued?"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["type"] == "test"
+    assert payload["db_present"] is True

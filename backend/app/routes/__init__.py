@@ -1052,10 +1052,10 @@ class AiQuery(BaseModel):
     query: str
 
 @router.post("/ai/ask")
-async def ai_ask_endpoint(body: AiQuery):
+async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
     """Natural language AI stock assistant.
     Examples: 'Should I buy RELIANCE?', 'Predict TCS price', 'Compare INFY and TCS'"""
-    result = ai_assistant(body.query)
+    result = ai_assistant(body.query, db=db)
     return result
 
 
