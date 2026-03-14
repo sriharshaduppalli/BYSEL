@@ -533,6 +533,34 @@ def test_fetch_recent_headlines_returns_latest_five(monkeypatch):
     assert headlines[-1]["title"] == "Headline 2"
 
 
+def test_market_news_endpoint_uses_normalized_headlines(monkeypatch):
+    monkeypatch.setattr(
+        routes_module,
+        "get_market_headlines",
+        lambda symbols=None, limit=5: {
+            "headlines": [
+                {
+                    "symbol": "RELIANCE",
+                    "title": "Reliance wins new energy order",
+                    "source": "Reuters",
+                    "publishedAt": "2026-03-15T08:00:00",
+                    "publishedLabel": "1h ago",
+                    "link": "https://example.com/reliance-order",
+                }
+            ],
+            "symbolsConsidered": symbols or ["RELIANCE", "TCS"],
+            "generatedAt": "2026-03-15T09:00:00",
+        },
+    )
+
+    response = client.get("/market/news?symbols=RELIANCE,TCS&limit=5")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["headlines"][0]["title"] == "Reliance wins new energy order"
+    assert payload["symbolsConsidered"] == ["RELIANCE", "TCS"]
+
+
 def test_ai_compare_query_includes_headline_context(monkeypatch):
     def fake_analysis(symbol: str):
         return {

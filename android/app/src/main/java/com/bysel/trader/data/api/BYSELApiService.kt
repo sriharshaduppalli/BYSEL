@@ -215,6 +215,12 @@ interface BYSELApiService {
     @GET("/market/status")
     suspend fun getMarketStatus(): MarketStatus
 
+    @GET("/market/news")
+    suspend fun getMarketNews(
+        @Query("symbols") symbols: String? = null,
+        @Query("limit") limit: Int = 5
+    ): MarketNewsResponse
+
     // ==================== AI STOCK ASSISTANT ====================
     @POST("/ai/ask")
     suspend fun aiAsk(@Body query: AiQuery): AiAssistantResponse

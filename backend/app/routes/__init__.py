@@ -28,6 +28,7 @@ from ..models.schemas import (
     Quote, Holding, Order, OrderResponse, Alert, AlertCreate,
     AlertResponse, HealthCheck, TradeHistory, PortfolioSummary, PortfolioValue,
     Wallet, WalletTransaction, WalletResponse, MarketStatus,
+    MarketNewsResponse,
     MutualFund, MutualFundCompareResponse, MutualFundRecommendationItem, MutualFundRecommendationResponse,
     SipPlanRequest, SipPlan, IPOListing,
     SipPlanUpdateRequest, IPOApplicationRequest, IPOApplicationResponse, IPOApplication, ETFInstrument,
@@ -84,7 +85,7 @@ from ..market_data import (
     fetch_quote, fetch_quotes, get_all_symbols, get_default_symbols,
     search_stocks, get_symbols_with_names, get_stock_name, INDIAN_STOCKS
 )
-from ..ai_engine import analyze_stock, predict_price, ai_assistant
+from ..ai_engine import analyze_stock, predict_price, ai_assistant, get_market_headlines
 from ..portfolio_scorer import calculate_portfolio_health
 from ..market_heatmap import get_market_heatmap, get_sector_detail
 
@@ -924,6 +925,16 @@ async def withdraw_funds_endpoint(txn: WalletTransaction, db: Session = Depends(
 async def market_status_endpoint():
     """Check if NSE market is currently open (9:15 AM - 3:30 PM IST, Mon-Fri)."""
     return is_market_open()
+
+
+@router.get("/market/news", response_model=MarketNewsResponse)
+async def market_news_endpoint(
+    symbols: str = Query("", description="Optional comma-separated stock symbols"),
+    limit: int = Query(5, ge=1, le=10),
+):
+    """Get the latest market headlines using the same normalized Yahoo feed used by the AI engine."""
+    requested_symbols = [value.strip().upper() for value in symbols.split(",") if value.strip()]
+    return get_market_headlines(symbols=requested_symbols or None, limit=limit)
 
 
 # ==================== ALERTS ====================

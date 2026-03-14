@@ -371,6 +371,17 @@ open class TradingRepository(private val database: BYSELDatabase) {
             Result.Error(e.message ?: "Unknown error")
         }
     }
+
+    suspend fun getMarketNews(symbols: List<String> = emptyList(), limit: Int = 5): Result<MarketNewsResponse> {
+        return try {
+            val symbolQuery = symbols.map { it.trim().uppercase() }.filter { it.isNotBlank() }.distinct().joinToString(",").takeIf { it.isNotBlank() }
+            val response = apiService.getMarketNews(symbols = symbolQuery, limit = limit)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
     suspend fun getAllSymbols(): Result<List<StockSearchResult>> {
         return try {
             val symbols = apiService.getAllSymbols()

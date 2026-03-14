@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 _NEWS_CACHE_TTL = timedelta(minutes=15)
 _news_cache: Dict[str, Tuple[datetime, List[Dict]]] = {}
+_MARKET_NEWS_DEFAULT_SYMBOLS = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK"]
 
 _POSITIVE_HEADLINE_KEYWORDS = (
     "beat",
@@ -504,6 +505,41 @@ def _summarize_headline_flow(headlines: List[Dict]) -> str:
     latest_age = headlines[0].get("publishedLabel")
     freshness = f" Most recent item: {latest_age}." if latest_age else ""
     return f"{flow_label} flow across the latest {len(headlines[:5])} headlines.{freshness}"
+
+
+def get_market_headlines(symbols: Optional[List[str]] = None, limit: int = 5) -> Dict:
+    requested_symbols = symbols or _MARKET_NEWS_DEFAULT_SYMBOLS
+
+    normalized_symbols: List[str] = []
+    seen_symbols: set[str] = set()
+    for raw_symbol in requested_symbols:
+        symbol = str(raw_symbol or "").strip().upper()
+        if not symbol or symbol in seen_symbols:
+            continue
+        seen_symbols.add(symbol)
+        normalized_symbols.append(symbol)
+        if len(normalized_symbols) >= 5:
+            break
+
+    aggregated: List[Dict] = []
+    seen_titles: set[str] = set()
+    headline_limit = max(limit, 5)
+
+    for symbol in normalized_symbols:
+        for headline in _fetch_recent_headlines(symbol, limit=headline_limit):
+            title_key = str(headline.get("title", "")).strip().lower()
+            if not title_key or title_key in seen_titles:
+                continue
+            seen_titles.add(title_key)
+            aggregated.append(headline)
+
+    aggregated.sort(key=lambda item: item.get("publishedAt") or "", reverse=True)
+
+    return {
+        "headlines": aggregated[:limit],
+        "symbolsConsidered": normalized_symbols,
+        "generatedAt": _utc_now_naive().isoformat(),
+    }
 
 
 # ──────────────────────────────────────────────────────────────

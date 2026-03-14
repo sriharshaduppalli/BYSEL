@@ -114,6 +114,21 @@ data class MarketStatus(
     val nextClose: String? = null
 )
 
+data class MarketNewsHeadline(
+    val symbol: String = "",
+    val title: String = "",
+    val source: String = "",
+    val publishedAt: String = "",
+    val publishedLabel: String = "",
+    val link: String = ""
+)
+
+data class MarketNewsResponse(
+    val headlines: List<MarketNewsHeadline> = emptyList(),
+    val symbolsConsidered: List<String> = emptyList(),
+    val generatedAt: String = ""
+)
+
 data class StockSearchResult(
     val symbol: String,
     val name: String,

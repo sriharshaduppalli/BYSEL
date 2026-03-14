@@ -126,6 +126,21 @@ class MarketStatus(BaseModel):
     nextClose: Optional[str] = None
 
 
+class MarketNewsHeadline(BaseModel):
+    symbol: str
+    title: str
+    source: str = ""
+    publishedAt: str = ""
+    publishedLabel: str = ""
+    link: str = ""
+
+
+class MarketNewsResponse(BaseModel):
+    headlines: List[MarketNewsHeadline]
+    symbolsConsidered: List[str]
+    generatedAt: str
+
+
 class MutualFund(BaseModel):
     schemeCode: str
     schemeName: str
