@@ -47,6 +47,9 @@ fun AiAssistantScreen(
     val listState = rememberLazyListState()
     val focusManager = LocalFocusManager.current
     val appTheme = LocalAppTheme.current
+    val adaptiveSuggestions = remember(chatHistory, selectedSymbol) {
+        buildAdaptiveSuggestions(selectedSymbol, chatHistory)
+    }
 
     // Auto-scroll to bottom when new messages arrive
     LaunchedEffect(chatHistory.size) {
@@ -122,7 +125,7 @@ fun AiAssistantScreen(
                     .weight(1f)
                     .fillMaxWidth(),
                 onSuggestionClick = onSuggestionClick,
-                selectedSymbol = selectedSymbol
+                suggestions = adaptiveSuggestions
             )
         } else {
             LazyColumn(
@@ -144,6 +147,13 @@ fun AiAssistantScreen(
                         TypingIndicator()
                     }
                 }
+            }
+
+            if (adaptiveSuggestions.isNotEmpty()) {
+                AdaptiveSuggestionsStrip(
+                    suggestions = adaptiveSuggestions.take(8),
+                    onSuggestionClick = onSuggestionClick
+                )
             }
         }
 
@@ -219,9 +229,103 @@ private fun buildSymbolSuggestions(symbol: String): List<Pair<String, androidx.c
     "Predict $symbol price" to Icons.Filled.Timeline,
     "Analyze $symbol" to Icons.Filled.Analytics,
     "Is $symbol overvalued?" to Icons.Filled.PriceCheck,
+    "What is fair value range for $symbol?" to Icons.Filled.PriceCheck,
     "Technical analysis of $symbol" to Icons.Filled.Analytics,
+    "Support and resistance for $symbol" to Icons.Filled.ShowChart,
+    "What are risks in $symbol now?" to Icons.Filled.Warning,
     "Compare $symbol with peers" to Icons.AutoMirrored.Filled.CompareArrows,
 )
+
+private fun buildAdaptiveSuggestions(
+    selectedSymbol: String?,
+    chatHistory: List<ChatMessage>
+): List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>> {
+    val userPrompts = chatHistory.filter { it.isUser }.map { it.text.trim() }.filter { it.isNotBlank() }
+    val askedPrompts = userPrompts.map { normalizePrompt(it) }.toSet()
+    val focusSymbol = selectedSymbol?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
+
+    val suggestions = linkedSetOf<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>>()
+
+    if (focusSymbol != null) {
+        buildSymbolSuggestions(focusSymbol).forEach { suggestions.add(it) }
+    }
+
+    val recent = userPrompts.takeLast(6).map { it.lowercase() }
+    val hasValuation = recent.any { textContainsAny(it, listOf("overvalued", "undervalued", "valuation", "fair value", "expensive", "cheap")) }
+    val hasPrediction = recent.any { textContainsAny(it, listOf("predict", "forecast", "target", "future")) }
+    val hasComparison = recent.any { textContainsAny(it, listOf("compare", "versus", "vs", "better")) }
+    val hasRecommendation = recent.any { textContainsAny(it, listOf("buy", "sell", "should i", "invest")) }
+    val hasTechnical = recent.any { textContainsAny(it, listOf("technical", "rsi", "macd", "support", "resistance", "trend")) }
+
+    if (hasValuation) {
+        if (focusSymbol != null) {
+            suggestions.add("Compare $focusSymbol valuation with peers" to Icons.AutoMirrored.Filled.CompareArrows)
+            suggestions.add("What can justify $focusSymbol current valuation?" to Icons.Filled.Help)
+        } else {
+            suggestions.add("Which IT stocks are undervalued now?" to Icons.Filled.PriceCheck)
+            suggestions.add("Best undervalued bank stocks" to Icons.Filled.PriceCheck)
+        }
+    }
+
+    if (hasPrediction) {
+        if (focusSymbol != null) {
+            suggestions.add("3-month outlook for $focusSymbol" to Icons.Filled.Timeline)
+            suggestions.add("Bull case vs bear case for $focusSymbol" to Icons.Filled.Analytics)
+        } else {
+            suggestions.add("Predict INFY price next month" to Icons.Filled.Timeline)
+            suggestions.add("Predict RELIANCE price this quarter" to Icons.Filled.Timeline)
+        }
+    }
+
+    if (hasComparison) {
+        if (focusSymbol != null) {
+            suggestions.add("Compare $focusSymbol with sector leader" to Icons.AutoMirrored.Filled.CompareArrows)
+            suggestions.add("$focusSymbol vs peers on growth and margins" to Icons.AutoMirrored.Filled.CompareArrows)
+        } else {
+            suggestions.add("Compare TCS and INFY by valuation" to Icons.AutoMirrored.Filled.CompareArrows)
+            suggestions.add("Compare HDFCBANK and ICICIBANK" to Icons.AutoMirrored.Filled.CompareArrows)
+        }
+    }
+
+    if (hasRecommendation) {
+        if (focusSymbol != null) {
+            suggestions.add("When is a good entry price for $focusSymbol?" to Icons.AutoMirrored.Filled.TrendingUp)
+            suggestions.add("Should I SIP into $focusSymbol?" to Icons.Filled.Payments)
+        } else {
+            suggestions.add("Top stocks to accumulate this month" to Icons.AutoMirrored.Filled.TrendingUp)
+            suggestions.add("Best stocks for medium-term investing" to Icons.AutoMirrored.Filled.TrendingUp)
+        }
+    }
+
+    if (hasTechnical) {
+        if (focusSymbol != null) {
+            suggestions.add("RSI and MACD view for $focusSymbol" to Icons.Filled.Analytics)
+            suggestions.add("Breakout setup check for $focusSymbol" to Icons.Filled.ShowChart)
+        } else {
+            suggestions.add("Technical setup for NIFTY IT stocks" to Icons.Filled.Analytics)
+            suggestions.add("Stocks near breakout today" to Icons.Filled.ShowChart)
+        }
+    }
+
+    val fallbackPool = buildDefaultSuggestionPool().shuffled(Random(System.currentTimeMillis()))
+    for (item in fallbackPool) {
+        if (suggestions.size >= 14) break
+        suggestions.add(item)
+    }
+
+    return suggestions
+        .filterNot { normalizePrompt(it.first) in askedPrompts }
+        .take(12)
+        .ifEmpty { fallbackPool.take(8) }
+}
+
+private fun textContainsAny(source: String, keywords: List<String>): Boolean {
+    return keywords.any { source.contains(it, ignoreCase = true) }
+}
+
+private fun normalizePrompt(text: String): String {
+    return text.lowercase().replace(Regex("\\s+"), " ").trim()
+}
 
 private fun buildDefaultSuggestionPool(): List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>> = listOf(
     // Buy / Invest
@@ -270,18 +374,8 @@ private fun buildDefaultSuggestionPool(): List<Pair<String, androidx.compose.ui.
 private fun WelcomeContent(
     modifier: Modifier = Modifier,
     onSuggestionClick: (String) -> Unit,
-    selectedSymbol: String? = null
+    suggestions: List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>>,
 ) {
-    val suggestions = remember(selectedSymbol) {
-        if (selectedSymbol != null) {
-            buildSymbolSuggestions(selectedSymbol)
-        } else {
-            buildDefaultSuggestionPool()
-                .shuffled(Random(System.currentTimeMillis()))
-                .take(6)
-        }
-    }
-
     Column(
         modifier = modifier
             .padding(24.dp),
@@ -362,6 +456,39 @@ private fun WelcomeContent(
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun AdaptiveSuggestionsStrip(
+    suggestions: List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>>,
+    onSuggestionClick: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
+    ) {
+        Text(
+            text = "Suggested next prompts",
+            color = LocalAppTheme.current.primary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(bottom = 6.dp)
+        )
+
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 8.dp)
+        ) {
+            items(suggestions) { (text, icon) ->
+                SuggestionChip(
+                    text = text,
+                    icon = icon,
+                    onClick = { onSuggestionClick(text) }
+                )
+            }
         }
     }
 }

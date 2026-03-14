@@ -736,7 +736,7 @@ _SECTOR_PEERS: Dict[str, List[str]] = {
 
 def _build_stock_suggestions(symbol: str, exclude: str = "") -> List[str]:
     """
-    Build 4-5 diverse follow-up prompt suggestions for a given stock.
+    Build diverse follow-up prompt suggestions for a given stock.
     `exclude` can be 'analysis','prediction','buy_sell','compare' to avoid
     repeating the type the user just asked about.
     """
@@ -750,6 +750,7 @@ def _build_stock_suggestions(symbol: str, exclude: str = "") -> List[str]:
         candidates.append(f"Analyze {symbol}")
     if exclude != "overvaluation":
         candidates.append(f"Is {symbol} overvalued?")
+        candidates.append(f"What is fair value for {symbol}?")
 
     peers = _SECTOR_PEERS.get(symbol, [])
     if peers:
@@ -760,7 +761,20 @@ def _build_stock_suggestions(symbol: str, exclude: str = "") -> List[str]:
     if not peers:
         candidates.append(f"Technical analysis of {symbol}")
 
-    return candidates[:5]
+    candidates.append(f"Support and resistance for {symbol}")
+    candidates.append(f"What are risks in {symbol} right now?")
+    candidates.append(f"Should I wait for a dip in {symbol}?")
+
+    deduped: List[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        normalized = candidate.lower().strip()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(candidate)
+
+    return deduped[:8]
 
 
 def _build_help_response() -> Dict:
