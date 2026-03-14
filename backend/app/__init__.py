@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 from .routes import router
 from .routes.auth import router as auth_router
+from .routes.streaming import router as streaming_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -56,6 +57,7 @@ app.add_middleware(
 # Include main and auth routes
 app.include_router(router)
 app.include_router(auth_router, prefix="/auth")
+app.include_router(streaming_router)
 
 @app.on_event("startup")
 async def startup_event():

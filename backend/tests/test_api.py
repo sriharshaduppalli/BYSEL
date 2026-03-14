@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from app import app
 from app.database.db import SessionLocal, WalletModel
 from app.models.schemas import MarketStatus
+from app.routes import auth as auth_routes
 
 client = TestClient(app)
 
@@ -310,3 +311,58 @@ def test_login_username_is_case_insensitive():
     payload = login_response.json()
     assert payload["status"] == "ok"
     assert "access_token" in payload
+
+
+def test_quotes_websocket_stream_supports_subscribe_updates(monkeypatch):
+    monkeypatch.setattr(
+        "app.routes.streaming.get_default_symbols",
+        lambda: ["RELIANCE", "TCS"],
+    )
+    monkeypatch.setattr(
+        "app.routes.streaming.fetch_quotes",
+        lambda symbols: [
+            {
+                "symbol": symbol.upper(),
+                "last": 100.0 + index,
+                "pctChange": float(index),
+            }
+            for index, symbol in enumerate(symbols)
+        ],
+    )
+
+    with client.websocket_connect("/ws/quotes") as websocket:
+        first_message = websocket.receive_json()
+        assert first_message["type"] == "subscribed"
+
+        websocket.send_json({"action": "subscribe", "symbols": ["INFY", "SBIN"]})
+
+        second_message = websocket.receive_json()
+        assert second_message["type"] == "subscribed"
+        assert set(second_message["symbols"]) == {"INFY", "SBIN"}
+
+        quotes_message = websocket.receive_json()
+        assert quotes_message["type"] == "quotes"
+        quote_symbols = {row["symbol"] for row in quotes_message["quotes"]}
+        assert quote_symbols == {"INFY", "SBIN"}
+
+
+def test_auth_debug_session_health_endpoint(monkeypatch):
+    monkeypatch.setattr(auth_routes, "AUTH_DEBUG_ENDPOINTS_ENABLED", True)
+    monkeypatch.setattr(auth_routes, "AUTH_DEBUG_TOKEN", "debug-token")
+
+    username, email, password = _unique_user("session_health_user")
+    register_response = client.post(
+        "/auth/register",
+        json={"username": username, "email": email, "password": password}
+    )
+    assert register_response.status_code == 200
+
+    session_health = client.get(
+        "/auth/debug/session-health",
+        headers={"X-Debug-Token": "debug-token"},
+    )
+    assert session_health.status_code == 200
+    payload = session_health.json()
+    assert payload["status"] == "ok"
+    assert "session_health" in payload
+    assert payload["session_health"]["active_sessions_total"] >= 1

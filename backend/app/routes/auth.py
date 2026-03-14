@@ -496,6 +496,59 @@ def _reset_debug_state() -> None:
         _auth_metrics.clear()
 
 
+def _session_health_snapshot(db: Session) -> dict:
+    now = datetime.utcnow()
+    expiring_cutoff = now + timedelta(minutes=15)
+    recent_cutoff = now - timedelta(hours=24)
+
+    active_filters = (
+        RefreshTokenModel.revoked_at.is_(None),
+        RefreshTokenModel.used_at.is_(None),
+        RefreshTokenModel.expires_at > now,
+    )
+
+    active_sessions_total = db.query(RefreshTokenModel).filter(*active_filters).count()
+    active_sessions_expiring_15m = db.query(RefreshTokenModel).filter(
+        *active_filters,
+        RefreshTokenModel.expires_at <= expiring_cutoff,
+    ).count()
+
+    revoked_last_24h = db.query(RefreshTokenModel).filter(
+        RefreshTokenModel.revoked_at.is_not(None),
+        RefreshTokenModel.revoked_at >= recent_cutoff,
+    ).count()
+    used_last_24h = db.query(RefreshTokenModel).filter(
+        RefreshTokenModel.used_at.is_not(None),
+        RefreshTokenModel.used_at >= recent_cutoff,
+    ).count()
+
+    top_active_sessions = db.query(
+        RefreshTokenModel.user_id,
+        func.count(RefreshTokenModel.id).label("active_session_count")
+    ).filter(
+        *active_filters
+    ).group_by(
+        RefreshTokenModel.user_id
+    ).order_by(
+        func.count(RefreshTokenModel.id).desc()
+    ).limit(10).all()
+
+    return {
+        "active_sessions_total": active_sessions_total,
+        "active_sessions_expiring_15m": active_sessions_expiring_15m,
+        "revoked_last_24h": revoked_last_24h,
+        "used_last_24h": used_last_24h,
+        "max_active_sessions_per_user": MAX_ACTIVE_SESSIONS_PER_USER,
+        "top_users_by_active_sessions": [
+            {
+                "user_id": int(row.user_id),
+                "active_session_count": int(row.active_session_count),
+            }
+            for row in top_active_sessions
+        ],
+    }
+
+
 def verify_token(token: str, expected_type: str | None = None) -> dict:
     try:
         payload_b64, signature_b64 = token.split(".", 1)
@@ -910,6 +963,22 @@ def auth_debug_rate_limits_reset(x_debug_token: str | None = Header(default=None
     return {
         "status": "ok",
         "message": "Auth debug metrics and rate-limit buckets reset"
+    }
+
+
+@router.get("/debug/session-health")
+def auth_debug_session_health(x_debug_token: str | None = Header(default=None, alias="X-Debug-Token")):
+    _require_debug_access(x_debug_token)
+    db: Session = SessionLocal()
+    try:
+        snapshot = _session_health_snapshot(db)
+    finally:
+        db.close()
+
+    return {
+        "status": "ok",
+        "metrics": _metrics_snapshot(),
+        "session_health": snapshot,
     }
 
 
