@@ -21,9 +21,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextField as M3OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldColors
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -68,6 +69,48 @@ private fun ActionBanner(viewModel: TradingViewModel) {
         }
         LaunchedEffect(msg) { viewModel.clearProductActionMessage() }
     }
+}
+
+@Composable
+private fun investmentTextFieldColors(): TextFieldColors = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = LocalAppTheme.current.text,
+    unfocusedTextColor = LocalAppTheme.current.text,
+    disabledTextColor = LocalAppTheme.current.textSecondary,
+    focusedLabelColor = LocalAppTheme.current.primary,
+    unfocusedLabelColor = LocalAppTheme.current.textSecondary,
+    disabledLabelColor = LocalAppTheme.current.textSecondary,
+    focusedPlaceholderColor = LocalAppTheme.current.textSecondary,
+    unfocusedPlaceholderColor = LocalAppTheme.current.textSecondary,
+    focusedBorderColor = LocalAppTheme.current.primary,
+    unfocusedBorderColor = LocalAppTheme.current.textSecondary.copy(alpha = 0.6f),
+    disabledBorderColor = LocalAppTheme.current.textSecondary.copy(alpha = 0.3f),
+    cursorColor = LocalAppTheme.current.primary,
+    focusedContainerColor = LocalAppTheme.current.card,
+    unfocusedContainerColor = LocalAppTheme.current.card,
+    disabledContainerColor = LocalAppTheme.current.card,
+)
+
+@Composable
+private fun OutlinedTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: @Composable (() -> Unit)? = null,
+    placeholder: @Composable (() -> Unit)? = null,
+    textStyle: TextStyle = TextStyle(color = LocalAppTheme.current.text),
+    colors: TextFieldColors = investmentTextFieldColors(),
+    singleLine: Boolean = false,
+) {
+    M3OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        label = label,
+        placeholder = placeholder,
+        textStyle = textStyle,
+        colors = colors,
+        singleLine = singleLine,
+    )
 }
 
 @Composable
@@ -441,6 +484,11 @@ fun IpoListingsScreen(viewModel: TradingViewModel) {
         ) {
             item { Text("IPO Listings", color = LocalAppTheme.current.text, fontSize = 24.sp, fontWeight = FontWeight.Bold) }
             item { ActionBanner(viewModel) }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { viewModel.loadIpoListings() }) { Text("Refresh IPOs") }
+                }
+            }
             items(ipos) { ipo ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
@@ -510,6 +558,12 @@ fun EtfScreen(viewModel: TradingViewModel) {
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item { Text("ETFs", color = LocalAppTheme.current.text, fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+            item { ActionBanner(viewModel) }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { viewModel.loadEtfs() }) { Text("Refresh ETFs") }
+                }
+            }
             items(etfs) { etf ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
@@ -621,6 +675,12 @@ fun MyIpoApplicationsScreen(viewModel: TradingViewModel) {
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item { Text("My IPO Applications", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold, fontSize = 24.sp) }
+        item { ActionBanner(viewModel) }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { viewModel.loadMyIpoApplications() }) { Text("Refresh Applications") }
+            }
+        }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("ALL", "PENDING", "ALLOTTED", "REJECTED").forEach { status ->
