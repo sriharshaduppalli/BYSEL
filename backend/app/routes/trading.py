@@ -26,10 +26,17 @@ logger = logging.getLogger(__name__)
 
 IST = pytz.timezone("Asia/Kolkata")
 ORDER_STATUS_TRANSITIONS: dict[str, set[str]] = {
-    "PENDING": {"COMPLETED", "REJECTED", "TRIGGER_EXECUTED"},
+    "PENDING": {"COMPLETED", "REJECTED", "TRIGGER_EXECUTED", "CANCELLED"},
     "COMPLETED": set(),
     "REJECTED": set(),
     "TRIGGER_EXECUTED": set(),
+    "CANCELLED": set(),
+}
+TRIGGER_STATUS_TRANSITIONS: dict[str, set[str]] = {
+    "PENDING": {"EXECUTED", "FAILED", "CANCELLED"},
+    "EXECUTED": set(),
+    "FAILED": set(),
+    "CANCELLED": set(),
 }
 MAX_IDEMPOTENCY_KEY_LENGTH = 128
 TRADING_WALLET_USER_ID = 0
@@ -79,7 +86,26 @@ def _normalize_order_payload(order: Order, idempotency_key: str | None = None) -
 
 
 def _build_request_fingerprint(order: Order) -> str:
-    payload = f"{order.symbol}|{order.side}|{order.qty}"
+    payload = "|".join(
+        [
+            (order.symbol or "").strip().upper(),
+            _normalize_side(order.side),
+            str(int(order.qty)),
+            _normalize_order_type(getattr(order, "orderType", "MARKET")),
+            _normalize_validity(getattr(order, "validity", "DAY")),
+            (
+                f"{float(getattr(order, 'limitPrice', None)):.4f}"
+                if getattr(order, "limitPrice", None) is not None
+                else ""
+            ),
+            (
+                f"{float(getattr(order, 'triggerPrice', None)):.4f}"
+                if getattr(order, "triggerPrice", None) is not None
+                else ""
+            ),
+            (getattr(order, "tag", None) or "").strip(),
+        ]
+    )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -90,6 +116,15 @@ def _transition_order_status(order_db: OrderModel, next_status: str) -> None:
     if target_status not in allowed:
         raise ValueError(f"Invalid transition from {current_status} to {target_status}")
     order_db.status = target_status
+
+
+def _transition_trigger_status(trigger_db: TriggerOrderModel, next_status: str) -> None:
+    current_status = (trigger_db.status or "PENDING").upper()
+    target_status = next_status.upper()
+    allowed = TRIGGER_STATUS_TRANSITIONS.get(current_status, set())
+    if target_status not in allowed:
+        raise ValueError(f"Invalid trigger transition from {current_status} to {target_status}")
+    trigger_db.status = target_status
 
 
 def is_market_open() -> MarketStatus:
@@ -579,7 +614,8 @@ def evaluate_pending_triggers(
                 user_id=entry.user_id,
                 status="TRIGGER_EXECUTED",
             )
-            entry.status = "EXECUTED" if response.status == "ok" else "FAILED"
+            next_status = "EXECUTED" if response.status == "ok" else "FAILED"
+            _transition_trigger_status(entry, next_status)
             db.commit()
             results.append(
                 {
@@ -591,7 +627,7 @@ def evaluate_pending_triggers(
                 }
             )
         elif entry.validity == "IOC":
-            entry.status = "CANCELLED"
+            _transition_trigger_status(entry, "CANCELLED")
             db.commit()
             results.append(
                 {
@@ -681,6 +717,7 @@ def place_order(
         )
 
     if normalized_order.idempotencyKey:
+        current_fingerprint = _build_request_fingerprint(normalized_order)
         duplicate_order = (
             db.query(OrderModel)
             .filter(
@@ -691,6 +728,30 @@ def place_order(
             .first()
         )
         if duplicate_order:
+            existing_fingerprint = (duplicate_order.request_fingerprint or "").strip()
+            if existing_fingerprint:
+                same_payload = existing_fingerprint == current_fingerprint
+            else:
+                # Backward compatibility for older rows that do not carry fingerprints.
+                same_payload = (
+                    (duplicate_order.symbol or "").strip().upper() == normalized_order.symbol
+                    and int(duplicate_order.quantity or 0) == int(normalized_order.qty)
+                    and (duplicate_order.side or "").strip().upper() == normalized_order.side
+                )
+
+            if not same_payload:
+                return OrderResponse(
+                    status="error",
+                    order=normalized_order,
+                    message="Idempotency key already used with a different order payload",
+                    orderId=duplicate_order.id,
+                    orderStatus=duplicate_order.status,
+                    traceId=duplicate_order.trace_id or resolved_trace_id,
+                    idempotencyKey=duplicate_order.idempotency_key,
+                    errorCode="IDEMPOTENCY_KEY_REUSED",
+                    isDuplicate=False,
+                )
+
             return OrderResponse(
                 status="ok",
                 order=normalized_order,

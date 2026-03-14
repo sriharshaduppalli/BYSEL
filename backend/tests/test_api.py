@@ -105,7 +105,8 @@ def test_place_order_is_idempotent(monkeypatch):
     _mock_live_market(monkeypatch, price=250.0)
 
     order_data = {"symbol": "INFY", "qty": 2, "side": "BUY"}
-    headers = {"X-Idempotency-Key": "test-order-key-001", "X-Trace-Id": "trace-test-001"}
+    idem_key = f"test-order-key-001-{time.time_ns()}"
+    headers = {"X-Idempotency-Key": idem_key, "X-Trace-Id": "trace-test-001"}
 
     first = client.post("/order", json=order_data, headers=headers)
     second = client.post("/order", json=order_data, headers=headers)
@@ -121,6 +122,30 @@ def test_place_order_is_idempotent(monkeypatch):
     assert first_data["orderId"] == second_data["orderId"]
     assert first_data["idempotencyKey"] == second_data["idempotencyKey"]
     assert second_data["isDuplicate"] is True
+
+
+def test_place_order_reused_idempotency_key_with_different_payload_is_rejected(monkeypatch):
+    _seed_trading_wallet()
+    _mock_live_market(monkeypatch, price=250.0)
+
+    idem_key = f"test-order-key-002-{time.time_ns()}"
+    headers = {"X-Idempotency-Key": idem_key, "X-Trace-Id": "trace-test-002"}
+    first_order = {"symbol": "INFY", "qty": 2, "side": "BUY"}
+    conflicting_order = {"symbol": "INFY", "qty": 3, "side": "BUY"}
+
+    first = client.post("/order", json=first_order, headers=headers)
+    second = client.post("/order", json=conflicting_order, headers=headers)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+
+    first_data = first.json()
+    second_data = second.json()
+
+    assert first_data["status"] == "ok"
+    assert second_data["status"] == "error"
+    assert second_data["errorCode"] == "IDEMPOTENCY_KEY_REUSED"
+    assert second_data["orderId"] == first_data["orderId"]
 
 
 def test_place_order_invalid_side_has_deterministic_error_code():
