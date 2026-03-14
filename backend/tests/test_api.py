@@ -59,6 +59,22 @@ def _mock_live_market(monkeypatch, price: float = 100.0) -> None:
         lambda symbol: {"symbol": symbol.upper(), "last": price, "pctChange": 0.0},
     )
 
+
+def _mock_news_payload(prefix: str, sentiment: str = "mixed") -> dict:
+    headlines = [
+        {
+            "title": f"{prefix} headline {index}",
+            "source": "Moneycontrol",
+            "publishedLabel": f"{index}h ago",
+        }
+        for index in range(1, 6)
+    ]
+    return {
+        "sentiment": sentiment,
+        "summary": f"{sentiment.capitalize()} flow across the latest 5 headlines.",
+        "headlines": headlines,
+    }
+
 def test_health_check():
     """Test health check endpoint"""
     response = client.get("/health")
@@ -433,6 +449,7 @@ def test_ai_buy_query_returns_decision_style_response(monkeypatch):
             "technical": {"rsi": 56.2, "movingAverages": {"trend": "bullish"}},
             "predictions": [{"days": 30, "changePercent": 6.5, "predictedPrice": 3163.0}],
             "fundamental": {"pe": 42.0},
+            "news": _mock_news_payload(symbol, sentiment="positive"),
         },
     )
 
@@ -455,6 +472,7 @@ def test_ai_analysis_query_returns_detailed_sections(monkeypatch):
             "technical": {"rsi": 58.4, "macd": {"trend": "bullish"}, "movingAverages": {"trend": "bullish"}},
             "predictions": [{"days": 30, "changePercent": 3.1, "predictedPrice": 3062.0}],
             "fundamental": {"pe": 40.0, "roe": 18.2, "debtToEquity": 15.0},
+            "news": _mock_news_payload(symbol),
         },
     )
 
@@ -463,6 +481,8 @@ def test_ai_analysis_query_returns_detailed_sections(monkeypatch):
     assert "detailed analysis" in result["answer"].lower()
     assert "technical pulse" in result["answer"].lower()
     assert "fundamental snapshot" in result["answer"].lower()
+    assert "recent headlines considered" in result["answer"].lower()
+    assert "kaynes headline 1" in result["answer"].lower()
 
 
 def test_ai_recommend_keyword_with_symbol_avoids_portfolio_generic(monkeypatch):
@@ -479,6 +499,7 @@ def test_ai_recommend_keyword_with_symbol_avoids_portfolio_generic(monkeypatch):
             "technical": {"rsi": 55.0, "movingAverages": {"trend": "bullish"}},
             "predictions": [{"days": 30, "changePercent": 2.0, "predictedPrice": 3029.0}],
             "fundamental": {"pe": 43.0},
+            "news": _mock_news_payload(symbol),
         },
     )
 
@@ -486,3 +507,50 @@ def test_ai_recommend_keyword_with_symbol_avoids_portfolio_generic(monkeypatch):
     assert result["type"] == "recommendation"
     assert result["symbol"] == "KAYNES"
     assert "portfolio" not in result["answer"].lower()
+
+
+def test_fetch_recent_headlines_returns_latest_five(monkeypatch):
+    raw_news = [
+        {
+            "title": f"Headline {index}",
+            "publisher": "Reuters",
+            "providerPublishTime": 1_700_000_000 + index,
+        }
+        for index in range(7)
+    ]
+
+    class FakeTicker:
+        def get_news(self):
+            return raw_news
+
+    ai_engine._news_cache.clear()
+    monkeypatch.setattr(ai_engine.yf, "Ticker", lambda symbol: FakeTicker())
+
+    headlines = ai_engine._fetch_recent_headlines("KAYNES")
+
+    assert len(headlines) == 5
+    assert headlines[0]["title"] == "Headline 6"
+    assert headlines[-1]["title"] == "Headline 2"
+
+
+def test_ai_compare_query_includes_headline_context(monkeypatch):
+    def fake_analysis(symbol: str):
+        return {
+            "name": f"{symbol} Industries",
+            "currentPrice": 2500.0,
+            "score": 65 if symbol == "KAYNES" else 72,
+            "signal": "HOLD" if symbol == "KAYNES" else "BUY",
+            "technical": {"rsi": 54.0},
+            "fundamental": {"pe": 35.0},
+            "predictions": [{"days": 30, "changePercent": 4.0, "predictedPrice": 2600.0}],
+            "news": _mock_news_payload(symbol, sentiment="positive" if symbol == "TCS" else "mixed"),
+        }
+
+    monkeypatch.setattr(ai_engine, "analyze_stock", fake_analysis)
+
+    result = ai_engine.ai_assistant("Compare KAYNES and TCS")
+
+    assert result["type"] == "comparison"
+    assert "latest headlines considered" in result["answer"].lower()
+    assert "kaynes headline 1" in result["answer"].lower()
+    assert "tcs headline 1" in result["answer"].lower()
