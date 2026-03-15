@@ -131,6 +131,7 @@ fun TradingScreen(
     onRefresh: () -> Unit,
     onAddFunds: (Double, String) -> Unit,
     onErrorDismiss: () -> Unit,
+    onTraceSupportLookup: ((String) -> Unit)? = null,
     viewModel: com.bysel.trader.viewmodel.TradingViewModel
 ) {
     // Start fast-refresh while this screen is visible; stop on dispose
@@ -419,6 +420,7 @@ fun TradingScreen(
             TraceAwareErrorSnackbar(
                 error = error,
                 onDismiss = onErrorDismiss,
+                onTraceAction = onTraceSupportLookup,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),

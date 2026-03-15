@@ -28,6 +28,8 @@ fun TraceAwareErrorSnackbar(
     error: String,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    onTraceAction: ((String) -> Unit)? = null,
+    traceActionLabel: String = "Support Lookup",
 ) {
     val clipboardManager = LocalClipboardManager.current
     val traceId = remember(error) { extractTraceIdFromMessage(error) }
@@ -36,8 +38,11 @@ fun TraceAwareErrorSnackbar(
         modifier = modifier,
         action = if (traceId != null) {
             {
-                TextButton(onClick = { clipboardManager.setText(AnnotatedString(traceId)) }) {
-                    Text("Copy Trace")
+                TextButton(onClick = {
+                    clipboardManager.setText(AnnotatedString(traceId))
+                    onTraceAction?.invoke(traceId)
+                }) {
+                    Text(if (onTraceAction != null) traceActionLabel else "Copy Trace")
                 }
             }
         } else {

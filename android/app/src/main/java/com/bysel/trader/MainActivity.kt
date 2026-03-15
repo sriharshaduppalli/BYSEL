@@ -597,6 +597,11 @@ fun BYSELApp(
                                         },
                                         onAddFunds = { amount, upiProvider -> onUpiPay(amount, upiProvider) },
                                         onErrorDismiss = { viewModel.clearError() },
+                                        onTraceSupportLookup = { traceId ->
+                                            viewModel.seedTraceLookup(traceId)
+                                            viewModel.lookupOrderByTrace(traceId)
+                                            selectedTab = 19
+                                        },
                                         viewModel = viewModel
                                     )
                                     3 -> PortfolioScreen(

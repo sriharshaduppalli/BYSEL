@@ -1281,6 +1281,15 @@ class TradingViewModel(
         _orderTraceLookup.value = null
     }
 
+    fun seedTraceLookup(traceId: String) {
+        val normalized = traceId.trim()
+        if (normalized.isBlank()) {
+            return
+        }
+        _lastOrderTraceId.value = normalized
+        _orderTraceLookup.value = null
+    }
+
     fun clearAdvancedInsights() {
         _advancedOrderResponse.value = null
         _triggerEvaluation.value = null
