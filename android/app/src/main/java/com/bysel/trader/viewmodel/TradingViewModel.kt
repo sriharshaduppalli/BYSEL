@@ -205,6 +205,10 @@ class TradingViewModel(
     private var autoRefreshJob: Job? = null
     private val AUTO_REFRESH_INTERVAL = 15_000L
     private val FAST_REFRESH_INTERVAL = 1_000L
+    private val FOREGROUND_WARMUP_DEBOUNCE = 3_000L
+    private val QUOTE_STALE_THRESHOLD = 20_000L
+    private var lastForegroundWarmupAt = 0L
+    private var lastQuotesRefreshAt = 0L
     private val defaultSymbols = listOf(
         "RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN",
         "ICICIBANK", "ITC", "LT", "KOTAKBANK", "HINDUNILVR",
@@ -348,6 +352,7 @@ class TradingViewModel(
                             result.data
                         }
                         _isLoading.value = false
+                        lastQuotesRefreshAt = System.currentTimeMillis()
                         // Reset paging after success
                         _pagedQuotes.value = emptyList()
                         currentPage = 0
@@ -501,6 +506,7 @@ class TradingViewModel(
      * the market appears open (`marketStatus.isOpen == true`).
      */
     fun startFastRefresh(intervalMs: Long = FAST_REFRESH_INTERVAL, symbols: List<String>? = null) {
+        val effectiveIntervalMs = intervalMs.coerceAtLeast(250L)
         val symbolsToTrack = symbols?.map { it.trim().uppercase() }?.filter { it.isNotBlank() }?.distinct()
             ?: trackedSymbols()
         // avoid starting multiple jobs
@@ -508,6 +514,7 @@ class TradingViewModel(
         // respect global enabled flag
         if (!_fastRefreshEnabled.value) return
         autoRefreshJob = viewModelScope.launch {
+            var lastStreamEmitAt = 0L
             try {
                 repository.streamLiveQuotes(symbolsToTrack).collectLatest { result ->
                     if (!_fastRefreshPlaying.value) return@collectLatest
@@ -518,7 +525,13 @@ class TradingViewModel(
 
                     when (result) {
                         is Result.Success -> {
+                            val now = System.currentTimeMillis()
+                            if (now - lastStreamEmitAt < effectiveIntervalMs) {
+                                return@collectLatest
+                            }
+                            lastStreamEmitAt = now
                             _quotes.value = result.data
+                            lastQuotesRefreshAt = System.currentTimeMillis()
                             evaluateAlerts(result.data)
                         }
                         is Result.Error -> _error.value = result.message
@@ -535,6 +548,34 @@ class TradingViewModel(
     fun stopFastRefresh() {
         autoRefreshJob?.cancel()
         autoRefreshJob = null
+    }
+
+    fun onAppForegroundResume(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastForegroundWarmupAt < FOREGROUND_WARMUP_DEBOUNCE) {
+            return
+        }
+        lastForegroundWarmupAt = now
+
+        refreshMarketStatus()
+        refreshWallet()
+
+        val quotesAreStale = now - lastQuotesRefreshAt > QUOTE_STALE_THRESHOLD
+        if (force || _quotes.value.isEmpty() || quotesAreStale) {
+            refreshQuotes()
+        }
+
+        if (force || _holdings.value.isEmpty()) {
+            refreshHoldings()
+        }
+
+        if (_fastRefreshEnabled.value) {
+            startFastRefresh(symbols = trackedSymbols())
+        }
+    }
+
+    fun onAppBackgroundPause() {
+        stopFastRefresh()
     }
 
     fun setFastRefreshEnabled(enabled: Boolean) {

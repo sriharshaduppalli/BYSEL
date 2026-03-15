@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -60,7 +61,7 @@ fun MarketCalendarScreen(onBack: () -> Unit) {
         ) {
             IconButton(onClick = onBack) {
                 Icon(
-                    imageVector = Icons.Default.ArrowBack,
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
                     tint = Color.White
                 )
@@ -140,7 +141,7 @@ fun MarketCalendarScreen(onBack: () -> Unit) {
                 }
                 
                 Spacer(modifier = Modifier.height(12.dp))
-                Divider(color = LocalAppTheme.current.textSecondary.copy(alpha = 0.2f))
+                HorizontalDivider(color = LocalAppTheme.current.textSecondary.copy(alpha = 0.2f))
                 Spacer(modifier = Modifier.height(12.dp))
                 
                 Text(

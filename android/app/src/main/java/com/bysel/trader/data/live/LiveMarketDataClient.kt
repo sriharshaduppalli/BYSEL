@@ -97,9 +97,7 @@ class LiveMarketDataClient(
         var isClosing = false
         var reconnectAttempt = 0
         var reconnectJob: kotlinx.coroutines.Job? = null
-        var staleWatchdogJob: kotlinx.coroutines.Job? = null
         var lastMessageAtMs = System.currentTimeMillis()
-        var openSocket: (() -> Unit)? = null
 
         suspend fun emitRestSnapshot() {
             runCatching {
@@ -109,7 +107,10 @@ class LiveMarketDataClient(
             }
         }
 
-        fun scheduleReconnect(reason: String) {
+        lateinit var scheduleReconnect: (String) -> Unit
+        lateinit var openSocketConnection: () -> Unit
+
+        scheduleReconnect = fun(reason: String) {
             if (isClosing || !isActive) return
             if (reconnectJob?.isActive == true) return
 
@@ -121,12 +122,12 @@ class LiveMarketDataClient(
                 emitRestSnapshot()
                 delay(backoffMs)
                 if (!isClosing && isActive) {
-                    openSocket?.invoke()
+                    openSocketConnection()
                 }
             }
         }
 
-        openSocket = {
+        openSocketConnection = {
             if (!isClosing && isActive) {
                 val request = Request.Builder().url(wsUrl).build()
                 try {
@@ -167,7 +168,7 @@ class LiveMarketDataClient(
             }
         }
 
-        staleWatchdogJob = launch {
+        val staleWatchdogJob = launch {
             while (isActive && !isClosing) {
                 delay(STALE_STREAM_TIMEOUT_MS)
                 val staleForMs = System.currentTimeMillis() - lastMessageAtMs
@@ -180,12 +181,12 @@ class LiveMarketDataClient(
         }
 
         launch { emitRestSnapshot() }
-        openSocket?.invoke()
+        openSocketConnection()
 
         awaitClose {
             isClosing = true
             reconnectJob?.cancel()
-            staleWatchdogJob?.cancel()
+            staleWatchdogJob.cancel()
             socket?.close(1000, "closed")
             socket?.cancel()
         }

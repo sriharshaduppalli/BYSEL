@@ -17,6 +17,8 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.automirrored.filled.CompareArrows
+import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -231,7 +233,7 @@ private fun buildSymbolSuggestions(symbol: String): List<Pair<String, androidx.c
     "Is $symbol overvalued?" to Icons.Filled.PriceCheck,
     "What is fair value range for $symbol?" to Icons.Filled.PriceCheck,
     "Technical analysis of $symbol" to Icons.Filled.Analytics,
-    "Support and resistance for $symbol" to Icons.Filled.ShowChart,
+    "Support and resistance for $symbol" to Icons.AutoMirrored.Filled.ShowChart,
     "What are risks in $symbol now?" to Icons.Filled.Warning,
     "Compare $symbol with peers" to Icons.AutoMirrored.Filled.CompareArrows,
 )
@@ -260,7 +262,7 @@ private fun buildAdaptiveSuggestions(
     if (hasValuation) {
         if (focusSymbol != null) {
             suggestions.add("Compare $focusSymbol valuation with peers" to Icons.AutoMirrored.Filled.CompareArrows)
-            suggestions.add("What can justify $focusSymbol current valuation?" to Icons.Filled.Help)
+            suggestions.add("What can justify $focusSymbol current valuation?" to Icons.AutoMirrored.Filled.Help)
         } else {
             suggestions.add("Which IT stocks are undervalued now?" to Icons.Filled.PriceCheck)
             suggestions.add("Best undervalued bank stocks" to Icons.Filled.PriceCheck)
@@ -300,10 +302,10 @@ private fun buildAdaptiveSuggestions(
     if (hasTechnical) {
         if (focusSymbol != null) {
             suggestions.add("RSI and MACD view for $focusSymbol" to Icons.Filled.Analytics)
-            suggestions.add("Breakout setup check for $focusSymbol" to Icons.Filled.ShowChart)
+            suggestions.add("Breakout setup check for $focusSymbol" to Icons.AutoMirrored.Filled.ShowChart)
         } else {
             suggestions.add("Technical setup for NIFTY IT stocks" to Icons.Filled.Analytics)
-            suggestions.add("Stocks near breakout today" to Icons.Filled.ShowChart)
+            suggestions.add("Stocks near breakout today" to Icons.AutoMirrored.Filled.ShowChart)
         }
     }
 
