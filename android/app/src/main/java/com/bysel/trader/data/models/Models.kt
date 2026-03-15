@@ -663,6 +663,20 @@ data class RefreshTokenRequest(
     val refreshToken: String
 )
 
+data class PasswordResetRequestBody(
+    val identifier: String
+)
+
+data class PasswordResetConfirmRequest(
+    val token: String,
+    val newPassword: String
+)
+
+data class ChangePasswordRequest(
+    val currentPassword: String,
+    val newPassword: String
+)
+
 data class LogoutRequest(
     val refreshToken: String
 )
@@ -672,6 +686,19 @@ data class AuthResponse(
     val user_id: Int,
     val access_token: String,
     val refresh_token: String
+)
+
+data class PasswordResetRequestResponse(
+    val status: String,
+    val message: String,
+    val delivery: String? = null,
+    @SerializedName("reset_code") val resetCode: String? = null,
+    @SerializedName("expires_in_seconds") val expiresInSeconds: Int? = null,
+)
+
+data class PasswordResetConfirmResponse(
+    val status: String,
+    val message: String,
 )
 
 data class AuthSessionItem(

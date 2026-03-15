@@ -439,6 +439,132 @@ def test_login_username_is_case_insensitive():
     assert "access_token" in payload
 
 
+def test_password_reset_can_update_password(monkeypatch):
+    monkeypatch.setattr(auth_routes, "PASSWORD_RESET_DEBUG_RESPONSE_ENABLED", True)
+    monkeypatch.setattr(auth_routes, "SMTP_HOST", "")
+
+    username, email, password = _unique_user("password_reset_user")
+    register_response = client.post(
+        "/auth/register",
+        json={"username": username, "email": email, "password": password}
+    )
+    assert register_response.status_code == 200
+
+    request_response = client.post(
+        "/auth/password-reset/request",
+        json={"identifier": email}
+    )
+    assert request_response.status_code == 200
+    request_payload = request_response.json()
+    assert request_payload["status"] == "ok"
+    assert request_payload["delivery"] == "debug"
+    assert request_payload["reset_code"]
+
+    new_password = "demo5678"
+    confirm_response = client.post(
+        "/auth/password-reset/confirm",
+        json={"token": request_payload["reset_code"], "newPassword": new_password}
+    )
+    assert confirm_response.status_code == 200
+    assert confirm_response.json()["status"] == "ok"
+
+    old_login = client.post(
+        "/auth/login",
+        json={"username": username, "password": password}
+    )
+    assert old_login.status_code == 401
+
+    new_login = client.post(
+        "/auth/login",
+        json={"username": email, "password": new_password}
+    )
+    assert new_login.status_code == 200
+    assert new_login.json()["status"] == "ok"
+
+
+def test_password_reset_request_falls_back_to_support_when_delivery_unavailable(monkeypatch):
+    monkeypatch.setattr(auth_routes, "PASSWORD_RESET_DEBUG_RESPONSE_ENABLED", False)
+    monkeypatch.setattr(auth_routes, "SMTP_HOST", "")
+
+    response = client.post(
+        "/auth/password-reset/request",
+        json={"identifier": "missing_user@example.com"}
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["delivery"] == "support"
+    assert "support" in payload["message"].lower()
+
+
+def test_change_password_rotates_current_session_and_invalidates_old_access_token():
+    username, email, password = _unique_user("change_password_user")
+
+    register_response = client.post(
+        "/auth/register",
+        json={"username": username, "email": email, "password": password}
+    )
+    assert register_response.status_code == 200
+    register_payload = register_response.json()
+    old_access_token = register_payload["access_token"]
+
+    new_password = "demo9999"
+    change_response = client.post(
+        "/auth/change-password",
+        headers={"Authorization": f"Bearer {old_access_token}"},
+        json={"currentPassword": password, "newPassword": new_password},
+    )
+    assert change_response.status_code == 200
+    change_payload = change_response.json()
+    assert change_payload["status"] == "ok"
+    assert change_payload["access_token"] != old_access_token
+
+    old_token_sessions = client.get(
+        "/auth/sessions",
+        headers={"Authorization": f"Bearer {old_access_token}"},
+    )
+    assert old_token_sessions.status_code == 401
+    assert old_token_sessions.json()["detail"] == "Session invalidated"
+
+    new_token_sessions = client.get(
+        "/auth/sessions",
+        headers={"Authorization": f"Bearer {change_payload['access_token']}"},
+    )
+    assert new_token_sessions.status_code == 200
+
+    old_login = client.post(
+        "/auth/login",
+        json={"username": username, "password": password}
+    )
+    assert old_login.status_code == 401
+
+    new_login = client.post(
+        "/auth/login",
+        json={"username": email, "password": new_password}
+    )
+    assert new_login.status_code == 200
+
+
+def test_change_password_rejects_wrong_current_password():
+    username, email, password = _unique_user("change_password_wrong_current")
+
+    register_response = client.post(
+        "/auth/register",
+        json={"username": username, "email": email, "password": password}
+    )
+    assert register_response.status_code == 200
+    access_token = register_response.json()["access_token"]
+
+    response = client.post(
+        "/auth/change-password",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={"currentPassword": "wrong-pass", "newPassword": "demo9999"},
+    )
+    assert response.status_code == 401
+    assert "current password" in response.json()["detail"].lower()
+
+
 def test_quotes_websocket_stream_supports_subscribe_updates(monkeypatch):
     monkeypatch.setattr(
         "app.routes.streaming.get_default_symbols",

@@ -3,7 +3,9 @@ from sqlalchemy import text, func
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from pydantic import BaseModel
-from ..database.db import SessionLocal, UserModel, WalletModel, RefreshTokenModel
+from email.message import EmailMessage
+from ..config import DEBUG
+from ..database.db import SessionLocal, UserModel, WalletModel, RefreshTokenModel, PasswordResetTokenModel
 from datetime import datetime, timedelta
 from typing import List
 from collections import defaultdict, deque
@@ -14,6 +16,7 @@ import hashlib
 import hmac
 import json
 import os
+import smtplib
 import time
 import secrets
 
@@ -41,6 +44,18 @@ AUTH_DEBUG_TOKEN = os.getenv("AUTH_DEBUG_TOKEN", "")
 REFRESH_TOKEN_RETENTION_DAYS = int(os.getenv("REFRESH_TOKEN_RETENTION_DAYS", "30"))
 MAX_ACTIVE_SESSIONS_PER_USER = int(os.getenv("MAX_ACTIVE_SESSIONS_PER_USER", "5"))
 REFRESH_TOKEN_REPLAY_GRACE_SECONDS = int(os.getenv("REFRESH_TOKEN_REPLAY_GRACE_SECONDS", "15"))
+PASSWORD_RESET_TOKEN_TTL_SECONDS = int(os.getenv("PASSWORD_RESET_TOKEN_TTL_SECONDS", "900"))
+SUPPORT_EMAIL = os.getenv("BYSEL_SUPPORT_EMAIL", "support@bysel.com").strip() or "support@bysel.com"
+SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USERNAME = os.getenv("SMTP_USERNAME", "").strip()
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", SUPPORT_EMAIL).strip() or SUPPORT_EMAIL
+SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
+PASSWORD_RESET_DEBUG_RESPONSE_ENABLED = os.getenv(
+    "AUTH_PASSWORD_RESET_DEBUG_RESPONSE",
+    "true" if DEBUG else "false"
+).lower() == "true"
 
 _login_rate_buckets: dict[str, deque[float]] = defaultdict(deque)
 _refresh_rate_buckets: dict[str, deque[float]] = defaultdict(deque)
@@ -78,6 +93,33 @@ class LogoutResponse(BaseModel):
 
 class LogoutRequest(BaseModel):
     refreshToken: str
+
+
+class PasswordResetRequest(BaseModel):
+    identifier: str
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str
+    newPassword: str
+
+
+class PasswordResetRequestResponse(BaseModel):
+    status: str
+    message: str
+    delivery: str | None = None
+    reset_code: str | None = None
+    expires_in_seconds: int | None = None
+
+
+class PasswordResetConfirmResponse(BaseModel):
+    status: str
+    message: str
+
+
+class ChangePasswordRequest(BaseModel):
+    currentPassword: str
+    newPassword: str
 
 
 class SessionInfo(BaseModel):
@@ -154,6 +196,10 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+def _generate_password_reset_code() -> str:
+    return secrets.token_hex(4).upper()
+
+
 def _create_auth_tokens(user_id: int, token_version: int) -> tuple[str, str]:
     access_token = create_token(
         user_id=user_id,
@@ -168,6 +214,51 @@ def _create_auth_tokens(user_id: int, token_version: int) -> tuple[str, str]:
         token_version=token_version,
     )
     return access_token, refresh_token
+
+
+def _smtp_password_reset_configured() -> bool:
+    return bool(SMTP_HOST and SMTP_FROM_EMAIL)
+
+
+def _send_password_reset_email(recipient_email: str, username: str, reset_code: str) -> bool:
+    if not _smtp_password_reset_configured():
+        return False
+
+    minutes = max(1, PASSWORD_RESET_TOKEN_TTL_SECONDS // 60)
+    message = EmailMessage()
+    message["Subject"] = "BYSEL password reset code"
+    message["From"] = SMTP_FROM_EMAIL
+    message["To"] = recipient_email
+    message.set_content(
+        "\n".join(
+            [
+                f"Hi {username},",
+                "",
+                f"Use this BYSEL password reset code to set a new password: {reset_code}",
+                f"This code expires in {minutes} minute(s).",
+                "",
+                "If you did not request this, you can ignore this email.",
+            ]
+        )
+    )
+
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as server:
+            server.ehlo()
+            if SMTP_USE_TLS:
+                server.starttls()
+                server.ehlo()
+            if SMTP_USERNAME:
+                server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.send_message(message)
+        return True
+    except Exception as exc:
+        logger.exception(
+            "auth.password_reset.email_failed email=%s reason=%s",
+            _mask_identifier(recipient_email),
+            str(exc),
+        )
+        return False
 
 
 def _device_info(request: Request | None) -> str | None:
@@ -281,6 +372,13 @@ def _normalize_email(value: str) -> str:
     normalized = value.strip().lower()
     if not normalized:
         raise HTTPException(status_code=400, detail="Email is required")
+    return normalized
+
+
+def _normalize_identifier(value: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Username or email is required")
     return normalized
 
 
@@ -752,6 +850,224 @@ def login(user: UserLogin, request: Request):
         return AuthResponse(
             status="ok",
             user_id=db_user.id,
+            access_token=access_token,
+            refresh_token=refresh_token,
+        )
+    finally:
+        db.close()
+
+
+@router.post("/password-reset/request", response_model=PasswordResetRequestResponse)
+def request_password_reset(body: PasswordResetRequest):
+    identifier = _normalize_identifier(body.identifier)
+    generic_message = "If an account exists, you will receive a password reset code shortly."
+    support_message = f"Password reset is currently unavailable in-app. Contact {SUPPORT_EMAIL}."
+
+    if not _smtp_password_reset_configured() and not PASSWORD_RESET_DEBUG_RESPONSE_ENABLED:
+        _metric_inc("password_reset.request_support_only")
+        return PasswordResetRequestResponse(
+            status="ok",
+            message=support_message,
+            delivery="support",
+        )
+
+    db: Session = SessionLocal()
+    now = datetime.utcnow()
+
+    try:
+        normalized_identifier = identifier.lower()
+        db_user = db.query(UserModel).filter(
+            (func.lower(UserModel.username) == normalized_identifier) |
+            (func.lower(UserModel.email) == normalized_identifier)
+        ).first()
+
+        if not db_user:
+            _metric_inc("password_reset.request_unknown_user")
+            return PasswordResetRequestResponse(
+                status="ok",
+                message=generic_message,
+                delivery="email",
+                expires_in_seconds=PASSWORD_RESET_TOKEN_TTL_SECONDS,
+            )
+
+        db.query(PasswordResetTokenModel).filter(
+            PasswordResetTokenModel.user_id == db_user.id,
+            PasswordResetTokenModel.used_at.is_(None),
+            PasswordResetTokenModel.revoked_at.is_(None),
+        ).update({"revoked_at": now}, synchronize_session=False)
+
+        reset_code = _generate_password_reset_code()
+        db.add(
+            PasswordResetTokenModel(
+                user_id=db_user.id,
+                token_hash=_hash_token(reset_code),
+                expires_at=now + timedelta(seconds=PASSWORD_RESET_TOKEN_TTL_SECONDS),
+            )
+        )
+        db.commit()
+
+        if _send_password_reset_email(db_user.email, db_user.username, reset_code):
+            _metric_inc("password_reset.request_email_sent")
+            logger.info(
+                "auth.password_reset.requested user_id=%s identifier=%s delivery=email",
+                db_user.id,
+                _mask_identifier(identifier),
+            )
+            return PasswordResetRequestResponse(
+                status="ok",
+                message=generic_message,
+                delivery="email",
+                expires_in_seconds=PASSWORD_RESET_TOKEN_TTL_SECONDS,
+            )
+
+        if PASSWORD_RESET_DEBUG_RESPONSE_ENABLED:
+            _metric_inc("password_reset.request_debug_code")
+            logger.info(
+                "auth.password_reset.requested user_id=%s identifier=%s delivery=debug",
+                db_user.id,
+                _mask_identifier(identifier),
+            )
+            return PasswordResetRequestResponse(
+                status="ok",
+                message="Reset code generated. Use the code below to set a new password.",
+                delivery="debug",
+                reset_code=reset_code,
+                expires_in_seconds=PASSWORD_RESET_TOKEN_TTL_SECONDS,
+            )
+
+        _metric_inc("password_reset.request_delivery_unavailable")
+        return PasswordResetRequestResponse(
+            status="ok",
+            message=support_message,
+            delivery="support",
+        )
+    finally:
+        db.close()
+
+
+@router.post("/password-reset/confirm", response_model=PasswordResetConfirmResponse)
+def confirm_password_reset(body: PasswordResetConfirmRequest):
+    reset_token = body.token.strip().upper()
+    if not reset_token:
+        raise HTTPException(status_code=400, detail="Reset code is required")
+
+    raw_password = str(body.newPassword)
+    if len(raw_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if len(raw_password) > 72:
+        raise HTTPException(status_code=400, detail="Password must be 72 characters or less.")
+
+    db: Session = SessionLocal()
+    now = datetime.utcnow()
+
+    try:
+        token_hash = _hash_token(reset_token)
+        token_row = db.query(PasswordResetTokenModel).filter(
+            PasswordResetTokenModel.token_hash == token_hash,
+            PasswordResetTokenModel.used_at.is_(None),
+            PasswordResetTokenModel.revoked_at.is_(None),
+        ).first()
+
+        if not token_row:
+            _metric_inc("password_reset.confirm_invalid_token")
+            raise HTTPException(status_code=400, detail="Invalid or expired reset code")
+
+        if token_row.expires_at <= now:
+            token_row.revoked_at = now
+            db.commit()
+            _metric_inc("password_reset.confirm_expired")
+            raise HTTPException(status_code=400, detail="Invalid or expired reset code")
+
+        db_user = db.query(UserModel).filter(UserModel.id == token_row.user_id).first()
+        if not db_user:
+            _metric_inc("password_reset.confirm_missing_user")
+            raise HTTPException(status_code=404, detail="Account not found")
+
+        db_user.password_hash = _hash_password(raw_password)
+        db_user.token_version = int(getattr(db_user, "token_version", 0) or 0) + 1
+
+        token_row.used_at = now
+        token_row.revoked_at = now
+
+        db.query(PasswordResetTokenModel).filter(
+            PasswordResetTokenModel.user_id == db_user.id,
+            PasswordResetTokenModel.id != token_row.id,
+            PasswordResetTokenModel.used_at.is_(None),
+            PasswordResetTokenModel.revoked_at.is_(None),
+        ).update({"revoked_at": now}, synchronize_session=False)
+
+        db.query(RefreshTokenModel).filter(
+            RefreshTokenModel.user_id == db_user.id,
+            RefreshTokenModel.revoked_at.is_(None),
+        ).update({"revoked_at": now}, synchronize_session=False)
+
+        db.commit()
+        _metric_inc("password_reset.confirm_success")
+        logger.info("auth.password_reset.confirmed user_id=%s", db_user.id)
+        return PasswordResetConfirmResponse(
+            status="ok",
+            message="Password updated successfully. Sign in with your new password.",
+        )
+    finally:
+        db.close()
+
+
+@router.post("/change-password", response_model=AuthResponse)
+def change_password(
+    body: ChangePasswordRequest,
+    request: Request,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+):
+    user_id = _get_user_id_from_authorization(authorization)
+
+    current_password = str(body.currentPassword)
+    new_password = str(body.newPassword)
+    if len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if len(new_password) > 72:
+        raise HTTPException(status_code=400, detail="Password must be 72 characters or less.")
+    if current_password == new_password:
+        raise HTTPException(status_code=400, detail="New password must be different from current password")
+
+    db: Session = SessionLocal()
+    now = datetime.utcnow()
+
+    try:
+        db_user = db.query(UserModel).filter(UserModel.id == user_id).first()
+        if not db_user:
+            _metric_inc("password_change.missing_user")
+            raise HTTPException(status_code=404, detail="Account not found")
+
+        if not _verify_password(current_password, db_user.password_hash):
+            _metric_inc("password_change.invalid_current_password")
+            raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+        db_user.password_hash = _hash_password(new_password)
+        db_user.token_version = int(getattr(db_user, "token_version", 0) or 0) + 1
+        next_token_version = int(db_user.token_version)
+
+        db.query(RefreshTokenModel).filter(
+            RefreshTokenModel.user_id == user_id,
+            RefreshTokenModel.revoked_at.is_(None),
+        ).update({"revoked_at": now}, synchronize_session=False)
+
+        db.query(PasswordResetTokenModel).filter(
+            PasswordResetTokenModel.user_id == user_id,
+            PasswordResetTokenModel.used_at.is_(None),
+            PasswordResetTokenModel.revoked_at.is_(None),
+        ).update({"revoked_at": now}, synchronize_session=False)
+
+        access_token, refresh_token = _create_auth_tokens(
+            user_id=user_id,
+            token_version=next_token_version,
+        )
+        _persist_refresh_token(db, user_id=user_id, refresh_token=refresh_token, request=request)
+
+        _metric_inc("password_change.success")
+        logger.info("auth.password_change.success user_id=%s", user_id)
+        return AuthResponse(
+            status="ok",
+            user_id=user_id,
             access_token=access_token,
             refresh_token=refresh_token,
         )

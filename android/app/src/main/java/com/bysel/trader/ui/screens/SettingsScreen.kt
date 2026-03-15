@@ -15,6 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.BuildConfig
@@ -99,7 +101,10 @@ fun SettingsScreen(
         ProfileDialog(onDismiss = { showProfileDialog = false })
     }
     if (showSecurityDialog) {
-        SecurityDialog(onDismiss = { showSecurityDialog = false })
+        SecurityDialog(
+            authRepository = authRepository,
+            onDismiss = { showSecurityDialog = false }
+        )
     }
     if (showFeedbackDialog) {
         FeedbackDialog(onDismiss = { showFeedbackDialog = false })
@@ -291,7 +296,7 @@ fun SettingsScreen(
             SettingClickItem(
                 icon = Icons.Filled.Lock,
                 title = "Security",
-                subtitle = "Manage password and privacy",
+                subtitle = "Change password and privacy settings",
                 onClick = { showSecurityDialog = true }
             )
         }
@@ -863,13 +868,213 @@ fun ProfileDialog(onDismiss: () -> Unit) {
 }
 
 @Composable
-fun SecurityDialog(onDismiss: () -> Unit) {
+fun SecurityDialog(
+    authRepository: AuthRepository,
+    onDismiss: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var currentPassword by remember { mutableStateOf("") }
+    var newPassword by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    var currentPasswordVisible by remember { mutableStateOf(false) }
+    var newPasswordVisible by remember { mutableStateOf(false) }
+    var confirmPasswordVisible by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var isError by remember { mutableStateOf(false) }
+
+    fun resetMessage() {
+        message = null
+        isError = false
+    }
+
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            if (!loading) onDismiss()
+        },
         containerColor = LocalAppTheme.current.card,
         title = { Text("Security", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = LocalAppTheme.current.text) },
-        text = { Column { Text("Change your password or update privacy settings.", fontSize = 14.sp, color = LocalAppTheme.current.text) } },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = LocalAppTheme.current.primary) } }
+        text = {
+            Column {
+                Text(
+                    "Update your password for this account. Existing sessions on other devices will be signed out.",
+                    fontSize = 14.sp,
+                    color = LocalAppTheme.current.text
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = currentPassword,
+                    onValueChange = {
+                        currentPassword = it
+                        resetMessage()
+                    },
+                    label = { Text("Current Password") },
+                    singleLine = true,
+                    enabled = !loading,
+                    visualTransformation = if (currentPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { currentPasswordVisible = !currentPasswordVisible }) {
+                            Icon(
+                                imageVector = if (currentPasswordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                contentDescription = if (currentPasswordVisible) "Hide current password" else "Show current password"
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = LocalAppTheme.current.text,
+                        unfocusedTextColor = LocalAppTheme.current.text,
+                        disabledTextColor = LocalAppTheme.current.textSecondary,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        disabledContainerColor = Color.Transparent,
+                        focusedBorderColor = LocalAppTheme.current.primary,
+                        unfocusedBorderColor = LocalAppTheme.current.textSecondary.copy(alpha = 0.6f),
+                        focusedLabelColor = LocalAppTheme.current.primary,
+                        unfocusedLabelColor = LocalAppTheme.current.textSecondary,
+                        cursorColor = LocalAppTheme.current.primary,
+                    )
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = newPassword,
+                    onValueChange = {
+                        newPassword = it
+                        resetMessage()
+                    },
+                    label = { Text("New Password") },
+                    singleLine = true,
+                    enabled = !loading,
+                    visualTransformation = if (newPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { newPasswordVisible = !newPasswordVisible }) {
+                            Icon(
+                                imageVector = if (newPasswordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                contentDescription = if (newPasswordVisible) "Hide new password" else "Show new password"
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = LocalAppTheme.current.text,
+                        unfocusedTextColor = LocalAppTheme.current.text,
+                        disabledTextColor = LocalAppTheme.current.textSecondary,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        disabledContainerColor = Color.Transparent,
+                        focusedBorderColor = LocalAppTheme.current.primary,
+                        unfocusedBorderColor = LocalAppTheme.current.textSecondary.copy(alpha = 0.6f),
+                        focusedLabelColor = LocalAppTheme.current.primary,
+                        unfocusedLabelColor = LocalAppTheme.current.textSecondary,
+                        cursorColor = LocalAppTheme.current.primary,
+                    )
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = confirmPassword,
+                    onValueChange = {
+                        confirmPassword = it
+                        resetMessage()
+                    },
+                    label = { Text("Confirm New Password") },
+                    singleLine = true,
+                    enabled = !loading,
+                    visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
+                            Icon(
+                                imageVector = if (confirmPasswordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                contentDescription = if (confirmPasswordVisible) "Hide confirmation password" else "Show confirmation password"
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = LocalAppTheme.current.text,
+                        unfocusedTextColor = LocalAppTheme.current.text,
+                        disabledTextColor = LocalAppTheme.current.textSecondary,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        disabledContainerColor = Color.Transparent,
+                        focusedBorderColor = LocalAppTheme.current.primary,
+                        unfocusedBorderColor = LocalAppTheme.current.textSecondary.copy(alpha = 0.6f),
+                        focusedLabelColor = LocalAppTheme.current.primary,
+                        unfocusedLabelColor = LocalAppTheme.current.textSecondary,
+                        cursorColor = LocalAppTheme.current.primary,
+                    )
+                )
+                if (!message.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = message.orEmpty(),
+                        fontSize = 12.sp,
+                        color = if (isError) LocalAppTheme.current.negative else LocalAppTheme.current.positive,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (loading) return@Button
+                    when {
+                        currentPassword.isBlank() -> {
+                            isError = true
+                            message = "Current password is required"
+                        }
+                        newPassword.length < 6 -> {
+                            isError = true
+                            message = "New password must be at least 6 characters"
+                        }
+                        newPassword != confirmPassword -> {
+                            isError = true
+                            message = "New passwords do not match"
+                        }
+                        currentPassword == newPassword -> {
+                            isError = true
+                            message = "New password must be different from current password"
+                        }
+                        else -> {
+                            loading = true
+                            resetMessage()
+                            scope.launch {
+                                when (val result = authRepository.changePassword(currentPassword, newPassword)) {
+                                    is Result.Success -> {
+                                        isError = false
+                                        message = "Password updated successfully."
+                                        currentPassword = ""
+                                        newPassword = ""
+                                        confirmPassword = ""
+                                    }
+                                    is Result.Error -> {
+                                        isError = true
+                                        message = result.message
+                                    }
+                                    else -> Unit
+                                }
+                                loading = false
+                            }
+                        }
+                    }
+                },
+                enabled = !loading,
+            ) {
+                if (loading) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(18.dp)
+                    )
+                } else {
+                    Text("Update Password")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { if (!loading) onDismiss() }) {
+                Text("Close", color = LocalAppTheme.current.primary)
+            }
+        }
     )
 }
 
