@@ -24,6 +24,7 @@ import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.MarketStatus
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.components.PullToRefreshBox
+import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.OutlinedTextField
 import kotlin.math.abs
@@ -415,18 +416,13 @@ fun TradingScreen(
         }
 
         if (error != null) {
-            Snackbar(
+            TraceAwareErrorSnackbar(
+                error = error,
+                onDismiss = onErrorDismiss,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                action = {
-                    TextButton(onClick = onErrorDismiss) {
-                        Text("Dismiss")
-                    }
-                }
-            ) {
-                Text(error)
-            }
+            )
         }
 
         if (isLoading) {

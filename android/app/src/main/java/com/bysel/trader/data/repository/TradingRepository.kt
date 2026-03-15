@@ -787,6 +787,15 @@ open class TradingRepository(private val database: BYSELDatabase) {
             Result.Error(e.message ?: "Unknown error")
         }
     }
+
+    suspend fun getOrderByTrace(traceId: String): Result<OrderTraceLookupResponse> {
+        return try {
+            val response = apiService.getOrderByTrace(traceId.trim())
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
 }
 
 sealed class Result<out T> {

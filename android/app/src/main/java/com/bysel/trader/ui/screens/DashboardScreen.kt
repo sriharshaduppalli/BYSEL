@@ -32,6 +32,7 @@ import com.bysel.trader.data.models.Quote
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.components.NewsWidget
 import com.bysel.trader.ui.components.WatchlistWidget
+import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
 import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.BorderStroke
@@ -389,18 +390,13 @@ fun DashboardContent(
 
         if (error != null) {
             item {
-                Snackbar(
+                TraceAwareErrorSnackbar(
+                    error = error,
+                    onDismiss = onErrorDismiss,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
-                    action = {
-                        TextButton(onClick = onErrorDismiss) {
-                            Text("Dismiss")
-                        }
-                    }
-                ) {
-                    Text(error)
-                }
+                )
             }
         }
         

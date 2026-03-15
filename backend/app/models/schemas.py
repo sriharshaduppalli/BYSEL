@@ -91,6 +91,22 @@ class TradeHistory(BaseModel):
     total: float
     timestamp: int
 
+
+class OrderTraceLookupResponse(BaseModel):
+    orderId: int
+    traceId: str
+    symbol: str
+    side: str
+    quantity: int
+    orderType: str
+    validity: str
+    status: str
+    executedPrice: float
+    total: float
+    idempotencyKey: Optional[str] = None
+    createdAt: str
+    message: str
+
 class PortfolioSummary(BaseModel):
     totalValue: float
     totalInvested: float

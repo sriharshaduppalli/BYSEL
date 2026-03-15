@@ -37,6 +37,11 @@ class TradingViewModel(
     private val repository: TradingRepository
 ) : AndroidViewModel(application) {
 
+    private companion object {
+        val TRACE_ID_PATTERN =
+            Regex("(?i)(?:trace(?:\\s*id)?|traceId)\\s*[:=]\\s*([A-Za-z0-9._-]+)")
+    }
+
     // --- AI Trade Coach State ---
     private val _tradeCoachTip = MutableStateFlow<String?>(null)
     val tradeCoachTip: StateFlow<String?> = _tradeCoachTip.asStateFlow()
@@ -77,6 +82,9 @@ class TradingViewModel(
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
+
+    private val _lastOrderTraceId = MutableStateFlow<String?>(null)
+    val lastOrderTraceId: StateFlow<String?> = _lastOrderTraceId.asStateFlow()
 
     private val _walletBalance = MutableStateFlow(0.0)
     val walletBalance: StateFlow<Double> = _walletBalance.asStateFlow()
@@ -194,6 +202,9 @@ class TradingViewModel(
 
     private val _copilotPortfolioActions = MutableStateFlow<CopilotPortfolioActionsResponse?>(null)
     val copilotPortfolioActions: StateFlow<CopilotPortfolioActionsResponse?> = _copilotPortfolioActions.asStateFlow()
+
+    private val _orderTraceLookup = MutableStateFlow<OrderTraceLookupResponse?>(null)
+    val orderTraceLookup: StateFlow<OrderTraceLookupResponse?> = _orderTraceLookup.asStateFlow()
 
     private val _advancedLoading = MutableStateFlow(false)
     val advancedLoading: StateFlow<Boolean> = _advancedLoading.asStateFlow()
@@ -690,21 +701,39 @@ class TradingViewModel(
         return listOfNotNull(base, action, trace).joinToString("\n")
     }
 
+    private fun extractTraceIdFromError(message: String?): String? {
+        if (message.isNullOrBlank()) {
+            return null
+        }
+        val match = TRACE_ID_PATTERN.find(message) ?: return null
+        return match.groupValues.getOrNull(1)
+            ?.trim()
+            ?.trimEnd('.', ',', ';', ')', ']')
+            ?.takeIf { it.isNotBlank() }
+    }
+
     // --- Orders / alerts / funds ---
     fun placeOrder(symbol: String, quantity: Int, side: String) {
         viewModelScope.launch {
             when (val r = repository.placeOrder(Order(symbol = symbol, qty = quantity, side = side))) {
                 is Result.Success -> {
                     if (r.data.status == "error") {
+                        val traceId = r.data.traceId?.trim()?.takeIf { it.isNotBlank() }
+                            ?: extractTraceIdFromError(r.data.message)
+                        _lastOrderTraceId.value = traceId
                         _error.value = buildOrderErrorMessage(r.data)
                     } else {
+                        _lastOrderTraceId.value = null
                         _error.value = null
                         refreshHoldings(); refreshWallet(); unlockAchievement("first_trade")
                         fetchTradeCoachTip(symbol, quantity, side)
                         loadPortfolioCopilotActions()
                     }
                 }
-                is Result.Error -> _error.value = r.message
+                is Result.Error -> {
+                    _lastOrderTraceId.value = extractTraceIdFromError(r.message)
+                    _error.value = r.message
+                }
                 else -> { }
             }
         }
@@ -1224,6 +1253,34 @@ class TradingViewModel(
         }
     }
 
+    fun lookupOrderByTrace(traceId: String) {
+        val normalized = traceId.trim()
+        if (normalized.isBlank()) {
+            _error.value = "Trace ID is required"
+            return
+        }
+
+        viewModelScope.launch {
+            _copilotLoading.value = true
+            when (val response = repository.getOrderByTrace(normalized)) {
+                is Result.Success -> {
+                    _orderTraceLookup.value = response.data
+                    _error.value = null
+                }
+                is Result.Error -> {
+                    _orderTraceLookup.value = null
+                    _error.value = response.message
+                }
+                else -> {}
+            }
+            _copilotLoading.value = false
+        }
+    }
+
+    fun clearOrderTraceLookup() {
+        _orderTraceLookup.value = null
+    }
+
     fun clearAdvancedInsights() {
         _advancedOrderResponse.value = null
         _triggerEvaluation.value = null
@@ -1231,6 +1288,7 @@ class TradingViewModel(
         _preTradeEstimate.value = null
         _copilotPreTradeSignal.value = null
         _copilotPostTradeReview.value = null
+        _orderTraceLookup.value = null
     }
 
     private fun fetchTradeCoachTip(symbol: String, quantity: Int, side: String) {

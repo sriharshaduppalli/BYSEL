@@ -115,6 +115,9 @@ interface BYSELApiService {
     @GET("/trades/history/{symbol}")
     suspend fun getTradeHistoryForSymbol(@Path("symbol") symbol: String): List<TradeHistory>
 
+    @GET("/orders/trace/{traceId}")
+    suspend fun getOrderByTrace(@Path("traceId") traceId: String): OrderTraceLookupResponse
+
     // ==================== PORTFOLIO ====================
     @GET("/portfolio")
     suspend fun getPortfolio(): PortfolioSummary

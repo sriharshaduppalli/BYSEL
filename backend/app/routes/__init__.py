@@ -26,7 +26,7 @@ from ..database.db import (
 from .dependencies import get_current_user
 from ..models.schemas import (
     Quote, Holding, Order, OrderResponse, Alert, AlertCreate,
-    AlertResponse, HealthCheck, TradeHistory, PortfolioSummary, PortfolioValue,
+    AlertResponse, HealthCheck, TradeHistory, OrderTraceLookupResponse, PortfolioSummary, PortfolioValue,
     Wallet, WalletTransaction, WalletResponse, MarketStatus,
     MarketNewsResponse,
     MutualFund, MutualFundCompareResponse, MutualFundRecommendationItem, MutualFundRecommendationResponse,
@@ -912,6 +912,53 @@ async def get_trade_history_for_symbol(symbol: str, db: Session = Depends(get_db
         total=o.total or 0,
         timestamp=int(o.created_at.timestamp() * 1000) if o.created_at else 0
     ) for o in orders]
+
+
+@router.get("/orders/trace/{trace_id}", response_model=OrderTraceLookupResponse)
+async def get_order_by_trace_endpoint(
+    trace_id: str,
+    db: Session = Depends(get_db),
+    user_id: int = Header(1),
+):
+    normalized_trace = trace_id.strip()
+    if not normalized_trace:
+        raise HTTPException(status_code=400, detail="trace_id is required")
+
+    order = (
+        db.query(OrderModel)
+        .filter(OrderModel.trace_id == normalized_trace, OrderModel.user_id == user_id)
+        .order_by(OrderModel.id.desc())
+        .first()
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail=f"No order found for trace '{normalized_trace}'")
+
+    side = (order.side or "").upper() or "BUY"
+    qty = int(order.quantity or 0)
+    status = (order.status or "PENDING").upper()
+    executed_price = float(order.price or 0.0)
+    total = float(order.total or 0.0)
+    if total <= 0 and qty > 0 and executed_price > 0:
+        total = round(qty * executed_price, 2)
+
+    message = f"{status} • {side} {qty} {order.symbol} @ ₹{executed_price:.2f}"
+    created_at = order.created_at.isoformat() if order.created_at else ""
+
+    return OrderTraceLookupResponse(
+        orderId=order.id,
+        traceId=order.trace_id or normalized_trace,
+        symbol=order.symbol,
+        side=side,
+        quantity=qty,
+        orderType=(order.order_type or "MARKET").upper(),
+        validity=(order.validity or "DAY").upper(),
+        status=status,
+        executedPrice=round(executed_price, 2),
+        total=round(total, 2),
+        idempotencyKey=order.idempotency_key,
+        createdAt=created_at,
+        message=message,
+    )
 
 
 # ==================== PORTFOLIO ====================

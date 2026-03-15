@@ -33,6 +33,7 @@ import com.bysel.trader.ui.components.ErrorScreen
 import com.bysel.trader.ui.components.LoadingScreen
 import com.bysel.trader.ui.components.PullToRefreshBox
 import com.bysel.trader.ui.components.SwipeToDismissItem
+import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
 import com.bysel.trader.ui.theme.LocalAppTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.Refresh
@@ -80,18 +81,13 @@ fun WatchlistScreen(
             }
 
             if (error != null) {
-                Snackbar(
+                TraceAwareErrorSnackbar(
+                    error = error,
+                    onDismiss = onErrorDismiss,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
-                    action = {
-                        TextButton(onClick = onErrorDismiss) {
-                            Text("Dismiss")
-                        }
-                    }
-                ) {
-                    Text(error)
-                }
+                )
             }
 
             PullToRefreshBox(
@@ -245,18 +241,13 @@ fun PortfolioScreen(
             }
 
             if (error != null) {
-                Snackbar(
+                TraceAwareErrorSnackbar(
+                    error = error,
+                    onDismiss = onErrorDismiss,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
-                    action = {
-                        TextButton(onClick = onErrorDismiss) {
-                            Text("Dismiss")
-                        }
-                    }
-                ) {
-                    Text(error)
-                }
+                )
             }
 
             if (holdings.isEmpty()) {

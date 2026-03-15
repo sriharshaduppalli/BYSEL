@@ -245,6 +245,36 @@ def test_pre_trade_estimate_flags_insufficient_funds(monkeypatch):
     assert any("Insufficient wallet" in flag for flag in data["signal"]["flags"])
 
 
+def test_order_trace_lookup_returns_latest_order(monkeypatch):
+    _seed_trading_wallet(user_id=1, balance=100_000.0)
+    _mock_live_market(monkeypatch, price=250.0)
+
+    trace_id = "trc-support-lookup-001"
+    order_payload = {
+        "symbol": "TCS",
+        "qty": 1,
+        "side": "BUY",
+    }
+    placed = client.post("/order", json=order_payload, headers={"X-Trace-Id": trace_id})
+    assert placed.status_code == 200
+    placed_data = placed.json()
+    assert placed_data["status"] == "ok"
+
+    lookup = client.get(f"/orders/trace/{trace_id}")
+    assert lookup.status_code == 200
+    data = lookup.json()
+    assert data["traceId"] == trace_id
+    assert data["orderId"] == placed_data["orderId"]
+    assert data["symbol"] == "TCS"
+    assert data["side"] == "BUY"
+    assert data["status"] in {"COMPLETED", "PENDING", "TRIGGER_EXECUTED", "REJECTED", "CANCELLED"}
+
+
+def test_order_trace_lookup_not_found():
+    response = client.get("/orders/trace/trc-support-missing-001")
+    assert response.status_code == 404
+
+
 def test_place_order_invalid_side_has_deterministic_error_code():
     order_data = {"symbol": "TCS", "qty": 1, "side": "HOLD"}
 

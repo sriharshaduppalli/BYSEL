@@ -632,6 +632,22 @@ data class CopilotPortfolioActionsResponse(
     val rationale: String
 )
 
+data class OrderTraceLookupResponse(
+    val orderId: Int,
+    val traceId: String,
+    val symbol: String,
+    val side: String,
+    val quantity: Int,
+    val orderType: String,
+    val validity: String,
+    val status: String,
+    val executedPrice: Double,
+    val total: Double,
+    val idempotencyKey: String? = null,
+    val createdAt: String,
+    val message: String,
+)
+
 data class RegisterRequest(
     val username: String,
     val email: String,
