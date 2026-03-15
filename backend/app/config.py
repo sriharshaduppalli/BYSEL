@@ -10,12 +10,8 @@ def _select_default_sqlite_path() -> Path:
 		return Path(override_path).expanduser().resolve()
 
 	backend_db = Path(__file__).resolve().parents[1] / "bysel.db"
-	root_db = Path(__file__).resolve().parents[2] / "bysel.db"
-
-	# Keep the default deterministic to avoid switching between DB files across restarts.
-	if backend_db.exists() or not root_db.exists():
-		return backend_db
-	return root_db
+	# Always prefer backend-local DB to avoid cwd-dependent auth splits.
+	return backend_db
 
 
 _DEFAULT_SQLITE_DB = _select_default_sqlite_path()

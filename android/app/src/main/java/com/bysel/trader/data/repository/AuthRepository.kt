@@ -4,6 +4,11 @@ import com.bysel.trader.data.api.BYSELApiService
 import com.bysel.trader.data.api.RetrofitClient
 import com.bysel.trader.data.auth.AuthSessionManager
 import com.bysel.trader.data.models.AuthResponse
+import com.bysel.trader.data.models.ChangePasswordRequest
+import com.bysel.trader.data.models.PasswordResetConfirmRequest
+import com.bysel.trader.data.models.PasswordResetConfirmResponse
+import com.bysel.trader.data.models.PasswordResetRequestBody
+import com.bysel.trader.data.models.PasswordResetRequestResponse
 import com.bysel.trader.data.models.AuthSessionItem
 import com.bysel.trader.data.models.LoginRequest
 import com.bysel.trader.data.models.LogoutRequest
@@ -27,7 +32,7 @@ class AuthRepository(
 
             return when (exception.code()) {
                 401 -> detail
-                    ?: "Invalid username or password. If this is your first login, please register first."
+                    ?: "Invalid username/email or password. Please verify credentials and try again."
                 else -> detail ?: (exception.message ?: fallback)
             }
         }
@@ -109,6 +114,49 @@ class AuthRepository(
                 AuthSessionManager.clearSession()
             }
             Result.Error(toAuthErrorMessage(e, "Session refresh failed"))
+        }
+    }
+
+    suspend fun requestPasswordReset(identifier: String): Result<PasswordResetRequestResponse> {
+        val normalizedIdentifier = identifier.trim()
+        return try {
+            val response = apiService.requestPasswordReset(
+                PasswordResetRequestBody(identifier = normalizedIdentifier)
+            )
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(toAuthErrorMessage(e, "Password reset request failed"))
+        }
+    }
+
+    suspend fun confirmPasswordReset(token: String, newPassword: String): Result<PasswordResetConfirmResponse> {
+        val normalizedToken = token.trim().uppercase()
+        return try {
+            val response = apiService.confirmPasswordReset(
+                PasswordResetConfirmRequest(token = normalizedToken, newPassword = newPassword)
+            )
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(toAuthErrorMessage(e, "Password reset failed"))
+        }
+    }
+
+    suspend fun changePassword(currentPassword: String, newPassword: String): Result<AuthResponse> {
+        return try {
+            val response = apiService.changePassword(
+                ChangePasswordRequest(
+                    currentPassword = currentPassword,
+                    newPassword = newPassword,
+                )
+            )
+            AuthSessionManager.saveSession(
+                accessToken = response.access_token,
+                refreshToken = response.refresh_token,
+                userId = response.user_id,
+            )
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(toAuthErrorMessage(e, "Password update failed"))
         }
     }
 

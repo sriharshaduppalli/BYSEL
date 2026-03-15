@@ -42,6 +42,11 @@ class TradingViewModel(
             Regex("(?i)(?:trace(?:\\s*id)?|traceId)\\s*[:=]\\s*([A-Za-z0-9._-]+)")
     }
 
+    // --- Stream Health ---
+    enum class StreamHealth { LIVE, RECONNECTING, OFFLINE }
+    private val _streamHealth = MutableStateFlow(StreamHealth.OFFLINE)
+    val streamHealth: StateFlow<StreamHealth> = _streamHealth.asStateFlow()
+
     // --- AI Trade Coach State ---
     private val _tradeCoachTip = MutableStateFlow<String?>(null)
     val tradeCoachTip: StateFlow<String?> = _tradeCoachTip.asStateFlow()
@@ -242,6 +247,7 @@ class TradingViewModel(
     private fun markQuoteUpdate(nowMs: Long = System.currentTimeMillis()) {
         lastQuotesRefreshAt = nowMs
         _lastQuoteUpdateAt.value = nowMs
+        _streamHealth.value = StreamHealth.LIVE
     }
 
     // Paging state for quotes list
@@ -537,7 +543,18 @@ class TradingViewModel(
         if (autoRefreshJob?.isActive == true) return
         // respect global enabled flag
         if (!_fastRefreshEnabled.value) return
+        _streamHealth.value = StreamHealth.RECONNECTING
         autoRefreshJob = viewModelScope.launch {
+            // Stale watchdog: if no update in 8 s while job is running, flag as RECONNECTING
+            launch {
+                while (isActive) {
+                    kotlinx.coroutines.delay(8_000L)
+                    val staleMs = System.currentTimeMillis() - _lastQuoteUpdateAt.value
+                    if (staleMs > 8_000L && _streamHealth.value == StreamHealth.LIVE) {
+                        _streamHealth.value = StreamHealth.RECONNECTING
+                    }
+                }
+            }
             var lastStreamEmitAt = 0L
             try {
                 repository.streamLiveQuotes(symbolsToTrack).collectLatest { result ->
@@ -572,6 +589,7 @@ class TradingViewModel(
     fun stopFastRefresh() {
         autoRefreshJob?.cancel()
         autoRefreshJob = null
+        _streamHealth.value = StreamHealth.OFFLINE
     }
 
     fun onAppForegroundResume(force: Boolean = false) {

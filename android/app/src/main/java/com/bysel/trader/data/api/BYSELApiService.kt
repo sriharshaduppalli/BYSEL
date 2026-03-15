@@ -14,6 +14,15 @@ interface BYSELApiService {
     @POST("/auth/refresh")
     suspend fun refreshToken(@Body request: RefreshTokenRequest): AuthResponse
 
+    @POST("/auth/password-reset/request")
+    suspend fun requestPasswordReset(@Body request: PasswordResetRequestBody): PasswordResetRequestResponse
+
+    @POST("/auth/password-reset/confirm")
+    suspend fun confirmPasswordReset(@Body request: PasswordResetConfirmRequest): PasswordResetConfirmResponse
+
+    @POST("/auth/change-password")
+    suspend fun changePassword(@Body request: ChangePasswordRequest): AuthResponse
+
     @POST("/auth/logout")
     suspend fun logout(@Body request: LogoutRequest): Map<String, String>
 
