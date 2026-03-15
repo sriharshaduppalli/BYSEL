@@ -425,6 +425,38 @@ class CopilotSignal(BaseModel):
     guidance: List[str]
 
 
+class PreTradeChargeBreakdown(BaseModel):
+    brokerage: float
+    exchangeFee: float
+    gst: float
+    stampDuty: float
+    totalCharges: float
+
+
+class PreTradeEstimateRequest(BaseModel):
+    order: Order
+    walletBalance: Optional[float] = None
+    marketOpen: Optional[bool] = None
+
+
+class PreTradeEstimateResponse(BaseModel):
+    symbol: str
+    side: str
+    qty: int
+    orderType: str
+    executionPrice: float
+    livePrice: float
+    tradeValue: float
+    charges: PreTradeChargeBreakdown
+    netAmount: float
+    walletBalance: float
+    walletUtilizationPct: float
+    canAfford: bool
+    impactTag: str
+    warnings: List[str]
+    signal: CopilotSignal
+
+
 class CopilotPreTradeRequest(BaseModel):
     order: Order
     walletBalance: Optional[float] = None

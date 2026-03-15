@@ -28,6 +28,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.OutlinedTextField
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 
 private fun formatVolume(v: Long?): String {
     if (v == null) return "N/A"
@@ -140,6 +141,37 @@ fun TradingScreen(
     var newWatchSymbol by remember { mutableStateOf("") }
     val watchlistSymbols by viewModel.watchlist.collectAsState()
     val liveQuotes by viewModel.quotes.collectAsState()
+    val lastQuoteUpdateAt by viewModel.lastQuoteUpdateAt.collectAsState()
+    val statusNow by produceState(initialValue = System.currentTimeMillis()) {
+        while (true) {
+            value = System.currentTimeMillis()
+            delay(1000)
+        }
+    }
+    val quoteFreshnessLabel = remember(lastQuoteUpdateAt, statusNow) {
+        if (lastQuoteUpdateAt <= 0L) {
+            "Syncing..."
+        } else {
+            val ageSec = ((statusNow - lastQuoteUpdateAt) / 1000L).coerceAtLeast(0L)
+            when {
+                ageSec <= 4L -> "Live • just now"
+                ageSec < 60L -> "Live • ${ageSec}s ago"
+                ageSec < 600L -> "Delayed • ${ageSec / 60}m ago"
+                else -> "Stale • ${ageSec / 60}m ago"
+            }
+        }
+    }
+    val quoteFreshnessColor = if (lastQuoteUpdateAt <= 0L) {
+        Color(0xFFFFC107)
+    } else {
+        val ageSec = ((statusNow - lastQuoteUpdateAt) / 1000L).coerceAtLeast(0L)
+        when {
+            ageSec <= 4L -> LocalAppTheme.current.positive
+            ageSec < 60L -> Color(0xFF64B5F6)
+            ageSec < 600L -> Color(0xFFFFC107)
+            else -> LocalAppTheme.current.negative
+        }
+    }
     val watchlistInsights = remember(watchlistSymbols, liveQuotes) {
         val quoteMap = liveQuotes.associateBy { it.symbol.uppercase() }
         watchlistSymbols
@@ -168,9 +200,13 @@ fun TradingScreen(
             quote = selectedQuote!!,
             walletBalance = walletBalance,
             marketStatus = marketStatus,
-            onDismiss = { selectedQuote = null },
+            onDismiss = {
+                selectedQuote = null
+                viewModel.clearPreTradeCopilotSignal()
+            },
             onBuy = { qty -> onBuy(selectedQuote!!.symbol, qty) },
-            onSell = { qty -> onSell(selectedQuote!!.symbol, qty) }
+            onSell = { qty -> onSell(selectedQuote!!.symbol, qty) },
+            viewModel = viewModel,
         )
     }
 
@@ -270,12 +306,21 @@ fun TradingScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Trading Market",
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = LocalAppTheme.current.text
-            )
+            Column {
+                Text(
+                    text = "Trading Market",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = LocalAppTheme.current.text
+                )
+                Text(
+                    text = quoteFreshnessLabel,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = quoteFreshnessColor,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
             Button(
                 onClick = onRefresh,
                 colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
@@ -616,24 +661,28 @@ fun TradeDialog(
     marketStatus: MarketStatus?,
     onDismiss: () -> Unit,
     onBuy: (Int) -> Unit,
-    onSell: (Int) -> Unit
+    onSell: (Int) -> Unit,
+    viewModel: com.bysel.trader.viewmodel.TradingViewModel,
 ) {
     var quantity by remember { mutableStateOf("") }
     var tradeType by remember { mutableStateOf("BUY") }
     var orderType by remember { mutableStateOf("MARKET") }
     var limitPriceInput by remember { mutableStateOf(String.format("%.2f", quote.last)) }
+    val preTradeSignal by viewModel.copilotPreTradeSignal.collectAsState()
+    val preTradeEstimate by viewModel.preTradeEstimate.collectAsState()
+    val copilotLoading by viewModel.copilotLoading.collectAsState()
 
     val qty = quantity.toIntOrNull() ?: 0
     val limitPrice = limitPriceInput.toDoubleOrNull() ?: 0.0
-    val executionPrice = if (orderType == "LIMIT" && limitPrice > 0.0) limitPrice else quote.last
-    val tradeValue = qty * executionPrice
-    val brokerage = tradeValue * 0.0003
-    val exchangeFee = tradeValue * 0.00034
-    val gst = (brokerage + exchangeFee) * 0.18
-    val stampDuty = if (tradeType == "BUY") tradeValue * 0.00015 else 0.0
-    val totalCharges = brokerage + exchangeFee + gst + stampDuty
-    val netAmount = if (tradeType == "BUY") tradeValue + totalCharges else tradeValue - totalCharges
-    val canAfford = walletBalance >= netAmount
+    val localExecutionPrice = if (orderType == "LIMIT" && limitPrice > 0.0) limitPrice else quote.last
+    val localTradeValue = qty * localExecutionPrice
+    val localBrokerage = localTradeValue * 0.0003
+    val localExchangeFee = localTradeValue * 0.00034
+    val localGst = (localBrokerage + localExchangeFee) * 0.18
+    val localStampDuty = if (tradeType == "BUY") localTradeValue * 0.00015 else 0.0
+    val localTotalCharges = localBrokerage + localExchangeFee + localGst + localStampDuty
+    val localNetAmount = if (tradeType == "BUY") localTradeValue + localTotalCharges else localTradeValue - localTotalCharges
+    val localCanAfford = walletBalance >= localNetAmount
     val isMarketOpen = marketStatus?.isOpen ?: false
     val intradayRangePct = if (quote.dayHigh != null && quote.dayLow != null && quote.last > 0.0) {
         ((quote.dayHigh - quote.dayLow) / quote.last) * 100.0
@@ -645,14 +694,55 @@ fun TradeDialog(
     } else {
         0.0
     }
-    val priceGapPct = if (quote.last > 0.0) ((executionPrice - quote.last) / quote.last) * 100.0 else 0.0
+    val priceGapPct = if (quote.last > 0.0) ((localExecutionPrice - quote.last) / quote.last) * 100.0 else 0.0
     val limitInvalid = orderType == "LIMIT" && limitPrice <= 0.0
     val limitDeviationWarning = orderType == "LIMIT" && abs(priceGapPct) > 3.0
     val limitDeviationHardBlock = orderType == "LIMIT" && abs(priceGapPct) > 8.0
-    val impactTag = when {
-        tradeValue >= 300_000 || qty >= 350 -> "High impact"
-        tradeValue >= 120_000 || qty >= 150 -> "Medium impact"
+    val localWalletUtilizationPct = if (tradeType == "BUY" && walletBalance > 0.0) {
+        ((localNetAmount / walletBalance) * 100.0).coerceAtLeast(0.0)
+    } else {
+        0.0
+    }
+    val localImpactTag = when {
+        localTradeValue >= 300_000 || qty >= 350 -> "High impact"
+        localTradeValue >= 120_000 || qty >= 150 -> "Medium impact"
         else -> "Low impact"
+    }
+    val executionPrice = preTradeEstimate?.executionPrice ?: localExecutionPrice
+    val tradeValue = preTradeEstimate?.tradeValue ?: localTradeValue
+    val totalCharges = preTradeEstimate?.charges?.totalCharges ?: localTotalCharges
+    val netAmount = preTradeEstimate?.netAmount ?: localNetAmount
+    val canAfford = preTradeEstimate?.canAfford ?: localCanAfford
+    val walletUtilizationPct = preTradeEstimate?.walletUtilizationPct ?: localWalletUtilizationPct
+    val impactTag = preTradeEstimate?.impactTag ?: localImpactTag
+    val effectiveSignal = preTradeEstimate?.signal ?: preTradeSignal
+    val estimateWarnings = preTradeEstimate?.warnings ?: emptyList()
+    val copilotBlocksTrade = effectiveSignal?.verdict?.equals("BLOCK", ignoreCase = true) == true
+
+    DisposableEffect(quote.symbol) {
+        onDispose {
+            viewModel.clearPreTradeCopilotSignal()
+        }
+    }
+
+    LaunchedEffect(quote.symbol, qty, tradeType, orderType, limitPriceInput, isMarketOpen) {
+        if (qty <= 0 || !isMarketOpen || limitInvalid || limitDeviationHardBlock) {
+            viewModel.clearPreTradeCopilotSignal()
+            return@LaunchedEffect
+        }
+
+        delay(250)
+        viewModel.fetchPreTradeEstimate(
+            com.bysel.trader.data.models.AdvancedOrderRequest(
+                symbol = quote.symbol,
+                qty = qty,
+                side = tradeType,
+                orderType = orderType,
+                validity = "DAY",
+                limitPrice = if (orderType == "LIMIT") limitPrice else null,
+                triggerPrice = null,
+            )
+        )
     }
 
     AlertDialog(
@@ -865,12 +955,91 @@ fun TradeDialog(
                             TradeSummaryLine("Execution", "₹${String.format("%.2f", executionPrice)}")
                             TradeSummaryLine("Trade Value", formatCurrency(tradeValue))
                             TradeSummaryLine("Est. Charges", formatCurrency(totalCharges))
+                            preTradeEstimate?.let { estimate ->
+                                TradeSummaryLine("Brokerage", formatCurrency(estimate.charges.brokerage))
+                                TradeSummaryLine("Exchange Fee", formatCurrency(estimate.charges.exchangeFee))
+                                TradeSummaryLine("GST", formatCurrency(estimate.charges.gst))
+                                if (tradeType == "BUY") {
+                                    TradeSummaryLine("Stamp Duty", formatCurrency(estimate.charges.stampDuty))
+                                }
+                            }
                             TradeSummaryLine(
                                 if (tradeType == "BUY") "Est. Debit" else "Est. Credit",
                                 formatCurrency(netAmount),
                                 valueColor = if (tradeType == "BUY") LocalAppTheme.current.text else LocalAppTheme.current.positive
                             )
+                            if (tradeType == "BUY") {
+                                TradeSummaryLine("Wallet Utilization", "${String.format("%.1f", walletUtilizationPct)}%")
+                            }
                             TradeSummaryLine("Impact", impactTag)
+                        }
+                    }
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.surface),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                text = "Copilot Pre-Trade Check",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = LocalAppTheme.current.text
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            if (copilotLoading) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(14.dp),
+                                        strokeWidth = 2.dp,
+                                        color = LocalAppTheme.current.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Analyzing order risk...",
+                                        fontSize = 11.sp,
+                                        color = LocalAppTheme.current.textSecondary
+                                    )
+                                }
+                            } else {
+                                effectiveSignal?.let { signal ->
+                                    val verdictColor = when (signal.verdict.uppercase()) {
+                                        "GO" -> LocalAppTheme.current.positive
+                                        "CAUTION" -> Color(0xFFFFC107)
+                                        "BLOCK" -> LocalAppTheme.current.negative
+                                        else -> LocalAppTheme.current.textSecondary
+                                    }
+                                    TradeSummaryLine(
+                                        "Verdict",
+                                        "${signal.verdict} (${signal.confidence}%)",
+                                        valueColor = verdictColor
+                                    )
+                                    signal.flags.take(2).forEach { flag ->
+                                        Text(
+                                            text = "• $flag",
+                                            fontSize = 11.sp,
+                                            color = LocalAppTheme.current.negative,
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        )
+                                    }
+                                    signal.guidance.take(2).forEach { tip ->
+                                        Text(
+                                            text = "• $tip",
+                                            fontSize = 11.sp,
+                                            color = LocalAppTheme.current.textSecondary,
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        )
+                                    }
+                                } ?: Text(
+                                    text = "Waiting for order inputs...",
+                                    fontSize = 11.sp,
+                                    color = LocalAppTheme.current.textSecondary
+                                )
+                            }
                         }
                     }
 
@@ -881,7 +1050,16 @@ fun TradeDialog(
                         modifier = Modifier.padding(bottom = 4.dp)
                     )
 
-                    if (tradeType == "BUY" && !canAfford) {
+                    estimateWarnings.take(2).forEach { warning ->
+                        Text(
+                            text = "⚠ $warning",
+                            fontSize = 12.sp,
+                            color = LocalAppTheme.current.negative,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+
+                    if (estimateWarnings.isEmpty() && tradeType == "BUY" && !canAfford) {
                         Text(
                             text = "⚠ Insufficient funds! Need ${formatCurrency((netAmount - walletBalance).coerceAtLeast(0.0))} more",
                             fontSize = 12.sp,
@@ -890,7 +1068,7 @@ fun TradeDialog(
                         )
                     }
 
-                    if (limitDeviationWarning) {
+                    if (estimateWarnings.isEmpty() && limitDeviationWarning) {
                         Text(
                             text = "⚠ Limit is ${String.format("%.2f", abs(priceGapPct))}% away from market price.",
                             fontSize = 12.sp,
@@ -899,7 +1077,7 @@ fun TradeDialog(
                         )
                     }
 
-                    if (spreadPct >= 0.45) {
+                    if (estimateWarnings.isEmpty() && spreadPct >= 0.45) {
                         Text(
                             text = "⚠ Wide spread detected. Consider limit order for better execution control.",
                             fontSize = 12.sp,
@@ -909,11 +1087,20 @@ fun TradeDialog(
                     }
 
                     Text(
-                        text = "Note: Limit selection is simulated; order is executed as market with current broker API.",
+                        text = "Execution estimates are indicative; final fill and charges can vary with live liquidity.",
                         fontSize = 11.sp,
                         color = LocalAppTheme.current.textSecondary,
                         modifier = Modifier.padding(top = 6.dp)
                     )
+
+                    if (copilotBlocksTrade) {
+                        Text(
+                            text = "Copilot has blocked this order. Adjust inputs and retry.",
+                            fontSize = 12.sp,
+                            color = LocalAppTheme.current.negative,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
 
                 if (limitInvalid) {
@@ -937,7 +1124,7 @@ fun TradeDialog(
                         onDismiss()
                     }
                 },
-                enabled = qty > 0 && isMarketOpen && !limitInvalid && !limitDeviationHardBlock && (tradeType == "SELL" || canAfford),
+                enabled = qty > 0 && isMarketOpen && !limitInvalid && !limitDeviationHardBlock && !copilotBlocksTrade && (tradeType == "SELL" || canAfford),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (tradeType == "BUY") Color(0xFF00B050) else LocalAppTheme.current.negative,
                     disabledContainerColor = Color(0xFF2A2A2A)

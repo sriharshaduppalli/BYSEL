@@ -48,6 +48,9 @@ from ..models.schemas import (
     GoalPlanRequest,
     GoalLinkRequest,
     GoalPlanResponse,
+    PreTradeEstimateRequest,
+    PreTradeEstimateResponse,
+    PreTradeChargeBreakdown,
     CopilotPreTradeRequest,
     CopilotSignal,
     CopilotPostTradeRequest,
@@ -79,7 +82,7 @@ from ..models.schemas import (
 from .trading import (
     get_holdings, get_holding, place_order,
     is_market_open, get_wallet, add_funds, withdraw_funds,
-    evaluate_pending_triggers, build_pretrade_signal,
+    evaluate_pending_triggers, build_pretrade_signal, build_pretrade_estimate,
 )
 from ..market_data import (
     fetch_quote, fetch_quotes, get_all_symbols, get_default_symbols,
@@ -823,6 +826,60 @@ async def sell_stock_endpoint(
     """Sell stock at live market price."""
     order.side = "SELL"
     return place_order(db, order, user_id=user_id, idempotency_key=x_idempotency_key, trace_id=x_trace_id)
+
+
+@router.post("/orders/pre-trade-estimate", response_model=PreTradeEstimateResponse)
+async def pre_trade_estimate_endpoint(
+    payload: PreTradeEstimateRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Header(1),
+):
+    quote = fetch_quote(payload.order.symbol.upper())
+    live_price = float(quote.get("last") or 0.0)
+    if live_price <= 0:
+        raise HTTPException(status_code=503, detail=f"Could not fetch live price for {payload.order.symbol.upper()}")
+
+    market = is_market_open()
+    wallet_balance = payload.walletBalance if payload.walletBalance is not None else get_wallet(db, user_id).balance
+    market_open = payload.marketOpen if payload.marketOpen is not None else market.isOpen
+
+    estimate = build_pretrade_estimate(
+        order=payload.order,
+        live_price=live_price,
+        wallet_balance=wallet_balance,
+        market_open=market_open,
+        bid=quote.get("bid"),
+        ask=quote.get("ask"),
+    )
+    signal = build_pretrade_signal(
+        order=payload.order,
+        live_price=live_price,
+        wallet_balance=wallet_balance,
+        market_open=market_open,
+    )
+
+    return PreTradeEstimateResponse(
+        symbol=estimate["symbol"],
+        side=estimate["side"],
+        qty=estimate["qty"],
+        orderType=estimate["orderType"],
+        executionPrice=estimate["executionPrice"],
+        livePrice=estimate["livePrice"],
+        tradeValue=estimate["tradeValue"],
+        charges=PreTradeChargeBreakdown(**estimate["charges"]),
+        netAmount=estimate["netAmount"],
+        walletBalance=estimate["walletBalance"],
+        walletUtilizationPct=estimate["walletUtilizationPct"],
+        canAfford=estimate["canAfford"],
+        impactTag=estimate["impactTag"],
+        warnings=estimate["warnings"],
+        signal=CopilotSignal(
+            verdict=signal["verdict"],
+            confidence=signal["confidence"],
+            flags=signal["flags"],
+            guidance=signal["guidance"],
+        ),
+    )
 
 
 @router.get("/trades/history", response_model=list[TradeHistory])

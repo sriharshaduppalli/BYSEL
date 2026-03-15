@@ -85,6 +85,9 @@ interface BYSELApiService {
         @Header("X-Trace-Id") traceId: String? = null,
     ): OrderResponse
 
+    @POST("/orders/pre-trade-estimate")
+    suspend fun getPreTradeEstimate(@Body request: PreTradeEstimateRequest): PreTradeEstimateResponse
+
     @POST("/orders/advanced")
     suspend fun placeAdvancedOrder(@Body order: AdvancedOrderRequest): AdvancedOrderResponse
 

@@ -732,6 +732,25 @@ open class TradingRepository(private val database: BYSELDatabase) {
     }
 
     // ==================== AI COPILOT ====================
+    suspend fun getPreTradeEstimate(
+        order: AdvancedOrderRequest,
+        walletBalance: Double? = null,
+        marketOpen: Boolean? = null,
+    ): Result<PreTradeEstimateResponse> {
+        return try {
+            val response = apiService.getPreTradeEstimate(
+                PreTradeEstimateRequest(
+                    order = order,
+                    walletBalance = walletBalance,
+                    marketOpen = marketOpen,
+                )
+            )
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
     suspend fun preTradeCopilot(
         order: AdvancedOrderRequest,
         walletBalance: Double? = null,

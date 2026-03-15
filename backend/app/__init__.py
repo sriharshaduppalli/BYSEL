@@ -1,8 +1,10 @@
 """BYSEL Backend API"""
 
 import os
+import time
+from uuid import uuid4
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 from .routes import router
@@ -11,6 +13,10 @@ from .routes.streaming import router as streaming_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+TRACE_HEADER = "X-Trace-Id"
+PROCESS_TIME_HEADER = "X-Process-Time-Ms"
+SLOW_REQUEST_THRESHOLD_MS = 1200.0
 
 
 def _resolve_allowed_origins() -> list[str]:
@@ -43,6 +49,35 @@ app = FastAPI(
     description="Trading backend for BYSEL",
     version="1.0.0"
 )
+
+
+@app.middleware("http")
+async def trace_context_middleware(request: Request, call_next):
+    trace_id = (request.headers.get(TRACE_HEADER) or f"trc-{uuid4().hex[:16]}").strip()
+    request.state.trace_id = trace_id
+    started_at = time.perf_counter()
+
+    try:
+        response = await call_next(request)
+    except Exception:
+        logger.exception("Unhandled request error trace_id=%s path=%s", trace_id, request.url.path)
+        raise
+
+    duration_ms = (time.perf_counter() - started_at) * 1000.0
+    response.headers[TRACE_HEADER] = trace_id
+    response.headers[PROCESS_TIME_HEADER] = f"{duration_ms:.1f}"
+
+    if duration_ms >= SLOW_REQUEST_THRESHOLD_MS:
+        logger.warning(
+            "Slow request trace_id=%s method=%s path=%s status=%s duration_ms=%.1f",
+            trace_id,
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+        )
+
+    return response
 
 # CORS middleware
 app.add_middleware(

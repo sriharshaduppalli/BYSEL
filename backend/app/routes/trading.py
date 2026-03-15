@@ -291,6 +291,88 @@ def build_pretrade_signal(
     }
 
 
+def build_pretrade_estimate(
+    order: Order,
+    live_price: float,
+    wallet_balance: float,
+    market_open: bool,
+    bid: float | None = None,
+    ask: float | None = None,
+) -> dict:
+    side = _normalize_side(order.side)
+    order_type = _normalize_order_type(getattr(order, "orderType", "MARKET"))
+    execution_price = float(_execution_price(order, live_price))
+    qty = int(order.qty)
+
+    trade_value = float(qty) * execution_price
+    brokerage = trade_value * 0.0003
+    exchange_fee = trade_value * 0.00034
+    gst = (brokerage + exchange_fee) * 0.18
+    stamp_duty = trade_value * 0.00015 if side == "BUY" else 0.0
+    total_charges = brokerage + exchange_fee + gst + stamp_duty
+    net_amount = trade_value + total_charges if side == "BUY" else trade_value - total_charges
+
+    wallet_utilization_pct = (
+        ((net_amount / wallet_balance) * 100.0)
+        if side == "BUY" and wallet_balance > 0
+        else 0.0
+    )
+    can_afford = side != "BUY" or wallet_balance >= net_amount
+
+    if trade_value >= 300_000 or qty >= 350:
+        impact_tag = "High impact"
+    elif trade_value >= 120_000 or qty >= 150:
+        impact_tag = "Medium impact"
+    else:
+        impact_tag = "Low impact"
+
+    warnings: list[str] = []
+    if not market_open:
+        warnings.append("Market is currently closed")
+    if qty <= 0:
+        warnings.append("Quantity must be greater than zero")
+    if side == "BUY" and not can_afford:
+        deficit = max(0.0, net_amount - wallet_balance)
+        warnings.append(f"Insufficient funds. Need ₹{deficit:.2f} more")
+
+    if order_type == "LIMIT":
+        limit_price = getattr(order, "limitPrice", None)
+        if limit_price is None or float(limit_price) <= 0:
+            warnings.append("Limit price must be greater than zero")
+        elif live_price > 0:
+            gap_pct = abs(((float(limit_price) - float(live_price)) / float(live_price)) * 100.0)
+            if gap_pct > 3.0:
+                warnings.append(f"Limit is {gap_pct:.2f}% away from market price")
+
+    if bid is not None and ask is not None and live_price > 0:
+        spread_pct = ((float(ask) - float(bid)) / float(live_price)) * 100.0
+        if spread_pct >= 0.45:
+            warnings.append("Wide spread detected. Consider limit order for better execution control")
+
+    return {
+        "symbol": order.symbol,
+        "side": side,
+        "qty": qty,
+        "orderType": order_type,
+        "executionPrice": round(execution_price, 2),
+        "livePrice": round(float(live_price), 2),
+        "tradeValue": round(trade_value, 2),
+        "charges": {
+            "brokerage": round(brokerage, 2),
+            "exchangeFee": round(exchange_fee, 2),
+            "gst": round(gst, 2),
+            "stampDuty": round(stamp_duty, 2),
+            "totalCharges": round(total_charges, 2),
+        },
+        "netAmount": round(net_amount, 2),
+        "walletBalance": round(float(wallet_balance), 2),
+        "walletUtilizationPct": round(wallet_utilization_pct, 2),
+        "canAfford": can_afford,
+        "impactTag": impact_tag,
+        "warnings": warnings,
+    }
+
+
 
 def get_wallet(db: Session, user_id: int) -> Wallet:
     """Get current wallet balance for a user. Creates wallet with ₹100,000 if first time."""

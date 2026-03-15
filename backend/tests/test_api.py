@@ -55,7 +55,15 @@ def _mock_live_market(monkeypatch, price: float = 100.0) -> None:
         lambda: MarketStatus(isOpen=True, message="Market is OPEN"),
     )
     monkeypatch.setattr(
+        "app.routes.is_market_open",
+        lambda: MarketStatus(isOpen=True, message="Market is OPEN"),
+    )
+    monkeypatch.setattr(
         "app.routes.trading.fetch_quote",
+        lambda symbol: {"symbol": symbol.upper(), "last": price, "pctChange": 0.0},
+    )
+    monkeypatch.setattr(
+        "app.routes.fetch_quote",
         lambda symbol: {"symbol": symbol.upper(), "last": price, "pctChange": 0.0},
     )
 
@@ -82,6 +90,26 @@ def test_health_check():
     data = response.json()
     assert data["status"] == "healthy"
     assert "version" in data
+
+
+def test_health_echoes_trace_header():
+    trace_id = "trc-test-health-echo"
+    response = client.get("/health", headers={"X-Trace-Id": trace_id})
+
+    assert response.status_code == 200
+    assert response.headers.get("x-trace-id") == trace_id
+    assert response.headers.get("x-process-time-ms") is not None
+
+
+def test_health_generates_trace_header_when_missing():
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    trace_id = response.headers.get("x-trace-id")
+    assert trace_id is not None
+    assert trace_id.startswith("trc-")
+    assert len(trace_id) >= 8
+    assert response.headers.get("x-process-time-ms") is not None
 
 def test_get_quotes():
     """Test getting quotes"""
@@ -165,6 +193,56 @@ def test_place_order_reused_idempotency_key_with_different_payload_is_rejected(m
     assert second_data["status"] == "error"
     assert second_data["errorCode"] == "IDEMPOTENCY_KEY_REUSED"
     assert second_data["orderId"] == first_data["orderId"]
+
+
+def test_pre_trade_estimate_returns_server_charge_breakdown(monkeypatch):
+    _seed_trading_wallet(user_id=1, balance=100_000.0)
+    _mock_live_market(monkeypatch, price=100.0)
+
+    payload = {
+        "order": {
+            "symbol": "TCS",
+            "qty": 10,
+            "side": "BUY",
+            "orderType": "MARKET",
+            "validity": "DAY",
+        }
+    }
+
+    response = client.post("/orders/pre-trade-estimate", json=payload)
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["symbol"] == "TCS"
+    assert data["side"] == "BUY"
+    assert data["tradeValue"] == 1000.0
+    assert data["charges"]["totalCharges"] > 0
+    assert data["canAfford"] is True
+    assert data["impactTag"] in {"Low impact", "Medium impact", "High impact"}
+    assert data["signal"]["verdict"] in {"GO", "CAUTION", "BLOCK"}
+
+
+def test_pre_trade_estimate_flags_insufficient_funds(monkeypatch):
+    _seed_trading_wallet(user_id=1, balance=100.0)
+    _mock_live_market(monkeypatch, price=1_000.0)
+
+    payload = {
+        "order": {
+            "symbol": "INFY",
+            "qty": 2,
+            "side": "BUY",
+            "orderType": "MARKET",
+            "validity": "DAY",
+        }
+    }
+
+    response = client.post("/orders/pre-trade-estimate", json=payload)
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["canAfford"] is False
+    assert any("Insufficient funds" in warning for warning in data["warnings"])
+    assert any("Insufficient wallet" in flag for flag in data["signal"]["flags"])
 
 
 def test_place_order_invalid_side_has_deterministic_error_code():

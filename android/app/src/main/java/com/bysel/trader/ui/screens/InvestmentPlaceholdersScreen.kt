@@ -113,6 +113,65 @@ private fun OutlinedTextField(
     )
 }
 
+private fun formatInvestmentCurrency(value: Double): String {
+    return "₹${String.format("%,.2f", value)}"
+}
+
+@Composable
+private fun PreTradeEstimateCard(estimate: PreTradeEstimateResponse) {
+    Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Server Pre-Trade Estimate", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+            Text(
+                "${estimate.symbol} ${estimate.side} • ${estimate.orderType}",
+                color = LocalAppTheme.current.text,
+                fontSize = 13.sp,
+            )
+            Text(
+                "Live ${formatInvestmentCurrency(estimate.livePrice)} • Exec ${formatInvestmentCurrency(estimate.executionPrice)}",
+                color = LocalAppTheme.current.textSecondary,
+                fontSize = 12.sp,
+            )
+            Text(
+                "Trade ${formatInvestmentCurrency(estimate.tradeValue)} • Charges ${formatInvestmentCurrency(estimate.charges.totalCharges)}",
+                color = LocalAppTheme.current.textSecondary,
+                fontSize = 12.sp,
+            )
+            Text(
+                "${if (estimate.side == "BUY") "Debit" else "Credit"} ${formatInvestmentCurrency(estimate.netAmount)} • Impact ${estimate.impactTag}",
+                color = LocalAppTheme.current.textSecondary,
+                fontSize = 12.sp,
+            )
+            if (estimate.side == "BUY") {
+                Text(
+                    "Wallet utilization ${String.format("%.1f", estimate.walletUtilizationPct)}% • ${if (estimate.canAfford) "Affordable" else "Insufficient funds"}",
+                    color = if (estimate.canAfford) LocalAppTheme.current.textSecondary else LocalAppTheme.current.negative,
+                    fontSize = 12.sp,
+                )
+            }
+            estimate.warnings.take(3).forEach { warning ->
+                Text("• $warning", color = LocalAppTheme.current.negative, fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PreTradeSignalCard(title: String, signal: CopilotSignal) {
+    Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+            Text("${signal.verdict} • ${signal.confidence}% confidence", color = LocalAppTheme.current.text)
+            if (signal.flags.isNotEmpty()) {
+                Text("Flags: ${signal.flags.joinToString(", ")}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+            }
+            signal.guidance.take(4).forEach {
+                Text("• $it", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+            }
+        }
+    }
+}
+
 @Composable
 fun MutualFundsScreen(viewModel: TradingViewModel) {
     val funds by viewModel.mutualFunds.collectAsState()
@@ -806,6 +865,7 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
     val triggerOrders by viewModel.triggerOrders.collectAsState()
     val triggerEvaluation by viewModel.triggerEvaluation.collectAsState()
     val basketOrders by viewModel.basketOrders.collectAsState()
+    val preTradeEstimate by viewModel.preTradeEstimate.collectAsState()
     val preTradeSignal by viewModel.copilotPreTradeSignal.collectAsState()
 
     var symbol by remember { mutableStateOf("RELIANCE") }
@@ -821,13 +881,20 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
     var basketLegsInput by remember { mutableStateOf("RELIANCE:1:BUY\nTCS:1:BUY") }
 
     LaunchedEffect(Unit) {
+        viewModel.clearPreTradeCopilotSignal()
         viewModel.refreshTriggerOrders()
         viewModel.refreshBasketOrders()
+    }
+
+    LaunchedEffect(symbol, quantityInput, side, orderType, validity, limitPriceInput, triggerPriceInput, tag) {
+        viewModel.clearPreTradeCopilotSignal()
     }
 
     val quantity = quantityInput.toIntOrNull() ?: 0
     val limitPrice = limitPriceInput.toDoubleOrNull()
     val triggerPrice = triggerPriceInput.toDoubleOrNull()
+    val effectiveSignal = preTradeEstimate?.signal ?: preTradeSignal
+    val copilotBlocksTrade = effectiveSignal?.verdict?.equals("BLOCK", ignoreCase = true) == true
 
     LazyColumn(
         modifier = Modifier
@@ -932,7 +999,7 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = {
-                                viewModel.runPreTradeCopilot(
+                                viewModel.fetchPreTradeEstimate(
                                     AdvancedOrderRequest(
                                         symbol = symbol,
                                         qty = quantity,
@@ -947,7 +1014,7 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
                             },
                             enabled = quantity > 0 && symbol.isNotBlank(),
                         ) {
-                            Text("Pre-Trade Check")
+                            Text("Estimate + Check")
                         }
                         Button(
                             onClick = {
@@ -962,7 +1029,7 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
                                     tag = tag,
                                 )
                             },
-                            enabled = quantity > 0 && symbol.isNotBlank(),
+                            enabled = quantity > 0 && symbol.isNotBlank() && !copilotBlocksTrade,
                         ) {
                             Text("Place")
                         }
@@ -983,7 +1050,7 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
                                 )
                             }
                         },
-                        enabled = quantity > 0 && symbol.isNotBlank() && triggerPrice != null,
+                        enabled = quantity > 0 && symbol.isNotBlank() && triggerPrice != null && !copilotBlocksTrade,
                     ) {
                         Text("Queue Trigger Instead")
                     }
@@ -991,20 +1058,15 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
             }
         }
 
-        preTradeSignal?.let { signal ->
+        preTradeEstimate?.let { estimate ->
             item {
-                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Copilot Pre-Trade", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
-                        Text("Verdict: ${signal.verdict} • Confidence: ${signal.confidence}%", color = LocalAppTheme.current.text)
-                        if (signal.flags.isNotEmpty()) {
-                            Text("Flags: ${signal.flags.joinToString(", ")}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        }
-                        signal.guidance.take(3).forEach {
-                            Text("• $it", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        }
-                    }
-                }
+                PreTradeEstimateCard(estimate)
+            }
+        }
+
+        effectiveSignal?.let { signal ->
+            item {
+                PreTradeSignalCard("Copilot Pre-Trade", signal)
             }
         }
 
@@ -1464,6 +1526,7 @@ fun WealthOsScreen(viewModel: TradingViewModel) {
 @Composable
 fun CopilotCenterScreen(viewModel: TradingViewModel) {
     val loading by viewModel.copilotLoading.collectAsState()
+    val preTradeEstimate by viewModel.preTradeEstimate.collectAsState()
     val preTradeSignal by viewModel.copilotPreTradeSignal.collectAsState()
     val postTradeReview by viewModel.copilotPostTradeReview.collectAsState()
     val portfolioActions by viewModel.copilotPortfolioActions.collectAsState()
@@ -1479,10 +1542,16 @@ fun CopilotCenterScreen(viewModel: TradingViewModel) {
     var noteInput by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
+        viewModel.clearPreTradeCopilotSignal()
         viewModel.loadPortfolioCopilotActions()
     }
 
+    LaunchedEffect(symbol, quantityInput, side, orderType, validity, limitInput, triggerInput) {
+        viewModel.clearPreTradeCopilotSignal()
+    }
+
     val quantity = quantityInput.toIntOrNull() ?: 0
+    val effectiveSignal = preTradeEstimate?.signal ?: preTradeSignal
 
     LazyColumn(
         modifier = Modifier
@@ -1538,7 +1607,7 @@ fun CopilotCenterScreen(viewModel: TradingViewModel) {
                     OutlinedTextField(value = triggerInput, onValueChange = { triggerInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Trigger Price (optional)") }, singleLine = true)
                     Button(
                         onClick = {
-                            viewModel.runPreTradeCopilot(
+                            viewModel.fetchPreTradeEstimate(
                                 AdvancedOrderRequest(
                                     symbol = symbol,
                                     qty = quantity,
@@ -1552,26 +1621,21 @@ fun CopilotCenterScreen(viewModel: TradingViewModel) {
                         },
                         enabled = symbol.isNotBlank() && quantity > 0,
                     ) {
-                        Text("Run Pre-Trade Copilot")
+                        Text("Run Estimate + Copilot")
                     }
                 }
             }
         }
 
-        preTradeSignal?.let { signal ->
+        preTradeEstimate?.let { estimate ->
             item {
-                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Pre-Trade Verdict", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
-                        Text("${signal.verdict} • ${signal.confidence}% confidence", color = LocalAppTheme.current.text)
-                        if (signal.flags.isNotEmpty()) {
-                            Text("Flags: ${signal.flags.joinToString(", ")}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        }
-                        signal.guidance.take(4).forEach {
-                            Text("• $it", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        }
-                    }
-                }
+                PreTradeEstimateCard(estimate)
+            }
+        }
+
+        effectiveSignal?.let { signal ->
+            item {
+                PreTradeSignalCard("Pre-Trade Verdict", signal)
             }
         }
 

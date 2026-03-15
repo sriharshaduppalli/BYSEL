@@ -577,6 +577,38 @@ data class CopilotSignal(
     val guidance: List<String> = emptyList()
 )
 
+data class PreTradeChargeBreakdown(
+    val brokerage: Double = 0.0,
+    val exchangeFee: Double = 0.0,
+    val gst: Double = 0.0,
+    val stampDuty: Double = 0.0,
+    val totalCharges: Double = 0.0,
+)
+
+data class PreTradeEstimateRequest(
+    val order: AdvancedOrderRequest,
+    val walletBalance: Double? = null,
+    val marketOpen: Boolean? = null,
+)
+
+data class PreTradeEstimateResponse(
+    val symbol: String,
+    val side: String,
+    val qty: Int,
+    val orderType: String,
+    val executionPrice: Double,
+    val livePrice: Double,
+    val tradeValue: Double,
+    val charges: PreTradeChargeBreakdown = PreTradeChargeBreakdown(),
+    val netAmount: Double,
+    val walletBalance: Double,
+    val walletUtilizationPct: Double,
+    val canAfford: Boolean,
+    val impactTag: String,
+    val warnings: List<String> = emptyList(),
+    val signal: CopilotSignal,
+)
+
 data class CopilotPreTradeRequest(
     val order: AdvancedOrderRequest,
     val walletBalance: Double? = null,
