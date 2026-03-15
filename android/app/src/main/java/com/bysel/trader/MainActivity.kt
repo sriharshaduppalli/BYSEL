@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -65,7 +66,7 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         // Install modern splash screen (Material You)
         val splashScreen = installSplashScreen()
-        
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         
         // Initialize biometric auth manager
