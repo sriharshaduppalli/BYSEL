@@ -1534,6 +1534,34 @@ def revoke_session(session_id: int, authorization: str | None = Header(default=N
     return LogoutResponse(status="ok", message="Session revoked")
 
 
+@router.get("/otp-debug")
+def otp_debug():
+    """Temporary diagnostic endpoint to check Fast2SMS config."""
+    result = {
+        "fast2sms_key_set": bool(FAST2SMS_API_KEY),
+        "fast2sms_key_len": len(FAST2SMS_API_KEY),
+        "fast2sms_key_prefix": FAST2SMS_API_KEY[:8] + "..." if len(FAST2SMS_API_KEY) > 8 else "(too short)",
+        "twilio_configured": bool(TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER),
+    }
+    # Test Fast2SMS API connectivity (without sending a real SMS)
+    if FAST2SMS_API_KEY:
+        try:
+            req = urllib.request.Request(
+                "https://www.fast2sms.com/dev/wallet",
+                headers={"authorization": FAST2SMS_API_KEY},
+                method="GET",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+                result["fast2sms_wallet"] = body
+        except urllib.error.HTTPError as exc:
+            error_body = exc.read().decode("utf-8", errors="replace") if exc.fp else "no body"
+            result["fast2sms_wallet_error"] = f"HTTP {exc.code}: {error_body[:300]}"
+        except Exception as exc:
+            result["fast2sms_wallet_error"] = str(exc)
+    return result
+
+
 @router.post("/send-otp", response_model=OTPResponse)
 def send_otp(request: SendOTPRequest):
     """Send OTP to mobile number for authentication"""
