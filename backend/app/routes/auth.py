@@ -28,6 +28,39 @@ try:
 except Exception:
     bcrypt_lib = None
 
+# ---------- Firebase Admin SDK ----------
+try:
+    import firebase_admin
+    from firebase_admin import auth as firebase_auth, credentials as firebase_credentials
+    _FIREBASE_AVAILABLE = True
+except ImportError:
+    firebase_admin = None  # type: ignore
+    firebase_auth = None  # type: ignore
+    firebase_credentials = None  # type: ignore
+    _FIREBASE_AVAILABLE = False
+
+_firebase_app = None
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "").strip()
+
+def _get_firebase_app():
+    global _firebase_app
+    if not _FIREBASE_AVAILABLE:
+        return None
+    if _firebase_app is not None:
+        return _firebase_app
+    # Try service-account JSON file first, then fall back to project-ID-only init
+    sa_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
+    if sa_path and os.path.isfile(sa_path):
+        cred = firebase_credentials.Certificate(sa_path)
+        _firebase_app = firebase_admin.initialize_app(cred)
+    elif FIREBASE_PROJECT_ID:
+        # Minimal init — sufficient for ID-token verification without a service-account key
+        _firebase_app = firebase_admin.initialize_app(options={"projectId": FIREBASE_PROJECT_ID})
+    else:
+        logger.warning("auth.firebase.no_config — set FIREBASE_PROJECT_ID or FIREBASE_SERVICE_ACCOUNT_JSON")
+        return None
+    return _firebase_app
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -164,6 +197,10 @@ class OTPResponse(BaseModel):
     message: str
     otp_id: str | None = None
     expires_in_seconds: int | None = None
+
+
+class FirebasePhoneAuthRequest(BaseModel):
+    firebase_id_token: str
 
 
 def _hash_password(password: str) -> str:
@@ -1738,5 +1775,98 @@ def verify_otp(request: VerifyOTPRequest):
             refresh_token=refresh_token
         )
 
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Firebase Phone Authentication
+# ---------------------------------------------------------------------------
+
+@router.post("/firebase-phone", response_model=AuthResponse)
+def firebase_phone_auth(request: FirebasePhoneAuthRequest):
+    """Authenticate via Firebase Phone Auth — verify the Firebase ID token
+    and issue BYSEL access/refresh tokens."""
+
+    app = _get_firebase_app()
+    if app is None:
+        raise HTTPException(status_code=503, detail="Firebase is not configured on the server")
+
+    # Verify the Firebase ID token
+    try:
+        decoded = firebase_auth.verify_id_token(request.firebase_id_token, app=app)
+    except firebase_auth.InvalidIdTokenError:
+        raise HTTPException(status_code=401, detail="Invalid Firebase token")
+    except firebase_auth.ExpiredIdTokenError:
+        raise HTTPException(status_code=401, detail="Firebase token expired")
+    except firebase_auth.RevokedIdTokenError:
+        raise HTTPException(status_code=401, detail="Firebase token revoked")
+    except Exception as exc:
+        logger.exception("auth.firebase.verify_failed reason=%s", str(exc))
+        raise HTTPException(status_code=401, detail="Firebase token verification failed")
+
+    # Extract phone number from the verified token
+    phone_number = decoded.get("phone_number")
+    if not phone_number:
+        raise HTTPException(status_code=400, detail="Firebase token does not contain a phone number")
+
+    firebase_uid = decoded.get("uid", "")
+    logger.info("auth.firebase.verified phone=%s firebase_uid=%s", phone_number, firebase_uid)
+
+    # Normalize to +91 format
+    mobile_number = phone_number.strip()
+    if not mobile_number.startswith("+"):
+        if mobile_number.startswith("91") and len(mobile_number) == 12:
+            mobile_number = f"+{mobile_number}"
+        elif len(mobile_number) == 10 and mobile_number.isdigit():
+            mobile_number = f"+91{mobile_number}"
+
+    db: Session = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        user = db.query(UserModel).filter(UserModel.mobile_number == mobile_number).first()
+
+        if not user:
+            username = f"mobile_{mobile_number.replace('+', '')}"
+            email = f"{username}@bysel.com"
+
+            existing = db.query(UserModel).filter(
+                (UserModel.username == username) | (UserModel.email == email)
+            ).first()
+
+            if existing:
+                existing.mobile_number = mobile_number
+                user = existing
+            else:
+                user = UserModel(
+                    username=username,
+                    email=email,
+                    mobile_number=mobile_number,
+                    password_hash=_hash_password(secrets.token_hex(16)),
+                    created_at=now,
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+
+                wallet = WalletModel(
+                    user_id=user.id,
+                    balance=10000.0,
+                    updated_at=now,
+                )
+                db.add(wallet)
+                db.commit()
+
+        token_version = int(getattr(user, "token_version", 0) or 0)
+        access_token, refresh_token = _create_auth_tokens(user_id=user.id, token_version=token_version)
+
+        logger.info("auth.firebase.login_success user_id=%s mobile=%s", user.id, mobile_number)
+
+        return AuthResponse(
+            status="ok",
+            user_id=user.id,
+            access_token=access_token,
+            refresh_token=refresh_token,
+        )
     finally:
         db.close()
