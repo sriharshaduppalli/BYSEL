@@ -765,14 +765,16 @@ private fun ForgotPasswordDialog(
                     )
                 }
 
-                debugCode?.let { code ->
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "Debug reset code: $code",
-                        color = appTheme.primary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                    )
+                if (com.bysel.trader.BuildConfig.DEBUG) {
+                    debugCode?.let { code ->
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Debug reset code: $code",
+                            color = appTheme.primary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
                 }
 
                 if (!feedback.isNullOrBlank()) {
