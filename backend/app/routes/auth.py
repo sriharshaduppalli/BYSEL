@@ -65,7 +65,10 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-AUTH_SECRET = os.getenv("AUTH_SECRET", "bysel-dev-secret-change-me")
+AUTH_SECRET = os.getenv("AUTH_SECRET", "")
+if not AUTH_SECRET:
+    AUTH_SECRET = secrets.token_hex(32)
+    logger.warning("auth.secret.generated — AUTH_SECRET env var not set; using random secret (tokens will not survive restarts)")
 ACCESS_TOKEN_TTL_SECONDS = int(os.getenv("ACCESS_TOKEN_TTL_SECONDS", "900"))
 REFRESH_TOKEN_TTL_SECONDS = int(os.getenv("REFRESH_TOKEN_TTL_SECONDS", "2592000"))
 LOGIN_RATE_LIMIT_ATTEMPTS = int(os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "6"))
@@ -105,6 +108,7 @@ OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "3"))
 
 _login_rate_buckets: dict[str, deque[float]] = defaultdict(deque)
 _refresh_rate_buckets: dict[str, deque[float]] = defaultdict(deque)
+_otp_verify_rate_buckets: dict[str, deque[float]] = defaultdict(deque)
 _login_failure_buckets: dict[str, deque[float]] = defaultdict(deque)
 _login_lockouts: dict[str, float] = {}
 _rate_limit_lock = Lock()
@@ -1640,7 +1644,7 @@ def send_otp(request: SendOTPRequest):
         # Store OTP in database
         otp_record = OTPModel(
             mobile_number=mobile_number,
-            otp_code=otp,  # Store plain OTP for debugging (in production, only store hash)
+            otp_code="",  # Never store plaintext OTP
             otp_hash=otp_hash,
             expires_at=now + timedelta(seconds=OTP_TTL_SECONDS),
             created_at=now
@@ -1652,8 +1656,7 @@ def send_otp(request: SendOTPRequest):
         sms_sent = _send_otp_sms(mobile_number, otp)
 
         if not sms_sent:
-            logger.warning("auth.otp.sms_failed_fallback mobile_number=%s otp=%s", mobile_number, otp)
-            print(f"FALLBACK: OTP for {mobile_number} is {otp}")
+            logger.warning("auth.otp.sms_failed mobile_number=%s", mobile_number)
 
         logger.info("auth.otp.sent mobile_number=%s otp_id=%s sms_sent=%s", mobile_number, otp_id, sms_sent)
 
@@ -1670,8 +1673,18 @@ def send_otp(request: SendOTPRequest):
 
 
 @router.post("/verify-otp", response_model=AuthResponse)
-def verify_otp(request: VerifyOTPRequest):
+def verify_otp(request: VerifyOTPRequest, req: Request = None):
     """Verify OTP and authenticate user"""
+    # Rate limit: max 10 verify attempts per phone per 5 minutes
+    rate_key = f"otp_verify:{request.mobile_number}"
+    _enforce_rate_limit(
+        key=rate_key,
+        buckets=_otp_verify_rate_buckets,
+        max_attempts=10,
+        window_seconds=300,
+        message="Too many OTP verification attempts. Please try again later.",
+    )
+
     # Basic validation
     if not request.mobile_number or not request.otp:
         raise HTTPException(status_code=400, detail="Mobile number and OTP are required")
