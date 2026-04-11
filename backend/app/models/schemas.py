@@ -494,3 +494,12 @@ class CopilotPortfolioActionsResponse(BaseModel):
     actions: List[str]
     priority: str
     rationale: str
+
+
+class HistoryCandle(BaseModel):
+    timestamp: int
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int
