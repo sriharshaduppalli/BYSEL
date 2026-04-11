@@ -5,19 +5,11 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.kapt")
-    id("com.google.dagger.hilt.android")
-    // Google services plugin is applied via apply() below to ensure google-services.json is present
+    id("com.google.gms.google-services")
 }
-
-// Note: `google-services` plugin intentionally not applied here to avoid
-// build-time plugin resolution issues in this mono-repo environment.
-// The app can still use `firebase-messaging` runtime APIs; to enable the
-// Gradle plugin, add the plugin classpath in the root buildscript or
-// declare the plugin in `settings.gradle.kts` if your CI supports it.
 
 apply {
     plugin("kotlin-kapt")
-    plugin("com.google.dagger.hilt.android")
 }
 
 fun bumpPatchVersion(versionName: String): String {
@@ -215,6 +207,11 @@ dependencies {
     // Modern splash screen API
     implementation("androidx.core:core-splashscreen:1.0.1")
     
+// Google Play Core modules (SDK 34+ compatible: use latest modular APIs)
+    implementation("com.google.android.play:app-update:2.1.0")
+    implementation("com.google.android.play:review:2.0.2")
+    implementation("com.google.android.play:review-ktx:2.0.2")
+
     // Biometric authentication
     implementation("androidx.biometric:biometric:1.2.0-alpha05")
     
@@ -231,12 +228,19 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
-    implementation("com.google.dagger:hilt-android:2.51.1")
-    kapt("com.google.dagger:hilt-compiler:2.51.1")
-    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
+    // Hilt dependencies removed — app uses manual ViewModelProvider.Factory
+    // implementation("com.google.dagger:hilt-android:2.51.1")
+    // kapt("com.google.dagger:hilt-compiler:2.51.1")
+    // implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
     implementation("androidx.work:work-runtime-ktx:2.8.1")
-    // Firebase Cloud Messaging
-    implementation("com.google.firebase:firebase-messaging:23.2.1")
+    // Firebase BoM — single version for all Firebase libs
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-analytics")
+    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.firebase:firebase-messaging")
+    // SMS Retriever / User Consent API (no SMS permission required)
+    implementation("com.google.android.gms:play-services-auth:21.3.0")
+    implementation("com.google.android.gms:play-services-auth-api-phone:17.5.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.11")
     testImplementation("androidx.work:work-testing:2.8.1")

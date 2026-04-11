@@ -35,6 +35,15 @@ interface BYSELApiService {
     @DELETE("/auth/sessions/{sessionId}")
     suspend fun revokeSession(@Path("sessionId") sessionId: Int): Map<String, String>
 
+    @POST("/auth/send-otp")
+    suspend fun sendOTP(@Body request: SendOTPRequest): OTPResponse
+
+    @POST("/auth/verify-otp")
+    suspend fun verifyOTP(@Body request: VerifyOTPRequest): AuthResponse
+
+    @POST("/auth/firebase-phone")
+    suspend fun firebasePhoneAuth(@Body request: FirebasePhoneAuthRequest): AuthResponse
+
     // ==================== QUOTES ====================
     @GET("/quotes")
     suspend fun getQuotes(@Query("symbols") symbols: String): List<Quote>
@@ -243,8 +252,31 @@ interface BYSELApiService {
     @GET("/ai/analyze/{symbol}")
     suspend fun aiAnalyze(@Path("symbol") symbol: String): StockAnalysis
 
+    @GET("/ai/analyze-fast/{symbol}")
+    suspend fun aiAnalyzeFast(@Path("symbol") symbol: String): StockAnalysis
+
     @GET("/ai/predict/{symbol}")
     suspend fun aiPredict(@Path("symbol") symbol: String): StockPredictionResponse
+
+    @GET("/ai/recommendations")
+    suspend fun getStockRecommendations(@Query("limit") limit: Int = 10): StockRecommendationsResponse
+
+    // ==================== ENHANCED AI ANALYSIS (LEVEL 2) ====================
+    @POST("/api/ai/v2/analyze-with-explanation")
+    suspend fun aiAnalyzeEnhanced(
+        @Query("symbol") symbol: String,
+        @Query("query") query: String? = null
+    ): EnhancedStockAnalysisResponse
+
+    @POST("/api/ai/v2/analyze-query-intent")
+    suspend fun aiAnalyzeQueryIntent(@Body query: Map<String, String>): Map<String, Any>
+
+    @POST("/api/ai/v2/confidence-breakdown")
+    suspend fun aiGetConfidenceBreakdown(
+        @Query("symbol") symbol: String,
+        @Query("prediction") prediction: Map<String, Any>? = null,
+        @Query("model_accuracy") modelAccuracy: Double? = 65.0
+    ): ConfidenceBreakdownResponse
 
     // ==================== PORTFOLIO HEALTH ====================
     @GET("/portfolio/health")
@@ -257,6 +289,11 @@ interface BYSELApiService {
     @GET("/market/sector/{sectorName}")
     suspend fun getSectorDetail(@Path("sectorName") sectorName: String): HeatmapSector
 
+    @GET("/market/signal-lab/buckets")
+    suspend fun getSignalLabBuckets(
+        @Query("limitPerBucket") limitPerBucket: Int = 8
+    ): SignalLabBucketsResponse
+
     // ==================== DERIVATIVES INTELLIGENCE ====================
     @GET("/derivatives/option-chain")
     suspend fun getOptionChain(
@@ -266,6 +303,12 @@ interface BYSELApiService {
 
     @POST("/derivatives/strategy/preview")
     suspend fun previewStrategy(@Body request: StrategyPreviewRequest): StrategyPreviewResponse
+
+    @GET("/derivatives/futures/contracts")
+    suspend fun getFuturesContracts(@Query("symbol") symbol: String): FuturesContractsResponse
+
+    @POST("/derivatives/futures/ticket/preview")
+    suspend fun previewFuturesTicket(@Body request: FuturesTicketPreviewRequest): FuturesTicketPreviewResponse
 
     // ==================== WEALTH OS ====================
     @POST("/wealth/family/members")
@@ -295,6 +338,19 @@ interface BYSELApiService {
 
     @GET("/ai/copilot/portfolio-actions")
     suspend fun getPortfolioCopilotActions(): CopilotPortfolioActionsResponse
+
+    // ==================== INVESTOR PORTFOLIOS ====================
+    @GET("/investor-portfolios")
+    suspend fun getInvestorPortfolios(): List<InvestorPortfolio>
+
+    @GET("/investor-portfolios/insights")
+    suspend fun getInvestorPortfolioInsights(
+        @Query("maxChangesPerInvestor") maxChangesPerInvestor: Int = 3,
+        @Query("ideaLimit") ideaLimit: Int = 8,
+    ): InvestorPortfolioInsightsResponse
+
+    @GET("/investor-portfolios/{investorId}")
+    suspend fun getInvestorPortfolio(@Path("investorId") investorId: String): InvestorPortfolio
 }
 
 // Trading and Portfolio data classes

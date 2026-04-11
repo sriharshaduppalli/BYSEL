@@ -4,7 +4,9 @@ pluginManagement {
         mavenCentral()
         gradlePluginPortal()
     }
-    // No additional plugins declared here to avoid plugin resolution issues
+    plugins {
+        id("com.google.gms.google-services") version "4.4.4" apply false
+    }
 }
 
 dependencyResolutionManagement {

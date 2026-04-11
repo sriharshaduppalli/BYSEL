@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "185608011187",
+    "project_id": "byselservices",
+    "storage_bucket": "byselservices.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:185608011187:android:685c6b343f8dd47ca75fc6",
+        "android_client_info": {
+          "package_name": "com.bysel.trader"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCwj-E69uPo2OStMeDADpVtUQ3eXXDj0Xs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

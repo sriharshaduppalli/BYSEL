@@ -44,6 +44,10 @@ data class Quote(
     val ask: Double? = null,
     @SerializedName("dividendYield")
     val dividendYield: Double? = null,
+    @SerializedName("fiftyDayAverage")
+    val fiftyDayAverage: Double? = null,
+    @SerializedName("twoHundredDayAverage")
+    val twoHundredDayAverage: Double? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
  
@@ -149,7 +153,10 @@ data class AiAssistantResponse(
     val signal: String? = null,
     val suggestions: List<String> = emptyList(),
     val data: Map<String, Any>? = null,
-    val stocks: List<Map<String, Any>>? = null
+    val stocks: List<Map<String, Any>>? = null,
+    // Enhanced AI features (Level 2)
+    val enhancedFeatures: EnhancedFeatures? = null,
+    val apiVersion: String = "v1"
 )
 
 data class PricePrediction(
@@ -189,6 +196,31 @@ data class StockPredictionResponse(
     val modelAccuracy: Double = 0.0,
     val lastUpdated: String = "",
     val disclaimer: String = ""
+)
+
+data class StockRecommendation(
+    val symbol: String = "",
+    val name: String = "",
+    val price: Double = 0.0,
+    val sector: String = "",
+    val signal: String = "",
+    val overallScore: Int = 0,
+    val oneDayScore: Double = 0.0,
+    val oneMonthScore: Double = 0.0,
+    val threeMonthScore: Double = 0.0,
+    val oneDayTarget: Double = 0.0,
+    val oneMonthTarget: Double = 0.0,
+    val threeMonthTarget: Double = 0.0,
+    val rsi: Double = 0.0,
+    val modelAccuracy: Double = 0.0
+)
+
+data class StockRecommendationsResponse(
+    val recommendations: Map<String, List<StockRecommendation>> = emptyMap(),
+    val allScored: List<StockRecommendation> = emptyList(),
+    val modelAccuracy: Map<String, Double> = emptyMap(),
+    val disclaimer: String = "",
+    val generatedAt: String = ""
 )
 
 data class HistoryCandle(
@@ -517,6 +549,53 @@ data class StrategyPreviewResponse(
     val notes: List<String> = emptyList()
 )
 
+data class FuturesContract(
+    val contractSymbol: String,
+    val expiry: String,
+    val lotSize: Int,
+    val last: Double,
+    val pctChange: Double,
+    val oi: Int,
+    val oiChange: Int,
+    val volume: Int,
+    val basis: Double,
+    val marginPct: Double,
+    val marginPerLot: Double,
+)
+
+data class FuturesContractsResponse(
+    val symbol: String,
+    val spot: Double,
+    val generatedAt: String,
+    val contracts: List<FuturesContract> = emptyList(),
+    val notes: List<String> = emptyList(),
+)
+
+data class FuturesTicketPreviewRequest(
+    val symbol: String,
+    val expiry: String,
+    val side: String,
+    val lots: Int,
+    val orderType: String = "MARKET",
+    val limitPrice: Double? = null,
+)
+
+data class FuturesTicketPreviewResponse(
+    val contractSymbol: String,
+    val symbol: String,
+    val expiry: String,
+    val side: String,
+    val lots: Int,
+    val lotSize: Int,
+    val quantity: Int,
+    val referencePrice: Double,
+    val notionalValue: Double,
+    val estimatedMargin: Double,
+    val estimatedCharges: Double,
+    val maxLossBuffer: Double,
+    val notes: List<String> = emptyList(),
+)
+
 data class FamilyMemberRequest(
     val name: String,
     val relation: String,
@@ -681,6 +760,26 @@ data class LogoutRequest(
     val refreshToken: String
 )
 
+data class SendOTPRequest(
+    @SerializedName("mobile_number") val mobileNumber: String
+)
+
+data class VerifyOTPRequest(
+    @SerializedName("mobile_number") val mobileNumber: String,
+    val otp: String
+)
+
+data class OTPResponse(
+    val status: String,
+    val message: String,
+    @SerializedName("otp_id") val otpId: String? = null,
+    @SerializedName("expires_in_seconds") val expiresInSeconds: Int? = null
+)
+
+data class FirebasePhoneAuthRequest(
+    @SerializedName("firebase_id_token") val firebaseIdToken: String
+)
+
 data class AuthResponse(
     val status: String,
     val user_id: Int,
@@ -713,4 +812,179 @@ data class AuthSessionItem(
 data class AuthSessionsResponse(
     val status: String,
     val sessions: List<AuthSessionItem>
+)
+
+// ==================== INVESTOR PORTFOLIOS (SMART MONEY TRACKER) ====================
+
+data class InvestorHolding(
+    @SerializedName("symbol") val symbol: String = "",
+    @SerializedName("companyName") val companyName: String = "",
+    @SerializedName("holdingPct") val holdingPct: Double = 0.0,
+    @SerializedName("sector") val sector: String = "",
+)
+
+data class InvestorPortfolio(
+    @SerializedName("id") val id: String = "",
+    @SerializedName("investorName") val investorName: String = "",
+    @SerializedName("displayTitle") val displayTitle: String = "",
+    @SerializedName("style") val style: String = "",
+    @SerializedName("aum") val aum: String = "",
+    @SerializedName("bio") val bio: String = "",
+    @SerializedName("holdings") val holdings: List<InvestorHolding> = emptyList(),
+)
+
+data class InvestorHoldingDeltaFeed(
+    @SerializedName("symbol") val symbol: String = "",
+    @SerializedName("companyName") val companyName: String = "",
+    @SerializedName("action") val action: String = "",
+    @SerializedName("previousHoldingPct") val previousHoldingPct: Double = 0.0,
+    @SerializedName("currentHoldingPct") val currentHoldingPct: Double = 0.0,
+    @SerializedName("deltaPct") val deltaPct: Double = 0.0,
+    @SerializedName("commentary") val commentary: String = "",
+)
+
+data class InvestorPortfolioChangeFeed(
+    @SerializedName("investorId") val investorId: String = "",
+    @SerializedName("investorName") val investorName: String = "",
+    @SerializedName("style") val style: String = "",
+    @SerializedName("quarterLabel") val quarterLabel: String = "",
+    @SerializedName("changes") val changes: List<InvestorHoldingDeltaFeed> = emptyList(),
+)
+
+data class SmartMoneyIdeaFeedCard(
+    @SerializedName("ideaId") val ideaId: String = "",
+    @SerializedName("symbol") val symbol: String = "",
+    @SerializedName("companyName") val companyName: String = "",
+    @SerializedName("action") val action: String = "",
+    @SerializedName("confidence") val confidence: Int = 0,
+    @SerializedName("thesis") val thesis: String = "",
+    @SerializedName("whyNow") val whyNow: String = "",
+    @SerializedName("riskNote") val riskNote: String = "",
+    @SerializedName("tags") val tags: List<String> = emptyList(),
+    @SerializedName("backingInvestors") val backingInvestors: List<String> = emptyList(),
+)
+
+data class InvestorPortfolioInsightsResponse(
+    @SerializedName("generatedAt") val generatedAt: String = "",
+    @SerializedName("quarterLabel") val quarterLabel: String = "",
+    @SerializedName("portfolioChanges") val portfolioChanges: List<InvestorPortfolioChangeFeed> = emptyList(),
+    @SerializedName("ideas") val ideas: List<SmartMoneyIdeaFeedCard> = emptyList(),
+)
+
+
+// ==================== SIGNAL LAB PHASE-2 FEED ====================
+
+data class SignalLabCandidateFeed(
+    @SerializedName("symbol") val symbol: String = "",
+    @SerializedName("companyName") val companyName: String = "",
+    @SerializedName("score") val score: Double = 0.0,
+    @SerializedName("confidence") val confidence: Int = 0,
+    @SerializedName("thesis") val thesis: String = "",
+    @SerializedName("tags") val tags: List<String> = emptyList(),
+    @SerializedName("pctChange") val pctChange: Double = 0.0,
+    @SerializedName("volumeRatio") val volumeRatio: Double? = null,
+)
+
+data class SignalLabBucketFeed(
+    @SerializedName("bucketId") val bucketId: String = "",
+    @SerializedName("title") val title: String = "",
+    @SerializedName("thesis") val thesis: String = "",
+    @SerializedName("proxy") val proxy: Boolean = false,
+    @SerializedName("generatedAt") val generatedAt: String = "",
+    @SerializedName("candidates") val candidates: List<SignalLabCandidateFeed> = emptyList(),
+    @SerializedName("notes") val notes: List<String> = emptyList(),
+)
+
+data class SignalLabBucketsResponse(
+    @SerializedName("generatedAt") val generatedAt: String = "",
+    @SerializedName("buckets") val buckets: List<SignalLabBucketFeed> = emptyList(),
+)
+
+// ==================== ENHANCED AI ANALYSIS MODELS (LEVEL 2) ====================
+
+data class EnhancedStockAnalysisResponse(
+    val symbol: String,
+    val apiVersion: String = "v2",
+    val timestamp: String,
+    val baseAnalysis: StockAnalysis,
+    val enhancedFeatures: EnhancedFeatures
+)
+
+data class EnhancedFeatures(
+    val confidenceBreakdown: ConfidenceBreakdown,
+    val predictionReasoning: PredictionReasoning,
+    val eventRiskAnalysis: EventRiskAnalysis?,
+    val sentimentAnalysis: SentimentAnalysis,
+    val queryUnderstanding: QueryUnderstanding
+)
+
+data class ConfidenceBreakdown(
+    val overallConfidence: Double,
+    val confidenceLevel: String,
+    val factors: Map<String, ConfidenceFactor>
+)
+
+data class ConfidenceFactor(
+    val score: Double,
+    val weight: Double,
+    val reasoning: String
+)
+
+data class PredictionReasoning(
+    val signal: String,
+    val whyConfident: String,
+    val caveats: List<String>
+)
+
+data class EventRiskAnalysis(
+    val baseConfidence: Double,
+    val adjustedConfidence: Double,
+    val adjustmentFactor: Double,
+    val eventRisks: List<String>
+)
+
+data class SentimentAnalysis(
+    val overallSentiment: String,
+    val score: Double,  // -1 to +1
+    val strength: String,
+    val breakdown: SentimentBreakdown,
+    val interpretation: String
+)
+
+data class SentimentBreakdown(
+    val positiveCount: Int,
+    val neutralCount: Int,
+    val negativeCount: Int
+)
+
+data class QueryUnderstanding(
+    val intents: List<String>,
+    val timeframe: TimeframeAnalysis,
+    val confidence: Double
+)
+
+data class TimeframeAnalysis(
+    val phrase: String,
+    val days: Int?
+)
+
+// API Request/Response models for enhanced endpoints
+data class EnhancedAnalysisRequest(
+    val symbol: String,
+    val query: String? = null
+)
+
+data class ConfidenceBreakdownResponse(
+    val symbol: String,
+    val confidenceBreakdown: ConfidenceBreakdown
+)
+
+data class EventRiskAnalysisResponse(
+    val symbol: String,
+    val eventRiskAnalysis: EventRiskAnalysis
+)
+
+data class SentimentAnalysisResponse(
+    val symbol: String,
+    val sentimentAnalysis: SentimentAnalysis
 )

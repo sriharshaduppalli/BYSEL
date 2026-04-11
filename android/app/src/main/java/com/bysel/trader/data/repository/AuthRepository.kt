@@ -11,6 +11,10 @@ import com.bysel.trader.data.models.PasswordResetRequestBody
 import com.bysel.trader.data.models.PasswordResetRequestResponse
 import com.bysel.trader.data.models.AuthSessionItem
 import com.bysel.trader.data.models.LoginRequest
+import com.bysel.trader.data.models.SendOTPRequest
+import com.bysel.trader.data.models.VerifyOTPRequest
+import com.bysel.trader.data.models.FirebasePhoneAuthRequest
+import com.bysel.trader.data.models.OTPResponse
 import com.bysel.trader.data.models.LogoutRequest
 import com.bysel.trader.data.models.RefreshTokenRequest
 import com.bysel.trader.data.models.RegisterRequest
@@ -181,6 +185,53 @@ class AuthRepository(
         } catch (_: Exception) {
             AuthSessionManager.clearSession()
             Result.Success(Unit)
+        }
+    }
+
+    suspend fun sendOtp(mobileNumber: String): Result<OTPResponse> {
+        val normalizedMobile = mobileNumber.trim()
+        return try {
+            val response = apiService.sendOTP(SendOTPRequest(mobileNumber = normalizedMobile))
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(toAuthErrorMessage(e, "OTP request failed"))
+        }
+    }
+
+    suspend fun verifyOtp(mobileNumber: String, otp: String): Result<AuthResponse> {
+        val normalizedMobile = mobileNumber.trim()
+        val normalizedOtp = otp.trim()
+        return try {
+            val response = apiService.verifyOTP(
+                VerifyOTPRequest(
+                    mobileNumber = normalizedMobile,
+                    otp = normalizedOtp
+                )
+            )
+            AuthSessionManager.saveSession(
+                accessToken = response.access_token,
+                refreshToken = response.refresh_token,
+                userId = response.user_id
+            )
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(toAuthErrorMessage(e, "OTP verification failed"))
+        }
+    }
+
+    suspend fun firebasePhoneAuth(firebaseIdToken: String): Result<AuthResponse> {
+        return try {
+            val response = apiService.firebasePhoneAuth(
+                FirebasePhoneAuthRequest(firebaseIdToken = firebaseIdToken)
+            )
+            AuthSessionManager.saveSession(
+                accessToken = response.access_token,
+                refreshToken = response.refresh_token,
+                userId = response.user_id
+            )
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(toAuthErrorMessage(e, "Phone authentication failed"))
         }
     }
 
