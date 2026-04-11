@@ -220,6 +220,9 @@ class AuthRepository(
     }
 
     suspend fun firebasePhoneAuth(firebaseIdToken: String): Result<AuthResponse> {
+        if (firebaseIdToken.isBlank()) {
+            return Result.Error("Empty authentication token")
+        }
         return try {
             val response = apiService.firebasePhoneAuth(
                 FirebasePhoneAuthRequest(firebaseIdToken = firebaseIdToken)

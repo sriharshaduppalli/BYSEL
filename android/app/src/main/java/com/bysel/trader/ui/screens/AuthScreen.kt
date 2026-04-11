@@ -59,6 +59,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.PhoneAuthCredential
 import com.google.firebase.auth.PhoneAuthOptions
 import com.google.firebase.auth.PhoneAuthProvider
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.util.concurrent.TimeUnit
@@ -92,6 +93,7 @@ fun AuthScreen(
     val firebaseAuth = remember { FirebaseAuth.getInstance() }
     var firebaseVerificationId by remember { mutableStateOf<String?>(null) }
     var firebaseResendToken by remember { mutableStateOf<PhoneAuthProvider.ForceResendingToken?>(null) }
+    var otpCountdown by remember { mutableStateOf(0) }
 
     // Activity (needed to launch User Consent intent)
     val activity = LocalContext.current as? Activity
@@ -306,10 +308,15 @@ fun AuthScreen(
 
                     // Normalize to E.164 format for Firebase
                     val phoneE164 = when {
-                        rawNumber.startsWith("+") -> rawNumber
+                        rawNumber.startsWith("+") && rawNumber.length >= 10 -> rawNumber
                         rawNumber.startsWith("91") && rawNumber.length == 12 -> "+$rawNumber"
                         rawNumber.length == 10 && rawNumber.all { it.isDigit() } -> "+91$rawNumber"
-                        else -> "+91$rawNumber"
+                        else -> {
+                            sendingOtp = false
+                            messageIsError = true
+                            message = "Invalid phone format. Use 10 digits or +91XXXXXXXXXX"
+                            return@Button
+                        }
                     }
 
                     sendingOtp = true
@@ -364,6 +371,7 @@ fun AuthScreen(
                             firebaseVerificationId = verificationId
                             firebaseResendToken = token
                             otpSent = true
+                            otpCountdown = 60
                             messageIsError = false
                             message = "OTP sent to $phoneE164"
                         }
@@ -381,7 +389,14 @@ fun AuthScreen(
                     // Use resend token if available (for resend)
                     firebaseResendToken?.let { optionsBuilder.setForceResendingToken(it) }
 
-                    PhoneAuthProvider.verifyPhoneNumber(optionsBuilder.build())
+                    try {
+                        PhoneAuthProvider.verifyPhoneNumber(optionsBuilder.build())
+                    } catch (e: Exception) {
+                        sendingOtp = false
+                        messageIsError = true
+                        message = "Failed to start verification: ${e.localizedMessage}"
+                        Log.e("AuthScreen", "PhoneAuthProvider.verifyPhoneNumber error", e)
+                    }
                 },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 enabled = !sendingOtp && !verifyingOtp
@@ -394,6 +409,22 @@ fun AuthScreen(
             }
 
             if (otpSent) {
+                // OTP countdown timer
+                LaunchedEffect(otpCountdown) {
+                    if (otpCountdown > 0) {
+                        delay(1000L)
+                        otpCountdown--
+                    }
+                }
+                if (otpCountdown > 0) {
+                    Text(
+                        text = "Code expires in ${otpCountdown / 60}:${String.format("%02d", otpCountdown % 60)}",
+                        color = if (otpCountdown < 15) MaterialTheme.colorScheme.error else appTheme.textSecondary,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Button(
@@ -402,6 +433,11 @@ fun AuthScreen(
                         if (otpCode.trim().isEmpty()) {
                             messageIsError = true
                             message = "Enter the OTP code"
+                            return@Button
+                        }
+                        if (otpCode.trim().length != 6 || !otpCode.trim().all { it.isDigit() }) {
+                            messageIsError = true
+                            message = "OTP must be exactly 6 digits"
                             return@Button
                         }
                         val vId = firebaseVerificationId
