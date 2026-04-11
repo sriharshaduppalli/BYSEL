@@ -1801,6 +1801,16 @@ def firebase_phone_auth(request: FirebasePhoneAuthRequest):
     """Authenticate via Firebase Phone Auth — verify the Firebase ID token
     and issue BYSEL access/refresh tokens."""
 
+    # Rate limit: max 10 Firebase auth attempts per token prefix per 5 minutes
+    rate_key = f"firebase_phone:{request.firebase_id_token[:32]}"
+    _enforce_rate_limit(
+        key=rate_key,
+        buckets=_otp_verify_rate_buckets,
+        max_attempts=10,
+        window_seconds=300,
+        message="Too many authentication attempts. Please try again later.",
+    )
+
     app = _get_firebase_app()
     if app is None:
         raise HTTPException(status_code=503, detail="Firebase is not configured on the server")
