@@ -19,6 +19,7 @@ import os
 import smtplib
 import time
 import secrets
+import urllib.error
 import urllib.request
 import urllib.parse
 
@@ -293,12 +294,16 @@ def _send_password_reset_email(recipient_email: str, username: str, reset_code: 
 def _send_otp_fast2sms(mobile_number: str, otp_code: str) -> bool:
     """Send OTP via Fast2SMS (free for Indian numbers)."""
     if not FAST2SMS_API_KEY:
+        logger.warning("auth.otp.fast2sms_no_api_key")
         return False
+
+    logger.info("auth.otp.fast2sms_attempt mobile_number=%s api_key_len=%d api_key_prefix=%s",
+                mobile_number, len(FAST2SMS_API_KEY), FAST2SMS_API_KEY[:8] + "...")
 
     # Fast2SMS expects 10-digit Indian number without country code
     phone = mobile_number.replace("+91", "").replace(" ", "").strip()
     if len(phone) != 10 or not phone.isdigit():
-        logger.warning("auth.otp.fast2sms_invalid_number mobile_number=%s", mobile_number)
+        logger.warning("auth.otp.fast2sms_invalid_number mobile_number=%s phone=%s", mobile_number, phone)
         return False
 
     try:
@@ -319,7 +324,11 @@ def _send_otp_fast2sms(mobile_number: str, otp_code: str) -> bool:
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=15) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
+            raw = resp.read().decode("utf-8")
+            body = json.loads(raw)
+
+        logger.info("auth.otp.fast2sms_response mobile_number=%s status=%s body=%s",
+                    mobile_number, resp.status if hasattr(resp, 'status') else 'unknown', raw[:500])
 
         if body.get("return") is True or body.get("status_code") == 200:
             logger.info("auth.otp.fast2sms_sent mobile_number=%s request_id=%s", mobile_number, body.get("request_id"))
@@ -328,6 +337,11 @@ def _send_otp_fast2sms(mobile_number: str, otp_code: str) -> bool:
             logger.warning("auth.otp.fast2sms_rejected mobile_number=%s body=%s", mobile_number, body)
             return False
 
+    except urllib.error.HTTPError as exc:
+        error_body = exc.read().decode("utf-8", errors="replace") if exc.fp else "no body"
+        logger.exception("auth.otp.fast2sms_http_error mobile_number=%s status=%s reason=%s body=%s",
+                         mobile_number, exc.code, str(exc), error_body[:500])
+        return False
     except Exception as exc:
         logger.exception("auth.otp.fast2sms_error mobile_number=%s reason=%s", mobile_number, str(exc))
         return False
@@ -1573,15 +1587,15 @@ def send_otp(request: SendOTPRequest):
         sms_sent = _send_otp_sms(mobile_number, otp)
 
         if not sms_sent:
-            # If SMS fails, still return success for demo purposes but log the OTP
             logger.warning("auth.otp.sms_failed_fallback mobile_number=%s otp=%s", mobile_number, otp)
             print(f"FALLBACK: OTP for {mobile_number} is {otp}")
 
         logger.info("auth.otp.sent mobile_number=%s otp_id=%s sms_sent=%s", mobile_number, otp_id, sms_sent)
 
+        msg = "OTP sent successfully" if sms_sent else "OTP created but SMS delivery failed — check Fast2SMS account"
         return OTPResponse(
-            status="ok",
-            message="OTP sent successfully",
+            status="ok" if sms_sent else "sms_failed",
+            message=msg,
             otp_id=otp_id,
             expires_in_seconds=OTP_TTL_SECONDS
         )
