@@ -155,6 +155,7 @@ class UserModel(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
+    mobile_number = Column(String, unique=True, index=True, nullable=True)
     password_hash = Column(String, nullable=False)
     token_version = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -192,6 +193,18 @@ class PasswordResetTokenModel(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     used_at = Column(DateTime, nullable=True)
     revoked_at = Column(DateTime, nullable=True)
+
+
+class OTPModel(Base):
+    __tablename__ = "otps"
+    id = Column(Integer, primary_key=True, index=True)
+    mobile_number = Column(String, nullable=False, index=True)
+    otp_code = Column(String, nullable=False)
+    otp_hash = Column(String, unique=True, index=True, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    used_at = Column(DateTime, nullable=True)
+    attempts = Column(Integer, nullable=False, default=0)
 
 
 class MutualFundModel(Base):
@@ -314,6 +327,27 @@ def _ensure_order_columns() -> None:
     _ensure_column("orders", "idempotency_key", "idempotency_key VARCHAR NULL")
     _ensure_column("orders", "request_fingerprint", "request_fingerprint VARCHAR NULL")
     _ensure_column("orders", "trace_id", "trace_id VARCHAR NULL")
+
+
+def _ensure_order_indexes() -> None:
+    inspector = sa_inspect(engine)
+    if "orders" not in inspector.get_table_names():
+        return
+
+    # Enforce one idempotency key per user while allowing NULL keys.
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_user_idempotency_key
+                    ON orders (user_id, idempotency_key)
+                    WHERE idempotency_key IS NOT NULL
+                    """
+                )
+            )
+    except Exception as exc:
+        logger.warning("db.order_idempotency_index.skipped reason=%s", str(exc))
 
 
 def _active_sqlite_db_path() -> Path | None:
@@ -471,6 +505,7 @@ def _merge_legacy_auth_rows_into_active_db() -> None:
 _ensure_refresh_token_columns()
 _ensure_user_columns()
 _ensure_order_columns()
+_ensure_order_indexes()
 _merge_legacy_auth_rows_into_active_db()
 
 def get_db():

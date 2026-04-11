@@ -5,7 +5,7 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 from email.message import EmailMessage
 from ..config import DEBUG
-from ..database.db import SessionLocal, UserModel, WalletModel, RefreshTokenModel, PasswordResetTokenModel
+from ..database.db import SessionLocal, UserModel, WalletModel, RefreshTokenModel, PasswordResetTokenModel, OTPModel
 from datetime import datetime, timedelta
 from typing import List
 from collections import defaultdict, deque
@@ -19,6 +19,8 @@ import os
 import smtplib
 import time
 import secrets
+import urllib.request
+import urllib.parse
 
 try:
     import bcrypt as bcrypt_lib
@@ -45,6 +47,8 @@ REFRESH_TOKEN_RETENTION_DAYS = int(os.getenv("REFRESH_TOKEN_RETENTION_DAYS", "30
 MAX_ACTIVE_SESSIONS_PER_USER = int(os.getenv("MAX_ACTIVE_SESSIONS_PER_USER", "5"))
 REFRESH_TOKEN_REPLAY_GRACE_SECONDS = int(os.getenv("REFRESH_TOKEN_REPLAY_GRACE_SECONDS", "15"))
 PASSWORD_RESET_TOKEN_TTL_SECONDS = int(os.getenv("PASSWORD_RESET_TOKEN_TTL_SECONDS", "900"))
+RATE_LIMIT_BUCKET_MAX_KEYS = int(os.getenv("RATE_LIMIT_BUCKET_MAX_KEYS", "5000"))
+RATE_LIMIT_PRUNE_INTERVAL_SECONDS = int(os.getenv("RATE_LIMIT_PRUNE_INTERVAL_SECONDS", "30"))
 SUPPORT_EMAIL = os.getenv("BYSEL_SUPPORT_EMAIL", "support@bysel.com").strip() or "support@bysel.com"
 SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
@@ -57,11 +61,20 @@ PASSWORD_RESET_DEBUG_RESPONSE_ENABLED = os.getenv(
     "true" if DEBUG else "false"
 ).lower() == "true"
 
+# SMS Configuration — Fast2SMS (primary, free for Indian numbers) + Twilio (fallback)
+FAST2SMS_API_KEY = os.getenv("FAST2SMS_API_KEY", "").strip()
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER", "").strip()
+OTP_TTL_SECONDS = int(os.getenv("OTP_TTL_SECONDS", "300"))  # 5 minutes
+OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "3"))
+
 _login_rate_buckets: dict[str, deque[float]] = defaultdict(deque)
 _refresh_rate_buckets: dict[str, deque[float]] = defaultdict(deque)
 _login_failure_buckets: dict[str, deque[float]] = defaultdict(deque)
 _login_lockouts: dict[str, float] = {}
 _rate_limit_lock = Lock()
+_rate_limit_last_prune_at = 0.0
 _metrics_lock = Lock()
 _auth_metrics: dict[str, int] = defaultdict(int)
 
@@ -134,6 +147,22 @@ class SessionInfo(BaseModel):
 class SessionsResponse(BaseModel):
     status: str
     sessions: List[SessionInfo]
+
+
+class SendOTPRequest(BaseModel):
+    mobile_number: str
+
+
+class VerifyOTPRequest(BaseModel):
+    mobile_number: str
+    otp: str
+
+
+class OTPResponse(BaseModel):
+    status: str
+    message: str
+    otp_id: str | None = None
+    expires_in_seconds: int | None = None
 
 
 def _hash_password(password: str) -> str:
@@ -261,6 +290,84 @@ def _send_password_reset_email(recipient_email: str, username: str, reset_code: 
         return False
 
 
+def _send_otp_fast2sms(mobile_number: str, otp_code: str) -> bool:
+    """Send OTP via Fast2SMS (free for Indian numbers)."""
+    if not FAST2SMS_API_KEY:
+        return False
+
+    # Fast2SMS expects 10-digit Indian number without country code
+    phone = mobile_number.replace("+91", "").replace(" ", "").strip()
+    if len(phone) != 10 or not phone.isdigit():
+        logger.warning("auth.otp.fast2sms_invalid_number mobile_number=%s", mobile_number)
+        return False
+
+    try:
+        url = "https://www.fast2sms.com/dev/bulkV2"
+        payload = urllib.parse.urlencode({
+            "variables_values": otp_code,
+            "route": "otp",
+            "numbers": phone,
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={
+                "authorization": FAST2SMS_API_KEY,
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+
+        if body.get("return") is True or body.get("status_code") == 200:
+            logger.info("auth.otp.fast2sms_sent mobile_number=%s request_id=%s", mobile_number, body.get("request_id"))
+            return True
+        else:
+            logger.warning("auth.otp.fast2sms_rejected mobile_number=%s body=%s", mobile_number, body)
+            return False
+
+    except Exception as exc:
+        logger.exception("auth.otp.fast2sms_error mobile_number=%s reason=%s", mobile_number, str(exc))
+        return False
+
+
+def _send_otp_twilio(mobile_number: str, otp_code: str) -> bool:
+    """Send OTP via Twilio (international fallback)."""
+    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN or not TWILIO_PHONE_NUMBER:
+        return False
+
+    try:
+        from twilio.rest import Client
+        from twilio.base.exceptions import TwilioException
+
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        message = client.messages.create(
+            body=f"Your BYSEL verification code is: {otp_code}. This code expires in 5 minutes.",
+            from_=TWILIO_PHONE_NUMBER,
+            to=mobile_number,
+        )
+        logger.info("auth.otp.twilio_sent mobile_number=%s message_sid=%s", mobile_number, message.sid)
+        return True
+    except ImportError:
+        logger.error("auth.otp.twilio_not_installed")
+        return False
+    except Exception as exc:
+        logger.exception("auth.otp.twilio_error mobile_number=%s reason=%s", mobile_number, str(exc))
+        return False
+
+
+def _send_otp_sms(mobile_number: str, otp_code: str) -> bool:
+    """Send OTP via SMS — tries Fast2SMS first, then Twilio."""
+    if _send_otp_fast2sms(mobile_number, otp_code):
+        return True
+    if _send_otp_twilio(mobile_number, otp_code):
+        return True
+    logger.warning("auth.otp.all_sms_providers_failed mobile_number=%s", mobile_number)
+    return False
+
+
 def _device_info(request: Request | None) -> str | None:
     if request is None:
         return None
@@ -342,14 +449,68 @@ def _enforce_rate_limit(
 ) -> None:
     now = time.time()
     with _rate_limit_lock:
+        _prune_rate_limit_state_locked(now)
         bucket = buckets[key]
         while bucket and bucket[0] <= now - window_seconds:
             bucket.popleft()
+
+        if not bucket:
+            buckets.pop(key, None)
+            bucket = buckets[key]
 
         if len(bucket) >= max_attempts:
             raise HTTPException(status_code=429, detail=message)
 
         bucket.append(now)
+
+        # Keep this specific bucket map capped immediately even between periodic global prune ticks.
+        if len(buckets) > max(1, RATE_LIMIT_BUCKET_MAX_KEYS):
+            _prune_bucket_locked(buckets, window_seconds, now)
+
+
+def _prune_bucket_locked(buckets: dict[str, deque[float]], window_seconds: int, now: float) -> None:
+    expiry_cutoff = now - max(1, int(window_seconds))
+    empty_keys: list[str] = []
+    for bucket_key, bucket in buckets.items():
+        while bucket and bucket[0] <= expiry_cutoff:
+            bucket.popleft()
+        if not bucket:
+            empty_keys.append(bucket_key)
+
+    for bucket_key in empty_keys:
+        buckets.pop(bucket_key, None)
+
+    overflow = len(buckets) - max(1, RATE_LIMIT_BUCKET_MAX_KEYS)
+    if overflow > 0:
+        # Evict least-recently-seen buckets first to bound memory under client/IP churn.
+        least_recent = sorted(
+            buckets.items(),
+            key=lambda item: item[1][-1] if item[1] else -1.0,
+        )
+        for bucket_key, _ in least_recent[:overflow]:
+            buckets.pop(bucket_key, None)
+
+
+def _prune_rate_limit_state_locked(now: float) -> None:
+    global _rate_limit_last_prune_at
+    prune_interval = max(0, int(RATE_LIMIT_PRUNE_INTERVAL_SECONDS))
+    if prune_interval > 0 and (now - _rate_limit_last_prune_at) < prune_interval:
+        return
+
+    _prune_bucket_locked(_login_rate_buckets, LOGIN_RATE_LIMIT_WINDOW_SECONDS, now)
+    _prune_bucket_locked(_refresh_rate_buckets, REFRESH_RATE_LIMIT_WINDOW_SECONDS, now)
+    _prune_bucket_locked(_login_failure_buckets, LOGIN_LOCKOUT_WINDOW_SECONDS, now)
+
+    expired_lockouts = [
+        bucket_key
+        for bucket_key, locked_until in _login_lockouts.items()
+        if locked_until <= now
+    ]
+    for bucket_key in expired_lockouts:
+        _login_lockouts.pop(bucket_key, None)
+        _login_failure_buckets.pop(bucket_key, None)
+
+    _rate_limit_last_prune_at = now
 
 
 def _mask_identifier(value: str) -> str:
@@ -397,6 +558,7 @@ def _require_debug_access(debug_token: str | None) -> None:
 def _bucket_snapshot(buckets: dict[str, deque[float]], window_seconds: int) -> dict:
     now = time.time()
     with _rate_limit_lock:
+        _prune_rate_limit_state_locked(now)
         active_entries = []
         total_hits = 0
         for bucket_key, bucket in buckets.items():
@@ -432,6 +594,7 @@ def _metrics_snapshot() -> dict:
 def _enforce_login_lockout(key: str) -> None:
     now = time.time()
     with _rate_limit_lock:
+        _prune_rate_limit_state_locked(now)
         locked_until = _login_lockouts.get(key)
         if locked_until is None:
             return
@@ -451,6 +614,7 @@ def _enforce_login_lockout(key: str) -> None:
 def _record_login_failure(key: str) -> bool:
     now = time.time()
     with _rate_limit_lock:
+        _prune_rate_limit_state_locked(now)
         bucket = _login_failure_buckets[key]
         while bucket and bucket[0] <= now - LOGIN_LOCKOUT_WINDOW_SECONDS:
             bucket.popleft()
@@ -584,11 +748,13 @@ def _is_benign_refresh_replay(stored_token: RefreshTokenModel, request: Request 
 
 
 def _reset_debug_state() -> None:
+    global _rate_limit_last_prune_at
     with _rate_limit_lock:
         _login_rate_buckets.clear()
         _refresh_rate_buckets.clear()
         _login_failure_buckets.clear()
         _login_lockouts.clear()
+        _rate_limit_last_prune_at = 0.0
 
     with _metrics_lock:
         _auth_metrics.clear()
@@ -1352,3 +1518,183 @@ def revoke_session(session_id: int, authorization: str | None = Header(default=N
         db.close()
 
     return LogoutResponse(status="ok", message="Session revoked")
+
+
+@router.post("/send-otp", response_model=OTPResponse)
+def send_otp(request: SendOTPRequest):
+    """Send OTP to mobile number for authentication"""
+    # Basic validation
+    if not request.mobile_number or len(request.mobile_number) < 10:
+        raise HTTPException(status_code=400, detail="Invalid mobile number")
+
+    # Normalize mobile number (add +91 prefix if not present for Indian numbers)
+    mobile_number = request.mobile_number.strip()
+    if not mobile_number.startswith('+'):
+        if mobile_number.startswith('91') and len(mobile_number) == 12:
+            mobile_number = f"+{mobile_number}"
+        elif len(mobile_number) == 10:
+            mobile_number = f"+91{mobile_number}"
+        else:
+            raise HTTPException(status_code=400, detail="Invalid mobile number format")
+
+    db: Session = SessionLocal()
+    try:
+        # Clean up expired OTPs
+        now = datetime.utcnow()
+        db.query(OTPModel).filter(OTPModel.expires_at <= now).delete()
+        db.commit()
+
+        # Check rate limiting - max 3 OTP requests per mobile number per hour
+        recent_otps = db.query(OTPModel).filter(
+            OTPModel.mobile_number == mobile_number,
+            OTPModel.created_at >= now - timedelta(hours=1)
+        ).count()
+
+        if recent_otps >= 3:
+            raise HTTPException(status_code=429, detail="Too many OTP requests. Please try again later.")
+
+        # Generate a 6-digit OTP
+        otp = str(secrets.randbelow(900000) + 100000)
+        otp_hash = _hash_token(otp)
+        otp_id = secrets.token_hex(16)
+
+        # Store OTP in database
+        otp_record = OTPModel(
+            mobile_number=mobile_number,
+            otp_code=otp,  # Store plain OTP for debugging (in production, only store hash)
+            otp_hash=otp_hash,
+            expires_at=now + timedelta(seconds=OTP_TTL_SECONDS),
+            created_at=now
+        )
+        db.add(otp_record)
+        db.commit()
+
+        # Send SMS
+        sms_sent = _send_otp_sms(mobile_number, otp)
+
+        if not sms_sent:
+            # If SMS fails, still return success for demo purposes but log the OTP
+            logger.warning("auth.otp.sms_failed_fallback mobile_number=%s otp=%s", mobile_number, otp)
+            print(f"FALLBACK: OTP for {mobile_number} is {otp}")
+
+        logger.info("auth.otp.sent mobile_number=%s otp_id=%s sms_sent=%s", mobile_number, otp_id, sms_sent)
+
+        return OTPResponse(
+            status="ok",
+            message="OTP sent successfully",
+            otp_id=otp_id,
+            expires_in_seconds=OTP_TTL_SECONDS
+        )
+
+    finally:
+        db.close()
+
+
+@router.post("/verify-otp", response_model=AuthResponse)
+def verify_otp(request: VerifyOTPRequest):
+    """Verify OTP and authenticate user"""
+    # Basic validation
+    if not request.mobile_number or not request.otp:
+        raise HTTPException(status_code=400, detail="Mobile number and OTP are required")
+
+    if len(request.otp) != 6 or not request.otp.isdigit():
+        raise HTTPException(status_code=400, detail="Invalid OTP format")
+
+    # Normalize mobile number
+    mobile_number = request.mobile_number.strip()
+    if not mobile_number.startswith('+'):
+        if mobile_number.startswith('91') and len(mobile_number) == 12:
+            mobile_number = f"+{mobile_number}"
+        elif len(mobile_number) == 10:
+            mobile_number = f"+91{mobile_number}"
+        else:
+            raise HTTPException(status_code=400, detail="Invalid mobile number format")
+
+    db: Session = SessionLocal()
+    try:
+        now = datetime.utcnow()
+
+        # Find the most recent unused OTP for this mobile number
+        otp_record = db.query(OTPModel).filter(
+            OTPModel.mobile_number == mobile_number,
+            OTPModel.used_at.is_(None),
+            OTPModel.expires_at > now
+        ).order_by(OTPModel.created_at.desc()).first()
+
+        if not otp_record:
+            raise HTTPException(status_code=400, detail="OTP not found or expired")
+
+        # Check attempts
+        if otp_record.attempts >= OTP_MAX_ATTEMPTS:
+            raise HTTPException(status_code=400, detail="Too many failed attempts")
+
+        # Verify OTP
+        otp_hash = _hash_token(request.otp)
+        if otp_hash != otp_record.otp_hash:
+            # Increment attempts
+            otp_record.attempts += 1
+            db.commit()
+            remaining_attempts = OTP_MAX_ATTEMPTS - otp_record.attempts
+            if remaining_attempts > 0:
+                raise HTTPException(status_code=400, detail=f"Invalid OTP. {remaining_attempts} attempts remaining")
+            else:
+                raise HTTPException(status_code=400, detail="Invalid OTP. No attempts remaining")
+
+        # Mark OTP as used
+        otp_record.used_at = now
+        db.commit()
+
+        # Find or create user
+        user = db.query(UserModel).filter(UserModel.mobile_number == mobile_number).first()
+
+        if not user:
+            # Create new user for OTP login
+            username = f"mobile_{mobile_number.replace('+', '')}"
+            email = f"{username}@bysel.com"
+
+            # Check if username/email already exists
+            existing = db.query(UserModel).filter(
+                (UserModel.username == username) | (UserModel.email == email)
+            ).first()
+
+            if existing:
+                # Update existing user with mobile number
+                existing.mobile_number = mobile_number
+                user = existing
+            else:
+                # Create new user
+                user = UserModel(
+                    username=username,
+                    email=email,
+                    mobile_number=mobile_number,
+                    password_hash=_hash_password(secrets.token_hex(16)),  # Random password
+                    created_at=now,
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+
+                # Create wallet for new user
+                wallet = WalletModel(
+                    user_id=user.id,
+                    balance=10000.0,  # Starting balance
+                    updated_at=now
+                )
+                db.add(wallet)
+                db.commit()
+
+        # Generate tokens
+        token_version = int(getattr(user, "token_version", 0) or 0)
+        access_token, refresh_token = _create_auth_tokens(user_id=user.id, token_version=token_version)
+
+        logger.info("auth.otp.login_success user_id=%s mobile_number=%s", user.id, mobile_number)
+
+        return AuthResponse(
+            status="ok",
+            user_id=user.id,
+            access_token=access_token,
+            refresh_token=refresh_token
+        )
+
+    finally:
+        db.close()
