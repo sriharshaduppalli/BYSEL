@@ -27,9 +27,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -38,7 +41,27 @@ import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.repository.AuthRepository
 import com.bysel.trader.data.repository.Result
 import com.bysel.trader.ui.theme.LocalAppTheme
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.util.Log
+import androidx.core.content.ContextCompat
+import com.google.android.gms.auth.api.phone.SmsRetriever
+import com.google.android.gms.common.api.CommonStatusCodes
+import com.google.android.gms.common.api.Status
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.google.firebase.FirebaseException
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.PhoneAuthCredential
+import com.google.firebase.auth.PhoneAuthOptions
+import com.google.firebase.auth.PhoneAuthProvider
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import java.util.concurrent.TimeUnit
 
 @Composable
 fun AuthScreen(
@@ -47,16 +70,93 @@ fun AuthScreen(
     val authRepository = remember { AuthRepository() }
     val scope = rememberCoroutineScope()
     val appTheme = LocalAppTheme.current
+    val context = LocalContext.current
 
     var isLoginMode by remember { mutableStateOf(true) }
+    var isOtpMode by remember { mutableStateOf(false) }
     var username by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
+    var mobileNumber by remember { mutableStateOf("") }
+    var otpCode by remember { mutableStateOf("") }
+    var otpSent by remember { mutableStateOf(false) }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
+    var sendingOtp by remember { mutableStateOf(false) }
+    var verifyingOtp by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var messageIsError by remember { mutableStateOf(true) }
     var showForgotPasswordDialog by remember { mutableStateOf(false) }
+
+    // Firebase Phone Auth state
+    val firebaseAuth = remember { FirebaseAuth.getInstance() }
+    var firebaseVerificationId by remember { mutableStateOf<String?>(null) }
+    var firebaseResendToken by remember { mutableStateOf<PhoneAuthProvider.ForceResendingToken?>(null) }
+
+    // Activity (needed to launch User Consent intent)
+    val activity = LocalContext.current as? Activity
+
+    // Consent launcher to receive the single-SMS consent UI result
+    val consentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val sms: String? = result.data?.getStringExtra(SmsRetriever.EXTRA_SMS_MESSAGE)
+            sms?.let {
+                val regex = Regex("(?i)BYSEL.*?(?:verification code|OTP|code).*?(\\d{6})")
+                val match = regex.find(it)
+                val otp = match?.groupValues?.get(1)
+                if (otp != null) {
+                    otpCode = otp
+                    message = "OTP auto-filled from SMS"
+                    messageIsError = false
+                }
+            }
+        }
+    }
+
+    // Register the SMS User Consent receiver. This does not require SMS permissions.
+    DisposableEffect(Unit) {
+        val smsRetrieverReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                if (SmsRetriever.SMS_RETRIEVED_ACTION == intent.action) {
+                    val extras = intent.extras
+                    val status = extras?.get(SmsRetriever.EXTRA_STATUS) as? Status
+                    when (status?.statusCode) {
+                        CommonStatusCodes.SUCCESS -> {
+                            val consentIntent = extras.getParcelable<Intent>(SmsRetriever.EXTRA_CONSENT_INTENT)
+                            try {
+                                consentIntent?.let { consentLauncher.launch(it) }
+                            } catch (e: ActivityNotFoundException) {
+                                // Activity not found; ignore
+                            }
+                        }
+                        CommonStatusCodes.TIMEOUT -> {
+                            // timed out waiting for message
+                        }
+                    }
+                }
+            }
+        }
+
+        // Register receiver on the Activity so we can launch the consent UI
+        // RECEIVER_NOT_EXPORTED is required on API 33+ (targetSdk 36) for non-system broadcasts
+        activity?.let {
+            ContextCompat.registerReceiver(
+                it,
+                smsRetrieverReceiver,
+                IntentFilter(SmsRetriever.SMS_RETRIEVED_ACTION),
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+        }
+
+        onDispose {
+            try {
+                activity?.unregisterReceiver(smsRetrieverReceiver)
+            } catch (ignored: IllegalArgumentException) {
+            }
+        }
+    }
 
     if (showForgotPasswordDialog) {
         ForgotPasswordDialog(
@@ -107,68 +207,279 @@ fun AuthScreen(
         )
         Spacer(modifier = Modifier.height(10.dp))
         Text(
-            text = if (isLoginMode) "Sign in with username or email" else "Create your account",
+            text = if (isLoginMode) {
+                if (isOtpMode) "Sign in with OTP" else "Sign in with username or email"
+            } else "Create your account",
             color = appTheme.textSecondary
         )
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        OutlinedTextField(
-            value = username,
-            onValueChange = {
-                username = it
-                message = null
-            },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Username or Email") },
-            isError = !message.isNullOrBlank() && username.trim().isEmpty(),
-            enabled = !loading,
-            singleLine = true,
-            colors = textFieldColors
-        )
-
-        if (!isLoginMode) {
-            Spacer(modifier = Modifier.height(10.dp))
+        // Only show username/email field when NOT in OTP mode
+        if (!isOtpMode) {
             OutlinedTextField(
-                value = email,
+                value = username,
                 onValueChange = {
-                    email = it
+                    username = it
                     message = null
                 },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Email") },
-                isError = !message.isNullOrBlank() && email.trim().isEmpty(),
+                label = { Text("Username or Email") },
+                isError = !message.isNullOrBlank() && username.trim().isEmpty(),
                 enabled = !loading,
                 singleLine = true,
                 colors = textFieldColors
             )
+
+            if (!isLoginMode) {
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = {
+                        email = it
+                        message = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Email") },
+                    isError = !message.isNullOrBlank() && email.trim().isEmpty(),
+                    enabled = !loading,
+                    singleLine = true,
+                    colors = textFieldColors
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
-        OutlinedTextField(
-            value = password,
-            onValueChange = {
-                password = it
-                message = null
-            },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Password") },
-            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            trailingIcon = {
-                IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                    Icon(
-                        imageVector = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                        contentDescription = if (passwordVisible) "Hide password" else "Show password"
-                    )
-                }
-            },
-            isError = !message.isNullOrBlank() && password.isEmpty(),
-            enabled = !loading,
-            singleLine = true,
-            colors = textFieldColors
-        )
+        if (isLoginMode && isOtpMode) {
+            OutlinedTextField(
+                value = mobileNumber,
+                onValueChange = {
+                    mobileNumber = it
+                    message = null
+                },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Mobile number") },
+                isError = !message.isNullOrBlank() && mobileNumber.trim().isEmpty(),
+                enabled = !sendingOtp && !verifyingOtp,
+                singleLine = true,
+                colors = textFieldColors
+            )
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (otpSent) {
+                OutlinedTextField(
+                    value = otpCode,
+                    onValueChange = {
+                        otpCode = it
+                        message = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("OTP code") },
+                    isError = !message.isNullOrBlank() && otpCode.trim().isEmpty(),
+                    enabled = !sendingOtp && !verifyingOtp,
+                    singleLine = true,
+                    colors = textFieldColors
+                )
+
+                Text(
+                    text = "Enter the 6-digit code sent to your phone by Firebase.",
+                    color = appTheme.textSecondary,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            Button(
+                onClick = {
+                    if (sendingOtp) return@Button
+
+                    val rawNumber = mobileNumber.trim()
+                    if (rawNumber.isEmpty()) {
+                        messageIsError = true
+                        message = "Mobile number is required"
+                        return@Button
+                    }
+
+                    // Normalize to E.164 format for Firebase
+                    val phoneE164 = when {
+                        rawNumber.startsWith("+") -> rawNumber
+                        rawNumber.startsWith("91") && rawNumber.length == 12 -> "+$rawNumber"
+                        rawNumber.length == 10 && rawNumber.all { it.isDigit() } -> "+91$rawNumber"
+                        else -> "+91$rawNumber"
+                    }
+
+                    sendingOtp = true
+                    message = null
+
+                    val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
+                        override fun onVerificationCompleted(credential: PhoneAuthCredential) {
+                            // Auto-verification (instant verification or auto-retrieval)
+                            Log.d("AuthScreen", "Firebase auto-verified phone")
+                            scope.launch {
+                                verifyingOtp = true
+                                sendingOtp = false
+                                try {
+                                    val authResult = firebaseAuth.signInWithCredential(credential).await()
+                                    val idToken = authResult.user?.getIdToken(false)?.await()?.token
+                                    if (idToken != null) {
+                                        val result = authRepository.firebasePhoneAuth(idToken)
+                                        verifyingOtp = false
+                                        when (result) {
+                                            is Result.Success -> onAuthenticated()
+                                            is Result.Error -> {
+                                                messageIsError = true
+                                                message = result.message
+                                            }
+                                            else -> Unit
+                                        }
+                                    } else {
+                                        verifyingOtp = false
+                                        messageIsError = true
+                                        message = "Failed to get authentication token"
+                                    }
+                                } catch (e: Exception) {
+                                    verifyingOtp = false
+                                    messageIsError = true
+                                    message = "Auto-verification failed: ${e.localizedMessage}"
+                                }
+                            }
+                        }
+
+                        override fun onVerificationFailed(e: FirebaseException) {
+                            sendingOtp = false
+                            messageIsError = true
+                            message = e.localizedMessage ?: "Phone verification failed"
+                            Log.e("AuthScreen", "Firebase verification failed", e)
+                        }
+
+                        override fun onCodeSent(
+                            verificationId: String,
+                            token: PhoneAuthProvider.ForceResendingToken
+                        ) {
+                            sendingOtp = false
+                            firebaseVerificationId = verificationId
+                            firebaseResendToken = token
+                            otpSent = true
+                            messageIsError = false
+                            message = "OTP sent to $phoneE164"
+                        }
+                    }
+
+                    val optionsBuilder = PhoneAuthOptions.newBuilder(firebaseAuth)
+                        .setPhoneNumber(phoneE164)
+                        .setTimeout(60L, TimeUnit.SECONDS)
+                        .setCallbacks(callbacks)
+
+                    if (activity != null) {
+                        optionsBuilder.setActivity(activity)
+                    }
+
+                    // Use resend token if available (for resend)
+                    firebaseResendToken?.let { optionsBuilder.setForceResendingToken(it) }
+
+                    PhoneAuthProvider.verifyPhoneNumber(optionsBuilder.build())
+                },
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                enabled = !sendingOtp && !verifyingOtp
+            ) {
+                if (sendingOtp) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.height(20.dp))
+                } else {
+                    Text(if (otpSent) "Resend OTP" else "Send OTP")
+                }
+            }
+
+            if (otpSent) {
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Button(
+                    onClick = {
+                        if (verifyingOtp) return@Button
+                        if (otpCode.trim().isEmpty()) {
+                            messageIsError = true
+                            message = "Enter the OTP code"
+                            return@Button
+                        }
+                        val vId = firebaseVerificationId
+                        if (vId == null) {
+                            messageIsError = true
+                            message = "Please request a new OTP first"
+                            return@Button
+                        }
+
+                        verifyingOtp = true
+                        message = null
+
+                        val credential = PhoneAuthProvider.getCredential(vId, otpCode.trim())
+                        scope.launch {
+                            try {
+                                val authResult = firebaseAuth.signInWithCredential(credential).await()
+                                val idToken = authResult.user?.getIdToken(false)?.await()?.token
+                                if (idToken != null) {
+                                    val result = authRepository.firebasePhoneAuth(idToken)
+                                    verifyingOtp = false
+                                    when (result) {
+                                        is Result.Success -> onAuthenticated()
+                                        is Result.Error -> {
+                                            messageIsError = true
+                                            message = result.message
+                                        }
+                                        else -> Unit
+                                    }
+                                } else {
+                                    verifyingOtp = false
+                                    messageIsError = true
+                                    message = "Failed to get authentication token"
+                                }
+                            } catch (e: Exception) {
+                                verifyingOtp = false
+                                messageIsError = true
+                                message = "Verification failed: ${e.localizedMessage}"
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    enabled = !sendingOtp && !verifyingOtp
+                ) {
+                    if (verifyingOtp) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.height(20.dp))
+                    } else {
+                        Text("Verify OTP")
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+        } else {
+            OutlinedTextField(
+                value = password,
+                onValueChange = {
+                    password = it
+                    message = null
+                },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Password") },
+                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            imageVector = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                            contentDescription = if (passwordVisible) "Hide password" else "Show password"
+                        )
+                    }
+                },
+                isError = !message.isNullOrBlank() && password.isEmpty(),
+                enabled = !loading,
+                singleLine = true,
+                colors = textFieldColors
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+        }
 
         if (!message.isNullOrBlank()) {
             Text(
@@ -179,71 +490,74 @@ fun AuthScreen(
             Spacer(modifier = Modifier.height(8.dp))
         }
 
-        Button(
-            onClick = {
-                if (loading) return@Button
-                val trimmedUsername = username.trim()
-                val trimmedEmail = email.trim()
-                val hasValidEmail = trimmedEmail.contains("@") && trimmedEmail.contains(".")
+        // Only show login/register button when NOT in OTP mode
+        if (!isOtpMode) {
+            Button(
+                onClick = {
+                    if (loading) return@Button
+                    val trimmedUsername = username.trim()
+                    val trimmedEmail = email.trim()
+                    val hasValidEmail = trimmedEmail.contains("@") && trimmedEmail.contains(".")
 
-                if (trimmedUsername.isEmpty()) {
-                    messageIsError = true
-                    message = "Username or email is required"
-                    return@Button
-                }
-                if (!isLoginMode && trimmedEmail.isEmpty()) {
-                    messageIsError = true
-                    message = "Email is required"
-                    return@Button
-                }
-                if (!isLoginMode && !hasValidEmail) {
-                    messageIsError = true
-                    message = "Please enter a valid email address"
-                    return@Button
-                }
-                if (password.isEmpty()) {
-                    messageIsError = true
-                    message = "Password is required"
-                    return@Button
-                }
-                if (!isLoginMode && password.length < 6) {
-                    messageIsError = true
-                    message = "Password must be at least 6 characters"
-                    return@Button
-                }
-
-                loading = true
-                message = null
-
-                scope.launch {
-                    val result = if (isLoginMode) {
-                        authRepository.login(trimmedUsername, password)
-                    } else {
-                        authRepository.register(trimmedUsername, trimmedEmail, password)
+                    if (trimmedUsername.isEmpty()) {
+                        messageIsError = true
+                        message = "Username or email is required"
+                        return@Button
+                    }
+                    if (!isLoginMode && trimmedEmail.isEmpty()) {
+                        messageIsError = true
+                        message = "Email is required"
+                        return@Button
+                    }
+                    if (!isLoginMode && !hasValidEmail) {
+                        messageIsError = true
+                        message = "Please enter a valid email address"
+                        return@Button
+                    }
+                    if (password.isEmpty()) {
+                        messageIsError = true
+                        message = "Password is required"
+                        return@Button
+                    }
+                    if (!isLoginMode && password.length < 6) {
+                        messageIsError = true
+                        message = "Password must be at least 6 characters"
+                        return@Button
                     }
 
-                    loading = false
-                    when (result) {
-                        is Result.Success -> onAuthenticated()
-                        is Result.Error -> {
-                            messageIsError = true
-                            message = result.message
+                    loading = true
+                    message = null
+
+                    scope.launch {
+                        val result = if (isLoginMode) {
+                            authRepository.login(trimmedUsername, password)
+                        } else {
+                            authRepository.register(trimmedUsername, trimmedEmail, password)
                         }
-                        else -> Unit
+
+                        loading = false
+                        when (result) {
+                            is Result.Success -> onAuthenticated()
+                            is Result.Error -> {
+                                messageIsError = true
+                                message = result.message
+                            }
+                            else -> Unit
+                        }
                     }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+            ) {
+                if (loading) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        modifier = Modifier.height(20.dp)
+                    )
+                } else {
+                    Text(if (isLoginMode) "Login" else "Register")
                 }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-        ) {
-            if (loading) {
-                CircularProgressIndicator(
-                    color = Color.White,
-                    modifier = Modifier.height(20.dp)
-                )
-            } else {
-                Text(if (isLoginMode) "Login" else "Register")
             }
         }
 
@@ -251,16 +565,38 @@ fun AuthScreen(
         if (isLoginMode) {
             TextButton(
                 onClick = {
-                    if (!loading) {
-                        showForgotPasswordDialog = true
-                    }
+                    if (loading) return@TextButton
+                    isOtpMode = !isOtpMode
+                    message = null
+                    messageIsError = true
+                    otpSent = false
+                    otpCode = ""
+                    mobileNumber = ""
+                    password = ""
                 },
                 enabled = !loading,
                 modifier = Modifier.align(Alignment.End)
             ) {
-                Text("Forgot password?", color = appTheme.primary)
+                Text(
+                    if (isOtpMode) "Sign in with password" else "Sign in with OTP",
+                    color = appTheme.primary
+                )
             }
             Spacer(modifier = Modifier.height(4.dp))
+            if (!isOtpMode) {
+                TextButton(
+                    onClick = {
+                        if (!loading) {
+                            showForgotPasswordDialog = true
+                        }
+                    },
+                    enabled = !loading,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text("Forgot password?", color = appTheme.primary)
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+            }
         }
         TextButton(
             onClick = {
