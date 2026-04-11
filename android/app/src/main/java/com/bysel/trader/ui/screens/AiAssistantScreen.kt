@@ -3,6 +3,8 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -34,6 +36,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.viewmodel.ChatMessage
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.components.ConfidenceCard
+import com.bysel.trader.ui.components.PredictionReasoningCard
+import com.bysel.trader.ui.components.EventRiskCard
+import com.bysel.trader.ui.components.SentimentCard
+import com.bysel.trader.ui.components.QueryUnderstandingCard
+import com.bysel.trader.ui.components.ProfitSignalCard
+import com.bysel.trader.ui.components.ProfitSignalExtractor
+import com.bysel.trader.utils.TradeIntentParser
 import kotlin.random.Random
 
 @Composable
@@ -43,7 +53,10 @@ fun AiAssistantScreen(
     onSendQuery: (String) -> Unit,
     onSuggestionClick: (String) -> Unit,
     onClearChat: () -> Unit,
-    selectedSymbol: String? = null
+    selectedSymbol: String? = null,
+    onTradeAction: ((symbol: String, side: String, qty: Int?) -> Unit)? = null,
+    onAlertAction: ((symbol: String, price: Double?, alertType: String) -> Unit)? = null,
+    onNavigateToStock: ((symbol: String) -> Unit)? = null
 ) {
     var query by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -141,7 +154,10 @@ fun AiAssistantScreen(
                 items(chatHistory) { message ->
                     ChatBubble(
                         message = message,
-                        onSuggestionClick = onSuggestionClick
+                        onSuggestionClick = onSuggestionClick,
+                        onTradeAction = onTradeAction,
+                        onAlertAction = onAlertAction,
+                        onNavigateToStock = onNavigateToStock
                     )
                 }
                 if (isLoading) {
@@ -230,12 +246,15 @@ private fun buildSymbolSuggestions(symbol: String): List<Pair<String, androidx.c
     "Should I buy $symbol?" to Icons.AutoMirrored.Filled.TrendingUp,
     "Predict $symbol price" to Icons.Filled.Timeline,
     "Analyze $symbol" to Icons.Filled.Analytics,
+    "Entry and exit targets for $symbol" to Icons.Filled.PriceCheck,
+    "Profit potential for $symbol this quarter" to Icons.Filled.Payments,
+    "Risk vs reward for buying $symbol now" to Icons.Filled.Warning,
     "Is $symbol overvalued?" to Icons.Filled.PriceCheck,
-    "What is fair value range for $symbol?" to Icons.Filled.PriceCheck,
     "Technical analysis of $symbol" to Icons.Filled.Analytics,
     "Support and resistance for $symbol" to Icons.AutoMirrored.Filled.ShowChart,
     "What are risks in $symbol now?" to Icons.Filled.Warning,
     "Compare $symbol with peers" to Icons.AutoMirrored.Filled.CompareArrows,
+    "Best entry price for $symbol with stop-loss" to Icons.AutoMirrored.Filled.TrendingUp,
 )
 
 private fun buildAdaptiveSuggestions(
@@ -309,6 +328,17 @@ private fun buildAdaptiveSuggestions(
         }
     }
 
+    // Profit / Money / Portfolio related context
+    val hasProfit = recent.any { textContainsAny(it, listOf("profit", "gain", "return", "earning", "money", "portfolio", "optimize", "loss", "rebalance")) }
+    if (hasProfit) {
+        suggestions.add("Optimize my portfolio for maximum returns" to Icons.Filled.Payments)
+        suggestions.add("Which of my holdings should I exit?" to Icons.Filled.Warning)
+        suggestions.add("Best stocks for quick 10% gains" to Icons.AutoMirrored.Filled.TrendingUp)
+        if (focusSymbol != null) {
+            suggestions.add("Set profit target and stop-loss for $focusSymbol" to Icons.Filled.PriceCheck)
+        }
+    }
+
     val fallbackPool = buildDefaultSuggestionPool().shuffled(Random(System.currentTimeMillis()))
     for (item in fallbackPool) {
         if (suggestions.size >= 14) break
@@ -330,6 +360,15 @@ private fun normalizePrompt(text: String): String {
 }
 
 private fun buildDefaultSuggestionPool(): List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>> = listOf(
+    // Profit & Action-oriented (NEW)
+    "Best stocks for quick 10% gains" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Top momentum stocks for swing trading" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Stocks near 52-week low with strong fundamentals" to Icons.Filled.PriceCheck,
+    "Best entry points for blue chips today" to Icons.Filled.Payments,
+    "Dividend stocks paying this month" to Icons.Filled.Payments,
+    "Optimize my portfolio for max returns" to Icons.Filled.Analytics,
+    "Which of my holdings should I exit?" to Icons.Filled.Warning,
+    "Safest stocks to park money right now" to Icons.Filled.AccountBalance,
     // Buy / Invest
     "Should I buy RELIANCE?" to Icons.AutoMirrored.Filled.TrendingUp,
     "Should I buy TCS?" to Icons.AutoMirrored.Filled.TrendingUp,
@@ -380,6 +419,7 @@ private fun WelcomeContent(
 ) {
     Column(
         modifier = modifier
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -538,8 +578,21 @@ private fun SuggestionChip(
 @Composable
 private fun ChatBubble(
     message: ChatMessage,
-    onSuggestionClick: (String) -> Unit
+    onSuggestionClick: (String) -> Unit,
+    onTradeAction: ((symbol: String, side: String, qty: Int?) -> Unit)? = null,
+    onAlertAction: ((symbol: String, price: Double?, alertType: String) -> Unit)? = null,
+    onNavigateToStock: ((symbol: String) -> Unit)? = null
 ) {
+    // Parse trade intents from AI responses
+    val tradeIntents = remember(message.text, message.isUser) {
+        if (!message.isUser) TradeIntentParser.parse(message.text) else emptyList()
+    }
+
+    // Extract profit signal from AI response text
+    val profitSignal = remember(message.text, message.isUser) {
+        if (!message.isUser) ProfitSignalExtractor.extract(message.text) else null
+    }
+
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (message.isUser) Alignment.End else Alignment.Start
@@ -564,6 +617,136 @@ private fun ChatBubble(
                 modifier = Modifier.padding(12.dp),
                 lineHeight = 20.sp
             )
+        }
+
+        // Source badge for AI responses
+        if (!message.isUser && message.source == "gemini") {
+            Text(
+                text = "✦ Gemini",
+                fontSize = 10.sp,
+                color = Color(0xFF7C4DFF).copy(alpha = 0.7f),
+                modifier = Modifier.padding(start = 8.dp, top = 2.dp)
+            )
+        }
+
+        // Enhanced AI components (only for AI responses with enhanced features)
+        if (!message.isUser && message.enhancedFeatures != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Column(
+                modifier = Modifier.widthIn(max = 320.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Query Understanding
+                QueryUnderstandingCard(
+                    queryUnderstanding = message.enhancedFeatures.queryUnderstanding,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Confidence Breakdown
+                ConfidenceCard(
+                    overallConfidence = message.enhancedFeatures.confidenceBreakdown.overallConfidence,
+                    confidenceLevel = message.enhancedFeatures.confidenceBreakdown.confidenceLevel,
+                    factors = message.enhancedFeatures.confidenceBreakdown.factors,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Prediction Reasoning
+                PredictionReasoningCard(
+                    symbol = "", // Will be filled from context
+                    signal = message.enhancedFeatures.predictionReasoning.signal,
+                    whyConfident = message.enhancedFeatures.predictionReasoning.whyConfident,
+                    caveats = message.enhancedFeatures.predictionReasoning.caveats,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Event Risk Analysis (if available)
+                message.enhancedFeatures.eventRiskAnalysis?.let { eventRisk ->
+                    EventRiskCard(
+                        baseConfidence = eventRisk.baseConfidence,
+                        adjustedConfidence = eventRisk.adjustedConfidence,
+                        adjustmentFactor = eventRisk.adjustmentFactor,
+                        eventRisks = eventRisk.eventRisks,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                // Sentiment Analysis
+                SentimentCard(
+                    overallSentiment = message.enhancedFeatures.sentimentAnalysis.overallSentiment,
+                    score = message.enhancedFeatures.sentimentAnalysis.score,
+                    strength = message.enhancedFeatures.sentimentAnalysis.strength,
+                    breakdown = message.enhancedFeatures.sentimentAnalysis.breakdown,
+                    interpretation = message.enhancedFeatures.sentimentAnalysis.interpretation,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
+        // Profit Signal Card (extracted from AI response text)
+        if (profitSignal != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            ProfitSignalCard(
+                signal = profitSignal,
+                onBuy = if (onTradeAction != null && profitSignal.symbol.isNotBlank()) {
+                    { onTradeAction.invoke(profitSignal.symbol, "BUY", null) }
+                } else null,
+                onSetAlert = if (onAlertAction != null && profitSignal.symbol.isNotBlank()) {
+                    { onAlertAction.invoke(profitSignal.symbol, profitSignal.target, "ABOVE") }
+                } else null,
+                modifier = Modifier.widthIn(max = 320.dp)
+            )
+        }
+
+        // Trade intent action buttons (parsed from AI messages)
+        if (tradeIntents.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.widthIn(max = 320.dp)
+            ) {
+                tradeIntents.forEach { intent ->
+                    when (intent.action) {
+                        TradeIntentParser.Action.BUY -> {
+                            Button(
+                                onClick = { onTradeAction?.invoke(intent.symbol, "BUY", intent.quantity) },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C853)),
+                                modifier = Modifier.height(32.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                            ) {
+                                Text(intent.displayText, fontSize = 11.sp, color = Color.White)
+                            }
+                        }
+                        TradeIntentParser.Action.SELL -> {
+                            Button(
+                                onClick = { onTradeAction?.invoke(intent.symbol, "SELL", intent.quantity) },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
+                                modifier = Modifier.height(32.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                            ) {
+                                Text(intent.displayText, fontSize = 11.sp, color = Color.White)
+                            }
+                        }
+                        TradeIntentParser.Action.ALERT -> {
+                            OutlinedButton(
+                                onClick = { onAlertAction?.invoke(intent.symbol, intent.price, intent.alertType ?: "ABOVE") },
+                                modifier = Modifier.height(32.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                            ) {
+                                Text(intent.displayText, fontSize = 11.sp)
+                            }
+                        }
+                        TradeIntentParser.Action.ANALYZE -> {
+                            OutlinedButton(
+                                onClick = { onNavigateToStock?.invoke(intent.symbol) },
+                                modifier = Modifier.height(32.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                            ) {
+                                Text("View ${intent.symbol}", fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Suggestions after AI response

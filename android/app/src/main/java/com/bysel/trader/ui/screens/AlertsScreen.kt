@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,6 +17,7 @@ import com.bysel.trader.data.models.Alert
 import com.bysel.trader.ui.components.AlertCard
 import com.bysel.trader.ui.components.LoadingScreen
 import com.bysel.trader.ui.components.SwipeToDismissItem
+import com.bysel.trader.ui.components.appFilledTextFieldColors
 import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
@@ -62,11 +64,21 @@ fun AlertsScreen(
                     .padding(16.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "No alerts set",
-                    fontSize = 16.sp,
-                    color = LocalAppTheme.current.textSecondary
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "No alerts set",
+                        fontSize = 16.sp,
+                        color = LocalAppTheme.current.textSecondary
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = { showDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Create Your First Alert")
+                    }
+                }
             }
         } else {
             LazyColumn(
@@ -123,12 +135,7 @@ fun CreateAlertDialog(
                     onValueChange = { symbol = it.uppercase() },
                     label = { Text("Symbol (e.g., TCS)") },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color(0xFF333333),
-                        unfocusedContainerColor = Color(0xFF333333),
-                        focusedTextColor = LocalAppTheme.current.text,
-                        unfocusedTextColor = LocalAppTheme.current.text
-                    )
+                    colors = appFilledTextFieldColors(containerColor = LocalAppTheme.current.surface),
                 )
 
                 TextField(
@@ -136,12 +143,7 @@ fun CreateAlertDialog(
                     onValueChange = { price = it },
                     label = { Text("Threshold Price") },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color(0xFF333333),
-                        unfocusedContainerColor = Color(0xFF333333),
-                        focusedTextColor = LocalAppTheme.current.text,
-                        unfocusedTextColor = LocalAppTheme.current.text
-                    )
+                    colors = appFilledTextFieldColors(containerColor = LocalAppTheme.current.surface),
                 )
 
                 Row(

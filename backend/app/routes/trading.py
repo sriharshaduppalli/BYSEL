@@ -9,6 +9,7 @@ from typing import Iterable
 import hashlib
 import pytz
 from uuid import uuid4
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from ..database.db import (
     HoldingModel,
@@ -38,9 +39,20 @@ TRIGGER_STATUS_TRANSITIONS: dict[str, set[str]] = {
     "FAILED": set(),
     "CANCELLED": set(),
 }
+ORDER_TRANSITION_ERROR_CODE = "INVALID_ORDER_TRANSITION"
+TRIGGER_TRANSITION_ERROR_CODE = "INVALID_TRIGGER_TRANSITION"
 MAX_IDEMPOTENCY_KEY_LENGTH = 128
 TRADING_WALLET_USER_ID = 0
 DEFAULT_TRADING_WALLET_BALANCE = 100000.0
+
+
+class LifecycleTransitionError(ValueError):
+    def __init__(self, *, entity: str, current_status: str, next_status: str, error_code: str) -> None:
+        self.entity = entity
+        self.current_status = current_status
+        self.next_status = next_status
+        self.error_code = error_code
+        super().__init__(f"Invalid {entity} transition from {current_status} to {next_status}")
 
 # NSE market holidays 2026 (approximate - major holidays)
 NSE_HOLIDAYS_2026 = {
@@ -109,12 +121,72 @@ def _build_request_fingerprint(order: Order) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _latest_order_by_idempotency_key(db: Session, user_id: int, idempotency_key: str) -> OrderModel | None:
+    return (
+        db.query(OrderModel)
+        .filter(
+            OrderModel.user_id == user_id,
+            OrderModel.idempotency_key == idempotency_key,
+        )
+        .order_by(OrderModel.id.desc())
+        .first()
+    )
+
+
+def _is_same_idempotent_payload(existing: OrderModel, order: Order, fingerprint: str | None = None) -> bool:
+    existing_fingerprint = (existing.request_fingerprint or "").strip()
+    if existing_fingerprint:
+        expected = fingerprint or _build_request_fingerprint(order)
+        return existing_fingerprint == expected
+
+    # Backward compatibility for older rows that do not carry fingerprints.
+    return (
+        (existing.symbol or "").strip().upper() == order.symbol
+        and int(existing.quantity or 0) == int(order.qty)
+        and (existing.side or "").strip().upper() == order.side
+    )
+
+
+def _idempotency_reused_response(order: Order, existing: OrderModel, fallback_trace_id: str) -> OrderResponse:
+    return OrderResponse(
+        status="error",
+        order=order,
+        message="Idempotency key already used with a different order payload",
+        orderId=existing.id,
+        orderStatus=existing.status,
+        traceId=existing.trace_id or fallback_trace_id,
+        idempotencyKey=existing.idempotency_key,
+        errorCode="IDEMPOTENCY_KEY_REUSED",
+        isDuplicate=False,
+    )
+
+
+def _duplicate_order_response(order: Order, existing: OrderModel, fallback_trace_id: str) -> OrderResponse:
+    return OrderResponse(
+        status="ok",
+        order=order,
+        message="Duplicate order request acknowledged. Returning existing execution result.",
+        orderId=existing.id,
+        executedPrice=round(existing.price or 0.0, 2),
+        total=round(existing.total or 0.0, 2),
+        orderStatus=existing.status,
+        traceId=existing.trace_id or fallback_trace_id,
+        idempotencyKey=existing.idempotency_key,
+        isDuplicate=True,
+    )
+
+
 def _transition_order_status(order_db: OrderModel, next_status: str) -> None:
     current_status = (order_db.status or "PENDING").upper()
     target_status = next_status.upper()
     allowed = ORDER_STATUS_TRANSITIONS.get(current_status, set())
     if target_status not in allowed:
-        raise ValueError(f"Invalid transition from {current_status} to {target_status}")
+        raise LifecycleTransitionError(
+            entity="order",
+            current_status=current_status,
+            next_status=target_status,
+            error_code=ORDER_TRANSITION_ERROR_CODE,
+        )
     order_db.status = target_status
 
 
@@ -123,7 +195,12 @@ def _transition_trigger_status(trigger_db: TriggerOrderModel, next_status: str) 
     target_status = next_status.upper()
     allowed = TRIGGER_STATUS_TRANSITIONS.get(current_status, set())
     if target_status not in allowed:
-        raise ValueError(f"Invalid trigger transition from {current_status} to {target_status}")
+        raise LifecycleTransitionError(
+            entity="trigger",
+            current_status=current_status,
+            next_status=target_status,
+            error_code=TRIGGER_TRANSITION_ERROR_CODE,
+        )
     trigger_db.status = target_status
 
 
@@ -798,54 +875,24 @@ def place_order(
             errorCode="INVALID_IDEMPOTENCY_KEY",
         )
 
+    current_fingerprint: str | None = None
     if normalized_order.idempotencyKey:
         current_fingerprint = _build_request_fingerprint(normalized_order)
-        duplicate_order = (
-            db.query(OrderModel)
-            .filter(
-                OrderModel.idempotency_key == normalized_order.idempotencyKey,
-                OrderModel.user_id == user_id,
-            )
-            .order_by(OrderModel.id.desc())
-            .first()
+        duplicate_order = _latest_order_by_idempotency_key(
+            db,
+            user_id=user_id,
+            idempotency_key=normalized_order.idempotencyKey,
         )
         if duplicate_order:
-            existing_fingerprint = (duplicate_order.request_fingerprint or "").strip()
-            if existing_fingerprint:
-                same_payload = existing_fingerprint == current_fingerprint
-            else:
-                # Backward compatibility for older rows that do not carry fingerprints.
-                same_payload = (
-                    (duplicate_order.symbol or "").strip().upper() == normalized_order.symbol
-                    and int(duplicate_order.quantity or 0) == int(normalized_order.qty)
-                    and (duplicate_order.side or "").strip().upper() == normalized_order.side
-                )
-
-            if not same_payload:
-                return OrderResponse(
-                    status="error",
-                    order=normalized_order,
-                    message="Idempotency key already used with a different order payload",
-                    orderId=duplicate_order.id,
-                    orderStatus=duplicate_order.status,
-                    traceId=duplicate_order.trace_id or resolved_trace_id,
-                    idempotencyKey=duplicate_order.idempotency_key,
-                    errorCode="IDEMPOTENCY_KEY_REUSED",
-                    isDuplicate=False,
-                )
-
-            return OrderResponse(
-                status="ok",
-                order=normalized_order,
-                message="Duplicate order request acknowledged. Returning existing execution result.",
-                orderId=duplicate_order.id,
-                executedPrice=round(duplicate_order.price or 0.0, 2),
-                total=round(duplicate_order.total or 0.0, 2),
-                orderStatus=duplicate_order.status,
-                traceId=duplicate_order.trace_id or resolved_trace_id,
-                idempotencyKey=duplicate_order.idempotency_key,
-                isDuplicate=True,
+            same_payload = _is_same_idempotent_payload(
+                duplicate_order,
+                normalized_order,
+                fingerprint=current_fingerprint,
             )
+            if not same_payload:
+                return _idempotency_reused_response(normalized_order, duplicate_order, resolved_trace_id)
+
+            return _duplicate_order_response(normalized_order, duplicate_order, resolved_trace_id)
     market = is_market_open()
     if not market.isOpen:
         return OrderResponse(
@@ -892,12 +939,63 @@ def place_order(
         )
 
     exec_price = _execution_price(normalized_order, live_price)
-    response, _ = _execute_order_at_price(
-        db=db,
-        order=normalized_order,
-        execution_price=exec_price,
-        user_id=user_id,
-        idempotency_key=normalized_order.idempotencyKey,
-        trace_id=resolved_trace_id,
-    )
-    return response
+    try:
+        response, _ = _execute_order_at_price(
+            db=db,
+            order=normalized_order,
+            execution_price=exec_price,
+            user_id=user_id,
+            idempotency_key=normalized_order.idempotencyKey,
+            trace_id=resolved_trace_id,
+        )
+        return response
+    except LifecycleTransitionError as exc:
+        db.rollback()
+        logger.warning(
+            "order.lifecycle.invalid_transition trace_id=%s user_id=%s symbol=%s from=%s to=%s",
+            resolved_trace_id,
+            user_id,
+            normalized_order.symbol,
+            exc.current_status,
+            exc.next_status,
+        )
+        return OrderResponse(
+            status="error",
+            order=normalized_order,
+            message=str(exc),
+            traceId=resolved_trace_id,
+            idempotencyKey=normalized_order.idempotencyKey,
+            errorCode=exc.error_code,
+        )
+    except IntegrityError:
+        db.rollback()
+        if normalized_order.idempotencyKey:
+            duplicate_order = _latest_order_by_idempotency_key(
+                db,
+                user_id=user_id,
+                idempotency_key=normalized_order.idempotencyKey,
+            )
+            if duplicate_order:
+                same_payload = _is_same_idempotent_payload(
+                    duplicate_order,
+                    normalized_order,
+                    fingerprint=current_fingerprint,
+                )
+                if not same_payload:
+                    return _idempotency_reused_response(normalized_order, duplicate_order, resolved_trace_id)
+                return _duplicate_order_response(normalized_order, duplicate_order, resolved_trace_id)
+
+        logger.exception(
+            "order.execution.integrity_error trace_id=%s user_id=%s symbol=%s",
+            resolved_trace_id,
+            user_id,
+            normalized_order.symbol,
+        )
+        return OrderResponse(
+            status="error",
+            order=normalized_order,
+            message="Could not process order at this time. Please retry.",
+            traceId=resolved_trace_id,
+            idempotencyKey=normalized_order.idempotencyKey,
+            errorCode="ORDER_EXECUTION_FAILED",
+        )

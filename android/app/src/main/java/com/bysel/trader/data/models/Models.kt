@@ -154,6 +154,7 @@ data class AiAssistantResponse(
     val suggestions: List<String> = emptyList(),
     val data: Map<String, Any>? = null,
     val stocks: List<Map<String, Any>>? = null,
+    val source: String = "rule-engine",
     // Enhanced AI features (Level 2)
     val enhancedFeatures: EnhancedFeatures? = null,
     val apiVersion: String = "v1"
