@@ -17,6 +17,87 @@ Source: docs/COMPETITIVE_ROADMAP_90_DAYS.md
 3. Jira CSV import: `docs/JIRA_IMPORT_90_DAYS.csv`
 4. Sprint 1 kickoff plan: `docs/SPRINT_1_KICKOFF_PLAYBOOK.md`
 
+## Live P0 Status Tracker (As Of 2026-03-15)
+
+Status legend: `todo`, `in_progress`, `blocked`, `done`
+
+| ID | Title | Owner | Priority | Status | Sprint | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| S1-001 | Implement idempotent order placement | Backend | P0 | in_progress | Sprint 1 | Critical for retry safety |
+| S1-002 | Build deterministic order lifecycle state machine | Backend | P0 | in_progress | Sprint 1 | Required for OMS consistency |
+| S1-003 | Add reconnect-safe websocket stream | Backend + Android | P0 | in_progress | Sprint 1 | Directly impacts quote/order freshness |
+| S1-004 | Build SLO dashboard for orders and quotes | DevOps | P0 | todo | Sprint 1 | Needed before scale push |
+| S1-005 | Add release gate checks for crash and P0 bugs | QA | P0 | todo | Sprint 1 | Release quality control |
+| S2-001 | Show pre-trade margin and charge breakdown | Android + Backend | P0 | todo | Sprint 2 | Core execution transparency |
+| S2-002 | Map all rejection reasons to user-friendly actions | Android | P0 | todo | Sprint 2 | Reduce failed-order confusion |
+| S2-003 | Add trace IDs from mobile to backend logs | Backend | P0 | todo | Sprint 2 | Faster support resolution |
+| S3-001 | Dedicated Futures discover -> ticket -> order flow | Android + Backend | P0 | todo | Sprint 3 | Product-depth parity |
+| S3-002 | Strategy payoff, Greeks, and risk warnings | Android | P0 | todo | Sprint 3 | Options safety and confidence |
+| S3-003 | Multi-leg payload validation and guardrails | Backend | P0 | todo | Sprint 3 | Risk containment |
+
+### Recently Delivered (Non-Board Fast Fixes)
+
+1. v2.6.60: Improved input contrast and added refresh actions in More -> Mutual Funds, IPO, ETFs.
+2. v2.6.58-v2.6.60: AI prompt quality and stock-name handling improvements.
+
+## Next 28-Day P0 Ownership Board (2026-03-16 To 2026-04-12)
+
+### Week 1 (Day 1-7): Reliability Core (Sprint 1)
+
+| Day | Date | Backend | Android | QA + DevOps | Daily Exit Gate |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 2026-03-16 | Finalize idempotency key contract | Reconnect UX event-state mapping | KPI baseline capture | Baseline metrics frozen |
+| 2 | 2026-03-17 | Idempotent order create/update path | Client retry token propagation | Retry regression suite prep | No duplicate order in unit tests |
+| 3 | 2026-03-18 | State transition validator middleware | Order state sync UI hooks | Invalid-transition negative tests | Invalid transitions rejected deterministically |
+| 4 | 2026-03-19 | WS sequence tracking + gap detection | Reconnect + backfill handler | Disconnect chaos test setup | Gap recovery path implemented |
+| 5 | 2026-03-20 | Replay endpoint for missed events | Resume stream without duplicate rows | Real-time consistency assertions | Reconnect test pass >= 95 percent |
+| 6 | 2026-03-21 | Order/quote SLI emitters | Surface stream health in UI | SLO dashboard and alerts wired | p95 panels visible in dashboard |
+| 7 | 2026-03-22 | Patch remaining P0 reliability defects | Market-hour reconnect UX polish | Release gate scripts draft | Sprint 1 candidate ready |
+
+### Week 2 (Day 8-14): Transparency Hardening (Sprint 2)
+
+| Day | Date | Backend | Android | QA + DevOps | Daily Exit Gate |
+| --- | --- | --- | --- | --- | --- |
+| 8 | 2026-03-23 | Margin estimate API contract freeze | Ticket screen margin layout | API contract validation tests | Contract approved by all leads |
+| 9 | 2026-03-24 | Charges breakdown engine + endpoint | Charges component in ticket | Snapshot tests for ticket totals | Pre-trade amounts visible in app |
+| 10 | 2026-03-25 | Rejection taxonomy map (RMS/OMS) | Error copy/action mapping framework | Rejection fixture matrix | Top rejection classes mapped |
+| 11 | 2026-03-26 | Trace ID injection in API pipeline | Propagate trace ID in request headers | Log correlation drill | End-to-end trace visible |
+| 12 | 2026-03-27 | Rejection fallback and unknown handling | Recovery CTAs for each rejection | UX and localization QA | 100 percent mapped UI messages |
+| 13 | 2026-03-28 | Support lookup endpoint by trace ID | Error details panel instrumentation | Support SOP dry run | Failed order trace <= 2 minutes |
+| 14 | 2026-03-29 | Close Sprint 2 P0 defects | Final polish + analytics events | Release gate execution | Sprint 2 release candidate ready |
+
+### Week 3 (Day 15-21): Futures MVP Build (Sprint 3 Start)
+
+| Day | Date | Backend | Android | QA + DevOps | Daily Exit Gate |
+| --- | --- | --- | --- | --- | --- |
+| 15 | 2026-03-30 | Futures instrument API + metadata | Futures discover list screen | Futures contract test data prep | Discover flow usable |
+| 16 | 2026-03-31 | Futures ticket validation rules | Futures order ticket UI | Validation negative-path tests | Ticket validations aligned |
+| 17 | 2026-04-01 | Futures order placement endpoint | Submit + confirm flow | Order lifecycle test suite | First E2E futures order success |
+| 18 | 2026-04-02 | Futures positions and PnL endpoint | Positions and PnL screen binding | Position reconciliation checks | Position updates accurate |
+| 19 | 2026-04-03 | Realtime futures quote stream hook | Live PnL refresh handling | Stream stability tests | Live quote and PnL updates pass |
+| 20 | 2026-04-04 | Risk guard checks for futures orders | Risk warning surfaces in ticket | Risk scenario matrix | High-risk orders blocked with reason |
+| 21 | 2026-04-05 | Futures defect sweep + stabilization | UX polish and fallback states | UAT + canary readiness | Sprint 3 MVP candidate ready |
+
+### Week 4 (Day 22-28): Futures Hardening + Options Safety Kickoff
+
+| Day | Date | Backend | Android | QA + DevOps | Daily Exit Gate |
+| --- | --- | --- | --- | --- | --- |
+| 22 | 2026-04-06 | Multi-leg payload validator baseline | Options strategy input shell | Multi-leg contract tests | Validator scaffold merged |
+| 23 | 2026-04-07 | Greeks/chain API alignment | Payoff and Greeks visualization draft | Calculation fixture tests | Risk math outputs match fixtures |
+| 24 | 2026-04-08 | Strategy warning rules engine | Warning UX with hard-stop behavior | Unsafe strategy scenario tests | High-risk combos blocked |
+| 25 | 2026-04-09 | Improve futures stream resilience | Futures latency and staleness indicators | Soak tests (market open simulation) | Stale update rate under threshold |
+| 26 | 2026-04-10 | Support hooks for futures + options errors | Error recovery actions for derivatives | Drill for incident response | MTTR drill target met |
+| 27 | 2026-04-11 | Pre-release defect closure | Final UI polish and accessibility pass | Full regression + release gate | No unresolved P0 defects |
+| 28 | 2026-04-12 | Go/no-go evidence package | Release analytics checklist | Production readiness review | Derivatives release decision signed |
+
+## Weekly Non-Negotiable Gates (Competitive Parity)
+
+1. Crash-free sessions >= 99.8 percent.
+2. Order success rate >= 99.5 percent during market hours.
+3. p95 quote latency <= 300 ms for tracked symbols.
+4. Failed-order traceability <= 2 minutes via trace ID.
+5. Zero unresolved P0 defects at release cut.
+
 ## Release Calendar (Proposed)
 
 | Sprint | Start Date | End Date | Production Release Window | Primary Owners | Core Milestone |

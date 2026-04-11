@@ -20,6 +20,33 @@ apply {
     plugin("com.google.dagger.hilt.android")
 }
 
+fun bumpPatchVersion(versionName: String): String {
+    val parts = versionName.split('.').toMutableList()
+    if (parts.size >= 3) {
+        val patch = parts.last().toIntOrNull() ?: 0
+        parts[parts.size - 1] = (patch + 1).toString()
+    } else {
+        while (parts.size < 3) parts.add("0")
+        val patch = parts.last().toIntOrNull() ?: 0
+        parts[parts.size - 1] = (patch + 1).toString()
+    }
+    return parts.joinToString(".")
+}
+
+val versionPropsFile = rootProject.file("gradle.properties")
+val versionProps = Properties().apply {
+    if (versionPropsFile.exists()) {
+        versionPropsFile.inputStream().use { load(it) }
+    }
+}
+val baseVersionCode = (versionProps.getProperty("VERSION_CODE") ?: "1").toIntOrNull() ?: 1
+val baseVersionName = versionProps.getProperty("VERSION_NAME") ?: "1.0.0"
+
+val requestedTaskNamesLower = gradle.startParameter.taskNames.joinToString(" ").lowercase()
+val isBundleReleaseRequested = requestedTaskNamesLower.contains("bundlerelease")
+val configuredVersionCode = if (isBundleReleaseRequested) baseVersionCode + 1 else baseVersionCode
+val configuredVersionName = if (isBundleReleaseRequested) bumpPatchVersion(baseVersionName) else baseVersionName
+
 android {
     namespace = "com.bysel.trader"
     compileSdk = 36
@@ -32,11 +59,13 @@ android {
         applicationId = "com.bysel.trader"
         minSdk = 24
         targetSdk = 36
-        // read version from root gradle.properties (VERSION_CODE, VERSION_NAME)
-        val verCodeProp = rootProject.findProperty("VERSION_CODE") ?: "44"
-        val verNameProp = rootProject.findProperty("VERSION_NAME") ?: "2.6.4"
-        versionCode = verCodeProp.toString().toInt()
-        versionName = verNameProp.toString()
+        val certPinHost = System.getenv("CERT_PIN_HOST") ?: "bysel-backend.onrender.com"
+        val certPinPrimary = System.getenv("CERT_PIN_PRIMARY") ?: ""
+        val certPinBackup = System.getenv("CERT_PIN_BACKUP") ?: ""
+        // Read version from root gradle.properties, but for bundleRelease we pre-bump
+        // here so the built AAB and gradle.properties stay in sync in one run.
+        versionCode = configuredVersionCode
+        versionName = configuredVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -49,45 +78,30 @@ android {
         buildConfigField("String", "MARKET_TRUEDATA_WS_URL", "\"wss://push.truedata.in\"")
         buildConfigField("String", "MARKET_TRUEDATA_TOKEN", "\"\"")
         buildConfigField("String", "CHART_ENGINE", "\"COMPOSE\"")
+        buildConfigField("String", "CERT_PIN_HOST", "\"$certPinHost\"")
+        buildConfigField("String", "CERT_PIN_PRIMARY", "\"$certPinPrimary\"")
+        buildConfigField("String", "CERT_PIN_BACKUP", "\"$certPinBackup\"")
     }
 
-        // --- Auto-increment version before bundleRelease ---
-        // This task updates root gradle.properties VERSION_CODE and VERSION_NAME.
-        // It increments VERSION_CODE by 1 and bumps the patch of VERSION_NAME (x.y.z -> x.y.(z+1)).
-        val incrementVersion by tasks.registering {
-            doLast {
-                val propsFile = rootProject.file("gradle.properties")
-                if (!propsFile.exists()) {
-                    println("gradle.properties not found at ${propsFile.absolutePath}")
-                    return@doLast
-                }
-                val props = Properties()
-                props.load(propsFile.inputStream())
-                val code = (props.getProperty("VERSION_CODE") ?: "0").toInt()
-                val name = props.getProperty("VERSION_NAME") ?: "0.0.0"
-                val newCode = code + 1
-                val parts = name.split('.').toMutableList()
-                if (parts.size >= 3) {
-                    val patch = parts.last().toIntOrNull() ?: 0
-                    parts[parts.size - 1] = (patch + 1).toString()
-                } else {
-                    // ensure at least 3 parts
-                    while (parts.size < 3) parts.add("0")
-                    val patch = parts.last().toIntOrNull() ?: 0
-                    parts[parts.size - 1] = (patch + 1).toString()
-                }
-                val newName = parts.joinToString(".")
-                props.setProperty("VERSION_CODE", newCode.toString())
-                props.setProperty("VERSION_NAME", newName)
-                props.store(propsFile.outputStream(), null)
-                println("Bumped VERSION_CODE: $code -> $newCode, VERSION_NAME: $name -> $newName")
+    // Persist the exact release version that bundleRelease used.
+    tasks.matching { it.name == "bundleRelease" }.configureEach {
+        doLast {
+            if (!versionPropsFile.exists()) {
+                println("gradle.properties not found at ${versionPropsFile.absolutePath}")
+                return@doLast
             }
-        }
 
-        // Ensure bundleRelease depends on incrementVersion so version is bumped automatically.
-        tasks.matching { it.name == "bundleRelease" }.configureEach {
-            dependsOn(incrementVersion)
+            val props = Properties()
+            versionPropsFile.inputStream().use { props.load(it) }
+            props.setProperty("VERSION_CODE", configuredVersionCode.toString())
+            props.setProperty("VERSION_NAME", configuredVersionName)
+            versionPropsFile.outputStream().use { props.store(it, null) }
+            println(
+                "Persisted VERSION_CODE: ${configuredVersionCode}, " +
+                    "VERSION_NAME: ${configuredVersionName}"
+            )
         }
+    }
 
     // Load keystore properties from project root `keystore.properties` or environment variables.
     val keystorePropsFile = rootProject.file("keystore.properties")
@@ -97,8 +111,7 @@ android {
         }
     }
 
-    val requestedTasks = gradle.startParameter.taskNames.joinToString(" ").lowercase()
-    val requiresReleaseSigning = requestedTasks.contains("release") || requestedTasks.contains("bundle") || requestedTasks.contains("publish")
+    val requiresReleaseSigning = requestedTaskNamesLower.contains("release") || requestedTaskNamesLower.contains("bundle") || requestedTaskNamesLower.contains("publish")
     val configuredStoreFilePath = keystoreProps.getProperty("storeFile") ?: System.getenv("KEYSTORE_PATH")
     val configuredStorePassword = keystoreProps.getProperty("storePassword") ?: System.getenv("KEYSTORE_PASSWORD")
     val configuredKeyAlias = keystoreProps.getProperty("keyAlias") ?: System.getenv("KEY_ALIAS")

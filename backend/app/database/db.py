@@ -3,16 +3,20 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 from pathlib import Path
+import logging
 import os
+import sqlite3
+
+logger = logging.getLogger(__name__)
 
 def _select_default_sqlite_path() -> Path:
+    override_path = os.getenv("SQLITE_DB_PATH", "").strip()
+    if override_path:
+        return Path(override_path).expanduser().resolve()
+
     backend_db = Path(__file__).resolve().parents[2] / "bysel.db"
-    root_db = Path(__file__).resolve().parents[3] / "bysel.db"
-    candidates = [backend_db, root_db]
-    existing = [path for path in candidates if path.exists()]
-    if not existing:
-        return backend_db
-    return max(existing, key=lambda path: path.stat().st_mtime)
+    # Always prefer backend-local DB to avoid cwd-dependent auth splits.
+    return backend_db
 
 
 _DEFAULT_SQLITE_DB = _select_default_sqlite_path()
@@ -151,6 +155,7 @@ class UserModel(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
+    mobile_number = Column(String, unique=True, index=True, nullable=True)
     password_hash = Column(String, nullable=False)
     token_version = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -177,6 +182,29 @@ class RefreshTokenModel(Base):
     replaced_by_hash = Column(String, nullable=True)
     client_ip = Column(String, nullable=True)
     device_info = Column(String, nullable=True)
+
+
+class PasswordResetTokenModel(Base):
+    __tablename__ = "password_reset_tokens"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    token_hash = Column(String, unique=True, index=True, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    used_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+
+
+class OTPModel(Base):
+    __tablename__ = "otps"
+    id = Column(Integer, primary_key=True, index=True)
+    mobile_number = Column(String, nullable=False, index=True)
+    otp_code = Column(String, nullable=False)
+    otp_hash = Column(String, unique=True, index=True, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    used_at = Column(DateTime, nullable=True)
+    attempts = Column(Integer, nullable=False, default=0)
 
 
 class MutualFundModel(Base):
@@ -301,9 +329,184 @@ def _ensure_order_columns() -> None:
     _ensure_column("orders", "trace_id", "trace_id VARCHAR NULL")
 
 
+def _ensure_order_indexes() -> None:
+    inspector = sa_inspect(engine)
+    if "orders" not in inspector.get_table_names():
+        return
+
+    # Enforce one idempotency key per user while allowing NULL keys.
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_user_idempotency_key
+                    ON orders (user_id, idempotency_key)
+                    WHERE idempotency_key IS NOT NULL
+                    """
+                )
+            )
+    except Exception as exc:
+        logger.warning("db.order_idempotency_index.skipped reason=%s", str(exc))
+
+
+def _active_sqlite_db_path() -> Path | None:
+    if engine.url.get_backend_name() != "sqlite":
+        return None
+
+    raw_path = engine.url.database
+    if not raw_path or raw_path == ":memory:":
+        return None
+
+    return Path(raw_path).expanduser().resolve()
+
+
+def _legacy_sqlite_candidates(active_db_path: Path) -> list[Path]:
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+
+    # Include nearby ancestors (repo root and workspace root) where legacy DBs commonly lived.
+    for ancestor in list(active_db_path.parents)[:4]:
+        candidate = (ancestor / "bysel.db").resolve()
+        if candidate == active_db_path or not candidate.exists() or candidate in seen:
+            continue
+        seen.add(candidate)
+        candidates.append(candidate)
+
+    return candidates
+
+
+def _table_names(conn: sqlite3.Connection) -> set[str]:
+    rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    return {row["name"] for row in rows}
+
+
+def _merge_legacy_auth_rows_into_active_db() -> None:
+    active_db_path = _active_sqlite_db_path()
+    if active_db_path is None or not active_db_path.exists():
+        return
+
+    legacy_paths = _legacy_sqlite_candidates(active_db_path)
+    if not legacy_paths:
+        return
+
+    dst_conn = sqlite3.connect(str(active_db_path))
+    dst_conn.row_factory = sqlite3.Row
+
+    try:
+        dst_tables = _table_names(dst_conn)
+        if "users" not in dst_tables or "wallet" not in dst_tables:
+            return
+
+        existing_keys: set[str] = set()
+        for row in dst_conn.execute("SELECT username, email FROM users").fetchall():
+            username = (row["username"] or "").strip().lower()
+            email = (row["email"] or "").strip().lower()
+            if username:
+                existing_keys.add(username)
+            if email:
+                existing_keys.add(email)
+
+        for src_path in legacy_paths:
+            src_conn: sqlite3.Connection | None = None
+            try:
+                src_conn = sqlite3.connect(str(src_path))
+                src_conn.row_factory = sqlite3.Row
+
+                src_tables = _table_names(src_conn)
+                if "users" not in src_tables:
+                    continue
+
+                migrated_users = 0
+                migrated_wallets = 0
+                migrated_user_map: dict[int, int] = {}
+
+                user_rows = src_conn.execute("SELECT * FROM users").fetchall()
+                for user_row in user_rows:
+                    row_keys = set(user_row.keys())
+                    username = (user_row["username"] if "username" in row_keys else "") or ""
+                    email = (user_row["email"] if "email" in row_keys else "") or ""
+                    password_hash = (user_row["password_hash"] if "password_hash" in row_keys else "") or ""
+                    token_version = int((user_row["token_version"] if "token_version" in row_keys else 0) or 0)
+                    created_at = user_row["created_at"] if "created_at" in row_keys else None
+
+                    username = username.strip()
+                    email = email.strip().lower()
+                    password_hash = password_hash.strip()
+
+                    if not username or not email or not password_hash:
+                        continue
+
+                    username_key = username.lower()
+                    email_key = email.lower()
+                    if username_key in existing_keys or email_key in existing_keys:
+                        continue
+
+                    cursor = dst_conn.execute(
+                        """
+                        INSERT INTO users (username, email, password_hash, token_version, created_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (username, email, password_hash, token_version, created_at),
+                    )
+                    migrated_users += 1
+                    existing_keys.add(username_key)
+                    existing_keys.add(email_key)
+                    migrated_user_map[int(user_row["id"])] = int(cursor.lastrowid)
+
+                if migrated_user_map and "wallet" in src_tables:
+                    for src_user_id, dst_user_id in migrated_user_map.items():
+                        has_wallet = dst_conn.execute(
+                            "SELECT 1 FROM wallet WHERE user_id = ? LIMIT 1",
+                            (dst_user_id,),
+                        ).fetchone()
+                        if has_wallet is not None:
+                            continue
+
+                        wallet_row = src_conn.execute(
+                            "SELECT * FROM wallet WHERE user_id = ? ORDER BY id ASC LIMIT 1",
+                            (src_user_id,),
+                        ).fetchone()
+                        if wallet_row is None:
+                            continue
+
+                        wallet_keys = set(wallet_row.keys())
+                        balance = float((wallet_row["balance"] if "balance" in wallet_keys else 0.0) or 0.0)
+                        updated_at = wallet_row["updated_at"] if "updated_at" in wallet_keys else None
+                        dst_conn.execute(
+                            "INSERT INTO wallet (user_id, balance, updated_at) VALUES (?, ?, ?)",
+                            (dst_user_id, balance, updated_at),
+                        )
+                        migrated_wallets += 1
+
+                if migrated_users > 0 or migrated_wallets > 0:
+                    dst_conn.commit()
+                    logger.warning(
+                        "db.auth_legacy_merge.applied source=%s users=%s wallets=%s target=%s",
+                        str(src_path),
+                        migrated_users,
+                        migrated_wallets,
+                        str(active_db_path),
+                    )
+            except Exception as exc:
+                logger.exception(
+                    "db.auth_legacy_merge.failed source=%s target=%s reason=%s",
+                    str(src_path),
+                    str(active_db_path),
+                    str(exc),
+                )
+            finally:
+                if src_conn is not None:
+                    src_conn.close()
+    finally:
+        dst_conn.close()
+
+
 _ensure_refresh_token_columns()
 _ensure_user_columns()
 _ensure_order_columns()
+_ensure_order_indexes()
+_merge_legacy_auth_rows_into_active_db()
 
 def get_db():
     db = SessionLocal()

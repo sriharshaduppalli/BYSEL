@@ -5,12 +5,14 @@ import okhttp3.Authenticator
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.Route
+import java.io.IOException
+import retrofit2.HttpException
 
 class TokenRefreshAuthenticator : Authenticator {
     override fun authenticate(route: Route?, response: Response): Request? {
+        val path = response.request.url.encodedPath
+        if (path.startsWith("/auth/")) return null
         if (responseCount(response) >= 2) return null
-
-        val refreshToken = AuthSessionManager.getRefreshToken() ?: return null
 
         return synchronized(this) {
             val latestToken = AuthSessionManager.getAccessToken()
@@ -18,6 +20,8 @@ class TokenRefreshAuthenticator : Authenticator {
             if (!latestToken.isNullOrBlank() && currentAuth != "Bearer $latestToken") {
                 return@synchronized rebuildWithAuth(response.request, latestToken)
             }
+
+            val refreshToken = AuthSessionManager.getRefreshToken() ?: return@synchronized null
 
             try {
                 val refreshed = runBlocking { AuthTokenRefresher.refresh(refreshToken) }
@@ -27,8 +31,14 @@ class TokenRefreshAuthenticator : Authenticator {
                     userId = refreshed.user_id
                 )
                 rebuildWithAuth(response.request, refreshed.access_token)
+            } catch (httpException: HttpException) {
+                if (httpException.code() == 401 || httpException.code() == 403) {
+                    AuthSessionManager.clearSession()
+                }
+                null
+            } catch (_: IOException) {
+                null
             } catch (_: Exception) {
-                AuthSessionManager.clearSession()
                 null
             }
         }

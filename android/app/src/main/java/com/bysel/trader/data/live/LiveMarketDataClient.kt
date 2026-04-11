@@ -1,5 +1,6 @@
 package com.bysel.trader.data.live
 
+import android.util.Log
 import com.bysel.trader.BuildConfig
 import com.bysel.trader.data.api.BYSELApiService
 import com.bysel.trader.data.api.RetrofitClient
@@ -13,14 +14,25 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import kotlin.math.min
+import kotlin.random.Random
 
 class LiveMarketDataClient(
     private val apiService: BYSELApiService = RetrofitClient.apiService
 ) {
+    private companion object {
+        const val TAG = "LiveMarketDataClient"
+        const val STALE_STREAM_TIMEOUT_MS = 12_000L
+        const val BASE_RECONNECT_DELAY_MS = 800L
+        const val MAX_RECONNECT_DELAY_MS = 20_000L
+    }
+
     private val gson = Gson()
     private val truedataToken = BuildConfig.MARKET_TRUEDATA_TOKEN
 
@@ -31,69 +43,152 @@ class LiveMarketDataClient(
         }
     }
 
-    private fun streamViaWebSocket(symbols: List<String>): Flow<List<Quote>> = callbackFlow {
-        val wsUrl = BuildConfig.MARKET_WS_URL
-        val request = Request.Builder().url(wsUrl).build()
-        var socket: WebSocket? = null
-
-        val listener = object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
-                val payload = mapOf("action" to "subscribe", "symbols" to symbols)
+    private fun streamViaWebSocket(symbols: List<String>): Flow<List<Quote>> {
+        return streamViaReconnectingWebSocket(
+            wsUrl = BuildConfig.MARKET_WS_URL,
+            symbols = symbols,
+            onSocketOpen = { webSocket, normalizedSymbols ->
+                val payload = mapOf("action" to "subscribe", "symbols" to normalizedSymbols)
                 webSocket.send(gson.toJson(payload))
-            }
-
-            override fun onMessage(webSocket: WebSocket, text: String) {
-                val parsed = parseQuotes(text)
-                if (parsed.isNotEmpty()) trySend(parsed)
-            }
-
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                close(t)
-            }
-        }
-
-        socket = RetrofitClient.httpClient.newWebSocket(request, listener)
-
-        awaitClose {
-            socket?.close(1000, "closed")
-        }
+            },
+            parsePayload = { text -> parseQuotes(text) },
+        )
     }
 
-    private fun streamViaTrueDataWebSocket(symbols: List<String>): Flow<List<Quote>> = callbackFlow {
-        val wsUrl = BuildConfig.MARKET_TRUEDATA_WS_URL
-        val request = Request.Builder()
-            .url(wsUrl)
-            .build()
-
-        val socket = RetrofitClient.httpClient.newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
+    private fun streamViaTrueDataWebSocket(symbols: List<String>): Flow<List<Quote>> {
+        return streamViaReconnectingWebSocket(
+            wsUrl = BuildConfig.MARKET_TRUEDATA_WS_URL,
+            symbols = symbols,
+            onSocketOpen = { webSocket, normalizedSymbols ->
                 if (truedataToken.isNotBlank()) {
                     webSocket.send("auth:$truedataToken")
                 }
                 val subscribe = buildString {
                     append("subscribe:")
-                    append(symbols.joinToString(","))
+                    append(normalizedSymbols.joinToString(","))
                 }
                 webSocket.send(subscribe)
-            }
-
-            override fun onMessage(webSocket: WebSocket, text: String) {
+            },
+            parsePayload = { text ->
                 val parsed = parseTrueDataTicks(text)
-                if (parsed.isNotEmpty()) {
-                    trySend(parsed)
-                    return
-                }
-                val generic = parseQuotes(text)
-                if (generic.isNotEmpty()) trySend(generic)
-            }
+                if (parsed.isNotEmpty()) parsed else parseQuotes(text)
+            },
+        )
+    }
 
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                close(t)
+    private fun streamViaReconnectingWebSocket(
+        wsUrl: String,
+        symbols: List<String>,
+        onSocketOpen: (WebSocket, List<String>) -> Unit,
+        parsePayload: (String) -> List<Quote>,
+    ): Flow<List<Quote>> = callbackFlow {
+        val normalizedSymbols = normalizeSymbols(symbols)
+        if (normalizedSymbols.isEmpty()) {
+            close(IllegalArgumentException("Live quote stream requires at least one symbol"))
+            return@callbackFlow
+        }
+
+        if (wsUrl.isBlank()) {
+            close(IllegalStateException("WebSocket URL is not configured"))
+            return@callbackFlow
+        }
+
+        var socket: WebSocket? = null
+        var isClosing = false
+        var reconnectAttempt = 0
+        var reconnectJob: kotlinx.coroutines.Job? = null
+        var lastMessageAtMs = System.currentTimeMillis()
+
+        suspend fun emitRestSnapshot() {
+            runCatching {
+                apiService.getQuotes(normalizedSymbols.joinToString(","))
+            }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { quotes ->
+                trySend(quotes)
             }
-        })
+        }
+
+        lateinit var scheduleReconnect: (String) -> Unit
+        lateinit var openSocketConnection: () -> Unit
+
+        scheduleReconnect = fun(reason: String) {
+            if (isClosing || !isActive) return
+            if (reconnectJob?.isActive == true) return
+
+            reconnectAttempt += 1
+            val backoffMs = nextReconnectDelayMs(reconnectAttempt)
+            Log.w(TAG, "Stream reconnect scheduled in ${backoffMs}ms (attempt=$reconnectAttempt reason=$reason)")
+
+            reconnectJob = launch {
+                emitRestSnapshot()
+                delay(backoffMs)
+                if (!isClosing && isActive) {
+                    openSocketConnection()
+                }
+            }
+        }
+
+        openSocketConnection = {
+            if (!isClosing && isActive) {
+                val request = Request.Builder().url(wsUrl).build()
+                try {
+                    socket = RetrofitClient.httpClient.newWebSocket(request, object : WebSocketListener() {
+                        override fun onOpen(webSocket: WebSocket, response: Response) {
+                            reconnectAttempt = 0
+                            lastMessageAtMs = System.currentTimeMillis()
+                            runCatching { onSocketOpen(webSocket, normalizedSymbols) }
+                                .onFailure { error ->
+                                    Log.e(TAG, "Stream subscription failed", error)
+                                    scheduleReconnect("subscription_failed")
+                                }
+                        }
+
+                        override fun onMessage(webSocket: WebSocket, text: String) {
+                            lastMessageAtMs = System.currentTimeMillis()
+                            val parsed = parsePayload(text)
+                            if (parsed.isNotEmpty()) {
+                                trySend(parsed)
+                            }
+                        }
+
+                        override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                            if (isClosing) return
+                            Log.w(TAG, "Stream socket failed", t)
+                            scheduleReconnect("socket_failure")
+                        }
+
+                        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                            if (isClosing || code == 1000) return
+                            scheduleReconnect("socket_closed_$code")
+                        }
+                    })
+                } catch (error: Exception) {
+                    Log.e(TAG, "Stream connection setup failed", error)
+                    scheduleReconnect("connect_exception")
+                }
+            }
+        }
+
+        val staleWatchdogJob = launch {
+            while (isActive && !isClosing) {
+                delay(STALE_STREAM_TIMEOUT_MS)
+                val staleForMs = System.currentTimeMillis() - lastMessageAtMs
+                if (staleForMs >= STALE_STREAM_TIMEOUT_MS) {
+                    socket?.cancel()
+                    lastMessageAtMs = System.currentTimeMillis()
+                    scheduleReconnect("stale_stream")
+                }
+            }
+        }
+
+        launch { emitRestSnapshot() }
+        openSocketConnection()
 
         awaitClose {
-            socket.close(1000, "closed")
+            isClosing = true
+            reconnectJob?.cancel()
+            staleWatchdogJob.cancel()
+            socket?.close(1000, "closed")
+            socket?.cancel()
         }
     }
 
@@ -183,5 +278,19 @@ class LiveMarketDataClient(
 
     private fun JsonObject.optDouble(key: String): Double? {
         return if (has(key) && !get(key).isJsonNull) get(key).asDouble else null
+    }
+
+    private fun normalizeSymbols(symbols: List<String>): List<String> {
+        return symbols
+            .map { it.trim().uppercase() }
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
+
+    private fun nextReconnectDelayMs(attempt: Int): Long {
+        val exponent = min(attempt, 5)
+        val delay = BASE_RECONNECT_DELAY_MS * (1L shl exponent)
+        val jitter = Random.nextLong(200L, 900L)
+        return min(MAX_RECONNECT_DELAY_MS, delay + jitter)
     }
 }

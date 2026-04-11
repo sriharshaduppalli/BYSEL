@@ -61,6 +61,7 @@ private data class MoreMenuEntry(
 @Composable
 fun MoreScreen(
     onSearchClick: () -> Unit,
+    onLiveQuotesClick: () -> Unit,
     onAlertsClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onAchievementsClick: () -> Unit,
@@ -205,11 +206,11 @@ fun MoreScreen(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                QuickInfoChip(label = "Live Quotes")
-                QuickInfoChip(label = "ETF")
-                QuickInfoChip(label = "F&O")
-                QuickInfoChip(label = "SIP")
-                QuickInfoChip(label = "AI Copilot")
+                QuickInfoChip(label = "Live Quotes", onClick = onLiveQuotesClick)
+                QuickInfoChip(label = "ETF", onClick = onEtfClick)
+                QuickInfoChip(label = "F&O", onClick = onDerivativesClick)
+                QuickInfoChip(label = "SIP", onClick = onSipClick)
+                QuickInfoChip(label = "AI Copilot", onClick = onCopilotCenterClick)
             }
         }
 
@@ -253,9 +254,9 @@ private fun SectionHeader(title: String) {
 }
 
 @Composable
-private fun QuickInfoChip(label: String) {
+private fun QuickInfoChip(label: String, onClick: () -> Unit) {
     AssistChip(
-        onClick = {},
+        onClick = onClick,
         label = { Text(label) },
         colors = AssistChipDefaults.assistChipColors(
             containerColor = LocalAppTheme.current.card,

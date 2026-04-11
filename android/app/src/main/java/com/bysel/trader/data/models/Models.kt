@@ -73,13 +73,22 @@ data class Alert(
 data class Order(
     val symbol: String,
     val qty: Int,
-    val side: String // "BUY" or "SELL"
+    val side: String, // "BUY" or "SELL"
+    val idempotencyKey: String? = null,
 )
 
 data class OrderResponse(
     val status: String,
     val order: Order,
-    val message: String? = null
+    val message: String? = null,
+    val orderId: Int? = null,
+    val executedPrice: Double? = null,
+    val total: Double? = null,
+    val orderStatus: String? = null,
+    val traceId: String? = null,
+    val idempotencyKey: String? = null,
+    val isDuplicate: Boolean = false,
+    val errorCode: String? = null,
 )
 
 // ==================== WALLET & MARKET STATUS ====================
@@ -103,6 +112,21 @@ data class MarketStatus(
     val message: String,
     val nextOpen: String? = null,
     val nextClose: String? = null
+)
+
+data class MarketNewsHeadline(
+    val symbol: String = "",
+    val title: String = "",
+    val source: String = "",
+    val publishedAt: String = "",
+    val publishedLabel: String = "",
+    val link: String = ""
+)
+
+data class MarketNewsResponse(
+    val headlines: List<MarketNewsHeadline> = emptyList(),
+    val symbolsConsidered: List<String> = emptyList(),
+    val generatedAt: String = ""
 )
 
 data class StockSearchResult(
@@ -553,6 +577,38 @@ data class CopilotSignal(
     val guidance: List<String> = emptyList()
 )
 
+data class PreTradeChargeBreakdown(
+    val brokerage: Double = 0.0,
+    val exchangeFee: Double = 0.0,
+    val gst: Double = 0.0,
+    val stampDuty: Double = 0.0,
+    val totalCharges: Double = 0.0,
+)
+
+data class PreTradeEstimateRequest(
+    val order: AdvancedOrderRequest,
+    val walletBalance: Double? = null,
+    val marketOpen: Boolean? = null,
+)
+
+data class PreTradeEstimateResponse(
+    val symbol: String,
+    val side: String,
+    val qty: Int,
+    val orderType: String,
+    val executionPrice: Double,
+    val livePrice: Double,
+    val tradeValue: Double,
+    val charges: PreTradeChargeBreakdown = PreTradeChargeBreakdown(),
+    val netAmount: Double,
+    val walletBalance: Double,
+    val walletUtilizationPct: Double,
+    val canAfford: Boolean,
+    val impactTag: String,
+    val warnings: List<String> = emptyList(),
+    val signal: CopilotSignal,
+)
+
 data class CopilotPreTradeRequest(
     val order: AdvancedOrderRequest,
     val walletBalance: Double? = null,
@@ -576,6 +632,22 @@ data class CopilotPortfolioActionsResponse(
     val rationale: String
 )
 
+data class OrderTraceLookupResponse(
+    val orderId: Int,
+    val traceId: String,
+    val symbol: String,
+    val side: String,
+    val quantity: Int,
+    val orderType: String,
+    val validity: String,
+    val status: String,
+    val executedPrice: Double,
+    val total: Double,
+    val idempotencyKey: String? = null,
+    val createdAt: String,
+    val message: String,
+)
+
 data class RegisterRequest(
     val username: String,
     val email: String,
@@ -591,6 +663,20 @@ data class RefreshTokenRequest(
     val refreshToken: String
 )
 
+data class PasswordResetRequestBody(
+    val identifier: String
+)
+
+data class PasswordResetConfirmRequest(
+    val token: String,
+    val newPassword: String
+)
+
+data class ChangePasswordRequest(
+    val currentPassword: String,
+    val newPassword: String
+)
+
 data class LogoutRequest(
     val refreshToken: String
 )
@@ -600,6 +686,19 @@ data class AuthResponse(
     val user_id: Int,
     val access_token: String,
     val refresh_token: String
+)
+
+data class PasswordResetRequestResponse(
+    val status: String,
+    val message: String,
+    val delivery: String? = null,
+    @SerializedName("reset_code") val resetCode: String? = null,
+    @SerializedName("expires_in_seconds") val expiresInSeconds: Int? = null,
+)
+
+data class PasswordResetConfirmResponse(
+    val status: String,
+    val message: String,
 )
 
 data class AuthSessionItem(

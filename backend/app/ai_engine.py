@@ -15,11 +15,56 @@ import yfinance as yf
 import numpy as np
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from html import unescape
 from typing import Dict, List, Optional, Tuple
 from .market_data import _yf_ticker, INDIAN_STOCKS, fetch_quote
 
 logger = logging.getLogger(__name__)
+
+_NEWS_CACHE_TTL = timedelta(minutes=15)
+_news_cache: Dict[str, Tuple[datetime, List[Dict]]] = {}
+_MARKET_NEWS_DEFAULT_SYMBOLS = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK"]
+
+_POSITIVE_HEADLINE_KEYWORDS = (
+    "beat",
+    "beats",
+    "bullish",
+    "contract",
+    "expansion",
+    "gain",
+    "gains",
+    "growth",
+    "launch",
+    "order win",
+    "orders",
+    "partnership",
+    "profit",
+    "rally",
+    "record",
+    "upgrade",
+)
+
+_NEGATIVE_HEADLINE_KEYWORDS = (
+    "cut",
+    "cuts",
+    "decline",
+    "delay",
+    "downgrade",
+    "fall",
+    "falls",
+    "fraud",
+    "investigation",
+    "lawsuit",
+    "loss",
+    "miss",
+    "penalty",
+    "probe",
+    "recall",
+    "slump",
+    "warning",
+    "weak",
+)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -278,6 +323,225 @@ def _estimate_accuracy(prices: np.ndarray) -> float:
     return round(min(max(accuracy, 50), 85), 1)  # Cap between 50-85%
 
 
+def _utc_now_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _parse_news_timestamp(raw_value) -> Optional[datetime]:
+    if raw_value in (None, ""):
+        return None
+
+    if isinstance(raw_value, (int, float)):
+        return datetime.fromtimestamp(float(raw_value), tz=timezone.utc).replace(tzinfo=None)
+
+    if isinstance(raw_value, str):
+        candidate = raw_value.strip()
+        if not candidate:
+            return None
+
+        normalized = candidate.replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError:
+            for fmt in (
+                "%Y-%m-%d %H:%M:%S%z",
+                "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%dT%H:%M:%S%z",
+                "%Y-%m-%dT%H:%M:%S",
+            ):
+                try:
+                    parsed = datetime.strptime(candidate, fmt)
+                    break
+                except ValueError:
+                    parsed = None
+            if parsed is None:
+                return None
+
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        return parsed
+
+    return None
+
+
+def _format_headline_age(published_at: Optional[datetime]) -> str:
+    if not published_at:
+        return ""
+
+    if published_at.tzinfo is not None:
+        published_at = published_at.astimezone(timezone.utc).replace(tzinfo=None)
+
+    age = max(int((_utc_now_naive() - published_at).total_seconds()), 0)
+    if age < 3600:
+        minutes = max(age // 60, 1)
+        return f"{minutes}m ago"
+    if age < 86400:
+        hours = age // 3600
+        return f"{hours}h ago"
+    days = age // 86400
+    return f"{days}d ago"
+
+
+def _normalize_news_item(symbol: str, raw_item: Dict) -> Optional[Dict]:
+    if not isinstance(raw_item, dict):
+        return None
+
+    content = raw_item.get("content") if isinstance(raw_item.get("content"), dict) else {}
+    provider = content.get("provider") if isinstance(content.get("provider"), dict) else {}
+    canonical_url = content.get("canonicalUrl") if isinstance(content.get("canonicalUrl"), dict) else {}
+    click_through = content.get("clickThroughUrl") if isinstance(content.get("clickThroughUrl"), dict) else {}
+
+    title = (
+        raw_item.get("title")
+        or content.get("title")
+        or raw_item.get("headline")
+        or content.get("summary")
+        or ""
+    )
+    title = re.sub(r"\s+", " ", unescape(str(title)).strip())
+    if not title:
+        return None
+
+    source = (
+        raw_item.get("publisher")
+        or provider.get("displayName")
+        or raw_item.get("provider")
+        or ""
+    )
+
+    published_at = _parse_news_timestamp(
+        raw_item.get("providerPublishTime")
+        or content.get("pubDate")
+        or raw_item.get("pubDate")
+        or content.get("displayTime")
+    )
+
+    link = (
+        raw_item.get("link")
+        or canonical_url.get("url")
+        or click_through.get("url")
+        or raw_item.get("url")
+        or ""
+    )
+
+    return {
+        "symbol": symbol.upper(),
+        "title": title,
+        "source": str(source).strip(),
+        "publishedAt": published_at.isoformat() if published_at else "",
+        "publishedLabel": _format_headline_age(published_at),
+        "link": str(link).strip(),
+    }
+
+
+def _fetch_recent_headlines(symbol: str, limit: int = 5, ticker=None) -> List[Dict]:
+    symbol_upper = symbol.upper()
+    cached = _news_cache.get(symbol_upper)
+    if cached and _utc_now_naive() - cached[0] <= _NEWS_CACHE_TTL:
+        return cached[1][:limit]
+
+    ticker_obj = ticker or yf.Ticker(_yf_ticker(symbol_upper))
+    raw_news: List[Dict] = []
+
+    get_news = getattr(ticker_obj, "get_news", None)
+    if callable(get_news):
+        try:
+            raw_news = get_news() or []
+        except Exception as exc:
+            logger.warning("News fetch via get_news failed for %s: %s", symbol_upper, exc)
+
+    if not raw_news:
+        try:
+            raw_news = getattr(ticker_obj, "news", []) or []
+        except Exception as exc:
+            logger.warning("News fetch via news property failed for %s: %s", symbol_upper, exc)
+
+    normalized: List[Dict] = []
+    seen_titles: set[str] = set()
+    for item in raw_news:
+        normalized_item = _normalize_news_item(symbol_upper, item)
+        if not normalized_item:
+            continue
+
+        title_key = normalized_item["title"].lower()
+        if title_key in seen_titles:
+            continue
+
+        seen_titles.add(title_key)
+        normalized.append(normalized_item)
+
+    normalized.sort(key=lambda item: item.get("publishedAt") or "", reverse=True)
+    _news_cache[symbol_upper] = (_utc_now_naive(), normalized)
+    return normalized[:limit]
+
+
+def _classify_headline_flow(headlines: List[Dict]) -> str:
+    if not headlines:
+        return "unavailable"
+
+    score = 0
+    for item in headlines[:5]:
+        title = str(item.get("title", "")).lower()
+        for keyword in _POSITIVE_HEADLINE_KEYWORDS:
+            if keyword in title:
+                score += 1
+        for keyword in _NEGATIVE_HEADLINE_KEYWORDS:
+            if keyword in title:
+                score -= 1
+
+    if score >= 2:
+        return "positive"
+    if score <= -2:
+        return "negative"
+    return "mixed"
+
+
+def _summarize_headline_flow(headlines: List[Dict]) -> str:
+    if not headlines:
+        return "Recent headline context is unavailable right now."
+
+    flow = _classify_headline_flow(headlines)
+    flow_label = flow.capitalize()
+    latest_age = headlines[0].get("publishedLabel")
+    freshness = f" Most recent item: {latest_age}." if latest_age else ""
+    return f"{flow_label} flow across the latest {len(headlines[:5])} headlines.{freshness}"
+
+
+def get_market_headlines(symbols: Optional[List[str]] = None, limit: int = 5) -> Dict:
+    requested_symbols = symbols or _MARKET_NEWS_DEFAULT_SYMBOLS
+
+    normalized_symbols: List[str] = []
+    seen_symbols: set[str] = set()
+    for raw_symbol in requested_symbols:
+        symbol = str(raw_symbol or "").strip().upper()
+        if not symbol or symbol in seen_symbols:
+            continue
+        seen_symbols.add(symbol)
+        normalized_symbols.append(symbol)
+        if len(normalized_symbols) >= 5:
+            break
+
+    aggregated: List[Dict] = []
+    seen_titles: set[str] = set()
+    headline_limit = max(limit, 5)
+
+    for symbol in normalized_symbols:
+        for headline in _fetch_recent_headlines(symbol, limit=headline_limit):
+            title_key = str(headline.get("title", "")).strip().lower()
+            if not title_key or title_key in seen_titles:
+                continue
+            seen_titles.add(title_key)
+            aggregated.append(headline)
+
+    aggregated.sort(key=lambda item: item.get("publishedAt") or "", reverse=True)
+
+    return {
+        "headlines": aggregated[:limit],
+        "symbolsConsidered": normalized_symbols,
+        "generatedAt": _utc_now_naive().isoformat(),
+    }
+
+
 # ──────────────────────────────────────────────────────────────
 # FULL STOCK ANALYSIS
 # ──────────────────────────────────────────────────────────────
@@ -327,11 +591,25 @@ def analyze_stock(symbol: str) -> Dict:
             pe = market_cap = dividend_yield = 0
             fifty_two_high = current * 1.15
             fifty_two_low = current * 0.85
-            sector = industry = company_name = "Unknown"
+            sector = industry = "Unknown"
+            company_name = None
             book_value = debt_to_equity = roe = revenue_growth = 0
+
+        # Resolve display name: catalog > yfinance shortName > symbol ticker
+        catalog_entry = INDIAN_STOCKS.get(symbol)
+        if catalog_entry:
+            name = catalog_entry[1]
+        elif company_name and company_name.lower() not in ("unknown", "n/a", ""):
+            name = company_name
+        else:
+            name = symbol
 
         # AI Predictions
         prediction = predict_price(symbol)
+
+        recent_headlines = _fetch_recent_headlines(symbol, limit=5, ticker=ticker)
+        news_summary = _summarize_headline_flow(recent_headlines)
+        news_sentiment = _classify_headline_flow(recent_headlines)
 
         # Compute overall score (0-100)
         score, score_breakdown = _compute_stock_score(
@@ -342,12 +620,11 @@ def analyze_stock(symbol: str) -> Dict:
 
         # Generate plain-English summary
         summary = _generate_summary(
-            symbol, company_name, current, score, rsi, macd,
+            symbol, name, current, score, rsi, macd,
             mas, pe, prediction, bollinger
         )
-
-        # Determine stock name from our catalog or Yahoo
-        name = INDIAN_STOCKS.get(symbol, (None, company_name))[1]
+        if recent_headlines:
+            summary = f"{summary} {news_summary}"
 
         return {
             "symbol": symbol,
@@ -377,6 +654,12 @@ def analyze_stock(symbol: str) -> Dict:
                 "revenueGrowth": round(float(revenue_growth), 2),
             },
             "predictions": prediction.get("predictions", []),
+            "news": {
+                "sentiment": news_sentiment,
+                "summary": news_summary,
+                "headlinesConsidered": len(recent_headlines),
+                "headlines": recent_headlines,
+            },
             "modelAccuracy": prediction.get("modelAccuracy", 0),
             "disclaimer": "AI analysis is for educational purposes only. Not financial advice. Always do your own research.",
             "lastUpdated": datetime.utcnow().isoformat(),
@@ -654,6 +937,121 @@ _SORTED_SYMBOL_ALIASES = sorted(
     reverse=True,
 )
 
+# Sector peer map: symbol → list of comparable peer symbols
+_SECTOR_PEERS: Dict[str, List[str]] = {
+    # Banks
+    "HDFCBANK":    ["ICICIBANK", "KOTAKBANK", "AXISBANK", "SBIN"],
+    "ICICIBANK":   ["HDFCBANK", "KOTAKBANK", "AXISBANK", "SBIN"],
+    "KOTAKBANK":   ["HDFCBANK", "ICICIBANK", "AXISBANK"],
+    "AXISBANK":    ["HDFCBANK", "ICICIBANK", "KOTAKBANK"],
+    "SBIN":        ["HDFCBANK", "ICICIBANK", "PNB", "BANKBARODA"],
+    "INDUSINDBK":  ["HDFCBANK", "ICICIBANK", "AXISBANK"],
+    "PNB":         ["SBIN", "BANKBARODA", "CANARABANK"],
+    "BANKBARODA":  ["SBIN", "PNB", "CANARABANK"],
+    # IT
+    "TCS":         ["INFY", "WIPRO", "HCLTECH", "TECHM"],
+    "INFY":        ["TCS", "WIPRO", "HCLTECH", "TECHM"],
+    "WIPRO":       ["TCS", "INFY", "HCLTECH", "TECHM"],
+    "HCLTECH":     ["TCS", "INFY", "WIPRO", "TECHM"],
+    "TECHM":       ["TCS", "INFY", "WIPRO", "HCLTECH"],
+    "LTIM":        ["TCS", "INFY", "WIPRO", "MPHASIS"],
+    "MPHASIS":     ["TCS", "INFY", "LTIM", "COFORGE"],
+    "COFORGE":     ["MPHASIS", "LTIM", "INFY"],
+    # Energy / Oil
+    "RELIANCE":    ["ONGC", "BPCL", "IOC"],
+    "ONGC":        ["RELIANCE", "BPCL", "IOC"],
+    "BPCL":        ["RELIANCE", "ONGC", "IOC"],
+    "IOC":         ["RELIANCE", "ONGC", "BPCL"],
+    "ADANIGREEN":  ["NTPC", "TATAPOWER", "POWERGRID"],
+    "NTPC":        ["POWERGRID", "ADANIGREEN", "TATAPOWER"],
+    "TATAPOWER":   ["NTPC", "ADANIGREEN", "POWERGRID"],
+    "POWERGRID":   ["NTPC", "TATAPOWER", "ADANIGREEN"],
+    # Auto
+    "TATAMOTORS":  ["MARUTI", "BAJAJ-AUTO", "HEROMOTOCO", "EICHERMOT"],
+    "MARUTI":      ["TATAMOTORS", "BAJAJ-AUTO", "HEROMOTOCO"],
+    "BAJAJ-AUTO":  ["MARUTI", "TATAMOTORS", "HEROMOTOCO", "EICHERMOT"],
+    "HEROMOTOCO":  ["BAJAJ-AUTO", "MARUTI", "EICHERMOT"],
+    "EICHERMOT":   ["BAJAJ-AUTO", "HEROMOTOCO", "TVSMOTOR"],
+    "TVSMOTOR":    ["BAJAJ-AUTO", "HEROMOTOCO", "EICHERMOT"],
+    "ASHOKLEY":    ["TATAMOTORS", "MARUTI", "BAJAJ-AUTO"],
+    # Pharma
+    "SUNPHARMA":   ["DRREDDY", "CIPLA", "LUPIN", "DIVISLAB"],
+    "DRREDDY":     ["SUNPHARMA", "CIPLA", "LUPIN"],
+    "CIPLA":       ["SUNPHARMA", "DRREDDY", "LUPIN"],
+    "LUPIN":       ["SUNPHARMA", "DRREDDY", "CIPLA"],
+    "DIVISLAB":    ["SUNPHARMA", "DRREDDY", "CIPLA"],
+    "AUROPHARMA":  ["SUNPHARMA", "CIPLA", "LUPIN"],
+    "BIOCON":      ["SUNPHARMA", "DRREDDY", "CIPLA"],
+    # FMCG
+    "HINDUNILVR":  ["ITC", "NESTLEIND", "BRITANNIA", "DABUR"],
+    "ITC":         ["HINDUNILVR", "BRITANNIA", "DABUR"],
+    "NESTLEIND":   ["HINDUNILVR", "BRITANNIA", "DABUR"],
+    "BRITANNIA":   ["HINDUNILVR", "ITC", "NESTLEIND"],
+    "DABUR":       ["HINDUNILVR", "ITC", "NESTLEIND"],
+    "MARICO":      ["HINDUNILVR", "DABUR", "COLPAL"],
+    "COLPAL":      ["HINDUNILVR", "MARICO", "DABUR"],
+    # Metals
+    "TATASTEEL":   ["JSWSTEEL", "HINDALCO", "VEDL", "SAIL"],
+    "JSWSTEEL":    ["TATASTEEL", "HINDALCO", "SAIL"],
+    "HINDALCO":    ["TATASTEEL", "JSWSTEEL", "VEDL", "NATIONALUM"],
+    "VEDL":        ["HINDALCO", "TATASTEEL", "JSWSTEEL"],
+    "SAIL":        ["TATASTEEL", "JSWSTEEL"],
+    # Infra / Conglomerates
+    "LT":          ["ADANIENT", "ADANIPORTS", "IRCON"],
+    "ADANIENT":    ["LT", "ADANIPORTS", "NTPC"],
+    "ADANIPORTS":  ["LT", "ADANIENT"],
+    # Real Estate
+    "DLF":         ["GODREJPROP", "OBEROIRLTY", "PRESTIGE"],
+    "GODREJPROP":  ["DLF", "OBEROIRLTY", "PRESTIGE"],
+    "OBEROIRLTY":  ["DLF", "GODREJPROP", "PRESTIGE"],
+    # Defence
+    "HAL":         ["BEL", "BDL", "MAZAGON"],
+    "BEL":         ["HAL", "BDL", "DATAPATTNS"],
+}
+
+
+def _build_stock_suggestions(symbol: str, exclude: str = "") -> List[str]:
+    """
+    Build diverse follow-up prompt suggestions for a given stock.
+    `exclude` can be 'analysis','prediction','buy_sell','compare' to avoid
+    repeating the type the user just asked about.
+    """
+    candidates: List[str] = []
+
+    if exclude != "buy_sell":
+        candidates.append(f"Should I buy {symbol}?")
+    if exclude != "prediction":
+        candidates.append(f"Predict {symbol} price")
+    if exclude != "analysis":
+        candidates.append(f"Analyze {symbol}")
+    if exclude != "overvaluation":
+        candidates.append(f"Is {symbol} overvalued?")
+        candidates.append(f"What is fair value for {symbol}?")
+
+    peers = _SECTOR_PEERS.get(symbol, [])
+    if peers:
+        candidates.append(f"Compare {symbol} with {peers[0]}")
+        if len(peers) > 1 and len(candidates) < 6:
+            candidates.append(f"Compare {symbol} and {peers[1]}")
+
+    if not peers:
+        candidates.append(f"Technical analysis of {symbol}")
+
+    candidates.append(f"Support and resistance for {symbol}")
+    candidates.append(f"What are risks in {symbol} right now?")
+    candidates.append(f"Should I wait for a dip in {symbol}?")
+
+    deduped: List[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        normalized = candidate.lower().strip()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(candidate)
+
+    return deduped[:8]
+
 
 def _build_help_response() -> Dict:
     return {
@@ -664,18 +1062,23 @@ def _build_help_response() -> Dict:
                   "• \"Compare INFY and TCS\"\n"
                   "• \"Best bank stocks\"\n"
                   "• \"Analyze SBIN\"\n"
-                  "• \"Is HDFCBANK overvalued?\"\n\n"
+                  "• \"Is HDFCBANK overvalued?\"\n"
+                  "• \"Technical analysis of WIPRO\"\n"
+                  "• \"Top pharma stocks\"\n\n"
                   "I cover 363+ Indian stocks with live data!",
         "suggestions": [
             "Should I buy RELIANCE?",
             "Predict TCS price",
-            "Best pharma stocks",
             "Compare INFY and TCS",
-            "Analyze HDFCBANK",
+            "Best bank stocks",
+            "Is HDFCBANK overvalued?",
+            "Top pharma stocks",
+            "Analyze SBIN",
+            "Compare TATAMOTORS with MARUTI",
         ],
     }
 
-def ai_assistant(query: str) -> Dict:
+def ai_assistant(query: str, db=None) -> Dict:
     """
     Process natural language queries about stocks.
     Examples:
@@ -694,6 +1097,36 @@ def ai_assistant(query: str) -> Dict:
     # Extract symbol(s) from query
     symbols = _extract_symbols(user_query)
 
+    valuation_keywords = [
+        "overvalued",
+        "undervalued",
+        "overpriced",
+        "underpriced",
+        "expensive",
+        "cheap",
+        "fair value",
+        "intrinsic value",
+        "valuation",
+    ]
+
+    screening_keywords = [
+        "best",
+        "top",
+        "undervalued",
+        "overvalued",
+        "cheap",
+        "value",
+        "screen",
+        "list",
+    ]
+
+    recommendation_keywords = [
+        "recommend",
+        "suggest",
+        "portfolio",
+        "watchlist",
+    ]
+
     # Route to appropriate handler
     if any(w in query_lower for w in ["predict", "forecast", "future", "target", "price prediction"]):
         return _handle_prediction_query(symbols, user_query)
@@ -701,23 +1134,27 @@ def ai_assistant(query: str) -> Dict:
     elif any(w in query_lower for w in ["compare", "vs", "versus", "better"]):
         return _handle_compare_query(symbols, user_query)
 
+    elif any(w in query_lower for w in valuation_keywords):
+        if symbols:
+            return _handle_valuation_query(symbols, user_query)
+        return _handle_screening_query(query_lower, symbols)
+
     elif any(w in query_lower for w in ["buy", "sell", "should i", "invest", "good time"]):
         return _handle_buy_sell_query(symbols, user_query)
 
-    elif any(w in query_lower for w in ["best", "top", "undervalued", "overvalued", "cheap", "value", "recommend", "suggest", "portfolio", "watchlist"]):
+    elif any(w in query_lower for w in recommendation_keywords):
+        if symbols:
+            return _handle_buy_sell_query(symbols, user_query)
         # Personalized recommendation logic
-        import inspect
-        db = None
-        # Try to get DB/session from caller context
-        for frame in inspect.stack():
-            if 'db' in frame.frame.f_locals:
-                db = frame.frame.f_locals['db']
-                break
         user_portfolio = _get_user_portfolio(db)
         if user_portfolio:
             return _handle_personalized_recommendation(query_lower, symbols, user_portfolio)
         else:
             return _handle_screening_query(query_lower, symbols)
+
+    elif any(w in query_lower for w in screening_keywords):
+        return _handle_screening_query(query_lower, symbols)
+
     elif any(w in query_lower for w in ["analyze", "analysis", "detail", "about", "tell me"]):
         return _handle_analysis_query(symbols, user_query)
 
@@ -735,10 +1172,224 @@ def _get_user_portfolio(db=None):
         try:
             from .routes.trading import get_holdings
             holdings = get_holdings(db)
-            return [h.symbol for h in holdings]
+            return [h.symbol for h in holdings if getattr(h, "symbol", None)]
         except Exception:
             pass
-    return ["RELIANCE", "TCS", "HDFCBANK"]
+    return []
+
+
+def _safe_float(value, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
+def _safe_int(value, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def _extract_one_month_prediction(predictions: List[Dict]) -> Optional[Dict]:
+    for entry in predictions or []:
+        if _safe_int(entry.get("days", 0), 0) == 30:
+            return entry
+    return None
+
+
+def _get_news_payload(analysis: Dict) -> Dict:
+    news_payload = analysis.get("news") if isinstance(analysis.get("news"), dict) else {}
+    raw_headlines = news_payload.get("headlines") or analysis.get("recentNews") or []
+
+    headlines: List[Dict] = []
+    for item in raw_headlines[:5]:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title", "")).strip()
+        if not title:
+            continue
+        headlines.append({
+            "title": title,
+            "source": str(item.get("source", "")).strip(),
+            "publishedLabel": str(item.get("publishedLabel", "")).strip(),
+        })
+
+    sentiment = str(news_payload.get("sentiment") or _classify_headline_flow(headlines))
+    summary = str(news_payload.get("summary") or _summarize_headline_flow(headlines)).strip()
+    return {
+        "sentiment": sentiment,
+        "summary": summary,
+        "headlines": headlines,
+    }
+
+
+def _build_news_lines(analysis: Dict, heading: str = "Recent Headlines Considered", indent: str = "") -> List[str]:
+    news_payload = _get_news_payload(analysis)
+    headlines = news_payload.get("headlines", [])[:5]
+
+    lines = [f"{indent}**{heading}**"]
+    if not headlines:
+        lines.append(f"{indent}• Live headline context unavailable right now.")
+        return lines
+
+    lines.append(f"{indent}• Headline Read: {news_payload.get('summary', '')}")
+    for item in headlines:
+        meta_parts = [part for part in [item.get("source"), item.get("publishedLabel")] if part]
+        meta = f" ({' | '.join(meta_parts)})" if meta_parts else ""
+        lines.append(f"{indent}• {item.get('title', '')}{meta}")
+    return lines
+
+
+def _build_analysis_answer(symbol: str, analysis: Dict) -> str:
+    name = analysis.get("name") or symbol
+    price = _safe_float(analysis.get("currentPrice"), 0.0)
+    score = _safe_int(analysis.get("score"), 0)
+    signal = str(analysis.get("signal", "HOLD")).upper()
+    technical = analysis.get("technical", {}) or {}
+    moving_averages = technical.get("movingAverages", {}) or {}
+    trend = str(moving_averages.get("trend", "neutral")).replace("_", " ")
+    rsi = _safe_float(technical.get("rsi"), 0.0)
+    macd = technical.get("macd", {}) or {}
+    macd_trend = str(macd.get("trend", "neutral"))
+
+    fundamental = analysis.get("fundamental", {}) or {}
+    pe = _safe_float(fundamental.get("pe"), 0.0)
+    roe = _safe_float(fundamental.get("roe"), 0.0)
+    debt = _safe_float(fundamental.get("debtToEquity"), 0.0)
+    news_block = "\n".join(_build_news_lines(analysis))
+
+    month_pred = _extract_one_month_prediction(analysis.get("predictions", []) or [])
+    outlook = "No 1-month model outlook available"
+    if month_pred:
+        outlook = (
+            f"1-month model outlook: ₹{_safe_float(month_pred.get('predictedPrice'), 0.0):.2f} "
+            f"({_safe_float(month_pred.get('changePercent'), 0.0):+.1f}%)"
+        )
+
+    return (
+        f"🔎 **Detailed Analysis: {name} ({symbol})**\n"
+        f"Price: ₹{price:.2f} | Signal: **{signal}** | Score: **{score}/100**\n\n"
+        f"**Technical Pulse**\n"
+        f"• RSI: {rsi:.1f}\n"
+        f"• Trend: {trend}\n"
+        f"• MACD Bias: {macd_trend}\n\n"
+        f"**Fundamental Snapshot**\n"
+        f"• P/E: {pe:.1f}\n"
+        f"• ROE: {roe:.1f}%\n"
+        f"• Debt/Equity: {debt:.1f}\n\n"
+        f"**AI Outlook**\n"
+        f"• {outlook}\n\n"
+        f"{news_block}\n\n"
+        f"{analysis.get('summary', '')}"
+    )
+
+
+def _build_recommendation_answer(symbol: str, analysis: Dict) -> str:
+    name = analysis.get("name") or symbol
+    price = _safe_float(analysis.get("currentPrice"), 0.0)
+    score = _safe_int(analysis.get("score"), 0)
+    signal = str(analysis.get("signal", "HOLD")).upper()
+
+    technical = analysis.get("technical", {}) or {}
+    rsi = _safe_float(technical.get("rsi"), 0.0)
+    moving_averages = technical.get("movingAverages", {}) or {}
+    trend = str(moving_averages.get("trend", "neutral")).replace("_", " ")
+    news_payload = _get_news_payload(analysis)
+    news_sentiment = str(news_payload.get("sentiment", "mixed"))
+    news_block = "\n".join(_build_news_lines(analysis))
+
+    month_pred = _extract_one_month_prediction(analysis.get("predictions", []) or [])
+    month_change = _safe_float((month_pred or {}).get("changePercent"), 0.0)
+
+    if signal in {"STRONG_BUY", "BUY"} or score >= 70:
+        stance = "BUY on staggered entries"
+    elif signal in {"STRONG_SELL", "SELL"} or score <= 40:
+        stance = "Avoid fresh entries / reduce exposure"
+    else:
+        stance = "HOLD and wait for stronger confirmation"
+
+    if news_sentiment == "negative" and stance.startswith("BUY"):
+        stance = "BUY only after headline risk settles"
+    elif news_sentiment == "positive" and stance.startswith("HOLD"):
+        stance = "HOLD, but headline flow is improving"
+
+    risk_notes = ["High momentum risk (overbought)" if rsi >= 70 else "No major momentum excess"]
+    if news_sentiment == "negative":
+        risk_notes.append("Recent headlines add near-term caution")
+    elif news_sentiment == "positive":
+        risk_notes.append("Recent headlines support sentiment")
+    else:
+        risk_notes.append("Recent headlines are mixed")
+    risk_flag = " | ".join(risk_notes)
+
+    action_note = "Wait for headline volatility to cool before sizing up aggressively."
+    if news_sentiment != "negative":
+        action_note = "Position-size gradually and use stop-loss discipline."
+
+    return (
+        f"🧭 **Trade Decision: {name} ({symbol})**\n"
+        f"Current Price: ₹{price:.2f}\n"
+        f"Decision Bias: **{stance}**\n\n"
+        f"**Decision Inputs**\n"
+        f"• AI Signal: {signal}\n"
+        f"• Score: {score}/100\n"
+        f"• Trend: {trend}\n"
+        f"• 1-Month Model Move: {month_change:+.1f}%\n"
+        f"• Risk Check: {risk_flag}\n\n"
+        f"Actionable note: {action_note}\n\n"
+        f"{news_block}"
+    )
+
+
+def _build_valuation_answer(symbol: str, analysis: Dict, query: str) -> str:
+    name = analysis.get("name") or symbol
+    price = _safe_float(analysis.get("currentPrice"), 0.0)
+    score = _safe_int(analysis.get("score"), 0)
+    signal = str(analysis.get("signal", "HOLD")).upper()
+    pe = _safe_float((analysis.get("fundamental", {}) or {}).get("pe"), 0.0)
+    news_payload = _get_news_payload(analysis)
+    news_sentiment = str(news_payload.get("sentiment", "mixed"))
+    news_block = "\n".join(_build_news_lines(analysis))
+
+    if pe <= 0:
+        valuation_read = "valuation data is incomplete"
+    elif pe >= 45 or score <= 45:
+        valuation_read = "appears expensive vs typical large-cap benchmarks"
+    elif pe <= 18 and score >= 60:
+        valuation_read = "looks relatively attractive on valuation"
+    else:
+        valuation_read = "looks roughly fairly valued"
+
+    query_lower = query.lower().strip()
+    asked_side = ""
+    if "overvalued" in query_lower or "expensive" in query_lower or "overpriced" in query_lower:
+        asked_side = "overvalued"
+    elif "undervalued" in query_lower or "cheap" in query_lower or "underpriced" in query_lower:
+        asked_side = "undervalued"
+
+    alignment_note = ""
+    if asked_side == "overvalued" and "expensive" in valuation_read:
+        alignment_note = "This aligns with your overvaluation check."
+    elif asked_side == "undervalued" and "attractive" in valuation_read:
+        alignment_note = "This aligns with your undervaluation check."
+    elif asked_side:
+        alignment_note = "The current data does not strongly support that exact valuation bias."
+
+    if news_sentiment == "negative" and "attractive" in valuation_read:
+        valuation_read = f"{valuation_read}, but recent headlines add caution"
+    elif news_sentiment == "positive" and "expensive" in valuation_read:
+        valuation_read = f"{valuation_read}, though recent headlines are more supportive than the pure multiple suggests"
+
+    return (
+        f"💰 **Valuation Check: {name} ({symbol})**\n"
+        f"Price: ₹{price:.2f} | P/E: {pe:.1f} | Score: {score}/100 | Signal: {signal}\n\n"
+        f"Read: **{valuation_read}**\n"
+        f"{alignment_note}\n\n"
+        f"{news_block}\n\n"
+        f"Practical next step: validate growth quality, margin trend, and peer-relative multiples before entry."
+    ).strip()
 
 
 def _handle_personalized_recommendation(query, symbols, portfolio):
@@ -818,7 +1469,9 @@ def _handle_prediction_query(symbols: List[str], query: str) -> Dict:
     if "error" in pred and not pred.get("predictions"):
         return {"type": "error", "answer": f"Could not generate prediction for {symbol}: {pred['error']}"}
 
-    name = INDIAN_STOCKS.get(symbol, (None, symbol))[1]
+    name = analysis.get("name") if isinstance(analysis, dict) else None
+    if not name:
+        name = INDIAN_STOCKS.get(symbol, (None, symbol))[1]
     preds = pred.get("predictions", [])
 
     answer_parts = [f"📊 **AI Price Prediction for {name} ({symbol})**\n"]
@@ -834,6 +1487,8 @@ def _handle_prediction_query(symbols: List[str], query: str) -> Dict:
 
     answer_parts.append(f"\nSignal: **{pred.get('signal', 'N/A')}**")
     answer_parts.append(f"Model Accuracy: {pred.get('modelAccuracy', 0)}%")
+    answer_parts.append("")
+    answer_parts.extend(_build_news_lines(analysis, heading="Recent Headlines Considered"))
     answer_parts.append(f"\n⚠️ {pred.get('disclaimer', '')}")
 
     return {
@@ -841,11 +1496,7 @@ def _handle_prediction_query(symbols: List[str], query: str) -> Dict:
         "symbol": symbol,
         "answer": "\n".join(answer_parts),
         "data": pred,
-        "suggestions": [
-            f"Should I buy {symbol}?",
-            f"Analyze {symbol}",
-            f"Compare {symbol} with peers",
-        ],
+        "suggestions": _build_stock_suggestions(symbol, exclude="prediction"),
     }
 
 
@@ -876,6 +1527,7 @@ def _handle_compare_query(symbols: List[str], query: str) -> Dict:
         answer_parts.append(f"  P/E: {pe} | RSI: {a.get('technical', {}).get('rsi', 0)}")
         if month_pred:
             answer_parts.append(f"  1-Month Prediction: ₹{month_pred['predictedPrice']} ({month_pred['changePercent']:+.1f}%)")
+        answer_parts.extend(_build_news_lines(a, heading="Latest Headlines Considered", indent="  "))
 
     # Winner
     valid = {s: a for s, a in analyses.items() if "error" not in a}
@@ -883,11 +1535,21 @@ def _handle_compare_query(symbols: List[str], query: str) -> Dict:
         winner = max(valid, key=lambda s: valid[s].get("score", 0))
         answer_parts.append(f"\n🏆 **Winner: {winner}** (Score: {valid[winner].get('score', 0)}/100)")
 
+    follow_ups: List[str] = []
+    for s in symbols[:2]:
+        follow_ups.append(f"Should I buy {s}?")
+        follow_ups.append(f"Predict {s} price")
+    if len(symbols) >= 2:
+        peers_a = _SECTOR_PEERS.get(symbols[0], [])
+        for p in peers_a:
+            if p not in symbols:
+                follow_ups.append(f"Compare {symbols[0]} with {p}")
+                break
     return {
         "type": "comparison",
         "answer": "\n".join(answer_parts),
         "data": analyses,
-        "suggestions": [f"Predict {s} price" for s in symbols[:2]],
+        "suggestions": follow_ups[:5],
     }
 
 
@@ -905,14 +1567,11 @@ def _handle_buy_sell_query(symbols: List[str], query: str) -> Dict:
     return {
         "type": "recommendation",
         "symbol": symbol,
-        "answer": analysis.get("summary", "No analysis available."),
+        "answer": _build_recommendation_answer(symbol, analysis),
         "score": analysis.get("score", 0),
         "signal": analysis.get("signal", "HOLD"),
         "data": analysis,
-        "suggestions": [
-            f"Predict {symbol} price",
-            f"Compare {symbol} with peers",
-        ],
+        "suggestions": _build_stock_suggestions(symbol, exclude="buy_sell"),
     }
 
 
@@ -930,14 +1589,31 @@ def _handle_analysis_query(symbols: List[str], query: str) -> Dict:
     return {
         "type": "analysis",
         "symbol": symbol,
-        "answer": analysis.get("summary", "No analysis available."),
+        "answer": _build_analysis_answer(symbol, analysis),
         "score": analysis.get("score", 0),
         "signal": analysis.get("signal", "HOLD"),
         "data": analysis,
-        "suggestions": [
-            f"Predict {symbol} price",
-            f"Should I buy {symbol}?",
-        ],
+        "suggestions": _build_stock_suggestions(symbol, exclude="analysis"),
+    }
+
+
+def _handle_valuation_query(symbols: List[str], query: str) -> Dict:
+    if not symbols:
+        return _handle_screening_query(query.lower(), symbols)
+
+    symbol = symbols[0]
+    analysis = analyze_stock(symbol)
+    if "error" in analysis:
+        return {"type": "error", "answer": f"Could not analyze {symbol}: {analysis['error']}"}
+
+    return {
+        "type": "analysis",
+        "symbol": symbol,
+        "answer": _build_valuation_answer(symbol, analysis, query),
+        "score": analysis.get("score", 0),
+        "signal": analysis.get("signal", "HOLD"),
+        "data": analysis,
+        "suggestions": _build_stock_suggestions(symbol, exclude="overvaluation"),
     }
 
 
@@ -995,9 +1671,16 @@ def _handle_screening_query(query_lower: str, symbols: List[str]) -> Dict:
             f"₹{r['price']:.2f} ({r['pctChange']:+.2f}%)"
         )
 
+    screen_suggestions: List[str] = []
+    for r in results[:3]:
+        screen_suggestions.append(f"Analyze {r['symbol']}")
+    if len(results) >= 2:
+        screen_suggestions.append(f"Compare {results[0]['symbol']} and {results[1]['symbol']}")
+    if not screen_suggestions:
+        screen_suggestions = ["Analyze RELIANCE", "Best bank stocks"]
     return {
         "type": "screening",
         "answer": "\n".join(answer_parts),
         "stocks": results,
-        "suggestions": [f"Analyze {results[0]['symbol']}" if results else "Analyze RELIANCE"],
+        "suggestions": screen_suggestions[:5],
     }

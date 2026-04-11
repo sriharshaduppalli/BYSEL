@@ -16,14 +16,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextField as M3OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldColors
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +36,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -67,6 +71,107 @@ private fun ActionBanner(viewModel: TradingViewModel) {
             Text(msg.orEmpty(), color = LocalAppTheme.current.text, modifier = Modifier.padding(12.dp))
         }
         LaunchedEffect(msg) { viewModel.clearProductActionMessage() }
+    }
+}
+
+@Composable
+private fun investmentTextFieldColors(): TextFieldColors = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = LocalAppTheme.current.text,
+    unfocusedTextColor = LocalAppTheme.current.text,
+    disabledTextColor = LocalAppTheme.current.textSecondary,
+    focusedLabelColor = LocalAppTheme.current.primary,
+    unfocusedLabelColor = LocalAppTheme.current.textSecondary,
+    disabledLabelColor = LocalAppTheme.current.textSecondary,
+    focusedPlaceholderColor = LocalAppTheme.current.textSecondary,
+    unfocusedPlaceholderColor = LocalAppTheme.current.textSecondary,
+    focusedBorderColor = LocalAppTheme.current.primary,
+    unfocusedBorderColor = LocalAppTheme.current.textSecondary.copy(alpha = 0.6f),
+    disabledBorderColor = LocalAppTheme.current.textSecondary.copy(alpha = 0.3f),
+    cursorColor = LocalAppTheme.current.primary,
+    focusedContainerColor = LocalAppTheme.current.card,
+    unfocusedContainerColor = LocalAppTheme.current.card,
+    disabledContainerColor = LocalAppTheme.current.card,
+)
+
+@Composable
+private fun OutlinedTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: @Composable (() -> Unit)? = null,
+    placeholder: @Composable (() -> Unit)? = null,
+    textStyle: TextStyle = TextStyle(color = LocalAppTheme.current.text),
+    colors: TextFieldColors = investmentTextFieldColors(),
+    singleLine: Boolean = false,
+) {
+    M3OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        label = label,
+        placeholder = placeholder,
+        textStyle = textStyle,
+        colors = colors,
+        singleLine = singleLine,
+    )
+}
+
+private fun formatInvestmentCurrency(value: Double): String {
+    return "₹${String.format("%,.2f", value)}"
+}
+
+@Composable
+private fun PreTradeEstimateCard(estimate: PreTradeEstimateResponse) {
+    Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Server Pre-Trade Estimate", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+            Text(
+                "${estimate.symbol} ${estimate.side} • ${estimate.orderType}",
+                color = LocalAppTheme.current.text,
+                fontSize = 13.sp,
+            )
+            Text(
+                "Live ${formatInvestmentCurrency(estimate.livePrice)} • Exec ${formatInvestmentCurrency(estimate.executionPrice)}",
+                color = LocalAppTheme.current.textSecondary,
+                fontSize = 12.sp,
+            )
+            Text(
+                "Trade ${formatInvestmentCurrency(estimate.tradeValue)} • Charges ${formatInvestmentCurrency(estimate.charges.totalCharges)}",
+                color = LocalAppTheme.current.textSecondary,
+                fontSize = 12.sp,
+            )
+            Text(
+                "${if (estimate.side == "BUY") "Debit" else "Credit"} ${formatInvestmentCurrency(estimate.netAmount)} • Impact ${estimate.impactTag}",
+                color = LocalAppTheme.current.textSecondary,
+                fontSize = 12.sp,
+            )
+            if (estimate.side == "BUY") {
+                Text(
+                    "Wallet utilization ${String.format("%.1f", estimate.walletUtilizationPct)}% • ${if (estimate.canAfford) "Affordable" else "Insufficient funds"}",
+                    color = if (estimate.canAfford) LocalAppTheme.current.textSecondary else LocalAppTheme.current.negative,
+                    fontSize = 12.sp,
+                )
+            }
+            estimate.warnings.take(3).forEach { warning ->
+                Text("• $warning", color = LocalAppTheme.current.negative, fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PreTradeSignalCard(title: String, signal: CopilotSignal) {
+    Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+            Text("${signal.verdict} • ${signal.confidence}% confidence", color = LocalAppTheme.current.text)
+            if (signal.flags.isNotEmpty()) {
+                Text("Flags: ${signal.flags.joinToString(", ")}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+            }
+            signal.guidance.take(4).forEach {
+                Text("• $it", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+            }
+        }
     }
 }
 
@@ -441,6 +546,11 @@ fun IpoListingsScreen(viewModel: TradingViewModel) {
         ) {
             item { Text("IPO Listings", color = LocalAppTheme.current.text, fontSize = 24.sp, fontWeight = FontWeight.Bold) }
             item { ActionBanner(viewModel) }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { viewModel.loadIpoListings() }) { Text("Refresh IPOs") }
+                }
+            }
             items(ipos) { ipo ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
@@ -510,6 +620,12 @@ fun EtfScreen(viewModel: TradingViewModel) {
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item { Text("ETFs", color = LocalAppTheme.current.text, fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+            item { ActionBanner(viewModel) }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { viewModel.loadEtfs() }) { Text("Refresh ETFs") }
+                }
+            }
             items(etfs) { etf ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
@@ -621,6 +737,12 @@ fun MyIpoApplicationsScreen(viewModel: TradingViewModel) {
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item { Text("My IPO Applications", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold, fontSize = 24.sp) }
+        item { ActionBanner(viewModel) }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { viewModel.loadMyIpoApplications() }) { Text("Refresh Applications") }
+            }
+        }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("ALL", "PENDING", "ALLOTTED", "REJECTED").forEach { status ->
@@ -746,6 +868,7 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
     val triggerOrders by viewModel.triggerOrders.collectAsState()
     val triggerEvaluation by viewModel.triggerEvaluation.collectAsState()
     val basketOrders by viewModel.basketOrders.collectAsState()
+    val preTradeEstimate by viewModel.preTradeEstimate.collectAsState()
     val preTradeSignal by viewModel.copilotPreTradeSignal.collectAsState()
 
     var symbol by remember { mutableStateOf("RELIANCE") }
@@ -761,13 +884,20 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
     var basketLegsInput by remember { mutableStateOf("RELIANCE:1:BUY\nTCS:1:BUY") }
 
     LaunchedEffect(Unit) {
+        viewModel.clearPreTradeCopilotSignal()
         viewModel.refreshTriggerOrders()
         viewModel.refreshBasketOrders()
+    }
+
+    LaunchedEffect(symbol, quantityInput, side, orderType, validity, limitPriceInput, triggerPriceInput, tag) {
+        viewModel.clearPreTradeCopilotSignal()
     }
 
     val quantity = quantityInput.toIntOrNull() ?: 0
     val limitPrice = limitPriceInput.toDoubleOrNull()
     val triggerPrice = triggerPriceInput.toDoubleOrNull()
+    val effectiveSignal = preTradeEstimate?.signal ?: preTradeSignal
+    val copilotBlocksTrade = effectiveSignal?.verdict?.equals("BLOCK", ignoreCase = true) == true
 
     LazyColumn(
         modifier = Modifier
@@ -872,7 +1002,7 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = {
-                                viewModel.runPreTradeCopilot(
+                                viewModel.fetchPreTradeEstimate(
                                     AdvancedOrderRequest(
                                         symbol = symbol,
                                         qty = quantity,
@@ -887,7 +1017,7 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
                             },
                             enabled = quantity > 0 && symbol.isNotBlank(),
                         ) {
-                            Text("Pre-Trade Check")
+                            Text("Estimate + Check")
                         }
                         Button(
                             onClick = {
@@ -902,7 +1032,7 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
                                     tag = tag,
                                 )
                             },
-                            enabled = quantity > 0 && symbol.isNotBlank(),
+                            enabled = quantity > 0 && symbol.isNotBlank() && !copilotBlocksTrade,
                         ) {
                             Text("Place")
                         }
@@ -923,7 +1053,7 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
                                 )
                             }
                         },
-                        enabled = quantity > 0 && symbol.isNotBlank() && triggerPrice != null,
+                        enabled = quantity > 0 && symbol.isNotBlank() && triggerPrice != null && !copilotBlocksTrade,
                     ) {
                         Text("Queue Trigger Instead")
                     }
@@ -931,20 +1061,15 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
             }
         }
 
-        preTradeSignal?.let { signal ->
+        preTradeEstimate?.let { estimate ->
             item {
-                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Copilot Pre-Trade", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
-                        Text("Verdict: ${signal.verdict} • Confidence: ${signal.confidence}%", color = LocalAppTheme.current.text)
-                        if (signal.flags.isNotEmpty()) {
-                            Text("Flags: ${signal.flags.joinToString(", ")}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        }
-                        signal.guidance.take(3).forEach {
-                            Text("• $it", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        }
-                    }
-                }
+                PreTradeEstimateCard(estimate)
+            }
+        }
+
+        effectiveSignal?.let { signal ->
+            item {
+                PreTradeSignalCard("Copilot Pre-Trade", signal)
             }
         }
 
@@ -1404,9 +1529,13 @@ fun WealthOsScreen(viewModel: TradingViewModel) {
 @Composable
 fun CopilotCenterScreen(viewModel: TradingViewModel) {
     val loading by viewModel.copilotLoading.collectAsState()
+    val preTradeEstimate by viewModel.preTradeEstimate.collectAsState()
     val preTradeSignal by viewModel.copilotPreTradeSignal.collectAsState()
     val postTradeReview by viewModel.copilotPostTradeReview.collectAsState()
     val portfolioActions by viewModel.copilotPortfolioActions.collectAsState()
+    val orderTraceLookup by viewModel.orderTraceLookup.collectAsState()
+    val lastOrderTraceId by viewModel.lastOrderTraceId.collectAsState()
+    val clipboardManager = LocalClipboardManager.current
 
     var symbol by remember { mutableStateOf("RELIANCE") }
     var quantityInput by remember { mutableStateOf("1") }
@@ -1417,12 +1546,25 @@ fun CopilotCenterScreen(viewModel: TradingViewModel) {
     var triggerInput by remember { mutableStateOf("") }
     var orderIdInput by remember { mutableStateOf("") }
     var noteInput by remember { mutableStateOf("") }
+    var traceIdInput by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
+        viewModel.clearPreTradeCopilotSignal()
         viewModel.loadPortfolioCopilotActions()
     }
 
+    LaunchedEffect(symbol, quantityInput, side, orderType, validity, limitInput, triggerInput) {
+        viewModel.clearPreTradeCopilotSignal()
+    }
+
+    LaunchedEffect(lastOrderTraceId) {
+        if (traceIdInput.isBlank() && !lastOrderTraceId.isNullOrBlank()) {
+            traceIdInput = lastOrderTraceId.orEmpty()
+        }
+    }
+
     val quantity = quantityInput.toIntOrNull() ?: 0
+    val effectiveSignal = preTradeEstimate?.signal ?: preTradeSignal
 
     LazyColumn(
         modifier = Modifier
@@ -1478,7 +1620,7 @@ fun CopilotCenterScreen(viewModel: TradingViewModel) {
                     OutlinedTextField(value = triggerInput, onValueChange = { triggerInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Trigger Price (optional)") }, singleLine = true)
                     Button(
                         onClick = {
-                            viewModel.runPreTradeCopilot(
+                            viewModel.fetchPreTradeEstimate(
                                 AdvancedOrderRequest(
                                     symbol = symbol,
                                     qty = quantity,
@@ -1492,26 +1634,21 @@ fun CopilotCenterScreen(viewModel: TradingViewModel) {
                         },
                         enabled = symbol.isNotBlank() && quantity > 0,
                     ) {
-                        Text("Run Pre-Trade Copilot")
+                        Text("Run Estimate + Copilot")
                     }
                 }
             }
         }
 
-        preTradeSignal?.let { signal ->
+        preTradeEstimate?.let { estimate ->
             item {
-                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Pre-Trade Verdict", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
-                        Text("${signal.verdict} • ${signal.confidence}% confidence", color = LocalAppTheme.current.text)
-                        if (signal.flags.isNotEmpty()) {
-                            Text("Flags: ${signal.flags.joinToString(", ")}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        }
-                        signal.guidance.take(4).forEach {
-                            Text("• $it", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        }
-                    }
-                }
+                PreTradeEstimateCard(estimate)
+            }
+        }
+
+        effectiveSignal?.let { signal ->
+            item {
+                PreTradeSignalCard("Pre-Trade Verdict", signal)
             }
         }
 
@@ -1529,6 +1666,86 @@ fun CopilotCenterScreen(viewModel: TradingViewModel) {
                         enabled = (orderIdInput.toIntOrNull() ?: 0) > 0,
                     ) {
                         Text("Run Post-Trade Review")
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Trace Support Lookup", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Paste a trace ID from an order error to fetch server-side execution details instantly.",
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 12.sp,
+                    )
+                    OutlinedTextField(
+                        value = traceIdInput,
+                        onValueChange = { traceIdInput = it.trim() },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Trace ID") },
+                        singleLine = true,
+                    )
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Button(
+                            onClick = { viewModel.lookupOrderByTrace(traceIdInput) },
+                            enabled = traceIdInput.isNotBlank(),
+                        ) {
+                            Text("Lookup")
+                        }
+                        TextButton(onClick = {
+                            traceIdInput = ""
+                            viewModel.clearOrderTraceLookup()
+                        }) {
+                            Text("Clear")
+                        }
+                        if (!lastOrderTraceId.isNullOrBlank()) {
+                            TextButton(onClick = { traceIdInput = lastOrderTraceId.orEmpty() }) {
+                                Text("Use Last Failure Trace")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        orderTraceLookup?.let { order ->
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Trace Result", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                        Text(order.message, color = LocalAppTheme.current.text)
+                        Text("Trace: ${order.traceId}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        Text("Order ID: ${order.orderId} • Status: ${order.status}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        OrderTraceTimeline(status = order.status)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { clipboardManager.setText(AnnotatedString(order.traceId)) }) {
+                                Text("Copy Trace ID")
+                            }
+                            TextButton(onClick = { traceIdInput = order.traceId }) {
+                                Text("Use This Trace")
+                            }
+                        }
+                        Text(
+                            "${order.symbol} ${order.side} ${order.quantity} • ${order.orderType}/${order.validity}",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 12.sp,
+                        )
+                        Text(
+                            "Price ${formatInvestmentCurrency(order.executedPrice)} • Total ${formatInvestmentCurrency(order.total)}",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 12.sp,
+                        )
+                        if (!order.idempotencyKey.isNullOrBlank()) {
+                            Text("Idempotency: ${order.idempotencyKey}", color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
+                        }
+                        if (order.createdAt.isNotBlank()) {
+                            Text("Created: ${order.createdAt}", color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
+                        }
                     }
                 }
             }
@@ -1565,6 +1782,109 @@ fun CopilotCenterScreen(viewModel: TradingViewModel) {
                             Text("• $it", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+private data class OrderTimelineStep(
+    val label: String,
+    val reached: Boolean,
+    val isFailure: Boolean = false,
+)
+
+private fun normalizeStatusLabel(status: String): String {
+    val trimmed = status.trim()
+    if (trimmed.isBlank()) {
+        return "Final"
+    }
+    return trimmed
+        .replace('_', ' ')
+        .lowercase()
+        .split(' ')
+        .filter { it.isNotBlank() }
+        .joinToString(" ") { token ->
+            token.replaceFirstChar { first ->
+                if (first.isLowerCase()) first.titlecase() else first.toString()
+            }
+        }
+}
+
+private fun buildOrderTimelineSteps(status: String): List<OrderTimelineStep> {
+    val normalized = status.trim().uppercase()
+    val failureStatuses = setOf("FAILED", "REJECTED", "ERROR", "CANCELLED", "CANCELED")
+    val successStatuses = setOf("EXECUTED", "FILLED", "COMPLETED", "SUCCESS", "TRIGGER_EXECUTED")
+    val exchangeStatuses = setOf("OPEN", "PARTIAL", "PARTIALLY_FILLED")
+    val acceptedStatuses = setOf("PENDING", "QUEUED", "TRIGGER_PENDING", "DRAFT")
+
+    val acceptedReached = normalized.isNotBlank()
+    val riskReached = when {
+        normalized in acceptedStatuses -> normalized != "DRAFT"
+        normalized in exchangeStatuses || normalized in successStatuses || normalized in failureStatuses -> true
+        else -> acceptedReached
+    }
+    val exchangeReached = normalized in exchangeStatuses || normalized in successStatuses
+    val finalReached = normalized in successStatuses || normalized in failureStatuses
+    val finalFailure = normalized in failureStatuses
+
+    return listOf(
+        OrderTimelineStep("Accepted", acceptedReached),
+        OrderTimelineStep("Risk Check", riskReached),
+        OrderTimelineStep("Exchange", exchangeReached),
+        OrderTimelineStep(normalizeStatusLabel(status), finalReached, isFailure = finalFailure),
+    )
+}
+
+@Composable
+private fun OrderTraceTimeline(status: String) {
+    val steps = remember(status) { buildOrderTimelineSteps(status) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Execution Timeline", color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            steps.forEachIndexed { index, step ->
+                val nodeColor = when {
+                    step.isFailure -> LocalAppTheme.current.negative
+                    step.reached -> LocalAppTheme.current.primary
+                    else -> LocalAppTheme.current.textSecondary.copy(alpha = 0.35f)
+                }
+
+                Column(
+                    modifier = Modifier.width(86.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(10.dp)
+                            .height(10.dp)
+                            .background(nodeColor, CircleShape)
+                    )
+                    Text(
+                        step.label,
+                        color = if (step.reached || step.isFailure) LocalAppTheme.current.text else LocalAppTheme.current.textSecondary,
+                        fontSize = 10.sp,
+                        fontWeight = if (step.isFailure) FontWeight.SemiBold else FontWeight.Normal,
+                    )
+                }
+
+                if (index < steps.lastIndex) {
+                    val nextStep = steps[index + 1]
+                    val connectorActive = step.reached && (nextStep.reached || nextStep.isFailure)
+                    Box(
+                        modifier = Modifier
+                            .width(24.dp)
+                            .height(2.dp)
+                            .background(
+                                if (connectorActive) LocalAppTheme.current.primary else LocalAppTheme.current.textSecondary.copy(alpha = 0.25f)
+                            )
+                    )
                 }
             }
         }

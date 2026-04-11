@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -55,6 +56,7 @@ import kotlinx.coroutines.launch
 class MainActivity : FragmentActivity() {
     private var upiResultCallback: ((Boolean) -> Unit)? = null
     private lateinit var biometricAuthManager: BiometricAuthManager
+    private lateinit var tradingViewModel: TradingViewModel
     private var isAuthenticated = false
 
 
@@ -64,7 +66,7 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         // Install modern splash screen (Material You)
         val splashScreen = installSplashScreen()
-        
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         
         // Initialize biometric auth manager
@@ -88,7 +90,7 @@ class MainActivity : FragmentActivity() {
         val repository = TradingRepository(database)
         val factory = TradingViewModelFactory(repository)
         factory.initApplication(application)
-        val viewModel = ViewModelProvider(
+        tradingViewModel = ViewModelProvider(
             this,
             factory
         ).get(TradingViewModel::class.java)
@@ -171,12 +173,12 @@ class MainActivity : FragmentActivity() {
                 )
             } else {
                 BYSELApp(
-                    viewModel = viewModel,
+                    viewModel = tradingViewModel,
                     biometricAuthManager = biometricAuthManager,
                     initialTab = initialTab,
                     onUpiPay = { amount, upiPackageName ->
                         launchUpiPayment(amount, upiPackageName) { success ->
-                            if (success) viewModel.addFunds(amount)
+                            if (success) tradingViewModel.addFunds(amount)
                         }
                     },
                     onLogout = {
@@ -202,6 +204,13 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        if (::tradingViewModel.isInitialized && AuthSessionManager.hasSession()) {
+            tradingViewModel.onAppForegroundResume()
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         // Re-check authentication when app returns from background
@@ -212,6 +221,17 @@ class MainActivity : FragmentActivity() {
                 onCancel = { finish() }
             )
         }
+
+        if (::tradingViewModel.isInitialized && AuthSessionManager.hasSession()) {
+            tradingViewModel.onAppForegroundResume()
+        }
+    }
+
+    override fun onStop() {
+        if (::tradingViewModel.isInitialized) {
+            tradingViewModel.onAppBackgroundPause()
+        }
+        super.onStop()
     }
 
     private fun launchUpiPayment(amount: Double, upiPackage: String, onResult: (Boolean) -> Unit) {
@@ -492,6 +512,14 @@ fun BYSELApp(
                                     totalDragX = 0f
                                     handled = false
                                 },
+                                onDragEnd = {
+                                    totalDragX = 0f
+                                    handled = false
+                                },
+                                onDragCancel = {
+                                    totalDragX = 0f
+                                    handled = false
+                                },
                                 onHorizontalDrag = { change, dragAmount ->
                                     if (handled) {
                                         return@detectHorizontalDragGestures
@@ -501,17 +529,18 @@ fun BYSELApp(
                                     val canSwipeForwardFromMore = selectedTab == 5
                                     val startedFromLeftEdge = dragStartX <= edgeThresholdPx
                                     val startedFromRightEdge = dragStartX >= size.width - edgeThresholdPx
+                                    val triggerDistance = kotlin.math.max(swipeTriggerPx, size.width * 0.14f)
 
                                     totalDragX += dragAmount
 
-                                    if (canSwipeBack && startedFromLeftEdge && totalDragX > swipeTriggerPx) {
+                                    if (canSwipeBack && startedFromLeftEdge && totalDragX > triggerDistance) {
                                         handled = true
                                         change.consume()
                                         selectedTab = if (selectedTab == 9) previousTab else 5
                                     } else if (
                                         canSwipeForwardFromMore &&
                                         startedFromRightEdge &&
-                                        totalDragX < -swipeTriggerPx
+                                        totalDragX < -triggerDistance
                                     ) {
                                         handled = true
                                         change.consume()
@@ -553,7 +582,8 @@ fun BYSELApp(
                                         isLoading = aiLoading,
                                         onSendQuery = { query -> viewModel.askAi(query) },
                                         onSuggestionClick = { suggestion -> viewModel.askAi(suggestion) },
-                                        onClearChat = { viewModel.clearChatHistory() }
+                                        onClearChat = { viewModel.clearChatHistory() },
+                                        selectedSymbol = selectedQuote?.symbol
                                     )
                                     2 -> TradingScreen(
                                         isLoading = isLoading,
@@ -569,6 +599,11 @@ fun BYSELApp(
                                         },
                                         onAddFunds = { amount, upiProvider -> onUpiPay(amount, upiProvider) },
                                         onErrorDismiss = { viewModel.clearError() },
+                                        onTraceSupportLookup = { traceId ->
+                                            viewModel.seedTraceLookup(traceId)
+                                            viewModel.lookupOrderByTrace(traceId)
+                                            selectedTab = 19
+                                        },
                                         viewModel = viewModel
                                     )
                                     3 -> PortfolioScreen(
@@ -602,6 +637,7 @@ fun BYSELApp(
                             when (selectedTab) {
                                 5 -> MoreScreen(
                                     onSearchClick = { selectedTab = 6 },
+                                    onLiveQuotesClick = { selectedTab = 0 },
                                     onAlertsClick = { selectedTab = 7 },
                                     onSettingsClick = { selectedTab = 8 },
                                     onAchievementsClick = { selectedTab = 10 },

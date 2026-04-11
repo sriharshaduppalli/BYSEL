@@ -37,6 +37,16 @@ class TradingViewModel(
     private val repository: TradingRepository
 ) : AndroidViewModel(application) {
 
+    private companion object {
+        val TRACE_ID_PATTERN =
+            Regex("(?i)(?:trace(?:\\s*id)?|traceId)\\s*[:=]\\s*([A-Za-z0-9._-]+)")
+    }
+
+    // --- Stream Health ---
+    enum class StreamHealth { LIVE, RECONNECTING, OFFLINE }
+    private val _streamHealth = MutableStateFlow(StreamHealth.OFFLINE)
+    val streamHealth: StateFlow<StreamHealth> = _streamHealth.asStateFlow()
+
     // --- AI Trade Coach State ---
     private val _tradeCoachTip = MutableStateFlow<String?>(null)
     val tradeCoachTip: StateFlow<String?> = _tradeCoachTip.asStateFlow()
@@ -51,6 +61,8 @@ class TradingViewModel(
     // --- Core state flows ---
     private val _quotes = MutableStateFlow<List<Quote>>(emptyList())
     val quotes: StateFlow<List<Quote>> = _quotes.asStateFlow()
+    private val _lastQuoteUpdateAt = MutableStateFlow(0L)
+    val lastQuoteUpdateAt: StateFlow<Long> = _lastQuoteUpdateAt.asStateFlow()
 
     // Watchlist stored in SharedPreferences for quick cold-start access
     private val watchlistPrefs = getApplication<Application>()
@@ -75,6 +87,9 @@ class TradingViewModel(
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
+
+    private val _lastOrderTraceId = MutableStateFlow<String?>(null)
+    val lastOrderTraceId: StateFlow<String?> = _lastOrderTraceId.asStateFlow()
 
     private val _walletBalance = MutableStateFlow(0.0)
     val walletBalance: StateFlow<Double> = _walletBalance.asStateFlow()
@@ -184,11 +199,17 @@ class TradingViewModel(
     private val _copilotPreTradeSignal = MutableStateFlow<CopilotSignal?>(null)
     val copilotPreTradeSignal: StateFlow<CopilotSignal?> = _copilotPreTradeSignal.asStateFlow()
 
+    private val _preTradeEstimate = MutableStateFlow<PreTradeEstimateResponse?>(null)
+    val preTradeEstimate: StateFlow<PreTradeEstimateResponse?> = _preTradeEstimate.asStateFlow()
+
     private val _copilotPostTradeReview = MutableStateFlow<CopilotPostTradeResponse?>(null)
     val copilotPostTradeReview: StateFlow<CopilotPostTradeResponse?> = _copilotPostTradeReview.asStateFlow()
 
     private val _copilotPortfolioActions = MutableStateFlow<CopilotPortfolioActionsResponse?>(null)
     val copilotPortfolioActions: StateFlow<CopilotPortfolioActionsResponse?> = _copilotPortfolioActions.asStateFlow()
+
+    private val _orderTraceLookup = MutableStateFlow<OrderTraceLookupResponse?>(null)
+    val orderTraceLookup: StateFlow<OrderTraceLookupResponse?> = _orderTraceLookup.asStateFlow()
 
     private val _advancedLoading = MutableStateFlow(false)
     val advancedLoading: StateFlow<Boolean> = _advancedLoading.asStateFlow()
@@ -205,6 +226,10 @@ class TradingViewModel(
     private var autoRefreshJob: Job? = null
     private val AUTO_REFRESH_INTERVAL = 15_000L
     private val FAST_REFRESH_INTERVAL = 1_000L
+    private val FOREGROUND_WARMUP_DEBOUNCE = 3_000L
+    private val QUOTE_STALE_THRESHOLD = 20_000L
+    private var lastForegroundWarmupAt = 0L
+    private var lastQuotesRefreshAt = 0L
     private val defaultSymbols = listOf(
         "RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN",
         "ICICIBANK", "ITC", "LT", "KOTAKBANK", "HINDUNILVR",
@@ -217,6 +242,12 @@ class TradingViewModel(
             .map { it.trim().uppercase() }
             .filter { it.isNotBlank() }
             .distinct()
+    }
+
+    private fun markQuoteUpdate(nowMs: Long = System.currentTimeMillis()) {
+        lastQuotesRefreshAt = nowMs
+        _lastQuoteUpdateAt.value = nowMs
+        _streamHealth.value = StreamHealth.LIVE
     }
 
     // Paging state for quotes list
@@ -348,6 +379,7 @@ class TradingViewModel(
                             result.data
                         }
                         _isLoading.value = false
+                        markQuoteUpdate()
                         // Reset paging after success
                         _pagedQuotes.value = emptyList()
                         currentPage = 0
@@ -390,7 +422,10 @@ class TradingViewModel(
     fun loadAllQuotes() {
         viewModelScope.launch {
             repository.getAllQuotesFromApi().collectLatest { result ->
-                if (result is Result.Success) _quotes.value = result.data
+                if (result is Result.Success) {
+                    _quotes.value = result.data
+                    markQuoteUpdate()
+                }
             }
         }
     }
@@ -501,13 +536,26 @@ class TradingViewModel(
      * the market appears open (`marketStatus.isOpen == true`).
      */
     fun startFastRefresh(intervalMs: Long = FAST_REFRESH_INTERVAL, symbols: List<String>? = null) {
+        val effectiveIntervalMs = intervalMs.coerceAtLeast(250L)
         val symbolsToTrack = symbols?.map { it.trim().uppercase() }?.filter { it.isNotBlank() }?.distinct()
             ?: trackedSymbols()
         // avoid starting multiple jobs
         if (autoRefreshJob?.isActive == true) return
         // respect global enabled flag
         if (!_fastRefreshEnabled.value) return
+        _streamHealth.value = StreamHealth.RECONNECTING
         autoRefreshJob = viewModelScope.launch {
+            // Stale watchdog: if no update in 8 s while job is running, flag as RECONNECTING
+            launch {
+                while (isActive) {
+                    kotlinx.coroutines.delay(8_000L)
+                    val staleMs = System.currentTimeMillis() - _lastQuoteUpdateAt.value
+                    if (staleMs > 8_000L && _streamHealth.value == StreamHealth.LIVE) {
+                        _streamHealth.value = StreamHealth.RECONNECTING
+                    }
+                }
+            }
+            var lastStreamEmitAt = 0L
             try {
                 repository.streamLiveQuotes(symbolsToTrack).collectLatest { result ->
                     if (!_fastRefreshPlaying.value) return@collectLatest
@@ -518,7 +566,13 @@ class TradingViewModel(
 
                     when (result) {
                         is Result.Success -> {
+                            val now = System.currentTimeMillis()
+                            if (now - lastStreamEmitAt < effectiveIntervalMs) {
+                                return@collectLatest
+                            }
+                            lastStreamEmitAt = now
                             _quotes.value = result.data
+                            markQuoteUpdate(now)
                             evaluateAlerts(result.data)
                         }
                         is Result.Error -> _error.value = result.message
@@ -535,6 +589,35 @@ class TradingViewModel(
     fun stopFastRefresh() {
         autoRefreshJob?.cancel()
         autoRefreshJob = null
+        _streamHealth.value = StreamHealth.OFFLINE
+    }
+
+    fun onAppForegroundResume(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastForegroundWarmupAt < FOREGROUND_WARMUP_DEBOUNCE) {
+            return
+        }
+        lastForegroundWarmupAt = now
+
+        refreshMarketStatus()
+        refreshWallet()
+
+        val quotesAreStale = now - lastQuotesRefreshAt > QUOTE_STALE_THRESHOLD
+        if (force || _quotes.value.isEmpty() || quotesAreStale) {
+            refreshQuotes()
+        }
+
+        if (force || _holdings.value.isEmpty()) {
+            refreshHoldings()
+        }
+
+        if (_fastRefreshEnabled.value) {
+            startFastRefresh(symbols = trackedSymbols())
+        }
+    }
+
+    fun onAppBackgroundPause() {
+        stopFastRefresh()
     }
 
     fun setFastRefreshEnabled(enabled: Boolean) {
@@ -614,19 +697,61 @@ class TradingViewModel(
         }
     }
 
+    private fun buildOrderErrorMessage(response: OrderResponse): String {
+        val base = response.message?.trim().takeUnless { it.isNullOrBlank() }
+            ?: "Order could not be placed"
+
+        val action = when (response.errorCode?.trim()?.uppercase()) {
+            "INSUFFICIENT_FUNDS" -> "Add funds or reduce quantity."
+            "INSUFFICIENT_HOLDINGS" -> "Reduce sell quantity to available holdings."
+            "INVALID_SYMBOL" -> "Check symbol and try again."
+            "INVALID_QUANTITY" -> "Enter a quantity greater than zero."
+            "INVALID_SIDE" -> "Use BUY or SELL only."
+            "INVALID_IDEMPOTENCY_KEY" -> "Retry order once; avoid duplicate submissions."
+            "IDEMPOTENCY_KEY_REUSED" -> "Use a fresh order request to avoid key conflicts."
+            "MARKET_CLOSED" -> "Try again during market hours."
+            "PRICE_UNAVAILABLE" -> "Wait for live quote refresh and retry."
+            "TRIGGER_NOT_MET" -> "Use a limit/trigger setup closer to market price."
+            else -> null
+        }
+
+        val trace = response.traceId?.takeIf { it.isNotBlank() }?.let { "Trace: $it" }
+        return listOfNotNull(base, action, trace).joinToString("\n")
+    }
+
+    private fun extractTraceIdFromError(message: String?): String? {
+        if (message.isNullOrBlank()) {
+            return null
+        }
+        val match = TRACE_ID_PATTERN.find(message) ?: return null
+        return match.groupValues.getOrNull(1)
+            ?.trim()
+            ?.trimEnd('.', ',', ';', ')', ']')
+            ?.takeIf { it.isNotBlank() }
+    }
+
     // --- Orders / alerts / funds ---
     fun placeOrder(symbol: String, quantity: Int, side: String) {
         viewModelScope.launch {
             when (val r = repository.placeOrder(Order(symbol = symbol, qty = quantity, side = side))) {
                 is Result.Success -> {
-                    if (r.data.status == "error") _error.value = r.data.message else {
+                    if (r.data.status == "error") {
+                        val traceId = r.data.traceId?.trim()?.takeIf { it.isNotBlank() }
+                            ?: extractTraceIdFromError(r.data.message)
+                        _lastOrderTraceId.value = traceId
+                        _error.value = buildOrderErrorMessage(r.data)
+                    } else {
+                        _lastOrderTraceId.value = null
                         _error.value = null
                         refreshHoldings(); refreshWallet(); unlockAchievement("first_trade")
                         fetchTradeCoachTip(symbol, quantity, side)
                         loadPortfolioCopilotActions()
                     }
                 }
-                is Result.Error -> _error.value = r.message
+                is Result.Error -> {
+                    _lastOrderTraceId.value = extractTraceIdFromError(r.message)
+                    _error.value = r.message
+                }
                 else -> { }
             }
         }
@@ -666,14 +791,30 @@ class TradingViewModel(
             _advancedLoading.value = true
             _copilotLoading.value = true
             when (
-                val preTrade = repository.preTradeCopilot(
+                val preTrade = repository.getPreTradeEstimate(
                     order = request,
                     walletBalance = _walletBalance.value,
                     marketOpen = _marketStatus.value?.isOpen,
                 )
             ) {
-                is Result.Success -> _copilotPreTradeSignal.value = preTrade.data
-                is Result.Error -> _productActionMessage.value = "Copilot pre-check unavailable"
+                is Result.Success -> {
+                    _preTradeEstimate.value = preTrade.data
+                    _copilotPreTradeSignal.value = preTrade.data.signal
+                }
+                is Result.Error -> {
+                    _preTradeEstimate.value = null
+                    when (
+                        val fallback = repository.preTradeCopilot(
+                            order = request,
+                            walletBalance = _walletBalance.value,
+                            marketOpen = _marketStatus.value?.isOpen,
+                        )
+                    ) {
+                        is Result.Success -> _copilotPreTradeSignal.value = fallback.data
+                        is Result.Error -> _productActionMessage.value = "Copilot pre-check unavailable"
+                        else -> {}
+                    }
+                }
                 else -> {}
             }
             _copilotLoading.value = false
@@ -1036,6 +1177,40 @@ class TradingViewModel(
         }
     }
 
+    fun fetchPreTradeEstimate(order: AdvancedOrderRequest) {
+        viewModelScope.launch {
+            _copilotLoading.value = true
+            when (
+                val response = repository.getPreTradeEstimate(
+                    order = order,
+                    walletBalance = _walletBalance.value,
+                    marketOpen = _marketStatus.value?.isOpen,
+                )
+            ) {
+                is Result.Success -> {
+                    _preTradeEstimate.value = response.data
+                    _copilotPreTradeSignal.value = response.data.signal
+                    _error.value = null
+                }
+                is Result.Error -> {
+                    _preTradeEstimate.value = null
+                    when (
+                        val fallback = repository.preTradeCopilot(
+                            order = order,
+                            walletBalance = _walletBalance.value,
+                            marketOpen = _marketStatus.value?.isOpen,
+                        )
+                    ) {
+                        is Result.Success -> _copilotPreTradeSignal.value = fallback.data
+                        else -> _copilotPreTradeSignal.value = null
+                    }
+                }
+                else -> {}
+            }
+            _copilotLoading.value = false
+        }
+    }
+
     fun runPreTradeCopilot(order: AdvancedOrderRequest) {
         viewModelScope.launch {
             _copilotLoading.value = true
@@ -1055,6 +1230,11 @@ class TradingViewModel(
             }
             _copilotLoading.value = false
         }
+    }
+
+    fun clearPreTradeCopilotSignal() {
+        _copilotPreTradeSignal.value = null
+        _preTradeEstimate.value = null
     }
 
     fun fetchPostTradeCopilot(orderId: Int, note: String? = null) {
@@ -1091,12 +1271,51 @@ class TradingViewModel(
         }
     }
 
+    fun lookupOrderByTrace(traceId: String) {
+        val normalized = traceId.trim()
+        if (normalized.isBlank()) {
+            _error.value = "Trace ID is required"
+            return
+        }
+
+        viewModelScope.launch {
+            _copilotLoading.value = true
+            when (val response = repository.getOrderByTrace(normalized)) {
+                is Result.Success -> {
+                    _orderTraceLookup.value = response.data
+                    _error.value = null
+                }
+                is Result.Error -> {
+                    _orderTraceLookup.value = null
+                    _error.value = response.message
+                }
+                else -> {}
+            }
+            _copilotLoading.value = false
+        }
+    }
+
+    fun clearOrderTraceLookup() {
+        _orderTraceLookup.value = null
+    }
+
+    fun seedTraceLookup(traceId: String) {
+        val normalized = traceId.trim()
+        if (normalized.isBlank()) {
+            return
+        }
+        _lastOrderTraceId.value = normalized
+        _orderTraceLookup.value = null
+    }
+
     fun clearAdvancedInsights() {
         _advancedOrderResponse.value = null
         _triggerEvaluation.value = null
         _strategyPreview.value = null
+        _preTradeEstimate.value = null
         _copilotPreTradeSignal.value = null
         _copilotPostTradeReview.value = null
+        _orderTraceLookup.value = null
     }
 
     private fun fetchTradeCoachTip(symbol: String, quantity: Int, side: String) {

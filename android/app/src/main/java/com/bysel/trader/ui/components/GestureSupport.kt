@@ -8,6 +8,10 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,14 +21,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
-import kotlin.math.absoluteValue
 
 /**
  * Material3 Pull-to-Refresh indicator using custom implementation
  * Works with swipe down gestures on any composable
  */
 @Composable
+@OptIn(ExperimentalMaterialApi::class)
 fun PullToRefreshBox(
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
@@ -32,66 +35,30 @@ fun PullToRefreshBox(
     enabled: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    Box(modifier = modifier) {
-        var offsetY by remember { mutableFloatStateOf(0f) }
-        var isDragging by remember { mutableStateOf(false) }
-        
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(
-                    if (enabled && !isRefreshing) {
-                        Modifier.pointerInput(Unit) {
-                            detectVerticalDragGestures(
-                                onDragStart = {
-                                    isDragging = true
-                                },
-                                onDragEnd = {
-                                    if (offsetY > 150f) {
-                                        onRefresh()
-                                    }
-                                    offsetY = 0f
-                                    isDragging = false
-                                },
-                                onDragCancel = {
-                                    offsetY = 0f
-                                    isDragging = false
-                                },
-                                onVerticalDrag = { change, dragAmount ->
-                                    change.consume()
-                                    // Only allow pull down at top of content
-                                    if (dragAmount > 0f) {
-                                        offsetY = (offsetY + dragAmount).coerceIn(0f, 200f)
-                                    } else if (offsetY > 0f) {
-                                        offsetY = (offsetY + dragAmount).coerceAtLeast(0f)
-                                    }
-                                }
-                            )
-                        }
-                    } else {
-                        Modifier
-                    }
-                )
-        ) {
-            content()
-            
-            // Show refresh indicator when pulling or refreshing
-            if (isDragging && offsetY > 0f || isRefreshing) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(60.dp)
-                        .padding(top = (offsetY / 4).dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        strokeWidth = 2.dp,
-                        color = Color(0xFF7C4DFF)
-                    )
+    val pullRefreshState = rememberPullRefreshState(
+        refreshing = isRefreshing,
+        onRefresh = onRefresh,
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .then(
+                if (enabled && !isRefreshing) {
+                    Modifier.pullRefresh(pullRefreshState)
+                } else {
+                    Modifier
                 }
-            }
-        }
+            )
+    ) {
+        content()
+        PullRefreshIndicator(
+            refreshing = isRefreshing,
+            state = pullRefreshState,
+            modifier = Modifier.align(Alignment.TopCenter),
+            backgroundColor = MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 
@@ -131,7 +98,6 @@ fun SwipeableTabLayout(
         initialPage = selectedTabIndex,
         pageCount = { tabs.size }
     )
-    val coroutineScope = rememberCoroutineScope()
 
     // Sync selectedTabIndex with pagerState
     LaunchedEffect(pagerState.currentPage) {
@@ -181,10 +147,18 @@ fun <T> SwipeToDismissItem(
     enabled: Boolean = true,
     content: @Composable RowScope.() -> Unit
 ) {
+    val allowStartToEnd = dismissDirection == SwipeToDismissBoxValue.StartToEnd ||
+        dismissDirection == SwipeToDismissBoxValue.Settled
+    val allowEndToStart = dismissDirection == SwipeToDismissBoxValue.EndToStart ||
+        dismissDirection == SwipeToDismissBoxValue.Settled
+
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { dismissValue ->
-            if (dismissValue == SwipeToDismissBoxValue.EndToStart || 
-                dismissValue == SwipeToDismissBoxValue.StartToEnd) {
+            val shouldDismiss =
+                (dismissValue == SwipeToDismissBoxValue.StartToEnd && allowStartToEnd) ||
+                    (dismissValue == SwipeToDismissBoxValue.EndToStart && allowEndToStart)
+
+            if (shouldDismiss) {
                 onDismiss(item)
                 true
             } else {
@@ -196,8 +170,8 @@ fun <T> SwipeToDismissItem(
     SwipeToDismissBox(
         state = dismissState,
         modifier = modifier,
-        enableDismissFromStartToEnd = enabled,
-        enableDismissFromEndToStart = enabled,
+        enableDismissFromStartToEnd = enabled && allowStartToEnd,
+        enableDismissFromEndToStart = enabled && allowEndToStart,
         backgroundContent = {
             Box(
                 modifier = Modifier
@@ -238,43 +212,82 @@ fun EdgeSwipeDetector(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(Unit) {
+            .pointerInput(edgeThreshold, swipeThreshold) {
+                var dragStartX = 0f
+                var totalDragX = 0f
+                var swipeHandled = false
+
                 detectHorizontalDragGestures(
                     onDragStart = { offset ->
-                        // Check if drag started from edge
-                        when {
-                            offset.x < edgeThreshold -> {
-                                // Started from left edge
-                            }
-                            offset.x > size.width - edgeThreshold -> {
-                                // Started from right edge
-                            }
-                        }
+                        dragStartX = offset.x
+                        totalDragX = 0f
+                        swipeHandled = false
                     },
-                    onDragEnd = {},
+                    onDragEnd = {
+                        totalDragX = 0f
+                        swipeHandled = false
+                    },
+                    onDragCancel = {
+                        totalDragX = 0f
+                        swipeHandled = false
+                    },
                     onHorizontalDrag = { change, dragAmount ->
-                        // Handle horizontal swipe
-                        if (dragAmount.absoluteValue > swipeThreshold) {
-                            if (change.position.x < edgeThreshold && dragAmount > 0) {
-                                onSwipeFromLeft()
-                            } else if (change.position.x > size.width - edgeThreshold && dragAmount < 0) {
-                                onSwipeFromRight()
-                            }
+                        if (swipeHandled) {
+                            return@detectHorizontalDragGestures
+                        }
+
+                        totalDragX += dragAmount
+                        val startedFromLeft = dragStartX <= edgeThreshold
+                        val startedFromRight = dragStartX >= size.width - edgeThreshold
+
+                        if (startedFromLeft && totalDragX >= swipeThreshold) {
+                            swipeHandled = true
+                            change.consume()
+                            onSwipeFromLeft()
+                        } else if (startedFromRight && totalDragX <= -swipeThreshold) {
+                            swipeHandled = true
+                            change.consume()
+                            onSwipeFromRight()
                         }
                     }
                 )
             }
-            .pointerInput(Unit) {
+            .pointerInput(edgeThreshold, swipeThreshold) {
+                var dragStartY = 0f
+                var totalDragY = 0f
+                var swipeHandled = false
+
                 detectVerticalDragGestures(
-                    onDragStart = { _ -> },
-                    onDragEnd = {},
+                    onDragStart = { offset ->
+                        dragStartY = offset.y
+                        totalDragY = 0f
+                        swipeHandled = false
+                    },
+                    onDragEnd = {
+                        totalDragY = 0f
+                        swipeHandled = false
+                    },
+                    onDragCancel = {
+                        totalDragY = 0f
+                        swipeHandled = false
+                    },
                     onVerticalDrag = { change, dragAmount ->
-                        if (dragAmount.absoluteValue > swipeThreshold) {
-                            if (change.position.y < edgeThreshold && dragAmount > 0) {
-                                onSwipeFromTop()
-                            } else if (change.position.y > size.height - edgeThreshold && dragAmount < 0) {
-                                onSwipeFromBottom()
-                            }
+                        if (swipeHandled) {
+                            return@detectVerticalDragGestures
+                        }
+
+                        totalDragY += dragAmount
+                        val startedFromTop = dragStartY <= edgeThreshold
+                        val startedFromBottom = dragStartY >= size.height - edgeThreshold
+
+                        if (startedFromTop && totalDragY >= swipeThreshold) {
+                            swipeHandled = true
+                            change.consume()
+                            onSwipeFromTop()
+                        } else if (startedFromBottom && totalDragY <= -swipeThreshold) {
+                            swipeHandled = true
+                            change.consume()
+                            onSwipeFromBottom()
                         }
                     }
                 )

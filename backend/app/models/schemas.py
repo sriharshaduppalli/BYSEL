@@ -58,6 +58,8 @@ class OrderBase(BaseModel):
     limitPrice: Optional[float] = None
     triggerPrice: Optional[float] = None
     tag: Optional[str] = None
+    idempotencyKey: Optional[str] = None
+    idempotencyKey: Optional[str] = None
 
 class Order(OrderBase):
     pass
@@ -66,6 +68,14 @@ class OrderResponse(BaseModel):
     status: str
     order: Order
     message: Optional[str] = None
+    orderId: Optional[int] = None
+    executedPrice: Optional[float] = None
+    total: Optional[float] = None
+    orderStatus: Optional[str] = None
+    traceId: Optional[str] = None
+    idempotencyKey: Optional[str] = None
+    isDuplicate: bool = False
+    errorCode: Optional[str] = None
 
 class AlertResponse(BaseModel):
     status: str
@@ -80,6 +90,22 @@ class TradeHistory(BaseModel):
     price: float
     total: float
     timestamp: int
+
+
+class OrderTraceLookupResponse(BaseModel):
+    orderId: int
+    traceId: str
+    symbol: str
+    side: str
+    quantity: int
+    orderType: str
+    validity: str
+    status: str
+    executedPrice: float
+    total: float
+    idempotencyKey: Optional[str] = None
+    createdAt: str
+    message: str
 
 class PortfolioSummary(BaseModel):
     totalValue: float
@@ -114,6 +140,21 @@ class MarketStatus(BaseModel):
     message: str
     nextOpen: Optional[str] = None
     nextClose: Optional[str] = None
+
+
+class MarketNewsHeadline(BaseModel):
+    symbol: str
+    title: str
+    source: str = ""
+    publishedAt: str = ""
+    publishedLabel: str = ""
+    link: str = ""
+
+
+class MarketNewsResponse(BaseModel):
+    headlines: List[MarketNewsHeadline]
+    symbolsConsidered: List[str]
+    generatedAt: str
 
 
 class MutualFund(BaseModel):
@@ -398,6 +439,38 @@ class CopilotSignal(BaseModel):
     confidence: int
     flags: List[str]
     guidance: List[str]
+
+
+class PreTradeChargeBreakdown(BaseModel):
+    brokerage: float
+    exchangeFee: float
+    gst: float
+    stampDuty: float
+    totalCharges: float
+
+
+class PreTradeEstimateRequest(BaseModel):
+    order: Order
+    walletBalance: Optional[float] = None
+    marketOpen: Optional[bool] = None
+
+
+class PreTradeEstimateResponse(BaseModel):
+    symbol: str
+    side: str
+    qty: int
+    orderType: str
+    executionPrice: float
+    livePrice: float
+    tradeValue: float
+    charges: PreTradeChargeBreakdown
+    netAmount: float
+    walletBalance: float
+    walletUtilizationPct: float
+    canAfford: bool
+    impactTag: str
+    warnings: List[str]
+    signal: CopilotSignal
 
 
 class CopilotPreTradeRequest(BaseModel):

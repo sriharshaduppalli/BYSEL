@@ -1,15 +1,19 @@
 package com.bysel.trader.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.DisposableEffect
@@ -17,6 +21,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -24,10 +30,15 @@ import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.MarketStatus
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.components.PullToRefreshBox
+import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
+import com.bysel.trader.ui.components.OrderRejectionBanner
+import com.bysel.trader.ui.components.resolveRejection
+import com.bysel.trader.viewmodel.TradingViewModel
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.OutlinedTextField
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 
 private fun formatVolume(v: Long?): String {
     if (v == null) return "N/A"
@@ -129,6 +140,7 @@ fun TradingScreen(
     onRefresh: () -> Unit,
     onAddFunds: (Double, String) -> Unit,
     onErrorDismiss: () -> Unit,
+    onTraceSupportLookup: ((String) -> Unit)? = null,
     viewModel: com.bysel.trader.viewmodel.TradingViewModel
 ) {
     // Start fast-refresh while this screen is visible; stop on dispose
@@ -140,6 +152,37 @@ fun TradingScreen(
     var newWatchSymbol by remember { mutableStateOf("") }
     val watchlistSymbols by viewModel.watchlist.collectAsState()
     val liveQuotes by viewModel.quotes.collectAsState()
+    val lastQuoteUpdateAt by viewModel.lastQuoteUpdateAt.collectAsState()
+    val statusNow by produceState(initialValue = System.currentTimeMillis()) {
+        while (true) {
+            value = System.currentTimeMillis()
+            delay(1000)
+        }
+    }
+    val quoteFreshnessLabel = remember(lastQuoteUpdateAt, statusNow) {
+        if (lastQuoteUpdateAt <= 0L) {
+            "Syncing..."
+        } else {
+            val ageSec = ((statusNow - lastQuoteUpdateAt) / 1000L).coerceAtLeast(0L)
+            when {
+                ageSec <= 4L -> "Live • just now"
+                ageSec < 60L -> "Live • ${ageSec}s ago"
+                ageSec < 600L -> "Delayed • ${ageSec / 60}m ago"
+                else -> "Stale • ${ageSec / 60}m ago"
+            }
+        }
+    }
+    val quoteFreshnessColor = if (lastQuoteUpdateAt <= 0L) {
+        Color(0xFFFFC107)
+    } else {
+        val ageSec = ((statusNow - lastQuoteUpdateAt) / 1000L).coerceAtLeast(0L)
+        when {
+            ageSec <= 4L -> LocalAppTheme.current.positive
+            ageSec < 60L -> Color(0xFF64B5F6)
+            ageSec < 600L -> Color(0xFFFFC107)
+            else -> LocalAppTheme.current.negative
+        }
+    }
     val watchlistInsights = remember(watchlistSymbols, liveQuotes) {
         val quoteMap = liveQuotes.associateBy { it.symbol.uppercase() }
         watchlistSymbols
@@ -148,6 +191,7 @@ fun TradingScreen(
     }
     // AI Trade Coach Dialog
     val tradeCoachTip by viewModel.tradeCoachTip.collectAsState()
+    val streamHealth by viewModel.streamHealth.collectAsState()
     if (tradeCoachTip != null) {
         AlertDialog(
             onDismissRequest = { viewModel.clearTradeCoachTip() },
@@ -164,13 +208,17 @@ fun TradingScreen(
     var showAddFundsDialog by remember { mutableStateOf(false) }
 
     if (selectedQuote != null) {
-        TradeDialog(
+        TradeBottomSheet(
             quote = selectedQuote!!,
             walletBalance = walletBalance,
             marketStatus = marketStatus,
-            onDismiss = { selectedQuote = null },
+            onDismiss = {
+                selectedQuote = null
+                viewModel.clearPreTradeCopilotSignal()
+            },
             onBuy = { qty -> onBuy(selectedQuote!!.symbol, qty) },
-            onSell = { qty -> onSell(selectedQuote!!.symbol, qty) }
+            onSell = { qty -> onSell(selectedQuote!!.symbol, qty) },
+            viewModel = viewModel,
         )
     }
 
@@ -270,12 +318,27 @@ fun TradingScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Trading Market",
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = LocalAppTheme.current.text
-            )
+            Column {
+                Text(
+                    text = "Trading Market",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = LocalAppTheme.current.text
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 2.dp)
+                ) {
+                    StreamHealthPill(health = streamHealth)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = quoteFreshnessLabel,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = quoteFreshnessColor,
+                    )
+                }
+            }
             Button(
                 onClick = onRefresh,
                 colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
@@ -327,7 +390,7 @@ fun TradingScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
-            colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E)),
             shape = RoundedCornerShape(10.dp)
         ) {
             Row(
@@ -370,18 +433,14 @@ fun TradingScreen(
         }
 
         if (error != null) {
-            Snackbar(
+            TraceAwareErrorSnackbar(
+                error = error,
+                onDismiss = onErrorDismiss,
+                onTraceAction = onTraceSupportLookup,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                action = {
-                    TextButton(onClick = onErrorDismiss) {
-                        Text("Dismiss")
-                    }
-                }
-            ) {
-                Text(error)
-            }
+            )
         }
 
         if (isLoading) {
@@ -414,6 +473,7 @@ fun TradingScreen(
         } else {
             // Use paged quotes for large lists and load more when scrolled
             val paged by viewModel.pagedQuotes.collectAsState()
+            val watchlistSet by viewModel.watchlist.collectAsState()
             PullToRefreshBox(
                 isRefreshing = isLoading,
                 onRefresh = onRefresh,
@@ -424,11 +484,49 @@ fun TradingScreen(
                         .fillMaxSize()
                         .padding(horizontal = 8.dp)
                 ) {
-                itemsIndexed(paged) { index: Int, quote: Quote ->
-                    TradingQuoteCard(quote) { selectedQuote = quote }
-                    // prefetch next page when reaching near the end
+                itemsIndexed(paged, key = { _, q -> q.symbol }) { index: Int, quote: Quote ->
+                    val isWatchlisted = quote.symbol.uppercase() in watchlistSet.map { it.uppercase() }
+                    if (isWatchlisted) {
+                        val swipeDismissState = rememberSwipeToDismissBoxState(
+                            confirmValueChange = { value ->
+                                if (value == SwipeToDismissBoxValue.EndToStart) {
+                                    viewModel.removeFromWatchlist(quote.symbol)
+                                    true
+                                } else false
+                            }
+                        )
+                        SwipeToDismissBox(
+                            state = swipeDismissState,
+                            backgroundContent = {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                                        .background(
+                                            LocalAppTheme.current.negative.copy(alpha = 0.85f),
+                                            RoundedCornerShape(12.dp)
+                                        ),
+                                    contentAlignment = Alignment.CenterEnd
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(end = 20.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Filled.Delete, contentDescription = "Remove", tint = Color.White, modifier = Modifier.size(20.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Remove", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                            },
+                            enableDismissFromStartToEnd = false,
+                            enableDismissFromEndToStart = true,
+                        ) {
+                            TradingQuoteCard(quote) { selectedQuote = quote }
+                        }
+                    } else {
+                        TradingQuoteCard(quote) { selectedQuote = quote }
+                    }
                     if (index >= paged.size - 5) {
-                        // launch in composition-safe scope
                         LaunchedEffect(index) { viewModel.loadNextQuotesPage() }
                     }
                 }
@@ -609,6 +707,465 @@ private fun WatchlistInsightRow(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TradeBottomSheet(
+    quote: Quote,
+    walletBalance: Double,
+    marketStatus: MarketStatus?,
+    onDismiss: () -> Unit,
+    onBuy: (Int) -> Unit,
+    onSell: (Int) -> Unit,
+    viewModel: TradingViewModel,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val haptic = LocalHapticFeedback.current
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = LocalAppTheme.current.card,
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(top = 12.dp, bottom = 4.dp)
+                    .width(40.dp)
+                    .height(4.dp)
+                    .background(
+                        LocalAppTheme.current.textSecondary.copy(alpha = 0.4f),
+                        CircleShape
+                    )
+            )
+        }
+    ) {
+        TradeBottomSheetContent(
+            quote = quote,
+            walletBalance = walletBalance,
+            marketStatus = marketStatus,
+            onDismiss = onDismiss,
+            onBuy = { qty -> haptic.performHapticFeedback(HapticFeedbackType.LongPress); onBuy(qty) },
+            onSell = { qty -> haptic.performHapticFeedback(HapticFeedbackType.LongPress); onSell(qty) },
+            viewModel = viewModel,
+        )
+    }
+}
+
+@Composable
+private fun TradeBottomSheetContent(
+    quote: Quote,
+    walletBalance: Double,
+    marketStatus: MarketStatus?,
+    onDismiss: () -> Unit,
+    onBuy: (Int) -> Unit,
+    onSell: (Int) -> Unit,
+    viewModel: TradingViewModel,
+) {
+    var quantity by remember { mutableStateOf("") }
+    var tradeType by remember { mutableStateOf("BUY") }
+    var orderType by remember { mutableStateOf("MARKET") }
+    var limitPriceInput by remember { mutableStateOf(String.format("%.2f", quote.last)) }
+    val preTradeSignal by viewModel.copilotPreTradeSignal.collectAsState()
+    val preTradeEstimate by viewModel.preTradeEstimate.collectAsState()
+    val copilotLoading by viewModel.copilotLoading.collectAsState()
+    val lastError by viewModel.error.collectAsState()
+
+    val qty = quantity.toIntOrNull() ?: 0
+    val limitPrice = limitPriceInput.toDoubleOrNull() ?: 0.0
+    val localExecutionPrice = if (orderType == "LIMIT" && limitPrice > 0.0) limitPrice else quote.last
+    val localTradeValue = qty * localExecutionPrice
+    val localBrokerage = localTradeValue * 0.0003
+    val localExchangeFee = localTradeValue * 0.00034
+    val localGst = (localBrokerage + localExchangeFee) * 0.18
+    val localStampDuty = if (tradeType == "BUY") localTradeValue * 0.00015 else 0.0
+    val localTotalCharges = localBrokerage + localExchangeFee + localGst + localStampDuty
+    val localNetAmount = if (tradeType == "BUY") localTradeValue + localTotalCharges else localTradeValue - localTotalCharges
+    val localCanAfford = walletBalance >= localNetAmount
+    val isMarketOpen = marketStatus?.isOpen ?: false
+    val intradayRangePct = if (quote.dayHigh != null && quote.dayLow != null && quote.last > 0.0) {
+        ((quote.dayHigh - quote.dayLow) / quote.last) * 100.0
+    } else 0.0
+    val spreadPct = if (quote.bid != null && quote.ask != null && quote.last > 0.0) {
+        ((quote.ask - quote.bid) / quote.last) * 100.0
+    } else 0.0
+    val priceGapPct = if (quote.last > 0.0) ((localExecutionPrice - quote.last) / quote.last) * 100.0 else 0.0
+    val limitInvalid = orderType == "LIMIT" && limitPrice <= 0.0
+    val limitDeviationWarning = orderType == "LIMIT" && abs(priceGapPct) > 3.0
+    val limitDeviationHardBlock = orderType == "LIMIT" && abs(priceGapPct) > 8.0
+    val localWalletUtilizationPct = if (tradeType == "BUY" && walletBalance > 0.0) {
+        ((localNetAmount / walletBalance) * 100.0).coerceAtLeast(0.0)
+    } else 0.0
+    val localImpactTag = when {
+        localTradeValue >= 300_000 || qty >= 350 -> "High impact"
+        localTradeValue >= 120_000 || qty >= 150 -> "Medium impact"
+        else -> "Low impact"
+    }
+    val executionPrice = preTradeEstimate?.executionPrice ?: localExecutionPrice
+    val tradeValue = preTradeEstimate?.tradeValue ?: localTradeValue
+    val totalCharges = preTradeEstimate?.charges?.totalCharges ?: localTotalCharges
+    val netAmount = preTradeEstimate?.netAmount ?: localNetAmount
+    val canAfford = preTradeEstimate?.canAfford ?: localCanAfford
+    val walletUtilizationPct = preTradeEstimate?.walletUtilizationPct ?: localWalletUtilizationPct
+    val impactTag = preTradeEstimate?.impactTag ?: localImpactTag
+    val effectiveSignal = preTradeEstimate?.signal ?: preTradeSignal
+    val estimateWarnings = preTradeEstimate?.warnings ?: emptyList()
+    val copilotBlocksTrade = effectiveSignal?.verdict?.equals("BLOCK", ignoreCase = true) == true
+
+    // Detect if the last error has a structured rejection resolution for this symbol's context
+    val rejectionBannerError = remember(lastError, qty) {
+        if (qty > 0 && lastError != null && resolveRejection(lastError) != null) lastError else null
+    }
+
+    DisposableEffect(quote.symbol) {
+        onDispose { viewModel.clearPreTradeCopilotSignal() }
+    }
+
+    LaunchedEffect(quote.symbol, qty, tradeType, orderType, limitPriceInput, isMarketOpen) {
+        if (qty <= 0 || !isMarketOpen || limitInvalid || limitDeviationHardBlock) {
+            viewModel.clearPreTradeCopilotSignal()
+            return@LaunchedEffect
+        }
+        delay(250)
+        viewModel.fetchPreTradeEstimate(
+            com.bysel.trader.data.models.AdvancedOrderRequest(
+                symbol = quote.symbol,
+                qty = qty,
+                side = tradeType,
+                orderType = orderType,
+                validity = "DAY",
+                limitPrice = if (orderType == "LIMIT") limitPrice else null,
+                triggerPrice = null,
+            )
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 24.dp)
+            .verticalScroll(rememberScrollState())
+    ) {
+        // Title row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = quote.symbol,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = LocalAppTheme.current.text
+                )
+                Text(
+                    text = "₹${String.format("%.2f", quote.last)}  ${if (quote.pctChange >= 0) "+" else ""}${String.format("%.2f", quote.pctChange)}%",
+                    fontSize = 13.sp,
+                    color = if (quote.pctChange >= 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
+                )
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Filled.Close, contentDescription = "Close", tint = LocalAppTheme.current.textSecondary)
+            }
+        }
+
+        // Market closed warning
+        if (!isMarketOpen) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFB71C1C).copy(alpha = 0.3f)),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    text = "⚠ ${marketStatus?.message ?: "Market is closed"}",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = LocalAppTheme.current.negative,
+                    modifier = Modifier.padding(10.dp)
+                )
+            }
+        }
+
+        // Wallet balance chip
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.AccountBalanceWallet, contentDescription = null, tint = Color(0xFF7C4DFF), modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Wallet", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
+            }
+            Text(
+                formatCurrency(walletBalance),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF7C4DFF)
+            )
+        }
+
+        // Price info
+        Text(
+            text = "Day Range: ₹${String.format("%.2f", quote.dayLow ?: quote.last)} – ₹${String.format("%.2f", quote.dayHigh ?: quote.last)}",
+            fontSize = 12.sp,
+            color = LocalAppTheme.current.textSecondary,
+            modifier = Modifier.padding(bottom = 14.dp)
+        )
+
+        // Buy / Sell toggle
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Button(
+                onClick = { tradeType = "BUY" },
+                modifier = Modifier.weight(1f).height(42.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (tradeType == "BUY") Color(0xFF00B050) else Color(0xFF2A2A2A)
+                ),
+                shape = RoundedCornerShape(10.dp)
+            ) { Text("Buy", fontWeight = FontWeight.Bold) }
+            Button(
+                onClick = { tradeType = "SELL" },
+                modifier = Modifier.weight(1f).height(42.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (tradeType == "SELL") LocalAppTheme.current.negative else Color(0xFF2A2A2A)
+                ),
+                shape = RoundedCornerShape(10.dp)
+            ) { Text("Sell", fontWeight = FontWeight.Bold) }
+        }
+
+        // Order type
+        Text("Order Type", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary, modifier = Modifier.padding(bottom = 8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf("MARKET", "LIMIT").forEach { otype ->
+                AssistChip(
+                    onClick = { orderType = otype },
+                    label = { Text(otype.lowercase().replaceFirstChar { it.uppercase() }) },
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = if (orderType == otype) LocalAppTheme.current.primary.copy(alpha = 0.25f) else Color(0xFF2A2A2A)
+                    )
+                )
+            }
+        }
+
+        if (orderType == "LIMIT") {
+            OutlinedTextField(
+                value = limitPriceInput,
+                onValueChange = { limitPriceInput = it },
+                label = { Text("Limit Price", color = LocalAppTheme.current.textSecondary) },
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = LocalAppTheme.current.text,
+                    unfocusedTextColor = LocalAppTheme.current.textSecondary,
+                    focusedBorderColor = LocalAppTheme.current.primary,
+                    unfocusedBorderColor = Color(0xFF2A2A2A)
+                )
+            )
+        }
+
+        // Quantity
+        OutlinedTextField(
+            value = quantity,
+            onValueChange = { quantity = it },
+            label = { Text("Quantity", color = LocalAppTheme.current.textSecondary) },
+            modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = LocalAppTheme.current.text,
+                unfocusedTextColor = LocalAppTheme.current.textSecondary,
+                focusedBorderColor = LocalAppTheme.current.primary,
+                unfocusedBorderColor = Color(0xFF2A2A2A)
+            )
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf(1, 5, 10, 25).forEach { quickQty ->
+                AssistChip(
+                    onClick = { quantity = quickQty.toString() },
+                    label = { Text("$quickQty") },
+                    colors = AssistChipDefaults.assistChipColors(containerColor = Color(0xFF2A2A2A))
+                )
+            }
+        }
+
+        if (qty > 0) {
+            // Charges breakdown card
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.surface),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("Order Summary", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = LocalAppTheme.current.text)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TradeSummaryLine("Execution", "₹${String.format("%.2f", executionPrice)}")
+                    TradeSummaryLine("Trade Value", formatCurrency(tradeValue))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = LocalAppTheme.current.textSecondary.copy(alpha = 0.15f))
+                    // Charges breakdown
+                    Text("Charges Breakdown", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = LocalAppTheme.current.textSecondary, modifier = Modifier.padding(bottom = 4.dp))
+                    preTradeEstimate?.let { est ->
+                        TradeSummaryLine("Brokerage", formatCurrency(est.charges.brokerage))
+                        TradeSummaryLine("Exchange Fee", formatCurrency(est.charges.exchangeFee))
+                        TradeSummaryLine("GST (18%)", formatCurrency(est.charges.gst))
+                        if (tradeType == "BUY") TradeSummaryLine("Stamp Duty", formatCurrency(est.charges.stampDuty))
+                    } ?: run {
+                        TradeSummaryLine("Brokerage (~0.03%)", formatCurrency(localBrokerage))
+                        TradeSummaryLine("Exchange Fee (~0.034%)", formatCurrency(localExchangeFee))
+                        TradeSummaryLine("GST (18%)", formatCurrency(localGst))
+                        if (tradeType == "BUY") TradeSummaryLine("Stamp Duty (~0.015%)", formatCurrency(localStampDuty))
+                    }
+                    TradeSummaryLine("Total Charges", formatCurrency(totalCharges))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = LocalAppTheme.current.textSecondary.copy(alpha = 0.15f))
+                    TradeSummaryLine(
+                        if (tradeType == "BUY") "Total Debit" else "Total Credit",
+                        formatCurrency(netAmount),
+                        valueColor = if (tradeType == "BUY") LocalAppTheme.current.negative else LocalAppTheme.current.positive
+                    )
+                    if (tradeType == "BUY") {
+                        // Wallet utilization progress bar
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Wallet Used", fontSize = 11.sp, color = LocalAppTheme.current.textSecondary)
+                            Text("${String.format("%.1f", walletUtilizationPct)}%", fontSize = 11.sp, color = when {
+                                walletUtilizationPct >= 90 -> LocalAppTheme.current.negative
+                                walletUtilizationPct >= 60 -> Color(0xFFFF8F00)
+                                else -> LocalAppTheme.current.positive
+                            })
+                        }
+                        LinearProgressIndicator(
+                            progress = { (walletUtilizationPct / 100.0).toFloat().coerceIn(0f, 1f) },
+                            modifier = Modifier.fillMaxWidth().height(4.dp).padding(top = 2.dp),
+                            color = when {
+                                walletUtilizationPct >= 90 -> LocalAppTheme.current.negative
+                                walletUtilizationPct >= 60 -> Color(0xFFFF8F00)
+                                else -> LocalAppTheme.current.positive
+                            },
+                            trackColor = LocalAppTheme.current.textSecondary.copy(alpha = 0.15f),
+                        )
+                    }
+                    TradeSummaryLine("Impact", impactTag)
+                }
+            }
+
+            // Copilot check card
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.surface),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("Copilot Pre-Trade Check", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = LocalAppTheme.current.text)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    if (copilotLoading) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = LocalAppTheme.current.primary)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Analyzing order risk...", fontSize = 11.sp, color = LocalAppTheme.current.textSecondary)
+                        }
+                    } else {
+                        effectiveSignal?.let { signal ->
+                            val verdictColor = when (signal.verdict.uppercase()) {
+                                "GO" -> LocalAppTheme.current.positive
+                                "CAUTION" -> Color(0xFFFFC107)
+                                "BLOCK" -> LocalAppTheme.current.negative
+                                else -> LocalAppTheme.current.textSecondary
+                            }
+                            TradeSummaryLine("Verdict", "${signal.verdict} (${signal.confidence}%)", valueColor = verdictColor)
+                            signal.flags.take(2).forEach { flag ->
+                                Text("• $flag", fontSize = 11.sp, color = LocalAppTheme.current.negative, modifier = Modifier.padding(top = 2.dp))
+                            }
+                            signal.guidance.take(2).forEach { tip ->
+                                Text("• $tip", fontSize = 11.sp, color = LocalAppTheme.current.textSecondary, modifier = Modifier.padding(top = 2.dp))
+                            }
+                        } ?: Text("Waiting for order inputs...", fontSize = 11.sp, color = LocalAppTheme.current.textSecondary)
+                    }
+                }
+            }
+
+            // Rejection banner if last error applies
+            rejectionBannerError?.let { errMsg ->
+                OrderRejectionBanner(
+                    rawMessage = errMsg,
+                    onPrimaryCta = { viewModel.clearError() },
+                    modifier = Modifier.padding(bottom = 10.dp)
+                )
+            }
+
+            // Warnings
+            Text(
+                "Impact cues: range ${String.format("%.1f", intradayRangePct)}% • spread ${String.format("%.2f", spreadPct)}%",
+                fontSize = 11.sp, color = LocalAppTheme.current.textSecondary, modifier = Modifier.padding(bottom = 4.dp)
+            )
+            estimateWarnings.take(2).forEach { warning ->
+                Text("⚠ $warning", fontSize = 12.sp, color = LocalAppTheme.current.negative, modifier = Modifier.padding(top = 4.dp))
+            }
+            if (estimateWarnings.isEmpty() && tradeType == "BUY" && !canAfford) {
+                Text(
+                    "⚠ Insufficient funds. Need ${formatCurrency((netAmount - walletBalance).coerceAtLeast(0.0))} more.",
+                    fontSize = 12.sp, color = LocalAppTheme.current.negative, modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+            if (estimateWarnings.isEmpty() && limitDeviationWarning) {
+                Text("⚠ Limit is ${String.format("%.2f", abs(priceGapPct))}% away from market price.", fontSize = 12.sp, color = LocalAppTheme.current.negative, modifier = Modifier.padding(top = 4.dp))
+            }
+            if (estimateWarnings.isEmpty() && spreadPct >= 0.45) {
+                Text("⚠ Wide spread detected. Consider limit order.", fontSize = 12.sp, color = LocalAppTheme.current.negative, modifier = Modifier.padding(top = 4.dp))
+            }
+            Text("Estimates are indicative; final fill and charges may vary.", fontSize = 11.sp, color = LocalAppTheme.current.textSecondary, modifier = Modifier.padding(top = 6.dp, bottom = 4.dp))
+            if (copilotBlocksTrade) {
+                Text("Copilot has blocked this order. Adjust inputs and retry.", fontSize = 12.sp, color = LocalAppTheme.current.negative, modifier = Modifier.padding(top = 4.dp))
+            }
+        }
+
+        if (limitInvalid) {
+            Text("Enter a valid limit price to continue.", fontSize = 12.sp, color = LocalAppTheme.current.negative)
+        }
+
+        // Confirm / Cancel
+        Spacer(modifier = Modifier.height(16.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(
+                onClick = onDismiss,
+                modifier = Modifier.weight(1f).height(48.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) { Text("Cancel") }
+            Button(
+                onClick = {
+                    if (qty > 0) {
+                        if (tradeType == "BUY") onBuy(qty) else onSell(qty)
+                        onDismiss()
+                    }
+                },
+                enabled = qty > 0 && isMarketOpen && !limitInvalid && !limitDeviationHardBlock && !copilotBlocksTrade && (tradeType == "SELL" || canAfford),
+                modifier = Modifier.weight(2f).height(48.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (tradeType == "BUY") Color(0xFF00B050) else LocalAppTheme.current.negative,
+                    disabledContainerColor = Color(0xFF2A2A2A)
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    if (orderType == "MARKET") tradeType else "LIMIT $tradeType",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            }
+        }
+    }
+}
+
+// Keep legacy TradeDialog as a bridge for any external callers
 @Composable
 fun TradeDialog(
     quote: Quote,
@@ -616,343 +1173,9 @@ fun TradeDialog(
     marketStatus: MarketStatus?,
     onDismiss: () -> Unit,
     onBuy: (Int) -> Unit,
-    onSell: (Int) -> Unit
-) {
-    var quantity by remember { mutableStateOf("") }
-    var tradeType by remember { mutableStateOf("BUY") }
-    var orderType by remember { mutableStateOf("MARKET") }
-    var limitPriceInput by remember { mutableStateOf(String.format("%.2f", quote.last)) }
-
-    val qty = quantity.toIntOrNull() ?: 0
-    val limitPrice = limitPriceInput.toDoubleOrNull() ?: 0.0
-    val executionPrice = if (orderType == "LIMIT" && limitPrice > 0.0) limitPrice else quote.last
-    val tradeValue = qty * executionPrice
-    val brokerage = tradeValue * 0.0003
-    val exchangeFee = tradeValue * 0.00034
-    val gst = (brokerage + exchangeFee) * 0.18
-    val stampDuty = if (tradeType == "BUY") tradeValue * 0.00015 else 0.0
-    val totalCharges = brokerage + exchangeFee + gst + stampDuty
-    val netAmount = if (tradeType == "BUY") tradeValue + totalCharges else tradeValue - totalCharges
-    val canAfford = walletBalance >= netAmount
-    val isMarketOpen = marketStatus?.isOpen ?: false
-    val intradayRangePct = if (quote.dayHigh != null && quote.dayLow != null && quote.last > 0.0) {
-        ((quote.dayHigh - quote.dayLow) / quote.last) * 100.0
-    } else {
-        0.0
-    }
-    val spreadPct = if (quote.bid != null && quote.ask != null && quote.last > 0.0) {
-        ((quote.ask - quote.bid) / quote.last) * 100.0
-    } else {
-        0.0
-    }
-    val priceGapPct = if (quote.last > 0.0) ((executionPrice - quote.last) / quote.last) * 100.0 else 0.0
-    val limitInvalid = orderType == "LIMIT" && limitPrice <= 0.0
-    val limitDeviationWarning = orderType == "LIMIT" && abs(priceGapPct) > 3.0
-    val limitDeviationHardBlock = orderType == "LIMIT" && abs(priceGapPct) > 8.0
-    val impactTag = when {
-        tradeValue >= 300_000 || qty >= 350 -> "High impact"
-        tradeValue >= 120_000 || qty >= 150 -> "Medium impact"
-        else -> "Low impact"
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = LocalAppTheme.current.card,
-        modifier = Modifier.height(650.dp),
-        title = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "${tradeType} ${quote.symbol}",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = LocalAppTheme.current.text
-                )
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Filled.Close, contentDescription = "Close", tint = LocalAppTheme.current.text)
-                }
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-            ) {
-                if (!isMarketOpen) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFFB71C1C).copy(alpha = 0.3f)
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(
-                            text = "⚠ ${marketStatus?.message ?: "Market is closed"}",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = LocalAppTheme.current.negative,
-                            modifier = Modifier.padding(10.dp)
-                        )
-                    }
-                }
-
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                    colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Wallet Balance", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
-                        Text(
-                            text = formatCurrency(walletBalance),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF7C4DFF)
-                        )
-                    }
-                }
-
-                Text(
-                    text = "Current Price: ₹${String.format("%.2f", quote.last)}",
-                    fontSize = 14.sp,
-                    color = LocalAppTheme.current.textSecondary,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-
-                Text(
-                    text = "Day Range: ₹${String.format("%.2f", quote.dayLow ?: quote.last)} - ₹${String.format("%.2f", quote.dayHigh ?: quote.last)}",
-                    fontSize = 12.sp,
-                    color = LocalAppTheme.current.textSecondary,
-                    modifier = Modifier.padding(bottom = 20.dp)
-                )
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Button(
-                        onClick = { tradeType = "BUY" },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(40.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (tradeType == "BUY") Color(0xFF00B050) else LocalAppTheme.current.card
-                        )
-                    ) {
-                        Text("Buy", fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = { tradeType = "SELL" },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(40.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (tradeType == "SELL") LocalAppTheme.current.negative else LocalAppTheme.current.card
-                        )
-                    ) {
-                        Text("Sell", fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                Text(
-                    text = "Order Type",
-                    fontSize = 12.sp,
-                    color = LocalAppTheme.current.textSecondary,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    AssistChip(
-                        onClick = { orderType = "MARKET" },
-                        label = { Text("Market") },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = if (orderType == "MARKET") LocalAppTheme.current.primary.copy(alpha = 0.25f) else LocalAppTheme.current.card
-                        )
-                    )
-                    AssistChip(
-                        onClick = { orderType = "LIMIT" },
-                        label = { Text("Limit") },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = if (orderType == "LIMIT") LocalAppTheme.current.primary.copy(alpha = 0.25f) else LocalAppTheme.current.card
-                        )
-                    )
-                }
-
-                if (orderType == "LIMIT") {
-                    OutlinedTextField(
-                        value = limitPriceInput,
-                        onValueChange = { limitPriceInput = it },
-                        label = { Text("Limit Price", color = LocalAppTheme.current.textSecondary) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = LocalAppTheme.current.text,
-                            unfocusedTextColor = LocalAppTheme.current.textSecondary,
-                            focusedBorderColor = LocalAppTheme.current.primary,
-                            unfocusedBorderColor = Color(0xFF2A2A2A)
-                        )
-                    )
-                }
-
-                OutlinedTextField(
-                    value = quantity,
-                    onValueChange = { quantity = it },
-                    label = { Text("Quantity", color = LocalAppTheme.current.textSecondary) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = LocalAppTheme.current.text,
-                        unfocusedTextColor = LocalAppTheme.current.textSecondary,
-                        focusedBorderColor = LocalAppTheme.current.primary,
-                        unfocusedBorderColor = Color(0xFF2A2A2A)
-                    )
-                )
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf(1, 5, 10, 25).forEach { quickQty ->
-                        AssistChip(
-                            onClick = { quantity = quickQty.toString() },
-                            label = { Text("$quickQty") },
-                            colors = AssistChipDefaults.assistChipColors(containerColor = Color(0xFF2A2A2A))
-                        )
-                    }
-                }
-
-                if (qty > 0) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp),
-                        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.surface),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(10.dp)) {
-                            Text(
-                                text = "Estimated Summary",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = LocalAppTheme.current.text
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            TradeSummaryLine("Execution", "₹${String.format("%.2f", executionPrice)}")
-                            TradeSummaryLine("Trade Value", formatCurrency(tradeValue))
-                            TradeSummaryLine("Est. Charges", formatCurrency(totalCharges))
-                            TradeSummaryLine(
-                                if (tradeType == "BUY") "Est. Debit" else "Est. Credit",
-                                formatCurrency(netAmount),
-                                valueColor = if (tradeType == "BUY") LocalAppTheme.current.text else LocalAppTheme.current.positive
-                            )
-                            TradeSummaryLine("Impact", impactTag)
-                        }
-                    }
-
-                    Text(
-                        text = "Impact cues: range ${String.format("%.1f", intradayRangePct)}% • spread ${String.format("%.2f", spreadPct)}%",
-                        fontSize = 11.sp,
-                        color = LocalAppTheme.current.textSecondary,
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    )
-
-                    if (tradeType == "BUY" && !canAfford) {
-                        Text(
-                            text = "⚠ Insufficient funds! Need ${formatCurrency((netAmount - walletBalance).coerceAtLeast(0.0))} more",
-                            fontSize = 12.sp,
-                            color = LocalAppTheme.current.negative,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-
-                    if (limitDeviationWarning) {
-                        Text(
-                            text = "⚠ Limit is ${String.format("%.2f", abs(priceGapPct))}% away from market price.",
-                            fontSize = 12.sp,
-                            color = LocalAppTheme.current.negative,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-
-                    if (spreadPct >= 0.45) {
-                        Text(
-                            text = "⚠ Wide spread detected. Consider limit order for better execution control.",
-                            fontSize = 12.sp,
-                            color = LocalAppTheme.current.negative,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-
-                    Text(
-                        text = "Note: Limit selection is simulated; order is executed as market with current broker API.",
-                        fontSize = 11.sp,
-                        color = LocalAppTheme.current.textSecondary,
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
-                }
-
-                if (limitInvalid) {
-                    Text(
-                        text = "Enter a valid limit price to continue.",
-                        fontSize = 12.sp,
-                        color = LocalAppTheme.current.negative
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (qty > 0) {
-                        if (tradeType == "BUY") {
-                            onBuy(qty)
-                        } else {
-                            onSell(qty)
-                        }
-                        onDismiss()
-                    }
-                },
-                enabled = qty > 0 && isMarketOpen && !limitInvalid && !limitDeviationHardBlock && (tradeType == "SELL" || canAfford),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (tradeType == "BUY") Color(0xFF00B050) else LocalAppTheme.current.negative,
-                    disabledContainerColor = Color(0xFF2A2A2A)
-                )
-            ) {
-                Text(if (orderType == "MARKET") tradeType else "LIMIT $tradeType", fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = LocalAppTheme.current.primary)
-            }
-        }
-    )
-}
+    onSell: (Int) -> Unit,
+    viewModel: TradingViewModel,
+) = TradeBottomSheet(quote, walletBalance, marketStatus, onDismiss, onBuy, onSell, viewModel)
 
 @Composable
 private fun TradeSummaryLine(
@@ -969,6 +1192,39 @@ private fun TradeSummaryLine(
     ) {
         Text(label, fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
         Text(value, fontSize = 12.sp, color = valueColor, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun StreamHealthPill(health: TradingViewModel.StreamHealth) {
+    val infiniteTransition = rememberInfiniteTransition(label = "streamPulse")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(800), RepeatMode.Reverse),
+        label = "dotAlpha"
+    )
+    val dotColor = when (health) {
+        TradingViewModel.StreamHealth.LIVE -> Color(0xFF00C853)
+        TradingViewModel.StreamHealth.RECONNECTING -> Color(0xFFFF8F00)
+        TradingViewModel.StreamHealth.OFFLINE -> Color(0xFF757575)
+    }
+    val label = when (health) {
+        TradingViewModel.StreamHealth.LIVE -> "Live"
+        TradingViewModel.StreamHealth.RECONNECTING -> "Reconnecting"
+        TradingViewModel.StreamHealth.OFFLINE -> "Offline"
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .background(
+                    color = dotColor.copy(alpha = if (health == TradingViewModel.StreamHealth.LIVE) alpha else 1f),
+                    shape = CircleShape
+                )
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(label, fontSize = 10.sp, color = dotColor)
     }
 }
 

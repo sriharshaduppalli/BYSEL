@@ -14,6 +14,15 @@ interface BYSELApiService {
     @POST("/auth/refresh")
     suspend fun refreshToken(@Body request: RefreshTokenRequest): AuthResponse
 
+    @POST("/auth/password-reset/request")
+    suspend fun requestPasswordReset(@Body request: PasswordResetRequestBody): PasswordResetRequestResponse
+
+    @POST("/auth/password-reset/confirm")
+    suspend fun confirmPasswordReset(@Body request: PasswordResetConfirmRequest): PasswordResetConfirmResponse
+
+    @POST("/auth/change-password")
+    suspend fun changePassword(@Body request: ChangePasswordRequest): AuthResponse
+
     @POST("/auth/logout")
     suspend fun logout(@Body request: LogoutRequest): Map<String, String>
 
@@ -65,13 +74,28 @@ interface BYSELApiService {
 
     // ==================== TRADING OPERATIONS ====================
     @POST("/order")
-    suspend fun placeOrder(@Body order: Order): OrderResponse
+    suspend fun placeOrder(
+        @Body order: Order,
+        @Header("X-Idempotency-Key") idempotencyKey: String? = null,
+        @Header("X-Trace-Id") traceId: String? = null,
+    ): OrderResponse
 
     @POST("/trade/buy")
-    suspend fun buyStock(@Body order: Order): OrderResponse
+    suspend fun buyStock(
+        @Body order: Order,
+        @Header("X-Idempotency-Key") idempotencyKey: String? = null,
+        @Header("X-Trace-Id") traceId: String? = null,
+    ): OrderResponse
 
     @POST("/trade/sell")
-    suspend fun sellStock(@Body order: Order): OrderResponse
+    suspend fun sellStock(
+        @Body order: Order,
+        @Header("X-Idempotency-Key") idempotencyKey: String? = null,
+        @Header("X-Trace-Id") traceId: String? = null,
+    ): OrderResponse
+
+    @POST("/orders/pre-trade-estimate")
+    suspend fun getPreTradeEstimate(@Body request: PreTradeEstimateRequest): PreTradeEstimateResponse
 
     @POST("/orders/advanced")
     suspend fun placeAdvancedOrder(@Body order: AdvancedOrderRequest): AdvancedOrderResponse
@@ -99,6 +123,9 @@ interface BYSELApiService {
 
     @GET("/trades/history/{symbol}")
     suspend fun getTradeHistoryForSymbol(@Path("symbol") symbol: String): List<TradeHistory>
+
+    @GET("/orders/trace/{traceId}")
+    suspend fun getOrderByTrace(@Path("traceId") traceId: String): OrderTraceLookupResponse
 
     // ==================== PORTFOLIO ====================
     @GET("/portfolio")
@@ -202,6 +229,12 @@ interface BYSELApiService {
     // ==================== MARKET STATUS ====================
     @GET("/market/status")
     suspend fun getMarketStatus(): MarketStatus
+
+    @GET("/market/news")
+    suspend fun getMarketNews(
+        @Query("symbols") symbols: String? = null,
+        @Query("limit") limit: Int = 5
+    ): MarketNewsResponse
 
     // ==================== AI STOCK ASSISTANT ====================
     @POST("/ai/ask")

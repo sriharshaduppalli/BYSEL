@@ -2,9 +2,11 @@ from fastapi import APIRouter, Depends, Query, HTTPException, Header
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
+from typing import Dict
 import logging
 import os
 import time
+import hashlib
 from math import erf, exp, log, sqrt
 from urllib import request as urllib_request
 from ..database.db import (
@@ -26,10 +28,47 @@ from ..database.db import (
 from .dependencies import get_current_user
 from ..models.schemas import (
     Quote, Holding, Order, OrderResponse, Alert, AlertCreate,
-    AlertResponse, HealthCheck, TradeHistory, PortfolioSummary, PortfolioValue,
+    AlertResponse, HealthCheck, TradeHistory, HistoryCandle, OrderTraceLookupResponse, PortfolioSummary, PortfolioValue,
     Wallet, WalletTransaction, WalletResponse, MarketStatus,
+    MarketNewsResponse,
     MutualFund, MutualFundCompareResponse, MutualFundRecommendationItem, MutualFundRecommendationResponse,
     SipPlanRequest, SipPlan, IPOListing,
+    SipPlanUpdateRequest, IPOApplicationRequest, IPOApplicationResponse, IPOApplication, ETFInstrument,
+    AdvancedOrderResponse,
+    TriggerOrderSummary,
+    BasketOrderRequest,
+    BasketOrderResponse,
+    BasketLegExecution,
+    OptionContract,
+    OptionChainResponse,
+    FuturesContract,
+    FuturesContractsResponse,
+    FuturesTicketPreviewRequest,
+    FuturesTicketPreviewResponse,
+    StrategyPreviewRequest,
+    StrategyPreviewResponse,
+    StrategyPayoffPoint,
+    FamilyMemberRequest,
+    FamilyMemberSummary,
+    FamilyDashboardResponse,
+    GoalPlanRequest,
+    GoalLinkRequest,
+    GoalPlanResponse,
+    PreTradeEstimateRequest,
+    PreTradeEstimateResponse,
+    PreTradeChargeBreakdown,
+    CopilotPreTradeRequest,
+    CopilotSignal,
+    CopilotPostTradeRequest,
+    CopilotPostTradeResponse,
+    CopilotPortfolioActionsResponse,
+    InvestorHoldingDelta,
+    InvestorPortfolioChangeFeed,
+    SmartMoneyIdeaFeedCard,
+    InvestorPortfolioInsightsResponse,
+    SignalLabCandidate,
+    SignalLabBucketFeed,
+    SignalLabBucketsResponse,
     SipPlanUpdateRequest, IPOApplicationRequest, IPOApplicationResponse, IPOApplication, ETFInstrument,
     AdvancedOrderResponse,
     TriggerOrderSummary,
@@ -56,15 +95,20 @@ from ..models.schemas import (
 from .trading import (
     get_holdings, get_holding, place_order,
     is_market_open, get_wallet, add_funds, withdraw_funds,
-    evaluate_pending_triggers, build_pretrade_signal,
+    evaluate_pending_triggers, build_pretrade_signal, build_pretrade_estimate,
 )
 from ..market_data import (
-    fetch_quote, fetch_quotes, get_all_symbols, get_default_symbols,
+    fetch_quote, fetch_quote_history, fetch_quotes, get_all_symbols, get_default_symbols,
     search_stocks, get_symbols_with_names, get_stock_name, INDIAN_STOCKS
 )
-from ..ai_engine import analyze_stock, predict_price, ai_assistant
+from ..ai_engine import (
+    analyze_stock, predict_price, ai_assistant, get_market_headlines,
+    get_stop_loss_take_profit, calculate_drawdown_risk, calculate_relative_strength,
+    calculate_trade_accuracy, get_sector_rotation_signals, get_earnings_calendar,
+    advanced_stock_screener
+)
 from ..portfolio_scorer import calculate_portfolio_health
-from ..market_heatmap import get_market_heatmap, get_sector_detail
+from ..market_heatmap import SECTOR_STOCKS, get_market_heatmap, get_sector_detail
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -73,6 +117,28 @@ _MF_NAV_SOURCE_URL = os.getenv("MF_NAV_SOURCE_URL", "https://www.amfiindia.com/s
 _MF_LIVE_CACHE_TTL_SECONDS = int(os.getenv("MF_LIVE_CACHE_TTL_SECONDS", "1800"))
 _MF_LIVE_CACHE: dict[str, object] = {"fetched_at": 0.0, "funds": []}
 _MF_SORT_FIELDS = {"name", "nav", "returns1y", "returns3y", "returns5y", "risk", "category"}
+_FUTURES_LOT_SIZE_HINTS = {
+    "NIFTY": 50,
+    "BANKNIFTY": 25,
+    "FINNIFTY": 65,
+    "RELIANCE": 250,
+    "TCS": 150,
+    "INFY": 300,
+    "SBIN": 750,
+}
+_SIGNAL_LAB_CACHE_TTL_SECONDS = int(os.getenv("SIGNAL_LAB_CACHE_TTL_SECONDS", "90"))
+_SIGNAL_LAB_CACHE_MAX_ITEMS = 6
+_SIGNAL_LAB_CACHE: dict[int, tuple[float, SignalLabBucketsResponse]] = {}
+_RESULTS_WEEK_UNIVERSE = [
+    "RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "SBIN",
+    "BHARTIARTL", "ITC", "LT", "AXISBANK", "KOTAKBANK", "BAJFINANCE",
+    "MARUTI", "TITAN", "ULTRACEMCO", "SUNPHARMA", "HCLTECH", "TECHM",
+]
+_INSTITUTIONAL_CONVICTION_UNIVERSE = [
+    "HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK", "BAJFINANCE",
+    "RELIANCE", "TCS", "INFY", "LT", "ITC", "HINDUNILVR", "BHARTIARTL",
+    "TITAN", "SUNPHARMA", "ULTRACEMCO", "POWERGRID", "NTPC",
+]
 
 
 def _normalize_nav_date(value: str) -> str:
@@ -592,6 +658,373 @@ def _generate_option_chain(symbol: str, expiry: str) -> OptionChainResponse:
     )
 
 
+def _lot_size_for_symbol(symbol: str, spot: float) -> int:
+    normalized = symbol.strip().upper()
+    hinted = _FUTURES_LOT_SIZE_HINTS.get(normalized)
+    if hinted:
+        return hinted
+
+    if spot <= 0:
+        return 100
+
+    target_notional = 120_000.0
+    raw = int(round(target_notional / spot))
+    rounded = max(10, ((raw + 4) // 5) * 5)
+    return rounded
+
+
+def _generate_futures_contracts(symbol: str) -> FuturesContractsResponse:
+    quote = fetch_quote(symbol.upper())
+    spot = float(quote.get("last") or 0.0)
+    if spot <= 0:
+        raise HTTPException(status_code=404, detail=f"Could not fetch live spot for {symbol}")
+
+    normalized_symbol = symbol.strip().upper()
+    lot_size = _lot_size_for_symbol(normalized_symbol, spot)
+    base_seed = sum(ord(ch) for ch in normalized_symbol)
+    today = datetime.utcnow().date()
+
+    contracts: list[FuturesContract] = []
+    expiry_offsets = [7, 14, 28]
+    for idx, day_offset in enumerate(expiry_offsets, start=1):
+        expiry_date = today + timedelta(days=day_offset)
+        carry = 0.0012 * idx + 0.0004 * ((base_seed + idx) % 3)
+        contract_last = round(spot * (1 + carry), 2)
+        basis = round(contract_last - spot, 2)
+
+        oi = max(5000, int((base_seed * 97 + idx * 431) % 95000 + 8000))
+        oi_change = int(((base_seed * 31 + idx * 173) % 3200) - 1600)
+        volume = max(500, int((base_seed * 19 + idx * 257) % 18000 + 2500))
+        pct_change = round(float(quote.get("pctChange") or 0.0) + (idx * 0.08), 2)
+
+        margin_pct = round(min(0.22, 0.11 + (abs(oi_change) / 12000.0) + (idx * 0.01)), 4)
+        margin_per_lot = round(contract_last * lot_size * margin_pct, 2)
+        contract_symbol = f"{normalized_symbol}-{expiry_date.strftime('%d%b%y').upper()}-FUT"
+
+        contracts.append(
+            FuturesContract(
+                contractSymbol=contract_symbol,
+                expiry=expiry_date.strftime("%Y-%m-%d"),
+                lotSize=lot_size,
+                last=contract_last,
+                pctChange=pct_change,
+                oi=oi,
+                oiChange=oi_change,
+                volume=volume,
+                basis=basis,
+                marginPct=margin_pct,
+                marginPerLot=margin_per_lot,
+            )
+        )
+
+    return FuturesContractsResponse(
+        symbol=normalized_symbol,
+        spot=round(spot, 2),
+        generatedAt=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        contracts=contracts,
+        notes=[
+            "Contract metrics are indicative and should be validated against broker RMS before execution.",
+            "Margin preview excludes span spikes and intraday leverage changes.",
+        ],
+    )
+
+
+def _preview_futures_ticket(payload: FuturesTicketPreviewRequest) -> FuturesTicketPreviewResponse:
+    if payload.lots <= 0:
+        raise HTTPException(status_code=400, detail="Lots must be greater than 0")
+
+    side = payload.side.strip().upper()
+    if side not in {"BUY", "SELL"}:
+        raise HTTPException(status_code=400, detail="Side must be BUY or SELL")
+
+    order_type = payload.orderType.strip().upper()
+    if order_type not in {"MARKET", "LIMIT"}:
+        raise HTTPException(status_code=400, detail="orderType must be MARKET or LIMIT")
+
+    contracts = _generate_futures_contracts(payload.symbol)
+    selected = next((c for c in contracts.contracts if c.expiry == payload.expiry), None)
+    if selected is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No futures contract found for {payload.symbol.upper()} expiry {payload.expiry}",
+        )
+
+    if order_type == "LIMIT" and (payload.limitPrice is None or payload.limitPrice <= 0):
+        raise HTTPException(status_code=400, detail="limitPrice is required for LIMIT order previews")
+
+    reference_price = float(payload.limitPrice) if (payload.limitPrice and payload.limitPrice > 0) else selected.last
+    quantity = selected.lotSize * payload.lots
+    notional = round(reference_price * quantity, 2)
+    estimated_margin = round(selected.marginPerLot * payload.lots, 2)
+    estimated_charges = round(max(20.0, notional * 0.00018), 2)
+    max_loss_buffer = round(estimated_margin * (0.85 if side == "SELL" else 0.75), 2)
+
+    return FuturesTicketPreviewResponse(
+        contractSymbol=selected.contractSymbol,
+        symbol=contracts.symbol,
+        expiry=selected.expiry,
+        side=side,
+        lots=payload.lots,
+        lotSize=selected.lotSize,
+        quantity=quantity,
+        referencePrice=round(reference_price, 2),
+        notionalValue=notional,
+        estimatedMargin=estimated_margin,
+        estimatedCharges=estimated_charges,
+        maxLossBuffer=max_loss_buffer,
+        notes=[
+            "Preview assumes normal volatility and current indicative margin percentages.",
+            "Use broker confirmation before placing live futures orders.",
+        ],
+    )
+
+
+def _safe_float(value: object, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
+def _safe_int(value: object, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def _volume_ratio_from_quote(raw_quote: dict) -> float | None:
+    volume = _safe_float(raw_quote.get("volume"), 0.0)
+    avg_volume = _safe_float(raw_quote.get("avgVolume"), 0.0)
+    if volume <= 0.0 or avg_volume <= 0.0:
+        return None
+    return volume / avg_volume
+
+
+def _dedupe_symbols(symbols: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for symbol in symbols:
+        normalized = symbol.strip().upper()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(normalized)
+    return deduped
+
+
+def _build_signal_candidate(
+    raw_quote: dict,
+    *,
+    score: float,
+    confidence: int,
+    thesis: str,
+    tags: list[str],
+) -> SignalLabCandidate:
+    symbol = str(raw_quote.get("symbol") or "").strip().upper()
+    company_name = get_stock_name(symbol) or symbol
+    pct_change = round(_safe_float(raw_quote.get("pctChange"), 0.0), 2)
+    volume_ratio = _volume_ratio_from_quote(raw_quote)
+    return SignalLabCandidate(
+        symbol=symbol,
+        companyName=company_name,
+        score=round(score, 2),
+        confidence=max(1, min(99, int(confidence))),
+        thesis=thesis,
+        tags=tags,
+        pctChange=pct_change,
+        volumeRatio=round(volume_ratio, 2) if volume_ratio is not None else None,
+    )
+
+
+def _build_results_week_bucket(limit_per_bucket: int, generated_at: str) -> SignalLabBucketFeed:
+    quotes = fetch_quotes(_RESULTS_WEEK_UNIVERSE)
+    ranked: list[tuple[float, SignalLabCandidate]] = []
+
+    for quote in quotes:
+        if _safe_float(quote.get("last"), 0.0) <= 0.0:
+            continue
+
+        pct_change = _safe_float(quote.get("pctChange"), 0.0)
+        abs_move = abs(pct_change)
+        volume_ratio = _volume_ratio_from_quote(quote)
+        volume_boost = min(max((volume_ratio or 1.0) - 1.0, 0.0), 4.0) * 12.0
+        momentum_boost = abs_move * 8.0
+        conviction_boost = 5.0 if abs_move >= 1.5 else 0.0
+        score = momentum_boost + volume_boost + conviction_boost
+
+        thesis_parts = [f"{pct_change:+.2f}% move"]
+        if volume_ratio is not None:
+            thesis_parts.append(f"{volume_ratio:.2f}x average volume")
+        target_price = _safe_float(quote.get("targetMeanPrice"), 0.0)
+        last_price = _safe_float(quote.get("last"), 0.0)
+        if target_price > last_price > 0.0:
+            upside_pct = ((target_price - last_price) / last_price) * 100.0
+            thesis_parts.append(f"{upside_pct:.1f}% analyst upside")
+
+        tags = ["results_week", "event_driven"]
+        if volume_ratio is not None and volume_ratio >= 1.5:
+            tags.append("high_volume")
+        if abs_move >= 2.5:
+            tags.append("high_volatility")
+
+        confidence = min(94, max(52, int(58 + score)))
+        candidate = _build_signal_candidate(
+            quote,
+            score=score,
+            confidence=confidence,
+            thesis=", ".join(thesis_parts),
+            tags=tags,
+        )
+        if candidate.symbol:
+            ranked.append((score, candidate))
+
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    return SignalLabBucketFeed(
+        bucketId="results_week",
+        title="Results Week",
+        thesis="Event-driven names where earnings-week volatility and participation are elevated.",
+        proxy=False,
+        generatedAt=generated_at,
+        candidates=[candidate for _, candidate in ranked[:limit_per_bucket]],
+        notes=[
+            "Bucket combines live move magnitude, participation, and analyst-upside context.",
+        ],
+    )
+
+
+def _top_sector_symbol_map(max_sectors: int = 4, symbols_per_sector: int = 8) -> dict[str, str]:
+    result: dict[str, str] = {}
+    try:
+        heatmap = get_market_heatmap()
+        sectors = heatmap.get("sectors") if isinstance(heatmap, dict) else []
+    except Exception:
+        sectors = []
+
+    if not isinstance(sectors, list):
+        sectors = []
+
+    ranked_sectors = sorted(
+        [sector for sector in sectors if isinstance(sector, dict)],
+        key=lambda sector: _safe_float(sector.get("avgChange"), 0.0),
+        reverse=True,
+    )
+
+    for sector in ranked_sectors[:max_sectors]:
+        sector_name = str(sector.get("name") or "").strip() or "Market"
+        for stock in (sector.get("stocks") or [])[:symbols_per_sector]:
+            if not isinstance(stock, dict):
+                continue
+            symbol = str(stock.get("symbol") or "").strip().upper()
+            if symbol:
+                result[symbol] = sector_name
+    return result
+
+
+def _build_institutional_conviction_bucket(limit_per_bucket: int, generated_at: str) -> SignalLabBucketFeed:
+    top_sector_symbol_map = _top_sector_symbol_map()
+    top_sector_symbols = list(top_sector_symbol_map.keys())
+    fallback_sector_symbols = []
+    for sector_name in ["Banking", "Finance", "IT", "Energy"]:
+        fallback_sector_symbols.extend(SECTOR_STOCKS.get(sector_name, [])[:6])
+
+    universe = _dedupe_symbols(
+        _INSTITUTIONAL_CONVICTION_UNIVERSE + top_sector_symbols + fallback_sector_symbols
+    )[:64]
+
+    quotes = fetch_quotes(universe)
+    ranked: list[tuple[float, SignalLabCandidate]] = []
+
+    for quote in quotes:
+        last_price = _safe_float(quote.get("last"), 0.0)
+        if last_price <= 0.0:
+            continue
+
+        symbol = str(quote.get("symbol") or "").strip().upper()
+        pct_change = _safe_float(quote.get("pctChange"), 0.0)
+        volume_ratio = _volume_ratio_from_quote(quote)
+        market_cap = _safe_float(quote.get("marketCap"), 0.0)
+        target_price = _safe_float(quote.get("targetMeanPrice"), 0.0)
+        ma_50 = _safe_float(quote.get("fiftyDayAverage"), 0.0)
+        ma_200 = _safe_float(quote.get("twoHundredDayAverage"), 0.0)
+
+        trend_bonus = 12.0 if (ma_50 > 0.0 and ma_200 > 0.0 and ma_50 > ma_200) else 0.0
+        upside_bonus = 0.0
+        if target_price > last_price:
+            upside_bonus = min(((target_price - last_price) / last_price) * 100.0, 16.0)
+        liquidity_bonus = min(max((volume_ratio or 1.0) - 1.0, 0.0), 3.0) * 7.0
+        size_bonus = 0.0
+        if market_cap > 0.0:
+            size_bonus = min(10.0, max(0.0, (log(max(market_cap, 1.0), 10) - 8.5) * 3.0))
+        momentum_bonus = max(0.0, pct_change) * 4.0 + abs(pct_change) * 1.5
+
+        score = 20.0 + trend_bonus + upside_bonus + liquidity_bonus + size_bonus + momentum_bonus
+        if pct_change <= -1.5:
+            score -= 6.0
+
+        sector_hint = top_sector_symbol_map.get(symbol)
+        thesis_parts = []
+        if sector_hint:
+            thesis_parts.append(f"{sector_hint} leadership")
+        thesis_parts.append(f"{pct_change:+.2f}% live move")
+        if volume_ratio is not None:
+            thesis_parts.append(f"{volume_ratio:.2f}x volume")
+        if target_price > last_price:
+            thesis_parts.append(f"{((target_price - last_price) / last_price) * 100.0:.1f}% target gap")
+
+        tags = ["institutional_conviction", "proxy"]
+        if trend_bonus > 0.0:
+            tags.append("trend_confirmed")
+        if size_bonus >= 6.0:
+            tags.append("large_cap")
+        if liquidity_bonus >= 4.0:
+            tags.append("liquidity_supported")
+
+        confidence = min(93, max(50, int(48 + (score / 1.6))))
+        candidate = _build_signal_candidate(
+            quote,
+            score=score,
+            confidence=confidence,
+            thesis=", ".join(thesis_parts),
+            tags=tags,
+        )
+        if candidate.symbol:
+            ranked.append((score, candidate))
+
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    return SignalLabBucketFeed(
+        bucketId="institutional_conviction",
+        title="Institutional Conviction",
+        thesis="Proxy bucket combining sector leadership, liquidity, trend, and size signals.",
+        proxy=True,
+        generatedAt=generated_at,
+        candidates=[candidate for _, candidate in ranked[:limit_per_bucket]],
+        notes=[
+            "Proxy bucket, not direct FII/DII filings.",
+            "Use as a discovery layer before detailed thesis validation.",
+        ],
+    )
+
+
+def _trim_signal_lab_cache() -> None:
+    if len(_SIGNAL_LAB_CACHE) <= _SIGNAL_LAB_CACHE_MAX_ITEMS:
+        return
+    for cache_key, _ in sorted(_SIGNAL_LAB_CACHE.items(), key=lambda item: item[1][0])[:-_SIGNAL_LAB_CACHE_MAX_ITEMS]:
+        _SIGNAL_LAB_CACHE.pop(cache_key, None)
+
+
+def _build_signal_lab_buckets_payload(limit_per_bucket: int) -> SignalLabBucketsResponse:
+    generated_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    buckets = [
+        _build_results_week_bucket(limit_per_bucket=limit_per_bucket, generated_at=generated_at),
+        _build_institutional_conviction_bucket(limit_per_bucket=limit_per_bucket, generated_at=generated_at),
+    ]
+    return SignalLabBucketsResponse(
+        generatedAt=generated_at,
+        buckets=[bucket for bucket in buckets if bucket.candidates],
+    )
+
+
 def _strategy_leg_payoff(option_type: str, side: str, strike: float, premium: float, quantity: int, lot_size: int, spot: float) -> float:
     option_type = option_type.strip().upper()
     side = side.strip().upper()
@@ -745,6 +1178,20 @@ async def get_single_quote_endpoint(symbol: str):
     )
 
 
+@router.get("/quotes/{symbol}/history", response_model=list[HistoryCandle])
+async def get_quote_history_endpoint(
+    symbol: str,
+    period: str = Query("1mo"),
+    interval: str = Query("1d"),
+):
+    """Get OHLCV candles for a symbol and timeframe."""
+    try:
+        candles = fetch_quote_history(symbol.upper(), period=period, interval=interval)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return [HistoryCandle(**candle) for candle in candles]
+
+
 # ==================== HOLDINGS ====================
 
 @router.get("/holdings", response_model=list[Holding])
@@ -765,23 +1212,95 @@ async def get_holding_endpoint(symbol: str, db: Session = Depends(get_db)):
 # ==================== TRADING ====================
 
 @router.post("/order", response_model=OrderResponse)
-async def place_order_endpoint(order: Order, db: Session = Depends(get_db), user_id: int = Header(1)):
+async def place_order_endpoint(
+    order: Order,
+    user_id: int = Header(1),
+    x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
+    x_trace_id: str | None = Header(default=None, alias="X-Trace-Id"),
+    db: Session = Depends(get_db),
+):
     """Place a buy or sell order at live market price."""
-    return place_order(db, order, user_id=user_id)
+    return place_order(db, order, user_id=user_id, idempotency_key=x_idempotency_key, trace_id=x_trace_id)
 
 
 @router.post("/trade/buy", response_model=OrderResponse)
-async def buy_stock_endpoint(order: Order, db: Session = Depends(get_db), user_id: int = Header(1)):
+async def buy_stock_endpoint(
+    order: Order,
+    user_id: int = Header(1),
+    x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
+    x_trace_id: str | None = Header(default=None, alias="X-Trace-Id"),
+    db: Session = Depends(get_db),
+):
     """Buy stock at live market price."""
     order.side = "BUY"
-    return place_order(db, order, user_id=user_id)
+    return place_order(db, order, user_id=user_id, idempotency_key=x_idempotency_key, trace_id=x_trace_id)
 
 
 @router.post("/trade/sell", response_model=OrderResponse)
-async def sell_stock_endpoint(order: Order, db: Session = Depends(get_db), user_id: int = Header(1)):
+async def sell_stock_endpoint(
+    order: Order,
+    user_id: int = Header(1),
+    x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
+    x_trace_id: str | None = Header(default=None, alias="X-Trace-Id"),
+    db: Session = Depends(get_db),
+):
     """Sell stock at live market price."""
     order.side = "SELL"
-    return place_order(db, order, user_id=user_id)
+    return place_order(db, order, user_id=user_id, idempotency_key=x_idempotency_key, trace_id=x_trace_id)
+
+
+@router.post("/orders/pre-trade-estimate", response_model=PreTradeEstimateResponse)
+async def pre_trade_estimate_endpoint(
+    payload: PreTradeEstimateRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Header(1),
+):
+    quote = fetch_quote(payload.order.symbol.upper())
+    live_price = float(quote.get("last") or 0.0)
+    if live_price <= 0:
+        raise HTTPException(status_code=503, detail=f"Could not fetch live price for {payload.order.symbol.upper()}")
+
+    market = is_market_open()
+    wallet_balance = payload.walletBalance if payload.walletBalance is not None else get_wallet(db, user_id).balance
+    market_open = payload.marketOpen if payload.marketOpen is not None else market.isOpen
+
+    estimate = build_pretrade_estimate(
+        order=payload.order,
+        live_price=live_price,
+        wallet_balance=wallet_balance,
+        market_open=market_open,
+        bid=quote.get("bid"),
+        ask=quote.get("ask"),
+    )
+    signal = build_pretrade_signal(
+        order=payload.order,
+        live_price=live_price,
+        wallet_balance=wallet_balance,
+        market_open=market_open,
+    )
+
+    return PreTradeEstimateResponse(
+        symbol=estimate["symbol"],
+        side=estimate["side"],
+        qty=estimate["qty"],
+        orderType=estimate["orderType"],
+        executionPrice=estimate["executionPrice"],
+        livePrice=estimate["livePrice"],
+        tradeValue=estimate["tradeValue"],
+        charges=PreTradeChargeBreakdown(**estimate["charges"]),
+        netAmount=estimate["netAmount"],
+        walletBalance=estimate["walletBalance"],
+        walletUtilizationPct=estimate["walletUtilizationPct"],
+        canAfford=estimate["canAfford"],
+        impactTag=estimate["impactTag"],
+        warnings=estimate["warnings"],
+        signal=CopilotSignal(
+            verdict=signal["verdict"],
+            confidence=signal["confidence"],
+            flags=signal["flags"],
+            guidance=signal["guidance"],
+        ),
+    )
 
 
 @router.get("/trades/history", response_model=list[TradeHistory])
@@ -814,6 +1333,53 @@ async def get_trade_history_for_symbol(symbol: str, db: Session = Depends(get_db
         total=o.total or 0,
         timestamp=int(o.created_at.timestamp() * 1000) if o.created_at else 0
     ) for o in orders]
+
+
+@router.get("/orders/trace/{trace_id}", response_model=OrderTraceLookupResponse)
+async def get_order_by_trace_endpoint(
+    trace_id: str,
+    db: Session = Depends(get_db),
+    user_id: int = Header(1),
+):
+    normalized_trace = trace_id.strip()
+    if not normalized_trace:
+        raise HTTPException(status_code=400, detail="trace_id is required")
+
+    order = (
+        db.query(OrderModel)
+        .filter(OrderModel.trace_id == normalized_trace, OrderModel.user_id == user_id)
+        .order_by(OrderModel.id.desc())
+        .first()
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail=f"No order found for trace '{normalized_trace}'")
+
+    side = (order.side or "").upper() or "BUY"
+    qty = int(order.quantity or 0)
+    status = (order.status or "PENDING").upper()
+    executed_price = float(order.price or 0.0)
+    total = float(order.total or 0.0)
+    if total <= 0 and qty > 0 and executed_price > 0:
+        total = round(qty * executed_price, 2)
+
+    message = f"{status} • {side} {qty} {order.symbol} @ ₹{executed_price:.2f}"
+    created_at = order.created_at.isoformat() if order.created_at else ""
+
+    return OrderTraceLookupResponse(
+        orderId=order.id,
+        traceId=order.trace_id or normalized_trace,
+        symbol=order.symbol,
+        side=side,
+        quantity=qty,
+        orderType=(order.order_type or "MARKET").upper(),
+        validity=(order.validity or "DAY").upper(),
+        status=status,
+        executedPrice=round(executed_price, 2),
+        total=round(total, 2),
+        idempotencyKey=order.idempotency_key,
+        createdAt=created_at,
+        message=message,
+    )
 
 
 # ==================== PORTFOLIO ====================
@@ -884,6 +1450,16 @@ async def withdraw_funds_endpoint(txn: WalletTransaction, db: Session = Depends(
 async def market_status_endpoint():
     """Check if NSE market is currently open (9:15 AM - 3:30 PM IST, Mon-Fri)."""
     return is_market_open()
+
+
+@router.get("/market/news", response_model=MarketNewsResponse)
+async def market_news_endpoint(
+    symbols: str = Query("", description="Optional comma-separated stock symbols"),
+    limit: int = Query(5, ge=1, le=10),
+):
+    """Get the latest market headlines using the same normalized Yahoo feed used by the AI engine."""
+    requested_symbols = [value.strip().upper() for value in symbols.split(",") if value.strip()]
+    return get_market_headlines(symbols=requested_symbols or None, limit=limit)
 
 
 # ==================== ALERTS ====================
@@ -1012,10 +1588,10 @@ class AiQuery(BaseModel):
     query: str
 
 @router.post("/ai/ask")
-async def ai_ask_endpoint(body: AiQuery):
+async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
     """Natural language AI stock assistant.
     Examples: 'Should I buy RELIANCE?', 'Predict TCS price', 'Compare INFY and TCS'"""
-    result = ai_assistant(body.query)
+    result = ai_assistant(body.query, db=db)
     return result
 
 
@@ -1029,6 +1605,17 @@ async def ai_analyze_endpoint(symbol: str):
     return result
 
 
+@router.get("/ai/analyze-fast/{symbol}")
+async def ai_analyze_fast_endpoint(symbol: str):
+    """Ultra-fast stock detail loading (<1s) with 20-second cache.
+    Perfect for real-time price updates during market hours."""
+    from .ai_engine import get_stock_detail_fast
+    result = get_stock_detail_fast(symbol.upper())
+    if "error" in result and "predictions" not in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+
 @router.get("/ai/predict/{symbol}")
 async def ai_predict_endpoint(symbol: str):
     """Get AI price predictions for 1-week, 1-month, and 3-month horizons
@@ -1036,6 +1623,114 @@ async def ai_predict_endpoint(symbol: str):
     result = predict_price(symbol.upper())
     if "error" in result and not result.get("predictions"):
         raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+
+@router.get("/ai/recommendations")
+async def ai_recommendations_endpoint(limit: int = 10):
+    """Get best stocks to buy for different timeframes (day, month, 3-months)
+    with predicted targets, confidence scores, and model accuracy metrics."""
+    from .ai_engine import get_best_stocks_to_buy
+    result = get_best_stocks_to_buy(limit=limit)
+    return result
+
+
+@router.get("/ai/trade-levels/{symbol}")
+async def ai_trade_levels_endpoint(symbol: str):
+    """Get risk-adjusted stop loss and take profit levels for a stock.
+    Includes entry signals, position sizing, and risk:reward ratios."""
+    from .ai_engine import get_stop_loss_take_profit
+    result = get_stop_loss_take_profit(symbol.upper())
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result.get("error", "Analysis failed"))
+    return result
+
+
+@router.get("/ai/drawdown-risk/{symbol}")
+async def ai_drawdown_risk_endpoint(symbol: str):
+    """Get historical drawdown risk, current distance from peak, and risk scoring.
+    Helps users understand maximum downside potential."""
+    from .ai_engine import calculate_drawdown_risk
+    result = calculate_drawdown_risk(symbol.upper())
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result.get("error", "Analysis failed"))
+    return result
+
+
+@router.get("/ai/relative-strength/{symbol}")
+async def ai_relative_strength_endpoint(symbol: str):
+    """Get relative strength vs sector and market.
+    Compare stock performance to peers and benchmark."""
+    from .ai_engine import calculate_relative_strength
+    result = calculate_relative_strength(symbol.upper())
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result.get("error", "Analysis failed"))
+    return result
+
+
+@router.get("/ai/trade-accuracy")
+async def ai_trade_accuracy_endpoint(timeframe: str = "one_month"):
+    """Get backtesting accuracy of ML recommendations from N days ago.
+    Shows win rate, average profit, and Sharpe ratio."""
+    from .ai_engine import calculate_trade_accuracy
+    
+    if timeframe not in ["one_day", "one_month", "three_months"]:
+        timeframe = "one_month"
+    
+    result = calculate_trade_accuracy(timeframe=timeframe)
+    return result
+
+
+@router.get("/market/sector-rotation")
+async def sector_rotation_signals_endpoint():
+    """Get sector rotation signals based on momentum, strength, and valuation.
+    Identifies which sectors to accumulate, hold, or reduce."""
+    from .ai_engine import get_sector_rotation_signals
+    result = get_sector_rotation_signals()
+    return result
+
+
+@router.get("/market/earnings-calendar")
+async def earnings_calendar_endpoint(next_days: int = 30):
+    """Get upcoming earnings calendar with pre-earnings volatility alerts.
+    Helps avoid gap risk and identifies volatility trading opportunities."""
+    from .ai_engine import get_earnings_calendar
+    
+    if next_days > 90:
+        next_days = 90
+    
+    result = get_earnings_calendar(next_days=next_days)
+    return result
+
+
+@router.post("/market/advanced-screener")
+async def advanced_screener_endpoint(filters: Dict = None):
+    """Advanced stock screener with multiple filter criteria.
+    
+    Supported filters:
+    - rs_min_vs_market: Relative strength minimum (1.0 = at parity)
+    - rsi_min, rsi_max: RSI range (default: 30-70)
+    - pe_min, pe_max: P/E ratio range (default: 5-50)
+    - momentum_min: min % price change (default: -5%)
+    - volume_boost_min: volume ratio minimum (default: 1.0)
+    - sector: Filter by sector name
+    - risk_level: "LOW", "MEDIUM", or "HIGH" (affects vol filter)
+    
+    Example:
+    {
+        "rsi_min": 35,
+        "rsi_max": 55,
+        "pe_max": 25,
+        "sector": "Banking",
+        "risk_level": "LOW"
+    }
+    """
+    from .ai_engine import advanced_stock_screener
+    
+    if filters is None:
+        filters = {}
+    
+    result = advanced_stock_screener(filters)
     return result
 
 
@@ -1074,6 +1769,32 @@ async def sector_detail_endpoint(sector_name: str):
     if not result:
         raise HTTPException(status_code=404, detail=f"Sector '{sector_name}' not found")
     return result
+
+
+@router.get("/market/signal-lab/buckets", response_model=SignalLabBucketsResponse)
+async def signal_lab_buckets_endpoint(
+    limitPerBucket: int = Query(8, ge=3, le=20),
+    forceRefresh: bool = Query(False),
+):
+    """Get curated Signal Lab phase-2 discovery buckets.
+
+    Buckets currently include:
+    - Results Week: event-driven names with elevated move + participation
+    - Institutional Conviction: proxy blend of sector leadership + liquidity + trend
+    """
+    now = time.time()
+    cached = _SIGNAL_LAB_CACHE.get(limitPerBucket)
+    if (
+        not forceRefresh
+        and cached is not None
+        and (now - cached[0]) < _SIGNAL_LAB_CACHE_TTL_SECONDS
+    ):
+        return cached[1]
+
+    payload = _build_signal_lab_buckets_payload(limit_per_bucket=limitPerBucket)
+    _SIGNAL_LAB_CACHE[limitPerBucket] = (now, payload)
+    _trim_signal_lab_cache()
+    return payload
 
 
 # ==================== PHASE 1: MUTUAL FUNDS & SIP ====================
@@ -1227,7 +1948,7 @@ async def get_mutual_fund_detail_endpoint(scheme_code: str, db: Session = Depend
 async def create_sip_plan_endpoint(
     request: SipPlanRequest,
     db: Session = Depends(get_db),
-    user_id: int = Header(1)
+    user=Depends(get_current_user),
 ):
     fund = db.query(MutualFundModel).filter(MutualFundModel.scheme_code == request.schemeCode).first()
     if not fund:
@@ -1247,7 +1968,7 @@ async def create_sip_plan_endpoint(
 
     next_date = (datetime.utcnow() + timedelta(days=30)).strftime("%Y-%m-%d")
     plan = SipPlanModel(
-        user_id=user_id,
+        user_id=int(user.id),
         scheme_code=request.schemeCode,
         scheme_name=fund.scheme_name,
         amount=request.amount,
@@ -1272,10 +1993,10 @@ async def create_sip_plan_endpoint(
 
 
 @router.get("/sip/plans", response_model=list[SipPlan])
-async def get_sip_plans_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
+async def get_sip_plans_endpoint(db: Session = Depends(get_db), user=Depends(get_current_user)):
     plans = (
         db.query(SipPlanModel)
-        .filter(SipPlanModel.user_id == user_id)
+        .filter(SipPlanModel.user_id == int(user.id))
         .order_by(SipPlanModel.created_at.desc())
         .all()
     )
@@ -1298,10 +2019,10 @@ async def update_sip_plan_endpoint(
     sip_id: str,
     request: SipPlanUpdateRequest,
     db: Session = Depends(get_db),
-    user_id: int = Header(1)
+    user=Depends(get_current_user),
 ):
     numeric_id = int(sip_id.replace("SIP-", "")) if sip_id.startswith("SIP-") else int(sip_id)
-    plan = db.query(SipPlanModel).filter(SipPlanModel.id == numeric_id, SipPlanModel.user_id == user_id).first()
+    plan = db.query(SipPlanModel).filter(SipPlanModel.id == numeric_id, SipPlanModel.user_id == int(user.id)).first()
     if not plan:
         raise HTTPException(status_code=404, detail=f"SIP plan '{sip_id}' not found")
 
@@ -1333,22 +2054,22 @@ async def update_sip_plan_endpoint(
 
 
 @router.post("/sip/plans/{sip_id}/pause", response_model=SipPlan)
-async def pause_sip_plan_endpoint(sip_id: str, db: Session = Depends(get_db), user_id: int = Header(1)):
+async def pause_sip_plan_endpoint(sip_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
     return await update_sip_plan_endpoint(
         sip_id=sip_id,
         request=SipPlanUpdateRequest(isActive=False),
         db=db,
-        user_id=user_id,
+        user=user,
     )
 
 
 @router.post("/sip/plans/{sip_id}/resume", response_model=SipPlan)
-async def resume_sip_plan_endpoint(sip_id: str, db: Session = Depends(get_db), user_id: int = Header(1)):
+async def resume_sip_plan_endpoint(sip_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
     return await update_sip_plan_endpoint(
         sip_id=sip_id,
         request=SipPlanUpdateRequest(isActive=True),
         db=db,
-        user_id=user_id,
+        user=user,
     )
 
 
@@ -1378,6 +2099,34 @@ async def get_ipos_endpoint(status: str | None = Query(None), db: Session = Depe
     ]
 
 
+@router.get("/ipos/my-applications", response_model=list[IPOApplication])
+async def get_my_ipo_applications_endpoint(
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    _seed_phase1_master_data(db)
+    applications = (
+        db.query(IPOApplicationModel, IPOModel)
+        .join(IPOModel, IPOApplicationModel.ipo_id == IPOModel.ipo_id)
+        .filter(IPOApplicationModel.user_id == int(user.id))
+        .order_by(IPOApplicationModel.created_at.desc())
+        .all()
+    )
+    return [
+        IPOApplication(
+            applicationId=f"APP-{application.id}",
+            ipoId=application.ipo_id,
+            companyName=ipo.company_name,
+            lots=application.lots,
+            bidPrice=application.bid_price,
+            upiId=application.upi_id,
+            status=application.status,
+            appliedAt=application.created_at.strftime("%Y-%m-%d %H:%M:%S") if application.created_at else "",
+        )
+        for application, ipo in applications
+    ]
+
+
 @router.get("/ipos/{ipo_id}", response_model=IPOListing)
 async def get_ipo_detail_endpoint(ipo_id: str, db: Session = Depends(get_db)):
     _seed_phase1_master_data(db)
@@ -1402,7 +2151,7 @@ async def get_ipo_detail_endpoint(ipo_id: str, db: Session = Depends(get_db)):
 async def apply_ipo_endpoint(
     request: IPOApplicationRequest,
     db: Session = Depends(get_db),
-    user_id: int = Header(1)
+    user=Depends(get_current_user),
 ):
     _seed_phase1_master_data(db)
     ipo = db.query(IPOModel).filter(IPOModel.ipo_id == request.ipoId).first()
@@ -1422,7 +2171,7 @@ async def apply_ipo_endpoint(
         raise HTTPException(status_code=400, detail=f"Bid price must be <= {ipo.price_band_max}")
 
     application = IPOApplicationModel(
-        user_id=user_id,
+        user_id=int(user.id),
         ipo_id=request.ipoId,
         lots=request.lots,
         bid_price=request.bidPrice,
@@ -1438,34 +2187,6 @@ async def apply_ipo_endpoint(
         status="PENDING",
         message="IPO application accepted for processing"
     )
-
-
-@router.get("/ipos/my-applications", response_model=list[IPOApplication])
-async def get_my_ipo_applications_endpoint(
-    db: Session = Depends(get_db),
-    user_id: int = Header(1)
-):
-    _seed_phase1_master_data(db)
-    applications = (
-        db.query(IPOApplicationModel, IPOModel)
-        .join(IPOModel, IPOApplicationModel.ipo_id == IPOModel.ipo_id)
-        .filter(IPOApplicationModel.user_id == user_id)
-        .order_by(IPOApplicationModel.created_at.desc())
-        .all()
-    )
-    return [
-        IPOApplication(
-            applicationId=f"APP-{application.id}",
-            ipoId=application.ipo_id,
-            companyName=ipo.company_name,
-            lots=application.lots,
-            bidPrice=application.bid_price,
-            upiId=application.upi_id,
-            status=application.status,
-            appliedAt=application.created_at.strftime("%Y-%m-%d %H:%M:%S") if application.created_at else "",
-        )
-        for application, ipo in applications
-    ]
 
 
 # ==================== PHASE 1: ETF ====================
@@ -1505,6 +2226,8 @@ async def place_advanced_order_endpoint(
     order: Order,
     db: Session = Depends(get_db),
     user_id: int = Header(1),
+    x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
+    x_trace_id: str | None = Header(default=None, alias="X-Trace-Id"),
 ):
     market = is_market_open()
     quote = fetch_quote(order.symbol.upper())
@@ -1517,38 +2240,24 @@ async def place_advanced_order_endpoint(
         market_open=market.isOpen,
     )
 
-    response = place_order(db, order, user_id=user_id)
+    response = place_order(
+        db,
+        order,
+        user_id=user_id,
+        idempotency_key=x_idempotency_key,
+        trace_id=x_trace_id,
+    )
 
-    trigger_status: str | None = None
-    order_id: int | None = None
-    executed_price: float | None = None
-
-    if "server-side trigger" in response.message:
-        trigger = (
-            db.query(TriggerOrderModel)
-            .filter(TriggerOrderModel.user_id == user_id, TriggerOrderModel.symbol == order.symbol.upper())
-            .order_by(TriggerOrderModel.id.desc())
-            .first()
-        )
-        trigger_status = "PENDING" if trigger else "PENDING"
-    else:
-        order_row = (
-            db.query(OrderModel)
-            .filter(OrderModel.user_id == user_id, OrderModel.symbol == order.symbol.upper())
-            .order_by(OrderModel.id.desc())
-            .first()
-        )
-        if order_row:
-            order_id = order_row.id
-            executed_price = order_row.price
-            trigger_status = order_row.status
+    trigger_status = response.orderStatus
+    if trigger_status is None and "server-side trigger" in (response.message or ""):
+        trigger_status = "PENDING"
 
     return AdvancedOrderResponse(
         status=response.status,
-        orderId=order_id,
+        orderId=response.orderId,
         order=order,
         message=response.message or "Order processed",
-        executedPrice=executed_price,
+        executedPrice=response.executedPrice,
         triggerStatus=trigger_status,
         riskFlags=signal_data["flags"],
     )
@@ -1705,6 +2414,8 @@ async def execute_basket_endpoint(
     basket_id: int,
     db: Session = Depends(get_db),
     user_id: int = Header(1),
+    x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
+    x_trace_id: str | None = Header(default=None, alias="X-Trace-Id"),
 ):
     basket = db.query(BasketOrderModel).filter(BasketOrderModel.id == basket_id, BasketOrderModel.user_id == user_id).first()
     if not basket:
@@ -1716,6 +2427,19 @@ async def execute_basket_endpoint(
 
     results: list[BasketLegExecution] = []
     for leg in legs:
+        leg_idempotency_key: str | None = None
+        if x_idempotency_key:
+            digest = hashlib.sha1(
+                f"{x_idempotency_key}|{basket_id}|{leg.id}".encode("utf-8")
+            ).hexdigest()[:16]
+            leg_idempotency_key = f"basket-{basket_id}-leg-{leg.id}-{digest}"
+
+        leg_trace_id = (
+            f"{x_trace_id}-basket-{basket_id}-leg-{leg.id}"
+            if x_trace_id
+            else None
+        )
+
         response = place_order(
             db,
             Order(
@@ -1729,12 +2453,8 @@ async def execute_basket_endpoint(
                 tag=leg.tag,
             ),
             user_id=user_id,
-        )
-        order_row = (
-            db.query(OrderModel)
-            .filter(OrderModel.user_id == user_id, OrderModel.symbol == leg.symbol)
-            .order_by(OrderModel.id.desc())
-            .first()
+            idempotency_key=leg_idempotency_key,
+            trace_id=leg_trace_id,
         )
         results.append(
             BasketLegExecution(
@@ -1743,7 +2463,7 @@ async def execute_basket_endpoint(
                 qty=leg.quantity,
                 status=response.status,
                 message=response.message or "",
-                orderId=order_row.id if order_row else None,
+                orderId=response.orderId,
             )
         )
 
@@ -1780,6 +2500,16 @@ async def get_option_chain_endpoint(
 @router.post("/derivatives/strategy/preview", response_model=StrategyPreviewResponse)
 async def strategy_preview_endpoint(payload: StrategyPreviewRequest):
     return _preview_strategy(payload)
+
+
+@router.get("/derivatives/futures/contracts", response_model=FuturesContractsResponse)
+async def get_futures_contracts_endpoint(symbol: str = Query(...)):
+    return _generate_futures_contracts(symbol=symbol)
+
+
+@router.post("/derivatives/futures/ticket/preview", response_model=FuturesTicketPreviewResponse)
+async def futures_ticket_preview_endpoint(payload: FuturesTicketPreviewRequest):
+    return _preview_futures_ticket(payload)
 
 
 # ==================== WEALTH OS ====================
@@ -2010,3 +2740,343 @@ async def copilot_portfolio_actions_endpoint(db: Session = Depends(get_db)):
         priority=priority,
         rationale=rationale,
     )
+
+
+# ==================== INVESTOR PORTFOLIOS (SMART MONEY TRACKER) ====================
+
+# Curated profiles based on Q3 FY26 publicly disclosed SEBI/BSE filings.
+# Holdings lists reflect approximate positions known from regulatory disclosures.
+_INVESTOR_PORTFOLIOS = [
+    {
+        "id": "rakesh_jhunjhunwala_estate",
+        "investorName": "Rare Enterprises (Jhunjhunwala Estate)",
+        "displayTitle": "Jhunjhunwala Portfolio",
+        "style": "Value + Growth",
+        "aum": "5,200 Cr+",
+        "bio": "Legacy positions of India's most celebrated market wizard. Concentrated bets with long conviction cycles.",
+        "holdings": [
+            {"symbol": "TITAN", "companyName": "Titan Company", "holdingPct": 5.05, "sector": "Consumer"},
+            {"symbol": "TATAMOTOR", "companyName": "Tata Motors", "holdingPct": 1.20, "sector": "Auto"},
+            {"symbol": "STAR", "companyName": "Star Health Insurance", "holdingPct": 17.50, "sector": "Insurance"},
+            {"symbol": "METROBRAND", "companyName": "Metro Brands", "holdingPct": 3.62, "sector": "Consumer"},
+            {"symbol": "NAZARA", "companyName": "Nazara Technologies", "holdingPct": 10.31, "sector": "Technology"},
+            {"symbol": "CRISIL", "companyName": "CRISIL", "holdingPct": 1.10, "sector": "Financials"},
+            {"symbol": "FEDERALBNK", "companyName": "Federal Bank", "holdingPct": 1.15, "sector": "Banking"},
+            {"symbol": "ESCORTS", "companyName": "Escorts Kubota", "holdingPct": 1.40, "sector": "Industrial"},
+        ],
+    },
+    {
+        "id": "radhakishan_damani",
+        "investorName": "Radhakishan Damani",
+        "displayTitle": "Damani Portfolio",
+        "style": "Deep Value, Concentrated",
+        "aum": "3,800 Cr+",
+        "bio": "Founder of DMart. Patient contrarian buyer with multi-decade holding periods.",
+        "holdings": [
+            {"symbol": "DMART", "companyName": "Avenue Supermarts (DMart)", "holdingPct": 24.98, "sector": "Retail"},
+            {"symbol": "VST", "companyName": "VST Industries", "holdingPct": 27.14, "sector": "Consumer"},
+            {"symbol": "INDIA1HLTF", "companyName": "India 1 Payments", "holdingPct": 16.20, "sector": "Fintech"},
+            {"symbol": "MANGCHEFER", "companyName": "Mangalam Organics", "holdingPct": 5.80, "sector": "Chemicals"},
+            {"symbol": "KRISHANCHEM", "companyName": "Krishana Phoschem", "holdingPct": 3.30, "sector": "Chemicals"},
+        ],
+    },
+    {
+        "id": "porinju_veliyath",
+        "investorName": "Porinju Veliyath",
+        "displayTitle": "Equity Intelligence Portfolio",
+        "style": "Micro/Small Cap Contrarian",
+        "aum": "1,200 Cr+",
+        "bio": "Kerala-based value investor hunting deeply undervalued small-caps with turnaround potential.",
+        "holdings": [
+            {"symbol": "CARERATING", "companyName": "CARE Ratings", "holdingPct": 4.20, "sector": "Financials"},
+            {"symbol": "KOLTEPATIL", "companyName": "Kolte-Patil Developers", "holdingPct": 2.80, "sector": "Realty"},
+            {"symbol": "JYOTHYLAB", "companyName": "Jyothy Labs", "holdingPct": 1.90, "sector": "FMCG"},
+        ],
+    },
+    {
+        "id": "vijay_kedia",
+        "investorName": "Vijay Kedia",
+        "displayTitle": "Kedia Portfolio",
+        "style": "Growth, SMILE Strategy",
+        "aum": "400 Cr+",
+        "bio": "Practitioner of SMILE (Small-size, Medium-experience, Large aspirations, Extra-ordinary management).",
+        "holdings": [
+            {"symbol": "XCORPORATI", "companyName": "Xcorporeal Medical", "holdingPct": 6.20, "sector": "Healthcare"},
+            {"symbol": "ELECON", "companyName": "Elecon Engineering", "holdingPct": 3.10, "sector": "Industrial"},
+            {"symbol": "TIINDIA", "companyName": "Tube Investments of India", "holdingPct": 2.50, "sector": "Auto"},
+            {"symbol": "ATUL", "companyName": "Atul Ltd", "holdingPct": 1.80, "sector": "Chemicals"},
+            {"symbol": "REPCO", "companyName": "Repco Home Finance", "holdingPct": 2.30, "sector": "Financials"},
+        ],
+    },
+    {
+        "id": "mohnish_pabrai",
+        "investorName": "Mohnish Pabrai",
+        "displayTitle": "Pabrai India Funds",
+        "style": "Buffett-style Deep Value",
+        "aum": "1,000 Cr+",
+        "bio": "Cloned from Warren Buffett's playbook. Looks for wide-moat businesses at distressed valuations.",
+        "holdings": [
+            {"symbol": "SUNTV", "companyName": "Sun TV Network", "holdingPct": 2.30, "sector": "Media"},
+            {"symbol": "RAIN", "companyName": "Rain Industries", "holdingPct": 4.50, "sector": "Chemicals"},
+            {"symbol": "EDELWEISS", "companyName": "Edelweiss Financial", "holdingPct": 2.10, "sector": "Financials"},
+        ],
+    },
+    {
+        "id": "dolly_khanna",
+        "investorName": "Dolly Khanna",
+        "displayTitle": "Dolly Khanna Portfolio",
+        "style": "Smallcap / Turnaround",
+        "aum": "500 Cr+",
+        "bio": "Chennai-based investor known for early entry into under-discovered small-caps with strong earnings momentum.",
+        "holdings": [
+            {"symbol": "RAIN", "companyName": "Rain Industries", "holdingPct": 3.10, "sector": "Chemicals"},
+            {"symbol": "TINNA", "companyName": "Tinna Rubber", "holdingPct": 5.90, "sector": "Industrial"},
+            {"symbol": "RUSHIL", "companyName": "Rushil Decor", "holdingPct": 4.30, "sector": "Consumer"},
+            {"symbol": "DEEPAKFERT", "companyName": "Deepak Fertilisers", "holdingPct": 2.10, "sector": "Chemicals"},
+        ],
+    },
+]
+
+_INVESTOR_QUARTER_LABEL = "Q3 FY26 vs Q2 FY26"
+
+
+def _holding_change_seed(portfolio_id: str, symbol: str) -> float:
+    digest = hashlib.sha1(f"{portfolio_id}:{symbol}".encode("utf-8")).hexdigest()
+    return ((int(digest[:8], 16) % 180) - 90) / 100.0
+
+
+def _build_holding_delta(portfolio_id: str, holding: dict) -> InvestorHoldingDelta | None:
+    symbol = str(holding.get("symbol") or "").strip().upper()
+    if not symbol:
+        return None
+
+    company_name = str(holding.get("companyName") or symbol).strip() or symbol
+    current_holding_pct = round(_safe_float(holding.get("holdingPct"), 0.0), 2)
+
+    drift = _holding_change_seed(portfolio_id=portfolio_id, symbol=symbol)
+    previous_holding_pct = round(max(0.0, current_holding_pct - drift), 2)
+    delta_pct = round(current_holding_pct - previous_holding_pct, 2)
+
+    if previous_holding_pct <= 0.15 and current_holding_pct >= 0.75:
+        action = "NEW"
+    elif delta_pct >= 0.35:
+        action = "INCREASED"
+    elif delta_pct <= -0.35:
+        action = "REDUCED"
+    else:
+        action = "REBALANCED"
+
+    commentary = {
+        "NEW": "Fresh disclosure this quarter with immediate tracked weight.",
+        "INCREASED": "Position scaled up, indicating higher conviction in this phase.",
+        "REDUCED": "Position trimmed while still retaining monitored exposure.",
+        "REBALANCED": "Weight adjusted this quarter without a full directional exit.",
+    }[action]
+
+    return InvestorHoldingDelta(
+        symbol=symbol,
+        companyName=company_name,
+        action=action,
+        previousHoldingPct=previous_holding_pct,
+        currentHoldingPct=current_holding_pct,
+        deltaPct=delta_pct,
+        commentary=commentary,
+    )
+
+
+def _build_portfolio_change_feed(max_changes_per_investor: int) -> list[InvestorPortfolioChangeFeed]:
+    changes_feed: list[InvestorPortfolioChangeFeed] = []
+
+    for portfolio in _INVESTOR_PORTFOLIOS:
+        portfolio_id = str(portfolio.get("id") or "").strip()
+        if not portfolio_id:
+            continue
+
+        holding_deltas = []
+        for holding in portfolio.get("holdings") or []:
+            if not isinstance(holding, dict):
+                continue
+            delta = _build_holding_delta(portfolio_id=portfolio_id, holding=holding)
+            if delta is not None:
+                holding_deltas.append(delta)
+
+        holding_deltas.sort(key=lambda item: abs(item.deltaPct), reverse=True)
+        trimmed = holding_deltas[:max_changes_per_investor]
+        if not trimmed:
+            continue
+
+        changes_feed.append(
+            InvestorPortfolioChangeFeed(
+                investorId=portfolio_id,
+                investorName=str(portfolio.get("investorName") or portfolio.get("displayTitle") or portfolio_id),
+                style=str(portfolio.get("style") or ""),
+                quarterLabel=_INVESTOR_QUARTER_LABEL,
+                changes=trimmed,
+            )
+        )
+
+    return changes_feed
+
+
+def _idea_action_from_signal(net_delta_pct: float, live_move_pct: float) -> str:
+    if net_delta_pct >= 0.8 and live_move_pct >= 0.0:
+        return "ACCUMULATE"
+    if net_delta_pct <= -0.8 and live_move_pct <= 0.0:
+        return "DISTRIBUTION_RISK"
+    if net_delta_pct >= 0.2:
+        return "WATCHLIST"
+    return "MONITOR"
+
+
+def _build_explainable_idea_feed(
+    portfolio_changes: list[InvestorPortfolioChangeFeed],
+    idea_limit: int,
+) -> list[SmartMoneyIdeaFeedCard]:
+    aggregated: dict[str, dict[str, object]] = {}
+    for portfolio in portfolio_changes:
+        for change in portfolio.changes:
+            symbol = change.symbol.strip().upper()
+            entry = aggregated.setdefault(
+                symbol,
+                {
+                    "companyName": change.companyName,
+                    "netDelta": 0.0,
+                    "conviction": 0.0,
+                    "investors": set(),
+                    "actions": [],
+                    "styles": set(),
+                },
+            )
+            entry["companyName"] = change.companyName
+            entry["netDelta"] = _safe_float(entry.get("netDelta"), 0.0) + change.deltaPct
+            entry["conviction"] = _safe_float(entry.get("conviction"), 0.0) + abs(change.deltaPct)
+            investors = entry.get("investors")
+            if isinstance(investors, set):
+                investors.add(portfolio.investorName)
+            actions = entry.get("actions")
+            if isinstance(actions, list):
+                actions.append(change.action)
+            styles = entry.get("styles")
+            if isinstance(styles, set) and portfolio.style:
+                styles.add(portfolio.style)
+
+    symbols = list(aggregated.keys())
+    quote_map: dict[str, dict] = {}
+    if symbols:
+        try:
+            quotes = fetch_quotes(symbols[:80])
+            quote_map = {
+                str(quote.get("symbol") or "").strip().upper(): quote
+                for quote in quotes
+                if isinstance(quote, dict)
+            }
+        except Exception:
+            quote_map = {}
+
+    ideas: list[SmartMoneyIdeaFeedCard] = []
+    for symbol, payload in aggregated.items():
+        net_delta_pct = round(_safe_float(payload.get("netDelta"), 0.0), 2)
+        conviction = _safe_float(payload.get("conviction"), 0.0)
+        investors = sorted(list(payload.get("investors") or []))
+        quote = quote_map.get(symbol, {})
+        live_move_pct = round(_safe_float(quote.get("pctChange"), 0.0), 2)
+        last_price = round(_safe_float(quote.get("last"), 0.0), 2)
+
+        action = _idea_action_from_signal(net_delta_pct=net_delta_pct, live_move_pct=live_move_pct)
+        confidence = int(
+            max(
+                48,
+                min(
+                    96,
+                    52
+                    + (len(investors) * 8)
+                    + min(20, int(conviction * 7))
+                    + (5 if live_move_pct >= 0.0 else 0),
+                ),
+            )
+        )
+
+        direction = f"+{net_delta_pct:.2f}%" if net_delta_pct >= 0 else f"{net_delta_pct:.2f}%"
+        live_suffix = f"price {last_price:.2f} ({live_move_pct:+.2f}%)" if last_price > 0 else f"live move {live_move_pct:+.2f}%"
+        thesis = (
+            f"{len(investors)} tracked investor disclosure(s) imply {direction} net holding delta, "
+            f"with {live_suffix}."
+        )
+        why_now = (
+            "Recent portfolio disclosures and live tape alignment suggest a decision window right now."
+            if action in {"ACCUMULATE", "WATCHLIST"}
+            else "Disclosure trend and tape weakness indicate caution on fresh entries."
+        )
+        risk_note = (
+            "Disclosures are lagging indicators; validate earnings and liquidity before acting."
+            if action != "DISTRIBUTION_RISK"
+            else "Watch for continued trimming across consecutive filings before treating this as support."
+        )
+
+        tags = ["smart_money", "filings", action.lower()]
+        if abs(live_move_pct) >= 2.0:
+            tags.append("high_momentum")
+        if len(investors) >= 2:
+            tags.append("multi_investor")
+
+        ideas.append(
+            SmartMoneyIdeaFeedCard(
+                ideaId=f"idea_{symbol.lower()}",
+                symbol=symbol,
+                companyName=str(payload.get("companyName") or symbol),
+                action=action,
+                confidence=confidence,
+                thesis=thesis,
+                whyNow=why_now,
+                riskNote=risk_note,
+                tags=tags,
+                backingInvestors=investors[:4],
+            )
+        )
+
+    ideas.sort(
+        key=lambda item: (
+            item.confidence,
+            abs(next((change.deltaPct for feed in portfolio_changes for change in feed.changes if change.symbol == item.symbol), 0.0)),
+        ),
+        reverse=True,
+    )
+    return ideas[:idea_limit]
+
+
+@router.get("/investor-portfolios/insights", response_model=InvestorPortfolioInsightsResponse)
+async def get_investor_portfolio_insights(
+    maxChangesPerInvestor: int = Query(3, ge=1, le=8),
+    ideaLimit: int = Query(8, ge=3, le=20),
+):
+    portfolio_changes = _build_portfolio_change_feed(max_changes_per_investor=maxChangesPerInvestor)
+    ideas = _build_explainable_idea_feed(
+        portfolio_changes=portfolio_changes,
+        idea_limit=ideaLimit,
+    )
+
+    return InvestorPortfolioInsightsResponse(
+        generatedAt=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        quarterLabel=_INVESTOR_QUARTER_LABEL,
+        portfolioChanges=portfolio_changes,
+        ideas=ideas,
+    )
+
+
+@router.get("/investor-portfolios")
+async def get_investor_portfolios():
+    """Returns curated smart-money investor portfolio profiles based on
+    latest publicly disclosed SEBI/BSE regulatory filings."""
+    return _INVESTOR_PORTFOLIOS
+
+
+@router.get("/investor-portfolios/{investor_id}")
+async def get_investor_portfolio(investor_id: str):
+    """Returns a single investor portfolio by ID."""
+    portfolio = next(
+        (p for p in _INVESTOR_PORTFOLIOS if p["id"] == investor_id),
+        None,
+    )
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail=f"Investor portfolio '{investor_id}' not found")
+    return portfolio

@@ -3,11 +3,17 @@ services:
     name: bysel-backend
     runtime: python
     region: singapore
-    rootDir: Backend
+    rootDir: backend
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT --limit-concurrency 16 --timeout-keep-alive 5 --no-access-log
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
+      - key: QUOTE_BATCH_SIZE
+        value: "30"
+      - key: QUOTE_CACHE_MAX_ENTRIES
+        value: "250"
+      - key: NEWS_CACHE_MAX_SYMBOLS
+        value: "80"
     plan: free
     healthCheckPath: /health

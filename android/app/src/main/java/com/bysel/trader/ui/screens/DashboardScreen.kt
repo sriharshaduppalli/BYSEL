@@ -32,6 +32,7 @@ import com.bysel.trader.data.models.Quote
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.components.NewsWidget
 import com.bysel.trader.ui.components.WatchlistWidget
+import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
 import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.BorderStroke
@@ -53,13 +54,16 @@ fun DashboardScreen(
     val newsPinned by dashboardViewModel.newsPinned.collectAsState()
     val widgetOrder by dashboardViewModel.widgetOrder.collectAsState()
     val watchlistPinned by dashboardViewModel.watchlistPinned.collectAsState()
+    val marketNews by dashboardViewModel.marketNews.collectAsState()
+    val newsSymbols by dashboardViewModel.newsSymbols.collectAsState()
+    val newsLoading by dashboardViewModel.newsLoading.collectAsState()
+    val newsError by dashboardViewModel.newsError.collectAsState()
 
     var showOnboarding by rememberSaveable { mutableStateOf(false) }
-    // Show onboarding on first launch or via help button - use persistent flag from app
+    // Show onboarding on first launch or via help button
     LaunchedEffect(Unit) {
-        // Read onboarding state from DataStore (future: implement persistent storage)
-        // For now, initialize with false to require explicit trigger
-        if (!showOnboarding) showOnboarding = false
+        // TODO: Replace with persistent flag (e.g., DataStore) for production
+        if (!showOnboarding) showOnboarding = true
     }
 
     val ctx = LocalContext.current
@@ -107,8 +111,10 @@ fun DashboardScreen(
                 watchlistPinned = watchlistPinned,
                 widgetOrder = widgetOrder,
                 pinnedStocks = pinnedStocks,
-                showOnboarding = showOnboarding,
-                onShowOnboarding = { showOnboarding = it }
+                marketNews = marketNews,
+                newsSymbols = newsSymbols,
+                newsLoading = newsLoading,
+                newsError = newsError,
             )
         }
     }
@@ -128,8 +134,10 @@ fun DashboardContent(
     watchlistPinned: Boolean,
     widgetOrder: List<String>,
     pinnedStocks: Set<String>,
-    showOnboarding: Boolean = false,
-    onShowOnboarding: (Boolean) -> Unit = {}
+    marketNews: List<com.bysel.trader.data.models.MarketNewsHeadline>,
+    newsSymbols: List<String>,
+    newsLoading: Boolean,
+    newsError: String?,
 ) {
     // Precompute filtered/sorted lists to avoid repeated work on recomposition
     val pinnedList = remember(quotes, pinnedStocks) {
@@ -166,14 +174,20 @@ fun DashboardContent(
                 Text("Reset Layout")
             }
             // Onboarding/tutorial button
-            IconButton(onClick = { onShowOnboarding(true) }) {
+            IconButton(onClick = {
+                onRefresh()
+                dashboardViewModel.refreshMarketNews()
+            }) {
                 Icon(Icons.Default.Info, contentDescription = "Show Dashboard Tutorial")
             }
         }
 
         PullToRefreshBox(
             isRefreshing = false, // Dashboard doesn't show persistent loading state
-            onRefresh = onRefresh,
+            onRefresh = {
+                onRefresh()
+                dashboardViewModel.refreshMarketNews()
+            },
             enabled = true
         ) {
         LazyColumn(
@@ -235,7 +249,15 @@ fun DashboardContent(
                             border = if (idx == 0) BorderStroke(2.dp, LocalAppTheme.current.primary) else null
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
-                                NewsWidget(isPinned = true, onPinClick = { dashboardViewModel.toggleNewsPin() })
+                                NewsWidget(
+                                    isPinned = true,
+                                    headlines = marketNews,
+                                    trackedSymbols = newsSymbols,
+                                    isLoading = newsLoading,
+                                    error = newsError,
+                                    onPinClick = { dashboardViewModel.toggleNewsPin() },
+                                    onRefresh = { dashboardViewModel.refreshMarketNews() },
+                                )
                                 Column {
                                     IconButton(onClick = { dashboardViewModel.moveWidgetUp("news") }, enabled = idx > 0) {
                                         Icon(Icons.Default.ArrowUpward, contentDescription = "Move Up", tint = if (idx > 0) LocalAppTheme.current.primary else LocalAppTheme.current.textSecondary)
@@ -282,7 +304,15 @@ fun DashboardContent(
         // News Widget (if not pinned)
         if (!newsPinned) {
             item {
-                NewsWidget(isPinned = false, onPinClick = { dashboardViewModel.toggleNewsPin() })
+                NewsWidget(
+                    isPinned = false,
+                    headlines = marketNews,
+                    trackedSymbols = newsSymbols,
+                    isLoading = newsLoading,
+                    error = newsError,
+                    onPinClick = { dashboardViewModel.toggleNewsPin() },
+                    onRefresh = { dashboardViewModel.refreshMarketNews() },
+                )
                 Spacer(modifier = Modifier.height(20.dp))
             }
         }
@@ -360,18 +390,13 @@ fun DashboardContent(
 
         if (error != null) {
             item {
-                Snackbar(
+                TraceAwareErrorSnackbar(
+                    error = error,
+                    onDismiss = onErrorDismiss,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
-                    action = {
-                        TextButton(onClick = onErrorDismiss) {
-                            Text("Dismiss")
-                        }
-                    }
-                ) {
-                    Text(error)
-                }
+                )
             }
         }
         

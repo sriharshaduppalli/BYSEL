@@ -6,6 +6,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.bysel.trader.data.PinnedStocksStore
 import com.bysel.trader.data.PinnedWidgetsStore
+import com.bysel.trader.data.local.BYSELDatabase
+import com.bysel.trader.data.models.MarketNewsHeadline
+import com.bysel.trader.data.repository.Result
+import com.bysel.trader.data.repository.TradingRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,6 +17,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class DashboardViewModel(app: Application) : AndroidViewModel(app) {
+    private val repository = TradingRepository(BYSELDatabase.getInstance(app))
+
     private val _widgetOrder = MutableStateFlow<List<String>>(listOf("news", "watchlist"))
     val widgetOrder: StateFlow<List<String>> = _widgetOrder.asStateFlow()
 
@@ -50,10 +56,46 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     private val _newsPinned = MutableStateFlow(false)
     val newsPinned: StateFlow<Boolean> = _newsPinned.asStateFlow()
 
+    private val _marketNews = MutableStateFlow<List<MarketNewsHeadline>>(emptyList())
+    val marketNews: StateFlow<List<MarketNewsHeadline>> = _marketNews.asStateFlow()
+
+    private val _newsSymbols = MutableStateFlow<List<String>>(emptyList())
+    val newsSymbols: StateFlow<List<String>> = _newsSymbols.asStateFlow()
+
+    private val _newsLoading = MutableStateFlow(false)
+    val newsLoading: StateFlow<Boolean> = _newsLoading.asStateFlow()
+
+    private val _newsError = MutableStateFlow<String?>(null)
+    val newsError: StateFlow<String?> = _newsError.asStateFlow()
+
     init {
         loadPinnedStocks()
         loadPinnedWidgets()
         loadWidgetOrder()
+        refreshMarketNews()
+    }
+
+    fun refreshMarketNews() {
+        viewModelScope.launch {
+            _newsLoading.value = true
+            when (val response = repository.getMarketNews(limit = 5)) {
+                is Result.Success -> {
+                    _marketNews.value = response.data.headlines
+                    _newsSymbols.value = response.data.symbolsConsidered
+                    _newsError.value = null
+                }
+
+                is Result.Error -> {
+                    _newsError.value = response.message
+                    if (_marketNews.value.isEmpty()) {
+                        _newsSymbols.value = emptyList()
+                    }
+                }
+
+                Result.Loading -> Unit
+            }
+            _newsLoading.value = false
+        }
     }
     fun moveWidgetUp(widget: String) {
         val idx = _widgetOrder.value.indexOf(widget)

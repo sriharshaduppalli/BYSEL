@@ -17,6 +17,8 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.automirrored.filled.CompareArrows
+import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,11 +42,16 @@ fun AiAssistantScreen(
     isLoading: Boolean,
     onSendQuery: (String) -> Unit,
     onSuggestionClick: (String) -> Unit,
-    onClearChat: () -> Unit
+    onClearChat: () -> Unit,
+    selectedSymbol: String? = null
 ) {
     var query by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val focusManager = LocalFocusManager.current
+    val appTheme = LocalAppTheme.current
+    val adaptiveSuggestions = remember(chatHistory, selectedSymbol) {
+        buildAdaptiveSuggestions(selectedSymbol, chatHistory)
+    }
 
     // Auto-scroll to bottom when new messages arrive
     LaunchedEffect(chatHistory.size) {
@@ -56,7 +63,7 @@ fun AiAssistantScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(LocalAppTheme.current.surface)
+            .background(appTheme.surface)
     ) {
         // Header
         Row(
@@ -82,7 +89,7 @@ fun AiAssistantScreen(
                     Icon(
                         Icons.Filled.Psychology,
                         contentDescription = null,
-                        tint = LocalAppTheme.current.text,
+                        tint = Color.White,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -90,13 +97,13 @@ fun AiAssistantScreen(
                 Column {
                     Text(
                         "BYSEL AI Assistant",
-                        color = LocalAppTheme.current.text,
+                        color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp
                     )
                     Text(
                         "Your smart stock advisor",
-                        color = LocalAppTheme.current.text.copy(alpha = 0.7f),
+                        color = Color.White.copy(alpha = 0.78f),
                         fontSize = 12.sp
                     )
                 }
@@ -106,7 +113,7 @@ fun AiAssistantScreen(
                     Icon(
                         Icons.Filled.DeleteSweep,
                         contentDescription = "Clear chat",
-                        tint = LocalAppTheme.current.text.copy(alpha = 0.7f)
+                        tint = Color.White.copy(alpha = 0.78f)
                     )
                 }
             }
@@ -119,7 +126,8 @@ fun AiAssistantScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                onSuggestionClick = onSuggestionClick
+                onSuggestionClick = onSuggestionClick,
+                suggestions = adaptiveSuggestions
             )
         } else {
             LazyColumn(
@@ -142,13 +150,20 @@ fun AiAssistantScreen(
                     }
                 }
             }
+
+            if (adaptiveSuggestions.isNotEmpty()) {
+                AdaptiveSuggestionsStrip(
+                    suggestions = adaptiveSuggestions.take(8),
+                    onSuggestionClick = onSuggestionClick
+                )
+            }
         }
 
         // Input bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(LocalAppTheme.current.card)
+                .background(appTheme.card)
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -158,20 +173,20 @@ fun AiAssistantScreen(
                 placeholder = {
                     Text(
                         "Ask about any stock...",
-                        color = LocalAppTheme.current.textSecondary
+                        color = appTheme.textSecondary
                     )
                 },
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(min = 48.dp, max = 120.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = LocalAppTheme.current.text,
-                    unfocusedTextColor = LocalAppTheme.current.text,
-                    focusedBorderColor = Color(0xFF7C4DFF),
-                    unfocusedBorderColor = LocalAppTheme.current.textSecondary.copy(alpha = 0.5f),
-                    cursorColor = Color(0xFF7C4DFF),
-                    focusedContainerColor = LocalAppTheme.current.card,
-                    unfocusedContainerColor = LocalAppTheme.current.card
+                    focusedTextColor = appTheme.text,
+                    unfocusedTextColor = appTheme.text,
+                    focusedBorderColor = appTheme.primary,
+                    unfocusedBorderColor = appTheme.textSecondary.copy(alpha = 0.35f),
+                    cursorColor = appTheme.primary,
+                    focusedContainerColor = appTheme.card,
+                    unfocusedContainerColor = appTheme.card
                 ),
                 shape = RoundedCornerShape(24.dp),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -197,45 +212,172 @@ fun AiAssistantScreen(
                 enabled = query.isNotBlank() && !isLoading,
                 modifier = Modifier.size(48.dp),
                 colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = Color(0xFF7C4DFF),
-                    disabledContainerColor = Color(0xFF333333)
+                    containerColor = appTheme.primary,
+                    disabledContainerColor = appTheme.textSecondary.copy(alpha = 0.35f)
                 )
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.Send,
                     contentDescription = "Send",
-                    tint = LocalAppTheme.current.text
+                    tint = Color.White
                 )
             }
             }
         }
     }
 
+private fun buildSymbolSuggestions(symbol: String): List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>> = listOf(
+    "Should I buy $symbol?" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Predict $symbol price" to Icons.Filled.Timeline,
+    "Analyze $symbol" to Icons.Filled.Analytics,
+    "Is $symbol overvalued?" to Icons.Filled.PriceCheck,
+    "What is fair value range for $symbol?" to Icons.Filled.PriceCheck,
+    "Technical analysis of $symbol" to Icons.Filled.Analytics,
+    "Support and resistance for $symbol" to Icons.AutoMirrored.Filled.ShowChart,
+    "What are risks in $symbol now?" to Icons.Filled.Warning,
+    "Compare $symbol with peers" to Icons.AutoMirrored.Filled.CompareArrows,
+)
+
+private fun buildAdaptiveSuggestions(
+    selectedSymbol: String?,
+    chatHistory: List<ChatMessage>
+): List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>> {
+    val userPrompts = chatHistory.filter { it.isUser }.map { it.text.trim() }.filter { it.isNotBlank() }
+    val askedPrompts = userPrompts.map { normalizePrompt(it) }.toSet()
+    val focusSymbol = selectedSymbol?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
+
+    val suggestions = linkedSetOf<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>>()
+
+    if (focusSymbol != null) {
+        buildSymbolSuggestions(focusSymbol).forEach { suggestions.add(it) }
+    }
+
+    val recent = userPrompts.takeLast(6).map { it.lowercase() }
+    val hasValuation = recent.any { textContainsAny(it, listOf("overvalued", "undervalued", "valuation", "fair value", "expensive", "cheap")) }
+    val hasPrediction = recent.any { textContainsAny(it, listOf("predict", "forecast", "target", "future")) }
+    val hasComparison = recent.any { textContainsAny(it, listOf("compare", "versus", "vs", "better")) }
+    val hasRecommendation = recent.any { textContainsAny(it, listOf("buy", "sell", "should i", "invest")) }
+    val hasTechnical = recent.any { textContainsAny(it, listOf("technical", "rsi", "macd", "support", "resistance", "trend")) }
+
+    if (hasValuation) {
+        if (focusSymbol != null) {
+            suggestions.add("Compare $focusSymbol valuation with peers" to Icons.AutoMirrored.Filled.CompareArrows)
+            suggestions.add("What can justify $focusSymbol current valuation?" to Icons.AutoMirrored.Filled.Help)
+        } else {
+            suggestions.add("Which IT stocks are undervalued now?" to Icons.Filled.PriceCheck)
+            suggestions.add("Best undervalued bank stocks" to Icons.Filled.PriceCheck)
+        }
+    }
+
+    if (hasPrediction) {
+        if (focusSymbol != null) {
+            suggestions.add("3-month outlook for $focusSymbol" to Icons.Filled.Timeline)
+            suggestions.add("Bull case vs bear case for $focusSymbol" to Icons.Filled.Analytics)
+        } else {
+            suggestions.add("Predict INFY price next month" to Icons.Filled.Timeline)
+            suggestions.add("Predict RELIANCE price this quarter" to Icons.Filled.Timeline)
+        }
+    }
+
+    if (hasComparison) {
+        if (focusSymbol != null) {
+            suggestions.add("Compare $focusSymbol with sector leader" to Icons.AutoMirrored.Filled.CompareArrows)
+            suggestions.add("$focusSymbol vs peers on growth and margins" to Icons.AutoMirrored.Filled.CompareArrows)
+        } else {
+            suggestions.add("Compare TCS and INFY by valuation" to Icons.AutoMirrored.Filled.CompareArrows)
+            suggestions.add("Compare HDFCBANK and ICICIBANK" to Icons.AutoMirrored.Filled.CompareArrows)
+        }
+    }
+
+    if (hasRecommendation) {
+        if (focusSymbol != null) {
+            suggestions.add("When is a good entry price for $focusSymbol?" to Icons.AutoMirrored.Filled.TrendingUp)
+            suggestions.add("Should I SIP into $focusSymbol?" to Icons.Filled.Payments)
+        } else {
+            suggestions.add("Top stocks to accumulate this month" to Icons.AutoMirrored.Filled.TrendingUp)
+            suggestions.add("Best stocks for medium-term investing" to Icons.AutoMirrored.Filled.TrendingUp)
+        }
+    }
+
+    if (hasTechnical) {
+        if (focusSymbol != null) {
+            suggestions.add("RSI and MACD view for $focusSymbol" to Icons.Filled.Analytics)
+            suggestions.add("Breakout setup check for $focusSymbol" to Icons.AutoMirrored.Filled.ShowChart)
+        } else {
+            suggestions.add("Technical setup for NIFTY IT stocks" to Icons.Filled.Analytics)
+            suggestions.add("Stocks near breakout today" to Icons.AutoMirrored.Filled.ShowChart)
+        }
+    }
+
+    val fallbackPool = buildDefaultSuggestionPool().shuffled(Random(System.currentTimeMillis()))
+    for (item in fallbackPool) {
+        if (suggestions.size >= 14) break
+        suggestions.add(item)
+    }
+
+    return suggestions
+        .filterNot { normalizePrompt(it.first) in askedPrompts }
+        .take(12)
+        .ifEmpty { fallbackPool.take(8) }
+}
+
+private fun textContainsAny(source: String, keywords: List<String>): Boolean {
+    return keywords.any { source.contains(it, ignoreCase = true) }
+}
+
+private fun normalizePrompt(text: String): String {
+    return text.lowercase().replace(Regex("\\s+"), " ").trim()
+}
+
+private fun buildDefaultSuggestionPool(): List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>> = listOf(
+    // Buy / Invest
+    "Should I buy RELIANCE?" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Should I buy TCS?" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Should I buy HDFCBANK?" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Should I buy SBIN?" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Is Infosys a good investment?" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Should I invest in Tata Motors?" to Icons.AutoMirrored.Filled.TrendingUp,
+    // Predict
+    "Predict TCS price" to Icons.Filled.Timeline,
+    "Predict RELIANCE price" to Icons.Filled.Timeline,
+    "Predict WIPRO price" to Icons.Filled.Timeline,
+    "Predict SUNPHARMA price" to Icons.Filled.Timeline,
+    "Predict TATAMOTORS price" to Icons.Filled.Timeline,
+    "Predict ICICIBANK price" to Icons.Filled.Timeline,
+    // Compare
+    "Compare INFY and TCS" to Icons.AutoMirrored.Filled.CompareArrows,
+    "Compare ICICI Bank and HDFC Bank" to Icons.AutoMirrored.Filled.CompareArrows,
+    "Compare TCS with Wipro" to Icons.AutoMirrored.Filled.CompareArrows,
+    "Compare TATAMOTORS and MARUTI" to Icons.AutoMirrored.Filled.CompareArrows,
+    "Compare SBIN and HDFCBANK" to Icons.AutoMirrored.Filled.CompareArrows,
+    "Compare SUNPHARMA and DRREDDY" to Icons.AutoMirrored.Filled.CompareArrows,
+    // Sector screens
+    "Best bank stocks" to Icons.Filled.AccountBalance,
+    "Top IT stocks" to Icons.Filled.Analytics,
+    "Best pharma stocks" to Icons.Filled.Analytics,
+    "Top energy stocks" to Icons.Filled.Bolt,
+    "Best auto stocks" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Top FMCG stocks" to Icons.Filled.Analytics,
+    "Best defence stocks" to Icons.Filled.Analytics,
+    // Analyze
+    "Analyze HDFCBANK" to Icons.Filled.Analytics,
+    "Analyze Larsen and Toubro" to Icons.Filled.Analytics,
+    "Analyze ICICIBANK" to Icons.Filled.Analytics,
+    "Analyze WIPRO" to Icons.Filled.Analytics,
+    "Analyze SUNPHARMA" to Icons.Filled.Analytics,
+    // Overvaluation
+    "Is SBIN overvalued?" to Icons.Filled.PriceCheck,
+    "Is Wipro undervalued?" to Icons.Filled.PriceCheck,
+    "Is TCS fairly valued?" to Icons.Filled.PriceCheck,
+    "Is RELIANCE overvalued?" to Icons.Filled.PriceCheck,
+)
+
 @Composable
 private fun WelcomeContent(
     modifier: Modifier = Modifier,
-    onSuggestionClick: (String) -> Unit
+    onSuggestionClick: (String) -> Unit,
+    suggestions: List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>>,
 ) {
-    val suggestionPool = listOf(
-        "Should I buy RELIANCE?" to Icons.AutoMirrored.Filled.TrendingUp,
-        "Predict TCS price" to Icons.Filled.Timeline,
-        "Compare INFY and TCS" to Icons.AutoMirrored.Filled.CompareArrows,
-        "Best bank stocks" to Icons.Filled.AccountBalance,
-        "Analyze HDFCBANK" to Icons.Filled.Analytics,
-        "Is SBIN overvalued?" to Icons.Filled.PriceCheck,
-        "Analyze Tata Motors" to Icons.Filled.Analytics,
-        "Should I buy Infosys?" to Icons.AutoMirrored.Filled.TrendingUp,
-        "Compare ICICI Bank and HDFC Bank" to Icons.AutoMirrored.Filled.CompareArrows,
-        "Top energy stocks" to Icons.Filled.Bolt,
-        "Predict Wipro price" to Icons.Filled.Timeline,
-        "Analyze Larsen and Toubro" to Icons.Filled.Analytics,
-    )
-    val suggestions = remember {
-        suggestionPool
-            .shuffled(Random(System.currentTimeMillis()))
-            .take(6)
-    }
-
     Column(
         modifier = modifier
             .padding(24.dp),
@@ -321,6 +463,39 @@ private fun WelcomeContent(
 }
 
 @Composable
+private fun AdaptiveSuggestionsStrip(
+    suggestions: List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>>,
+    onSuggestionClick: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
+    ) {
+        Text(
+            text = "Suggested next prompts",
+            color = LocalAppTheme.current.primary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(bottom = 6.dp)
+        )
+
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 8.dp)
+        ) {
+            items(suggestions) { (text, icon) ->
+                SuggestionChip(
+                    text = text,
+                    icon = icon,
+                    onClick = { onSuggestionClick(text) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun SuggestionChip(
     text: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -335,7 +510,7 @@ private fun SuggestionChip(
             containerColor = LocalAppTheme.current.card
         ),
         border = androidx.compose.foundation.BorderStroke(
-            1.dp, Color(0xFF7C4DFF).copy(alpha = 0.3f)
+            1.dp, LocalAppTheme.current.primary.copy(alpha = 0.3f)
         )
     ) {
         Row(
@@ -345,7 +520,7 @@ private fun SuggestionChip(
             Icon(
                 icon,
                 contentDescription = null,
-                tint = Color(0xFF7C4DFF),
+                tint = LocalAppTheme.current.primary,
                 modifier = Modifier.size(16.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
@@ -379,13 +554,12 @@ private fun ChatBubble(
                 bottomEnd = if (message.isUser) 4.dp else 16.dp
             ),
             colors = CardDefaults.cardColors(
-                containerColor = if (message.isUser) Color(0xFF7C4DFF)
-                else Color(0xFF1A1A2E)
+                containerColor = if (message.isUser) LocalAppTheme.current.primary else LocalAppTheme.current.card
             )
         ) {
             Text(
                 text = message.text,
-                color = LocalAppTheme.current.text,
+                color = if (message.isUser) Color.White else LocalAppTheme.current.text,
                 fontSize = 14.sp,
                 modifier = Modifier.padding(12.dp),
                 lineHeight = 20.sp
@@ -405,14 +579,14 @@ private fun ChatBubble(
                             Text(
                                 suggestion,
                                 fontSize = 11.sp,
-                                color = Color(0xFF7C4DFF)
+                                color = LocalAppTheme.current.primary
                             )
                         },
                         colors = AssistChipDefaults.assistChipColors(
                             containerColor = LocalAppTheme.current.card
                         ),
                         border = AssistChipDefaults.assistChipBorder(
-                            borderColor = Color(0xFF7C4DFF).copy(alpha = 0.3f),
+                            borderColor = LocalAppTheme.current.primary.copy(alpha = 0.3f),
                             enabled = true
                         ),
                         shape = RoundedCornerShape(20.dp)
@@ -444,7 +618,7 @@ private fun TypingIndicator() {
                         modifier = Modifier
                             .size(8.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF7C4DFF).copy(alpha = 0.6f))
+                            .background(LocalAppTheme.current.primary.copy(alpha = 0.6f))
                     )
                 }
             }
