@@ -10,11 +10,18 @@ Sector-wise market visualization showing:
 """
 
 import logging
+import time
 from datetime import datetime
 from typing import Dict, List, Optional
 from .market_data import INDIAN_STOCKS, fetch_quote, fetch_quotes
 
 logger = logging.getLogger(__name__)
+
+# ──────────────────────────────────────────────────────────────
+# HEATMAP CACHE (30-second TTL for fast sub-1s market updates)
+# ──────────────────────────────────────────────────────────────
+_HEATMAP_CACHE = {"data": None, "timestamp": 0}
+_HEATMAP_CACHE_TTL = 30  # 30 seconds
 
 
 # ──────────────────────────────────────────────────────────────
@@ -83,10 +90,27 @@ SECTOR_STOCKS = {
 def get_market_heatmap() -> Dict:
     """
     Generate a complete market heatmap with sector-wise data.
+    Uses caching for fast sub-1 second market updates.
 
     Returns:
         Dict with sectors, stocks, market breadth, and mood.
     """
+    # Check cache first
+    now = time.time()
+    if _HEATMAP_CACHE["data"] and (now - _HEATMAP_CACHE["timestamp"]) < _HEATMAP_CACHE_TTL:
+        return _HEATMAP_CACHE["data"]
+    
+    # Collect ALL unique symbols across all sectors (avoid duplicate fetches)
+    all_symbols = set()
+    for symbols in SECTOR_STOCKS.values():
+        all_symbols.update(symbols)
+    all_symbols = list(all_symbols)
+    
+    # Fetch quotes ONCE for all symbols
+    quotes_list = fetch_quotes(all_symbols)
+    quotes_dict = {q["symbol"]: q for q in quotes_list if isinstance(q, dict) and "symbol" in q}
+    
+    # Now analyze each sector using the pre-fetched quotes
     sectors_data = []
     all_advances = 0
     all_declines = 0
@@ -94,7 +118,7 @@ def get_market_heatmap() -> Dict:
     total_stocks = 0
 
     for sector_name, symbols in SECTOR_STOCKS.items():
-        sector_result = _analyze_sector(sector_name, symbols)
+        sector_result = _analyze_sector(sector_name, symbols, quotes_dict)
         sectors_data.append(sector_result)
 
         all_advances += sector_result["advances"]
@@ -136,7 +160,7 @@ def get_market_heatmap() -> Dict:
     best_sector = sectors_data[0] if sectors_data else None
     worst_sector = sectors_data[-1] if sectors_data else None
 
-    return {
+    result = {
         "sectors": sectors_data,
         "marketBreadth": {
             "advances": all_advances,
@@ -158,10 +182,16 @@ def get_market_heatmap() -> Dict:
         },
         "lastUpdated": datetime.utcnow().isoformat(),
     }
+    
+    # Cache result for 30 seconds
+    _HEATMAP_CACHE["data"] = result
+    _HEATMAP_CACHE["timestamp"] = now
+    
+    return result
 
 
-def _analyze_sector(sector_name: str, symbols: List[str]) -> Dict:
-    """Analyze a single sector's stocks and aggregate data."""
+def _analyze_sector(sector_name: str, symbols: List[str], quotes_dict: Dict) -> Dict:
+    """Analyze a single sector's stocks using pre-fetched quotes (no redundant fetches)."""
     stocks_data = []
     total_change = 0
     advances = 0
@@ -169,12 +199,9 @@ def _analyze_sector(sector_name: str, symbols: List[str]) -> Dict:
     unchanged = 0
     valid_count = 0
 
-    # Fetch quotes for all stocks in sector
-    quotes_list = fetch_quotes(symbols)
-    quotes = {q["symbol"]: q for q in quotes_list if isinstance(q, dict) and "symbol" in q}
-
+    # Use pre-fetched quotes (passed from get_market_heatmap)
     for sym in symbols:
-        quote = quotes.get(sym, {})
+        quote = quotes_dict.get(sym, {})
         if not quote or quote.get("last", 0) == 0:
             continue
 
@@ -260,4 +287,7 @@ def get_sector_detail(sector_name: str) -> Optional[Dict]:
             return None
 
     symbols = SECTOR_STOCKS[sector_key]
-    return _analyze_sector(sector_key, symbols)
+    # Fetch quotes for this sector
+    quotes_list = fetch_quotes(symbols)
+    quotes_dict = {q["symbol"]: q for q in quotes_list if isinstance(q, dict) and "symbol" in q}
+    return _analyze_sector(sector_key, symbols, quotes_dict)

@@ -92,6 +92,15 @@ class TradeHistory(BaseModel):
     timestamp: int
 
 
+class HistoryCandle(BaseModel):
+    timestamp: int
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int
+
+
 class OrderTraceLookupResponse(BaseModel):
     orderId: int
     traceId: str
@@ -381,6 +390,53 @@ class StrategyPreviewResponse(BaseModel):
     notes: List[str]
 
 
+class FuturesContract(BaseModel):
+    contractSymbol: str
+    expiry: str
+    lotSize: int
+    last: float
+    pctChange: float
+    oi: int
+    oiChange: int
+    volume: int
+    basis: float
+    marginPct: float
+    marginPerLot: float
+
+
+class FuturesContractsResponse(BaseModel):
+    symbol: str
+    spot: float
+    generatedAt: str
+    contracts: List[FuturesContract]
+    notes: List[str] = []
+
+
+class FuturesTicketPreviewRequest(BaseModel):
+    symbol: str
+    expiry: str
+    side: str
+    lots: int = 1
+    orderType: str = "MARKET"
+    limitPrice: Optional[float] = None
+
+
+class FuturesTicketPreviewResponse(BaseModel):
+    contractSymbol: str
+    symbol: str
+    expiry: str
+    side: str
+    lots: int
+    lotSize: int
+    quantity: int
+    referencePrice: float
+    notionalValue: float
+    estimatedMargin: float
+    estimatedCharges: float
+    maxLossBuffer: float
+    notes: List[str]
+
+
 class FamilyMemberRequest(BaseModel):
     name: str
     relation: str
@@ -496,10 +552,65 @@ class CopilotPortfolioActionsResponse(BaseModel):
     rationale: str
 
 
-class HistoryCandle(BaseModel):
-    timestamp: int
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: int
+class InvestorHoldingDelta(BaseModel):
+    symbol: str
+    companyName: str
+    action: str
+    previousHoldingPct: float
+    currentHoldingPct: float
+    deltaPct: float
+    commentary: str
+
+
+class InvestorPortfolioChangeFeed(BaseModel):
+    investorId: str
+    investorName: str
+    style: str
+    quarterLabel: str
+    changes: List[InvestorHoldingDelta] = []
+
+
+class SmartMoneyIdeaFeedCard(BaseModel):
+    ideaId: str
+    symbol: str
+    companyName: str
+    action: str
+    confidence: int
+    thesis: str
+    whyNow: str
+    riskNote: str
+    tags: List[str] = []
+    backingInvestors: List[str] = []
+
+
+class InvestorPortfolioInsightsResponse(BaseModel):
+    generatedAt: str
+    quarterLabel: str
+    portfolioChanges: List[InvestorPortfolioChangeFeed] = []
+    ideas: List[SmartMoneyIdeaFeedCard] = []
+
+
+class SignalLabCandidate(BaseModel):
+    symbol: str
+    companyName: str
+    score: float
+    confidence: int
+    thesis: str
+    tags: List[str] = []
+    pctChange: float = 0.0
+    volumeRatio: Optional[float] = None
+
+
+class SignalLabBucketFeed(BaseModel):
+    bucketId: str
+    title: str
+    thesis: str
+    proxy: bool = False
+    generatedAt: str
+    candidates: List[SignalLabCandidate] = []
+    notes: List[str] = []
+
+
+class SignalLabBucketsResponse(BaseModel):
+    generatedAt: str
+    buckets: List[SignalLabBucketFeed] = []

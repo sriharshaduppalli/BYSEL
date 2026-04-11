@@ -6,11 +6,40 @@ Covers ALL major Indian stocks – NIFTY 500 and beyond.
 
 import yfinance as yf
 import logging
+import os
+import re
 import time
+import difflib
+import urllib.request
+import json as _json
 from datetime import datetime
+from threading import Lock
 from typing import Dict, Optional, List
 
 logger = logging.getLogger(__name__)
+
+
+def _env_int(name: str, default: int, minimum: int = 1) -> int:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    try:
+        parsed = int(raw_value)
+    except Exception:
+        return default
+    return max(minimum, parsed)
+
+
+QUOTE_CACHE_TTL_SECONDS = _env_int("QUOTE_CACHE_TTL_SECONDS", 60, minimum=5)
+QUOTE_CACHE_MAX_ENTRIES = _env_int("QUOTE_CACHE_MAX_ENTRIES", 350, minimum=50)
+QUOTE_BATCH_SIZE = _env_int("QUOTE_BATCH_SIZE", 40, minimum=1)
+
+HISTORY_ALLOWED_PERIODS = {
+    "1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"
+}
+HISTORY_ALLOWED_INTERVALS = {
+    "1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "1d", "5d", "1wk", "1mo", "3mo"
+}
 
 # ─────────────────────────────────────────────────────────────
 # Complete Indian stock catalog  –  symbol → (Yahoo ticker, Company name)
@@ -414,6 +443,99 @@ INDIAN_STOCKS: Dict[str, tuple] = {
     "MCX":          ("MCX.NS",          "Multi Commodity Exchange of India Ltd"),
     "CAMS":         ("CAMS.NS",         "Computer Age Management Services Ltd"),
 
+    # ── MISSING BANKS / FINANCE (frequently searched) ────────
+    "SOUTHBANK":    ("SOUTHBANK.NS",    "South Indian Bank Ltd"),
+    "KARURVYSYA":   ("KARURVYSYA.NS",   "Karur Vysya Bank Ltd"),
+    "KTKBANK":      ("KTKBANK.NS",      "Karnataka Bank Ltd"),
+    "TMBANK":       ("TAMILNADMER.NS",  "Tamilnad Mercantile Bank Ltd"),
+    "TAMILNADMER":  ("TAMILNADMER.NS",  "Tamilnad Mercantile Bank Ltd"),
+    "DCBBANK":      ("DCBBANK.NS",      "DCB Bank Ltd"),
+    "CSBBANK":      ("CSBBANK.NS",      "CSB Bank Ltd"),
+    "DHANLAXMI":    ("DHANLAXMI.NS",    "Dhanlaxmi Bank Ltd"),
+    "J&KBANK":      ("J&KBANK.NS",      "Jammu & Kashmir Bank Ltd"),
+    "JKBANK":       ("J&KBANK.NS",      "Jammu & Kashmir Bank Ltd"),
+    "ESAFSFB":      ("ESAFSFB.NS",      "ESAF Small Finance Bank Ltd"),
+    "SURYODAY":     ("SURYODAY.NS",     "Suryoday Small Finance Bank Ltd"),
+    "UTKARSHBNK":   ("UTKARSHBNK.NS",   "Utkarsh Small Finance Bank Ltd"),
+    "NSDL":         ("NSDL.NS",         "NSDL Ltd"),
+    "CENTRALBK":    ("CENTRALBK.NS",    "Central Bank of India"),
+    "BANKBEES":     ("BANKBEES.NS",     "Nippon India ETF Bank BeES"),
+    "INDIANB":      ("INDIANB.NS",      "Indian Bank"),
+
+    # ── MISSING POPULAR MID/SMALL CAPS ───────────────────────
+    "ALOKINDS":     ("ALOKINDS.NS",     "Alok Industries Ltd"),
+    "APLAPOLLO":    ("APLAPOLLO.NS",    "APL Apollo Tubes Ltd"),
+    "ASTRAL":       ("ASTRAL.NS",       "Astral Ltd"),
+    "BHARATFORG":   ("BHARATFORG.NS",   "Bharat Forge Ltd"),
+    "BIKAJI":       ("BIKAJI.NS",       "Bikaji Foods International Ltd"),
+    "BLS":          ("BLS.NS",          "BLS International Services Ltd"),
+    "BSOFT":        ("BSOFT.NS",        "Birlasoft Ltd"),
+    "CLEDUCATE":    ("CLEDUCATE.NS",    "CL Educate Ltd"),
+    "COALINDIA":    ("COALINDIA.NS",    "Coal India Ltd"),
+    "CONCORDBIO":   ("CONCORDBIO.NS",   "Concord Biotech Ltd"),
+    "CROMPTON":     ("CROMPTON.NS",     "Crompton Greaves Consumer Electricals Ltd"),
+    "CUMMINSIND":   ("CUMMINSIND.NS",   "Cummins India Ltd"),
+    "DEEPAKFERT":   ("DEEPAKFERT.NS",   "Deepak Fertilisers & Petrochemicals Corp Ltd"),
+    "DEEPAKNTR":    ("DEEPAKNTR.NS",    "Deepak Nitrite Ltd"),
+    "DEVYANI":      ("DEVYANI.NS",      "Devyani International Ltd"),
+    "DELHIVERY":    ("DELHIVERY.NS",    "Delhivery Ltd"),
+    "ELECON":       ("ELECON.NS",       "Elecon Engineering Company Ltd"),
+    "ELGIEQUIP":    ("ELGIEQUIP.NS",    "Elgi Equipments Ltd"),
+    "EXIDEIND":     ("EXIDEIND.NS",     "Exide Industries Ltd"),
+    "FACT":         ("FACT.NS",         "Fertilisers and Chemicals Travancore Ltd"),
+    "FIVESTAR":     ("FIVESTAR.NS",     "Five-Star Business Finance Ltd"),
+    "GANESHHOUC":   ("GANESHHOUC.NS",   "Ganesh Housing Corporation Ltd"),
+    "GESHIP":       ("GESHIP.NS",       "Great Eastern Shipping Company Ltd"),
+    "GNFC":         ("GNFC.NS",         "Gujarat Narmada Valley Fertilizers & Chemicals Ltd"),
+    "GODFRYPHLP":   ("GODFRYPHLP.NS",   "Godfrey Phillips India Ltd"),
+    "GPPL":         ("GPPL.NS",         "Gujarat Pipavav Port Ltd"),
+    "GRAPHITE":     ("GRAPHITE.NS",     "Graphite India Ltd"),
+    "GUJGASLTD":    ("GUJGASLTD.NS",   "Gujarat Gas Ltd"),
+    "HEID":         ("HEID.NS",         "Heidelberg Cement India Ltd"),
+    "HLEGLAS":      ("HLEGLAS.NS",      "HLE Glascoat Ltd"),
+    "HONAUT":       ("HONAUT.NS",        "Honeywell Automation India Ltd"),
+    "IBREALEST":    ("IBREALEST.NS",    "Indiabulls Real Estate Ltd"),
+    "IEX":          ("IEX.NS",          "Indian Energy Exchange Ltd"),
+    "INDHOTEL":     ("INDHOTEL.NS",     "Indian Hotels Company Ltd"),
+    "INTELLECT":    ("INTELLECT.NS",    "Intellect Design Arena Ltd"),
+    "IRCTC":        ("IRCTC.NS",        "Indian Railway Catering & Tourism Corp Ltd"),
+    "IRFC":         ("IRFC.NS",         "Indian Railway Finance Corporation Ltd"),
+    "JSWENERGY":    ("JSWENERGY.NS",    "JSW Energy Ltd"),
+    "JTEKTINDIA":   ("JTEKTINDIA.NS",   "JTEKT India Ltd"),
+    "JUBLFOOD":     ("JUBLFOOD.NS",     "Jubilant FoodWorks Ltd"),
+    "KALYANKJIL":   ("KALYANKJIL.NS",   "Kalyan Jewellers India Ltd"),
+    "KEI":          ("KEI.NS",          "KEI Industries Ltd"),
+    "KSB":          ("KSB.NS",          "KSB Ltd"),
+    "LATENTVIEW":   ("LATENTVIEW.NS",   "Latent View Analytics Ltd"),
+    "LXCHEM":       ("LXCHEM.NS",       "Laxmi Organic Industries Ltd"),
+    "MAPMYINDIA":   ("MAPMYINDIA.NS",   "CE Info Systems Ltd"),
+    "MAXHEALTH":    ("MAXHEALTH.NS",    "Max Healthcare Institute Ltd"),
+    "MRPL":         ("MRPL.NS",         "Mangalore Refinery & Petrochemicals Ltd"),
+    "MUTHOOTFIN":   ("MUTHOOTFIN.NS",   "Muthoot Finance Ltd"),
+    "NATIONALUM":   ("NATIONALUM.NS",   "National Aluminium Company Ltd"),
+    "NBCC":         ("NBCC.NS",         "NBCC (India) Ltd"),
+    "NCC":          ("NCC.NS",          "NCC Ltd"),
+    "NEWGEN":       ("NEWGEN.NS",       "Newgen Software Technologies Ltd"),
+    "NUVAMA":       ("NUVAMA.NS",       "Nuvama Wealth Management Ltd"),
+    "PGHH":         ("PGHH.NS",         "Procter & Gamble Hygiene & Health Care Ltd"),
+    "PRSMJOHNSN":   ("PRSMJOHNSN.NS",   "Prism Johnson Ltd"),
+    "QUESS":        ("QUESS.NS",        "Quess Corp Ltd"),
+    "REDINGTON":    ("REDINGTON.NS",    "Redington Ltd"),
+    "RENUKA":       ("RENUKA.NS",       "Shree Renuka Sugars Ltd"),
+    "RCF":          ("RCF.NS",          "Rashtriya Chemicals & Fertilizers Ltd"),
+    "RVNL":         ("RVNL.NS",         "Rail Vikas Nigam Ltd"),
+    "SAPPHIRE":     ("SAPPHIRE.NS",     "Sapphire Foods India Ltd"),
+    "SCHAEFFLER":   ("SCHAEFFLER.NS",   "Schaeffler India Ltd"),
+    "SHOPERSTOP":   ("SHOPERSTOP.NS",   "Shoppers Stop Ltd"),
+    "SOLARINDS":    ("SOLARINDS.NS",    "Solar Industries India Ltd"),
+    "SRF":          ("SRF.NS",          "SRF Ltd"),
+    "SUMICHEM":     ("SUMICHEM.NS",     "Sumitomo Chemical India Ltd"),
+    "TATVA":        ("TATVA.NS",        "Tatva Chintan Pharma Chem Ltd"),
+    "TTKPRESTIG":   ("TTKPRESTIG.NS",   "TTK Prestige Ltd"),
+    "VARUNBEV":     ("VBL.NS",          "Varun Beverages Ltd"),
+    "VEDL":         ("VEDL.NS",         "Vedanta Ltd"),
+    "ZFCVINDIA":    ("ZFCVINDIA.NS",    "ZF Commercial Vehicle Control Systems India Ltd"),
+
     # ── NEWLY LISTED / IPO POPULAR ───────────────────────────
     "SWIGGY":       ("SWIGGY.NS",       "Swiggy Ltd"),
     "OLA":          ("OLAELEC.NS",      "Ola Electric Mobility Ltd"),
@@ -441,36 +563,139 @@ DEFAULT_SYMBOLS = [
 class QuoteCache:
     """In-memory cache for stock quotes with TTL."""
 
-    def __init__(self, ttl_seconds: int = 60):
+    def __init__(self, ttl_seconds: int = 60, max_entries: int = 350):
         self._cache: Dict[str, dict] = {}
         self._timestamps: Dict[str, float] = {}
-        self._ttl = ttl_seconds
+        self._ttl = max(1, int(ttl_seconds))
+        self._max_entries = max(1, int(max_entries))
+        self._lock = Lock()
+
+    def _evict_expired_locked(self, now: float) -> None:
+        expired = [
+            symbol
+            for symbol, timestamp in self._timestamps.items()
+            if (now - timestamp) >= self._ttl
+        ]
+        for symbol in expired:
+            self._cache.pop(symbol, None)
+            self._timestamps.pop(symbol, None)
+
+    def _evict_oversized_locked(self) -> None:
+        overflow = len(self._cache) - self._max_entries
+        if overflow <= 0:
+            return
+
+        oldest_symbols = sorted(
+            self._timestamps.items(),
+            key=lambda item: item[1],
+        )[:overflow]
+        for symbol, _ in oldest_symbols:
+            self._cache.pop(symbol, None)
+            self._timestamps.pop(symbol, None)
 
     def get(self, symbol: str) -> Optional[dict]:
-        if symbol in self._cache:
-            if time.time() - self._timestamps[symbol] < self._ttl:
-                return self._cache[symbol]
-            else:
-                del self._cache[symbol]
-                del self._timestamps[symbol]
-        return None
+        now = time.time()
+        with self._lock:
+            self._evict_expired_locked(now)
+            return self._cache.get(symbol)
 
     def put(self, symbol: str, data: dict):
-        self._cache[symbol] = data
-        self._timestamps[symbol] = time.time()
+        now = time.time()
+        with self._lock:
+            self._evict_expired_locked(now)
+            self._cache[symbol] = data
+            self._timestamps[symbol] = now
+            self._evict_oversized_locked()
 
     def clear(self):
-        self._cache.clear()
-        self._timestamps.clear()
+        with self._lock:
+            self._cache.clear()
+            self._timestamps.clear()
+
+    def size(self) -> int:
+        with self._lock:
+            return len(self._cache)
 
 
-# Global cache: quotes refresh every 60 seconds
-_quote_cache = QuoteCache(ttl_seconds=60)
+# Global cache: quotes refresh every 60 seconds and stay memory bounded.
+_quote_cache = QuoteCache(
+    ttl_seconds=QUOTE_CACHE_TTL_SECONDS,
+    max_entries=QUOTE_CACHE_MAX_ENTRIES,
+)
 
 
 def _yf_ticker(symbol: str) -> str:
-    """Convert our symbol to Yahoo Finance NSE ticker."""
-    return NSE_SYMBOLS.get(symbol, f"{symbol}.NS")
+    """Convert symbol input into a Yahoo Finance ticker with NSE/BSE support."""
+    raw_symbol = (symbol or "").strip().upper()
+    if not raw_symbol:
+        return ""
+
+    if raw_symbol.startswith("NSE:"):
+        raw_symbol = raw_symbol.split(":", 1)[1].strip()
+    elif raw_symbol.startswith("BSE:"):
+        raw_symbol = raw_symbol.split(":", 1)[1].strip()
+        if raw_symbol and not raw_symbol.endswith(".BO"):
+            return f"{raw_symbol}.BO"
+
+    if raw_symbol.endswith(".NS") or raw_symbol.endswith(".BO"):
+        return raw_symbol
+
+    if raw_symbol in NSE_SYMBOLS:
+        return NSE_SYMBOLS[raw_symbol]
+
+    if len(raw_symbol) == 6 and raw_symbol.isdigit():
+        return f"{raw_symbol}.BO"
+
+    return f"{raw_symbol}.NS"
+
+
+def _safe_number(value: object, default: float = 0.0) -> float:
+    try:
+        number = float(value)
+    except Exception:
+        return default
+    if number != number:  # NaN
+        return default
+    return number
+
+
+def fetch_quote_history(symbol: str, period: str = "1mo", interval: str = "1d") -> List[dict]:
+    """Fetch OHLCV candles from Yahoo Finance for a symbol and timeframe."""
+    normalized_symbol = (symbol or "").strip().upper()
+    normalized_period = (period or "1mo").strip().lower()
+    normalized_interval = (interval or "1d").strip().lower()
+
+    if not normalized_symbol:
+        raise ValueError("Symbol is required")
+    if normalized_period not in HISTORY_ALLOWED_PERIODS:
+        raise ValueError(f"Unsupported history period: {period}")
+    if normalized_interval not in HISTORY_ALLOWED_INTERVALS:
+        raise ValueError(f"Unsupported history interval: {interval}")
+
+    ticker = yf.Ticker(_yf_ticker(normalized_symbol))
+    hist = ticker.history(period=normalized_period, interval=normalized_interval, auto_adjust=False)
+    if hist is None or hist.empty:
+        return []
+
+    candles: List[dict] = []
+    for index, row in hist.iterrows():
+        try:
+            timestamp_ms = int(index.timestamp() * 1000)
+        except Exception:
+            timestamp_ms = int(datetime.utcnow().timestamp() * 1000)
+
+        candles.append(
+            {
+                "timestamp": timestamp_ms,
+                "open": round(_safe_number(row.get("Open")), 4),
+                "high": round(_safe_number(row.get("High")), 4),
+                "low": round(_safe_number(row.get("Low")), 4),
+                "close": round(_safe_number(row.get("Close")), 4),
+                "volume": int(_safe_number(row.get("Volume"), default=0.0)),
+            }
+        )
+
+    return candles
 
 
 def fetch_quote(symbol: str) -> dict:
@@ -511,16 +736,24 @@ def fetch_quote(symbol: str) -> dict:
             day_low = full_info.get('dayLow', float(hist['Low'].iloc[-1]))
             open_price = full_info.get('open', float(hist['Open'].iloc[-1]))
             volume = full_info.get('volume', int(hist['Volume'].iloc[-1]))
+            avg_volume = full_info.get('averageVolume', full_info.get('averageVolume10days', 0))
+            target_mean = full_info.get('targetMeanPrice', None)
+            fifty_day_avg = full_info.get('fiftyDayAverage', None)
+            two_hundred_day_avg = full_info.get('twoHundredDayAverage', None)
         except Exception:
             day_high = float(hist['High'].iloc[-1])
             day_low = float(hist['Low'].iloc[-1])
             open_price = float(hist['Open'].iloc[-1])
             volume = int(hist['Volume'].iloc[-1])
+            avg_volume = 0
             market_cap = 0
             pe_ratio = 0
             dividend_yield = 0
             fifty_two_high = last_price * 1.15
             fifty_two_low = last_price * 0.85
+            target_mean = None
+            fifty_day_avg = None
+            two_hundred_day_avg = None
 
         quote = {
             "symbol": symbol,
@@ -531,11 +764,15 @@ def fetch_quote(symbol: str) -> dict:
             "low": round(day_low, 2),
             "previousClose": round(prev_close, 2),
             "volume": volume,
+            "avgVolume": avg_volume,
             "marketCap": market_cap,
             "pe": round(pe_ratio, 2) if pe_ratio else 0,
             "dividendYield": round((dividend_yield or 0) * 100, 2),
             "fiftyTwoWeekHigh": round(fifty_two_high, 2),
             "fiftyTwoWeekLow": round(fifty_two_low, 2),
+            "targetMeanPrice": round(target_mean, 2) if target_mean else None,
+            "fiftyDayAverage": round(fifty_day_avg, 2) if fifty_day_avg else None,
+            "twoHundredDayAverage": round(two_hundred_day_avg, 2) if two_hundred_day_avg else None,
             "timestamp": int(datetime.utcnow().timestamp() * 1000),
         }
 
@@ -549,65 +786,100 @@ def fetch_quote(symbol: str) -> dict:
 
 
 def fetch_quotes(symbols: List[str]) -> List[dict]:
-    """Fetch quotes for multiple symbols. Uses batch download for uncached symbols."""
+    """Fetch quotes for multiple symbols with optimized batching and caching.
+    
+    Optimization: 
+    - Returns cached results first (faster)
+    - Batches uncached requests to minimize API calls
+    - Falls back to individual fetches on batch errors
+    """
+    if not symbols:
+        return []
+    
     results = []
     uncached = []
+    symbol_map = {}  # Track position for results ordering
 
-    for s in symbols:
+    # Separate cached from uncached, preserving order
+    for idx, s in enumerate(symbols):
         cached = _quote_cache.get(s)
         if cached:
-            results.append(cached)
+            results.append((idx, cached))
         else:
             uncached.append(s)
+            symbol_map[s] = idx
 
+    # Fetch uncached symbols in batches
     if uncached:
-        try:
-            yf_tickers = " ".join([_yf_ticker(s) for s in uncached])
-            data = yf.download(yf_tickers, period="2d", group_by="ticker", progress=False, threads=True)
+        for start in range(0, len(uncached), QUOTE_BATCH_SIZE):
+            batch_symbols = uncached[start:start + QUOTE_BATCH_SIZE]
+            fetched = _fetch_batch_quotes(batch_symbols)
+            for idx, symbol in enumerate(batch_symbols):
+                quote = fetched.get(symbol) or fetch_quote(symbol)
+                results.append((symbol_map[symbol], quote))
 
-            for symbol in uncached:
-                try:
-                    yf_sym = _yf_ticker(symbol)
-                    if len(uncached) == 1:
-                        ticker_data = data
-                    else:
-                        ticker_data = data[yf_sym] if yf_sym in data.columns.get_level_values(0) else None
+    # Sort by original order and extract quotes
+    results.sort(key=lambda x: x[0])
+    return [q for _, q in results]
 
-                    if ticker_data is not None and not ticker_data.empty:
-                        last_price = float(ticker_data['Close'].iloc[-1])
-                        prev_close = float(ticker_data['Close'].iloc[-2]) if len(ticker_data) > 1 else last_price
-                        pct_change = round(((last_price - prev_close) / prev_close) * 100, 2) if prev_close > 0 else 0.0
 
-                        quote = {
-                            "symbol": symbol,
-                            "last": round(last_price, 2),
-                            "pctChange": pct_change,
-                            "open": round(float(ticker_data['Open'].iloc[-1]), 2),
-                            "high": round(float(ticker_data['High'].iloc[-1]), 2),
-                            "low": round(float(ticker_data['Low'].iloc[-1]), 2),
-                            "previousClose": round(prev_close, 2),
-                            "volume": int(ticker_data['Volume'].iloc[-1]),
-                            "marketCap": 0,
-                            "pe": 0,
-                            "dividendYield": 0,
-                            "fiftyTwoWeekHigh": round(last_price * 1.15, 2),
-                            "fiftyTwoWeekLow": round(last_price * 0.85, 2),
-                            "timestamp": int(datetime.utcnow().timestamp() * 1000),
-                        }
-                        _quote_cache.put(symbol, quote)
-                        results.append(quote)
-                    else:
-                        # Fallback to individual fetch
-                        results.append(fetch_quote(symbol))
-                except Exception as e:
-                    logger.warning(f"Batch parse failed for {symbol}, falling back: {e}")
-                    results.append(fetch_quote(symbol))
+def _fetch_batch_quotes(batch_symbols: List[str]) -> dict:
+    """Fetch a batch of quotes (max QUOTE_BATCH_SIZE) efficiently."""
+    results = {}
+    
+    try:
+        yf_tickers = " ".join([_yf_ticker(s) for s in batch_symbols])
+        data = yf.download(
+            yf_tickers,
+            period="2d",
+            group_by="ticker",
+            progress=False,
+            threads=False,
+            timeout=15,  # Add timeout to prevent hanging
+        )
 
-        except Exception as e:
-            logger.error(f"Batch download failed: {e}, falling back to individual fetches")
-            for symbol in uncached:
-                results.append(fetch_quote(symbol))
+        for symbol in batch_symbols:
+            try:
+                yf_sym = _yf_ticker(symbol)
+                if len(batch_symbols) == 1:
+                    ticker_data = data
+                else:
+                    ticker_data = data[yf_sym] if yf_sym in data.columns.get_level_values(0) else None
 
+                if ticker_data is not None and not ticker_data.empty:
+                    last_price = float(ticker_data['Close'].iloc[-1])
+                    prev_close = float(ticker_data['Close'].iloc[-2]) if len(ticker_data) > 1 else last_price
+                    pct_change = round(((last_price - prev_close) / prev_close) * 100, 2) if prev_close > 0 else 0.0
+
+                    quote = {
+                        "symbol": symbol,
+                        "last": round(last_price, 2),
+                        "pctChange": pct_change,
+                        "open": round(float(ticker_data['Open'].iloc[-1]), 2),
+                        "high": round(float(ticker_data['High'].iloc[-1]), 2),
+                        "low": round(float(ticker_data['Low'].iloc[-1]), 2),
+                        "previousClose": round(prev_close, 2),
+                        "volume": int(ticker_data['Volume'].iloc[-1]),
+                        "avgVolume": 0,
+                        "marketCap": 0,
+                        "pe": 0,
+                        "dividendYield": 0,
+                        "fiftyTwoWeekHigh": round(last_price * 1.15, 2),
+                        "fiftyTwoWeekLow": round(last_price * 0.85, 2),
+                        "targetMeanPrice": None,
+                        "fiftyDayAverage": None,
+                        "twoHundredDayAverage": None,
+                        "timestamp": int(datetime.utcnow().timestamp() * 1000),
+                    }
+                    _quote_cache.put(symbol, quote)
+                    results[symbol] = quote
+            except Exception as e:
+                logger.warning(f"Parse failed for {symbol} in batch: {e}")
+        
+        del data
+    except Exception as e:
+        logger.error(f"Batch download failed for {len(batch_symbols)} symbols: {e}")
+    
     return results
 
 
@@ -622,11 +894,15 @@ def _empty_quote(symbol: str) -> dict:
         "low": 0.0,
         "previousClose": 0.0,
         "volume": 0,
+        "avgVolume": 0,
         "marketCap": 0,
         "pe": 0,
         "dividendYield": 0,
         "fiftyTwoWeekHigh": 0,
         "fiftyTwoWeekLow": 0,
+        "targetMeanPrice": None,
+        "fiftyDayAverage": None,
+        "twoHundredDayAverage": None,
         "timestamp": int(datetime.utcnow().timestamp() * 1000),
     }
 
@@ -643,8 +919,9 @@ def get_default_symbols() -> List[str]:
 
 def get_stock_name(symbol: str) -> str:
     """Return company name for a symbol, or the symbol itself if unknown."""
-    entry = INDIAN_STOCKS.get(symbol)
-    return entry[1] if entry else symbol
+    normalized = _strip_exchange_suffix(symbol or "")
+    entry = INDIAN_STOCKS.get(normalized)
+    return entry[1] if entry else (symbol or normalized)
 
 
 def get_symbols_with_names() -> List[dict]:
@@ -655,35 +932,99 @@ def get_symbols_with_names() -> List[dict]:
     ]
 
 
+_SEARCH_NOISE_WORDS = {
+    "a",
+    "an",
+    "and",
+    "cmp",
+    "company",
+    "for",
+    "in",
+    "is",
+    "latest",
+    "me",
+    "my",
+    "of",
+    "price",
+    "quote",
+    "share",
+    "shares",
+    "stock",
+    "stocks",
+    "the",
+    "today",
+    "what",
+}
+
+
+def _strip_exchange_suffix(token: str) -> str:
+    value = token.strip().upper()
+    if value.endswith(".NS") or value.endswith(".BO"):
+        return value.rsplit(".", 1)[0]
+    return value
+
+
+def _build_search_terms(raw_query: str) -> List[str]:
+    normalized = re.sub(r"[^A-Za-z0-9]+", " ", (raw_query or "").lower()).strip()
+    if not normalized:
+        return []
+
+    tokens = [token for token in normalized.split() if token]
+    cleaned_tokens = [token for token in tokens if token not in _SEARCH_NOISE_WORDS]
+
+    if cleaned_tokens:
+        return cleaned_tokens
+    return tokens
+
+
+def _dedupe_keep_order(values: List[str]) -> List[str]:
+    seen = set()
+    deduped: List[str] = []
+    for value in values:
+        cleaned = value.strip()
+        if not cleaned:
+            continue
+        lowered = cleaned.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        deduped.append(cleaned)
+    return deduped
+
+
 def search_stocks(query: str, limit: int = 50) -> List[dict]:
     """
     Search stocks by symbol or company name.
-    Works for ALL stocks - returns matches from the catalog,
-    and also tries Yahoo Finance for unknown symbols.
+    Pipeline: exact → prefix → contains → name phrase → fuzzy → Yahoo search API.
     """
-    query_lower = query.strip().lower()
-    if not query_lower:
+    terms = _build_search_terms(query)
+    if not terms:
         return []
+
+    phrase = " ".join(terms)
+    search_units = _dedupe_keep_order([phrase] + terms)
+    search_units_lower = [unit.lower() for unit in search_units]
+    search_units_upper = [_strip_exchange_suffix(unit) for unit in search_units]
 
     results = []
     seen = set()
 
-    # 1) Exact symbol match
-    query_upper = query.strip().upper()
-    if query_upper in INDIAN_STOCKS:
-        sym = query_upper
-        results.append({
-            "symbol": sym,
-            "name": INDIAN_STOCKS[sym][1],
-            "matchType": "exact"
-        })
-        seen.add(sym)
+    # 1) Exact symbol match from any meaningful unit.
+    for query_upper in search_units_upper:
+        if query_upper in INDIAN_STOCKS and query_upper not in seen:
+            results.append({
+                "symbol": query_upper,
+                "name": INDIAN_STOCKS[query_upper][1],
+                "matchType": "exact"
+            })
+            seen.add(query_upper)
 
-    # 2) Symbol prefix matches (highest priority)
+    # 2) Symbol prefix matches (highest priority after exact)
     for sym, (ticker, name) in INDIAN_STOCKS.items():
         if sym in seen:
             continue
-        if sym.lower().startswith(query_lower):
+        symbol_lower = sym.lower()
+        if any(symbol_lower.startswith(unit) for unit in search_units_lower if len(unit) >= 2):
             results.append({"symbol": sym, "name": name, "matchType": "symbol"})
             seen.add(sym)
 
@@ -691,36 +1032,121 @@ def search_stocks(query: str, limit: int = 50) -> List[dict]:
     for sym, (ticker, name) in INDIAN_STOCKS.items():
         if sym in seen:
             continue
-        if query_lower in sym.lower():
+        symbol_lower = sym.lower()
+        if any(unit in symbol_lower for unit in search_units_lower if len(unit) >= 2):
             results.append({"symbol": sym, "name": name, "matchType": "symbol"})
             seen.add(sym)
 
-    # 4) Company name matches
+    # 4) Company name matches — phrase match or all-tokens match
     for sym, (ticker, name) in INDIAN_STOCKS.items():
         if sym in seen:
             continue
-        if query_lower in name.lower():
+        name_lower = name.lower()
+        phrase_match = phrase in name_lower
+        token_match = all(term in name_lower for term in terms if len(term) >= 2)
+        if phrase_match or token_match:
             results.append({"symbol": sym, "name": name, "matchType": "name"})
             seen.add(sym)
 
-    # 5) If no results from catalog, try as a direct Yahoo Finance ticker
-    if not results and len(query_upper) >= 2:
-        try:
-            yf_sym = f"{query_upper}.NS"
-            ticker = yf.Ticker(yf_sym)
-            hist = ticker.history(period="1d")
-            if not hist.empty:
+    # 4b) Partial token match — any search term appears in name (relaxed)
+    if not results:
+        for sym, (ticker, name) in INDIAN_STOCKS.items():
+            if sym in seen:
+                continue
+            name_lower = name.lower()
+            meaningful_terms = [t for t in terms if len(t) >= 3]
+            if meaningful_terms and any(t in name_lower for t in meaningful_terms):
+                results.append({"symbol": sym, "name": name, "matchType": "partial"})
+                seen.add(sym)
+
+    # 5) Fuzzy matching on company names (handles typos, "india" vs "indian")
+    if not results and len(phrase) >= 3:
+        _all_names = {sym: name.lower() for sym, (_, name) in INDIAN_STOCKS.items()}
+        close_matches = difflib.get_close_matches(
+            phrase, list(_all_names.values()), n=5, cutoff=0.45
+        )
+        for matched_name in close_matches:
+            for sym, name_lower in _all_names.items():
+                if name_lower == matched_name and sym not in seen:
+                    results.append({
+                        "symbol": sym,
+                        "name": INDIAN_STOCKS[sym][1],
+                        "matchType": "fuzzy"
+                    })
+                    seen.add(sym)
+                    break
+
+    # 6) Yahoo Finance search API — proper search, not just ticker guess
+    if not results:
+        yahoo_results = _yahoo_search_query(phrase, limit=5)
+        for item in yahoo_results:
+            sym = item.get("symbol", "")
+            name = item.get("name", sym)
+            if sym and sym not in seen:
+                results.append({"symbol": sym, "name": name, "matchType": "yahoo"})
+                seen.add(sym)
+
+    # 7) Legacy fallback: try raw tokens as NSE tickers
+    if not results:
+        yahoo_candidates = _dedupe_keep_order(search_units_upper + [term.upper() for term in terms])
+        for candidate in yahoo_candidates:
+            if len(candidate) < 2:
+                continue
+            try:
+                ticker = yf.Ticker(f"{candidate}.NS")
+                hist = ticker.history(period="1d")
+                if hist.empty:
+                    continue
                 try:
                     info = ticker.info
-                    name = info.get("shortName", query_upper)
+                    name = info.get("shortName", candidate)
                 except Exception:
-                    name = query_upper
+                    name = candidate
+
                 results.append({
-                    "symbol": query_upper,
+                    "symbol": candidate,
                     "name": name,
                     "matchType": "yahoo"
                 })
-        except Exception:
-            pass
+                break
+            except Exception:
+                continue
 
     return results[:limit]
+
+
+def _yahoo_search_query(query: str, limit: int = 5) -> List[dict]:
+    """Search Yahoo Finance for Indian stocks using their search API."""
+    try:
+        encoded_q = urllib.parse.quote(query)
+        url = (
+            f"https://query2.finance.yahoo.com/v1/finance/search"
+            f"?q={encoded_q}&quotesCount={limit}&newsCount=0"
+            f"&listsCount=0&enableFuzzyQuery=true&quotesQueryId=tss_match_phrase_query"
+        )
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "Mozilla/5.0"},
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = _json.loads(resp.read().decode("utf-8"))
+
+        results = []
+        for quote in data.get("quotes", []):
+            exchange = quote.get("exchange", "")
+            symbol = quote.get("symbol", "")
+            short_name = quote.get("shortname", symbol)
+
+            # Only accept NSE/BSE Indian stocks
+            if exchange not in ("NSI", "BSE", "NSE", "BOM"):
+                continue
+
+            # Normalize: strip .NS/.BO suffix for our internal symbol
+            clean_symbol = symbol.replace(".NS", "").replace(".BO", "")
+            results.append({"symbol": clean_symbol, "name": short_name})
+
+        return results
+    except Exception as exc:
+        logger.debug("yahoo_search_api_error query=%s reason=%s", query, str(exc))
+        return []
