@@ -1650,19 +1650,21 @@ def _check_ai_rate_limit(request):
 
 @router.get("/ai/gemini-status")
 async def gemini_status():
-    """Debug: check Gemini availability."""
-    key = os.environ.get("GEMINI_API_KEY", "")
-    key_preview = f"{key[:4]}...{key[-4:]}" if len(key) > 8 else ("SET" if key else "MISSING")
+    """Debug: check LLM provider availability (Gemini + Groq)."""
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    groq_key = os.environ.get("GROQ_API_KEY", "")
+    gk_preview = f"{gemini_key[:4]}...{gemini_key[-4:]}" if len(gemini_key) > 8 else ("SET" if gemini_key else "MISSING")
+    grk_preview = f"{groq_key[:4]}...{groq_key[-4:]}" if len(groq_key) > 8 else ("SET" if groq_key else "MISSING")
     try:
-        from ..gemini_llm import gemini_available, ask_gemini, _get_model
+        from ..gemini_llm import gemini_available, ask_gemini
         avail = gemini_available()
         if avail:
             result = await ask_gemini("Say hello in one sentence.")
-            return {"key": key_preview, "available": avail, "test": result}
+            return {"gemini_key": gk_preview, "groq_key": grk_preview, "available": avail, "test": result}
         else:
-            return {"key": key_preview, "available": False, "reason": "gemini_available() returned False"}
+            return {"gemini_key": gk_preview, "groq_key": grk_preview, "available": False, "reason": "No LLM provider configured"}
     except Exception as e:
-        return {"key": key_preview, "available": False, "error": str(e)}
+        return {"gemini_key": gk_preview, "groq_key": grk_preview, "available": False, "error": str(e)}
 
 
 @router.post("/ai/ask")
@@ -1685,13 +1687,13 @@ async def ai_ask_endpoint(body: AiQuery, request: Request, db: Session = Depends
 
             gemini_result = await ask_gemini(body.query, context=context)
             if "answer" in gemini_result:
-                # Merge: use Gemini text but keep structured data from rule engine
-                merged = {**rule_result, "answer": gemini_result["answer"], "source": "gemini"}
+                # Merge: use LLM text but keep structured data from rule engine
+                merged = {**rule_result, "answer": gemini_result["answer"], "source": gemini_result.get("source", "llm")}
                 return merged
             else:
-                logger.warning("Gemini returned no answer: %s", gemini_result)
+                logger.warning("LLM returned no answer: %s", gemini_result)
     except Exception as e:
-        logger.error("Gemini fallback error: %s", e)
+        logger.error("LLM fallback error: %s", e)
 
     result = ai_assistant(body.query, db=db)
     result["source"] = "rule-engine"
