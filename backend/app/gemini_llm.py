@@ -61,7 +61,7 @@ def _ask_hf_sync(prompt: str, model: str) -> Dict:
         "max_tokens": 1024,
     }).encode()
 
-    url = f"https://api-inference.huggingface.co/models/{model}/v1/chat/completions"
+    url = f"https://router.huggingface.co/hf-inference/models/{model}/v1/chat/completions"
     req = urllib_request.Request(url, data=payload, headers=headers, method="POST")
 
     try:
