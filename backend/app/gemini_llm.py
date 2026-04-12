@@ -140,11 +140,13 @@ async def ask_gemini(query: str, context: Optional[str] = None) -> Dict:
     full_prompt = "".join(prompt_parts)
 
     # 1) Try Gemini
+    gemini_err = "not configured"
     if os.environ.get("GEMINI_API_KEY"):
         result = await _ask_gemini(full_prompt)
         if "answer" in result:
             return result
-        logger.info("Gemini failed, trying Groq fallback: %s", result.get("error", ""))
+        gemini_err = result.get("error", "unknown")
+        logger.info("Gemini failed, trying Groq fallback: %s", gemini_err)
 
     # 2) Try Groq (sync call, fast enough at ~200ms)
     if os.environ.get("GROQ_API_KEY"):
@@ -152,5 +154,6 @@ async def ask_gemini(query: str, context: Optional[str] = None) -> Dict:
         if "answer" in result:
             return result
         logger.info("Groq also failed: %s", result.get("error", ""))
+        return {"error": f"Gemini: {gemini_err} | Groq: {result.get('error', 'unknown')}"}
 
-    return {"error": "All LLM providers failed"}
+    return {"error": f"Gemini: {gemini_err} | Groq not configured"}
