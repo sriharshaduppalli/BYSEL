@@ -35,14 +35,14 @@ fun HeatmapScreen(
     isLoading: Boolean,
     onRefresh: () -> Unit,
     onStockClick: (String) -> Unit,
-    heatmapInterval: Int = 2000
+    heatmapInterval: Int = 1000  // Reduced from 2000ms to 1000ms for sub-1s market updates
 ) {
     // Initial load
     LaunchedEffect(Unit) {
         if (heatmap == null) onRefresh()
     }
 
-    // Periodic refresh using user interval
+    // Periodic refresh using user interval (1 second for real-time market data)
     LaunchedEffect(heatmapInterval) {
         while (true) {
             onRefresh()

@@ -1,7 +1,7 @@
 # BYSEL 90-Day Competitive Roadmap
 
 Date: 2026-03-05
-Scope: Product, engineering, reliability, compliance, and growth to compete with Zerodha, Groww, and Angel One.
+Scope: Product, engineering, reliability, compliance, and growth to compete with Zerodha, Groww, Angel One, and Univest.
 
 ## 1) Day-90 Success Criteria
 
@@ -19,6 +19,11 @@ Scope: Product, engineering, reliability, compliance, and growth to compete with
 3. Brokerage-grade OMS or RMS resilience is incomplete for volatile market windows.
 4. Compliance and onboarding depth needs hardening for scale.
 5. Observability, SLO monitoring, and incident runbooks are not yet complete.
+6. Market home, search, and stock-detail UX are still functional-first rather than brokerage-grade.
+7. Wealth OS exists conceptually but does not yet deliver consumer-grade net-worth storytelling.
+8. Trust surfaces such as calculators, inline guidance, and decision-time education are underexposed.
+9. Advisory-grade buy, sell, hold guidance and portfolio-doctor style diagnosis are not yet productized.
+10. Screener depth, market-digest discovery loops, and top-investor portfolio tracking are missing.
 
 ## 3) Operating Model
 
@@ -87,11 +92,13 @@ Exit criteria:
 2. Add tax P and L summary and downloadable statements.
 3. Add contract-note and ledger consistency checks in app.
 4. Improve portfolio insights with personalized next-best actions.
+5. Rebuild Home, search, and stock detail around faster investment and trading decisions.
 
 Exit criteria:
 1. SGB flow available with clear status tracking.
 2. User can access statement and tax summary from app.
 3. Ledger, tradebook, and P and L views reconcile with backend records.
+4. Home and discovery reduce taps to quote, insight, and action for core journeys.
 
 ### Sprint 6 (Weeks 11-12): Scale, Polish, and Growth
 
@@ -99,11 +106,15 @@ Exit criteria:
 2. Add intelligent alerts, watchlist scanners, and retention nudges.
 3. Finalize support SOPs and incident management runbooks.
 4. Execute launch readiness checklist and post-release monitoring.
+5. Launch trader mode, visual Wealth OS, inline trust and Copilot guidance, and advisory-style ratings.
+6. Ship screener lab, market-digest discovery, and top-investor portfolio tracking.
 
 Exit criteria:
 1. App startup and screen render targets meet defined budgets.
 2. Alert features drive measurable engagement lift.
 3. Incident response runbooks validated via drill.
+4. Trading, wealth, and advisory flows feel differentiated on UX, not only on module count.
+5. Discovery loops cover ratings, screeners, and investor-portfolio tracking well enough to compete with advisory-led apps.
 
 ## 5) Owner-Wise Backlog (P0 First)
 
@@ -112,8 +123,12 @@ Exit criteria:
 1. P0: Dedicated Futures flow with complete ticket, validation, and order tracking.
 2. P0: Real-time order and quote UI resiliency under reconnect conditions.
 3. P0: Pre-trade charge and margin breakdown in ticket.
-4. P1: SGB application and status screens.
-5. P1: Tax reports and statement center UX.
+4. P1: Market cockpit home, universal search, and decision-grade stock detail.
+5. P1: Trader mode with chart-linked execution and persistent order context.
+6. P1: SGB application and status screens.
+7. P1: Tax reports and statement center UX.
+8. P1: Wealth OS visual redesign and inline Copilot guidance.
+9. P1: Advisory ratings, portfolio doctor, screener lab, and top-investor portfolio discovery.
 
 ### Backend Team
 
@@ -122,6 +137,7 @@ Exit criteria:
 3. P0: Audit logs with trace IDs across auth, order, and funds APIs.
 4. P1: SGB APIs and allocation status handling.
 5. P1: Reporting endpoints for ledger, charges, and P and L.
+6. P1: Research signal, portfolio-diagnosis, screener, and market-digest endpoints for advisory experiences.
 
 ### QA and Automation
 

@@ -2,6 +2,7 @@ package com.bysel.trader.data.auth
 
 import com.bysel.trader.BuildConfig
 import com.bysel.trader.data.api.BYSELApiService
+import com.bysel.trader.data.api.RequestMetadataInterceptor
 import com.bysel.trader.data.models.AuthResponse
 import com.bysel.trader.data.models.RefreshTokenRequest
 import okhttp3.OkHttpClient
@@ -12,6 +13,7 @@ import java.util.concurrent.TimeUnit
 object AuthTokenRefresher {
     private val refreshClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
+            .addInterceptor(RequestMetadataInterceptor())
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)

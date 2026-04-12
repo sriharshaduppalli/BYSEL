@@ -48,6 +48,14 @@ import com.bysel.trader.data.repository.TradingRepository
 import com.bysel.trader.ui.screens.*
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.theme.getTheme
+import com.bysel.trader.ui.theme.getMaterialColorScheme
+import com.google.android.play.core.appupdate.AppUpdateManager
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.install.model.AppUpdateType
+import com.google.android.play.core.install.model.UpdateAvailability
+import com.google.android.play.core.review.ReviewManager
+import com.google.android.play.core.review.ReviewManagerFactory
+import com.bysel.trader.ui.theme.toMaterialColorScheme
 import com.bysel.trader.viewmodel.TradingViewModel
 import com.bysel.trader.viewmodel.TradingViewModelFactory
 import kotlinx.coroutines.launch
@@ -318,6 +326,10 @@ fun BYSELApp(
     var currentThemeName by remember { mutableStateOf(prefs.getString("theme", "Default") ?: "Default") }
     val appTheme = remember(currentThemeName) { getTheme(currentThemeName.lowercase()) }
 
+    // Play Core managers for modern app lifecycle
+    val appUpdateManager = remember { AppUpdateManagerFactory.create(context) }
+    val reviewManager = remember { ReviewManagerFactory.create(context) }
+
     // Onboarding state
     var showOnboarding by remember { mutableStateOf(prefs.getBoolean("onboarding_complete", false).not()) }
 
@@ -333,6 +345,7 @@ fun BYSELApp(
     )
     
     val quotes by viewModel.quotes.collectAsState()
+    val watchlistSymbols by viewModel.watchlist.collectAsState()
     val holdings by viewModel.holdings.collectAsState()
     val alerts by viewModel.alerts.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
@@ -346,14 +359,68 @@ fun BYSELApp(
     val healthLoading by viewModel.healthLoading.collectAsState()
     val marketHeatmap by viewModel.marketHeatmap.collectAsState()
     val heatmapLoading by viewModel.heatmapLoading.collectAsState()
+    val signalLabBuckets by viewModel.signalLabBuckets.collectAsState()
+    val signalLabBucketsLoading by viewModel.signalLabBucketsLoading.collectAsState()
     val selectedQuote by viewModel.selectedQuote.collectAsState()
     val detailLoading by viewModel.detailLoading.collectAsState()
     val walletBalance by viewModel.walletBalance.collectAsState()
     val marketStatus by viewModel.marketStatus.collectAsState()
+    val investorPortfolios by viewModel.investorPortfolios.collectAsState()
+    val investorPortfoliosLoading by viewModel.investorPortfoliosLoading.collectAsState()
+    val investorPortfolioChanges by viewModel.investorPortfolioChanges.collectAsState()
+    val smartMoneyIdeas by viewModel.smartMoneyIdeas.collectAsState()
+    val smartMoneyQuarterLabel by viewModel.smartMoneyQuarterLabel.collectAsState()
+    val investorInsightsLoading by viewModel.investorInsightsLoading.collectAsState()
+
+    // Check for in-app updates on app start
+    LaunchedEffect(Unit) {
+        val appUpdateInfoTask = appUpdateManager.appUpdateInfo
+        appUpdateInfoTask.addOnSuccessListener { appUpdateInfo ->
+            if (appUpdateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE
+                && appUpdateInfo.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE)) {
+                appUpdateManager.startUpdateFlowForResult(
+                    appUpdateInfo,
+                    AppUpdateType.FLEXIBLE,
+                    context as androidx.activity.ComponentActivity,
+                    1001
+                )
+            }
+        }
+    }
+
+    // Request review after positive user interactions
+    val requestReview: () -> Unit = {
+        val request = reviewManager.requestReviewFlow()
+        request.addOnCompleteListener { task ->
+            if (task.isSuccessful) {
+                val reviewInfo = task.result
+                val flow = reviewManager.launchReviewFlow(context as androidx.activity.ComponentActivity, reviewInfo)
+                flow.addOnCompleteListener {
+                    // Review flow completed
+                }
+            }
+        }
+    }
 
     LaunchedEffect(selectedTab) {
         if (selectedTab in 0..4 && pagerState.settledPage != selectedTab) {
             pagerState.animateScrollToPage(selectedTab)
+        }
+        if (selectedTab == 6 || selectedTab == 20) {
+            viewModel.loadSignalLabBuckets()
+        }
+        if (selectedTab == 20) {
+            if (marketHeatmap == null) {
+                viewModel.loadMarketHeatmap()
+            }
+        }
+        if (selectedTab == 21) {
+            if (investorPortfolios.isEmpty()) {
+                viewModel.loadInvestorPortfolios()
+            }
+            if (investorPortfolioChanges.isEmpty() || smartMoneyIdeas.isEmpty()) {
+                viewModel.loadInvestorPortfolioInsights()
+            }
         }
     }
 
@@ -372,7 +439,7 @@ fun BYSELApp(
                 selectedTab = previousTab
             }
 
-            selectedTab in 6..8 || selectedTab in 10..19 -> {
+            selectedTab in 6..8 || selectedTab in 10..21 -> {
                 selectedTab = 5
             }
 
@@ -392,21 +459,22 @@ fun BYSELApp(
         }
     }
     CompositionLocalProvider(LocalAppTheme provides appTheme) {
-        if (showOnboarding) {
-            com.bysel.trader.ui.screens.OnboardingScreen(
-                onFinish = {
-                    // Do NOT auto-initialize demo funds. Keep wallet at 0 by default.
-                    // User can opt-in to demo from Settings or explicit UI action.
-                    showOnboarding = false
-                    prefs.edit().putBoolean("onboarding_complete", true).apply()
-                }
-            )
-        } else {
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = appTheme.surface
-            ) {
-                Scaffold(
+        MaterialTheme(colorScheme = getMaterialColorScheme(currentThemeName, context)) {
+            if (showOnboarding) {
+                com.bysel.trader.ui.screens.OnboardingScreen(
+                    onFinish = {
+                        // Do NOT auto-initialize demo funds. Keep wallet at 0 by default.
+                        // User can opt-in to demo from Settings or explicit UI action.
+                        showOnboarding = false
+                        prefs.edit().putBoolean("onboarding_complete", true).apply()
+                    }
+                )
+            } else {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = appTheme.surface
+                ) {
+                    Scaffold(
                     bottomBar = {
                         NavigationBar(
                             modifier = Modifier.background(appTheme.card),
@@ -486,7 +554,7 @@ fun BYSELApp(
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.MoreHoriz, contentDescription = "More", modifier = Modifier.size(22.dp)) },
                         label = { Text("More", fontSize = 10.sp) },
-                        selected = selectedTab in 5..19,
+                        selected = selectedTab in 5..21,
                         onClick = { selectedTab = 5 },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = Color(0xFF7C4DFF),
@@ -524,7 +592,7 @@ fun BYSELApp(
                                         return@detectHorizontalDragGestures
                                     }
 
-                                    val canSwipeBack = selectedTab == 9 || selectedTab in 6..8 || selectedTab in 10..19
+                                    val canSwipeBack = selectedTab == 9 || selectedTab in 6..8 || selectedTab in 10..21
                                     val canSwipeForwardFromMore = selectedTab == 5
                                     val startedFromLeftEdge = dragStartX <= edgeThresholdPx
                                     val startedFromRightEdge = dragStartX >= size.width - edgeThresholdPx
@@ -572,17 +640,40 @@ fun BYSELApp(
                                         quotes = quotes,
                                         isLoading = isLoading,
                                         error = error,
-                                        onRefresh = { viewModel.refreshQuotes() },
-                                        onTradeClick = { selectedTab = 2 },
-                                        onErrorDismiss = { viewModel.clearError() }
+                                        onRefresh = { viewModel.refreshQuotes(force = true) },
+                                        onTradeClick = { symbol ->
+                                            previousTab = selectedTab
+                                            viewModel.fetchAndSelectQuote(symbol)
+                                            selectedTab = 9
+                                        },
+                                        onErrorDismiss = { viewModel.clearError() },
+                                        onAiClick = { selectedTab = 1 }
                                     )
                                     1 -> AiAssistantScreen(
                                         chatHistory = chatHistory,
                                         isLoading = aiLoading,
-                                        onSendQuery = { query -> viewModel.askAi(query) },
-                                        onSuggestionClick = { suggestion -> viewModel.askAi(suggestion) },
+                                        onSendQuery = { query ->
+                                            if (query.lowercase().contains("optimize my portfolio")) viewModel.optimizePortfolio()
+                                            else viewModel.askAi(query)
+                                        },
+                                        onSuggestionClick = { suggestion ->
+                                            if (suggestion.lowercase().contains("optimize my portfolio")) viewModel.optimizePortfolio()
+                                            else viewModel.askAi(suggestion)
+                                        },
                                         onClearChat = { viewModel.clearChatHistory() },
-                                        selectedSymbol = selectedQuote?.symbol
+                                        selectedSymbol = selectedQuote?.symbol,
+                                        onTradeAction = { symbol, side, qty ->
+                                            viewModel.placeOrder(symbol, qty ?: 1, side)
+                                            selectedTab = 2
+                                        },
+                                        onAlertAction = { symbol, price, alertType ->
+                                            price?.let { viewModel.createAlert(symbol, it, alertType) }
+                                        },
+                                        onNavigateToStock = { symbol ->
+                                            previousTab = selectedTab
+                                            viewModel.fetchAndSelectQuote(symbol)
+                                            selectedTab = 9
+                                        }
                                     )
                                     2 -> TradingScreen(
                                         isLoading = isLoading,
@@ -592,7 +683,7 @@ fun BYSELApp(
                                         onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
                                         onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") },
                                         onRefresh = {
-                                            viewModel.refreshQuotes()
+                                            viewModel.refreshQuotes(force = true)
                                             viewModel.refreshWallet()
                                             viewModel.refreshMarketStatus()
                                         },
@@ -635,7 +726,10 @@ fun BYSELApp(
                             when (selectedTab) {
                                 5 -> MoreScreen(
                                     onSearchClick = { selectedTab = 6 },
-                                    onLiveQuotesClick = { selectedTab = 0 },
+                                    onLiveQuotesClick = {
+                                        selectedTab = 2
+                                        viewModel.refreshQuotes(force = true)
+                                    },
                                     onAlertsClick = { selectedTab = 7 },
                                     onSettingsClick = { selectedTab = 8 },
                                     onAchievementsClick = { selectedTab = 10 },
@@ -647,7 +741,9 @@ fun BYSELApp(
                                     onAdvancedOrdersClick = { selectedTab = 16 },
                                     onDerivativesClick = { selectedTab = 17 },
                                     onWealthOsClick = { selectedTab = 18 },
-                                    onCopilotCenterClick = { selectedTab = 19 }
+                                    onCopilotCenterClick = { selectedTab = 19 },
+                                    onSignalLabClick = { selectedTab = 20 },
+                                    onInvestorPortfoliosClick = { selectedTab = 21 },
                                 )
                                 10 -> com.bysel.trader.ui.screens.AchievementsScreen(viewModel)
                                 11 -> MutualFundsScreen(viewModel)
@@ -659,8 +755,42 @@ fun BYSELApp(
                                 17 -> DerivativesIntelligenceScreen(viewModel)
                                 18 -> WealthOsScreen(viewModel)
                                 19 -> CopilotCenterScreen(viewModel)
+                                20 -> SignalLabScreen(
+                                    quotes = quotes,
+                                    heatmap = marketHeatmap,
+                                    backendBuckets = signalLabBuckets,
+                                    isLoading = isLoading || heatmapLoading || signalLabBucketsLoading,
+                                    onRefresh = {
+                                        viewModel.refreshQuotes(force = true)
+                                        viewModel.loadMarketHeatmap()
+                                        viewModel.loadSignalLabBuckets(force = true)
+                                    },
+                                    onOpenSymbol = { symbol ->
+                                        previousTab = selectedTab
+                                        viewModel.fetchAndSelectQuote(symbol)
+                                        selectedTab = 9
+                                    },
+                                )
+                                21 -> InvestorPortfoliosScreen(
+                                    portfolios = investorPortfolios,
+                                    portfolioChanges = investorPortfolioChanges,
+                                    ideas = smartMoneyIdeas,
+                                    quarterLabel = smartMoneyQuarterLabel,
+                                    isLoading = investorPortfoliosLoading || investorInsightsLoading,
+                                    onRefresh = {
+                                        viewModel.loadInvestorPortfolios()
+                                        viewModel.loadInvestorPortfolioInsights()
+                                    },
+                                    onOpenSymbol = { symbol ->
+                                        previousTab = selectedTab
+                                        viewModel.fetchAndSelectQuote(symbol)
+                                        selectedTab = 9
+                                    },
+                                )
                                 6 -> SearchScreen(
                                     quotes = quotes,
+                                    watchlistSymbols = watchlistSymbols,
+                                    backendBuckets = signalLabBuckets,
                                     searchResults = searchResults,
                                     isSearching = isSearching,
                                     onSearchQuery = { query -> viewModel.searchStocks(query) },
@@ -674,7 +804,8 @@ fun BYSELApp(
                                         previousTab = selectedTab
                                         viewModel.fetchAndSelectQuote(symbol)
                                         selectedTab = 9
-                                    }
+                                    },
+                                    onRouteClick = { targetTab -> selectedTab = targetTab }
                                 )
                                 7 -> AlertsScreen(
                                     alerts = alerts,
@@ -713,6 +844,17 @@ fun BYSELApp(
                                             onBackPress = { selectedTab = previousTab },
                                             onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
                                             onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") },
+                                            onOpenTrustCenter = { traceId ->
+                                                traceId?.takeIf { it.isNotBlank() }?.let {
+                                                    viewModel.seedTraceLookup(it)
+                                                    viewModel.lookupOrderByTrace(it)
+                                                }
+                                                selectedTab = 19
+                                            },
+                                            onAiQuery = { query ->
+                                                viewModel.askAi(query)
+                                                selectedTab = 1
+                                            },
                                             viewModel = viewModel
                                         )
                                     }
@@ -723,5 +865,6 @@ fun BYSELApp(
                 }
             }
         }
-    } // end CompositionLocalProvider
+    }
+} // end CompositionLocalProvider
 }

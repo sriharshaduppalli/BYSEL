@@ -22,6 +22,7 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import kotlin.math.min
 import kotlin.random.Random
+import java.util.UUID
 
 class LiveMarketDataClient(
     private val apiService: BYSELApiService = RetrofitClient.apiService
@@ -31,6 +32,8 @@ class LiveMarketDataClient(
         const val STALE_STREAM_TIMEOUT_MS = 12_000L
         const val BASE_RECONNECT_DELAY_MS = 800L
         const val MAX_RECONNECT_DELAY_MS = 20_000L
+        const val TRACE_HEADER = "X-Trace-Id"
+        const val TRACE_QUERY_PARAM = "traceId"
     }
 
     private val gson = Gson()
@@ -47,10 +50,15 @@ class LiveMarketDataClient(
         return streamViaReconnectingWebSocket(
             wsUrl = BuildConfig.MARKET_WS_URL,
             symbols = symbols,
-            onSocketOpen = { webSocket, normalizedSymbols ->
-                val payload = mapOf("action" to "subscribe", "symbols" to normalizedSymbols)
+            onSocketOpen = { webSocket, normalizedSymbols, traceId ->
+                val payload = mapOf(
+                    "action" to "subscribe",
+                    "symbols" to normalizedSymbols,
+                    "traceId" to traceId,
+                )
                 webSocket.send(gson.toJson(payload))
             },
+            includeTraceQuery = true,
             parsePayload = { text -> parseQuotes(text) },
         )
     }
@@ -59,7 +67,7 @@ class LiveMarketDataClient(
         return streamViaReconnectingWebSocket(
             wsUrl = BuildConfig.MARKET_TRUEDATA_WS_URL,
             symbols = symbols,
-            onSocketOpen = { webSocket, normalizedSymbols ->
+            onSocketOpen = { webSocket, normalizedSymbols, _ ->
                 if (truedataToken.isNotBlank()) {
                     webSocket.send("auth:$truedataToken")
                 }
@@ -69,6 +77,7 @@ class LiveMarketDataClient(
                 }
                 webSocket.send(subscribe)
             },
+            includeTraceQuery = false,
             parsePayload = { text ->
                 val parsed = parseTrueDataTicks(text)
                 if (parsed.isNotEmpty()) parsed else parseQuotes(text)
@@ -79,10 +88,12 @@ class LiveMarketDataClient(
     private fun streamViaReconnectingWebSocket(
         wsUrl: String,
         symbols: List<String>,
-        onSocketOpen: (WebSocket, List<String>) -> Unit,
+        onSocketOpen: (WebSocket, List<String>, String) -> Unit,
+        includeTraceQuery: Boolean,
         parsePayload: (String) -> List<Quote>,
     ): Flow<List<Quote>> = callbackFlow {
         val normalizedSymbols = normalizeSymbols(symbols)
+        val streamTraceId = buildStreamTraceId()
         if (normalizedSymbols.isEmpty()) {
             close(IllegalArgumentException("Live quote stream requires at least one symbol"))
             return@callbackFlow
@@ -116,7 +127,10 @@ class LiveMarketDataClient(
 
             reconnectAttempt += 1
             val backoffMs = nextReconnectDelayMs(reconnectAttempt)
-            Log.w(TAG, "Stream reconnect scheduled in ${backoffMs}ms (attempt=$reconnectAttempt reason=$reason)")
+            Log.w(
+                TAG,
+                "Stream reconnect scheduled in ${backoffMs}ms (attempt=$reconnectAttempt reason=$reason traceId=$streamTraceId)"
+            )
 
             reconnectJob = launch {
                 emitRestSnapshot()
@@ -129,15 +143,24 @@ class LiveMarketDataClient(
 
         openSocketConnection = {
             if (!isClosing && isActive) {
-                val request = Request.Builder().url(wsUrl).build()
+                val resolvedWsUrl = if (includeTraceQuery) {
+                    appendTraceQueryIfMissing(wsUrl, streamTraceId)
+                } else {
+                    wsUrl
+                }
+                val request = Request.Builder()
+                    .url(resolvedWsUrl)
+                    .header(TRACE_HEADER, streamTraceId)
+                    .build()
                 try {
                     socket = RetrofitClient.httpClient.newWebSocket(request, object : WebSocketListener() {
                         override fun onOpen(webSocket: WebSocket, response: Response) {
                             reconnectAttempt = 0
                             lastMessageAtMs = System.currentTimeMillis()
-                            runCatching { onSocketOpen(webSocket, normalizedSymbols) }
+                            Log.i(TAG, "Stream socket opened traceId=$streamTraceId url=${request.url}")
+                            runCatching { onSocketOpen(webSocket, normalizedSymbols, streamTraceId) }
                                 .onFailure { error ->
-                                    Log.e(TAG, "Stream subscription failed", error)
+                                    Log.e(TAG, "Stream subscription failed traceId=$streamTraceId", error)
                                     scheduleReconnect("subscription_failed")
                                 }
                         }
@@ -152,17 +175,18 @@ class LiveMarketDataClient(
 
                         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                             if (isClosing) return
-                            Log.w(TAG, "Stream socket failed", t)
+                            Log.w(TAG, "Stream socket failed traceId=$streamTraceId", t)
                             scheduleReconnect("socket_failure")
                         }
 
                         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                            Log.i(TAG, "Stream socket closed traceId=$streamTraceId code=$code reason=$reason")
                             if (isClosing || code == 1000) return
                             scheduleReconnect("socket_closed_$code")
                         }
                     })
                 } catch (error: Exception) {
-                    Log.e(TAG, "Stream connection setup failed", error)
+                    Log.e(TAG, "Stream connection setup failed traceId=$streamTraceId", error)
                     scheduleReconnect("connect_exception")
                 }
             }
@@ -292,5 +316,18 @@ class LiveMarketDataClient(
         val delay = BASE_RECONNECT_DELAY_MS * (1L shl exponent)
         val jitter = Random.nextLong(200L, 900L)
         return min(MAX_RECONNECT_DELAY_MS, delay + jitter)
+    }
+
+    private fun buildStreamTraceId(): String {
+        val compactUuid = UUID.randomUUID().toString().replace("-", "").take(16)
+        return "trc-ws-$compactUuid"
+    }
+
+    private fun appendTraceQueryIfMissing(url: String, traceId: String): String {
+        if (url.contains("traceId=", ignoreCase = true) || url.contains("trace_id=", ignoreCase = true)) {
+            return url
+        }
+        val separator = if (url.contains("?")) "&" else "?"
+        return "$url$separator$TRACE_QUERY_PARAM=$traceId"
     }
 }

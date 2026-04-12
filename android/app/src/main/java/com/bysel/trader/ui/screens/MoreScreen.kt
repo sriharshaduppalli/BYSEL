@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
@@ -74,6 +75,8 @@ fun MoreScreen(
     onDerivativesClick: () -> Unit,
     onWealthOsClick: () -> Unit,
     onCopilotCenterClick: () -> Unit,
+    onSignalLabClick: () -> Unit,
+    onInvestorPortfoliosClick: () -> Unit,
 ) {
     val utilityEntries = listOf(
         MoreMenuEntry(
@@ -167,11 +170,25 @@ fun MoreScreen(
             onClick = onWealthOsClick,
         ),
         MoreMenuEntry(
+            icon = Icons.AutoMirrored.Filled.ShowChart,
+            title = "Signal Lab",
+            subtitle = "Filter breakouts, volume spikes, and yield setups",
+            gradientColors = listOf(Color(0xFF004D40), Color(0xFF26A69A)),
+            onClick = onSignalLabClick,
+        ),
+        MoreMenuEntry(
             icon = Icons.Filled.Psychology,
             title = "Copilot Center",
             subtitle = "Pre-trade and post-trade guidance",
             gradientColors = listOf(Color(0xFF6A1B9A), Color(0xFFBA68C8)),
             onClick = onCopilotCenterClick,
+        ),
+        MoreMenuEntry(
+            icon = Icons.Filled.People,
+            title = "Smart Money",
+            subtitle = "Track legendary investor disclosed holdings",
+            gradientColors = listOf(Color(0xFF1B5E20), Color(0xFF43A047)),
+            onClick = onInvestorPortfoliosClick,
         ),
     )
 
@@ -210,7 +227,9 @@ fun MoreScreen(
                 QuickInfoChip(label = "ETF", onClick = onEtfClick)
                 QuickInfoChip(label = "F&O", onClick = onDerivativesClick)
                 QuickInfoChip(label = "SIP", onClick = onSipClick)
+                QuickInfoChip(label = "Signal Lab", onClick = onSignalLabClick)
                 QuickInfoChip(label = "AI Copilot", onClick = onCopilotCenterClick)
+                QuickInfoChip(label = "Smart Money", onClick = onInvestorPortfoliosClick)
             }
         }
 
