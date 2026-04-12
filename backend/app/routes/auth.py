@@ -935,49 +935,6 @@ def _get_user_id_from_authorization(authorization: str | None) -> int:
         db.close()
 
 
-@router.get("/password-diag")
-def password_diagnostic():
-    """Temporary — diagnose bcrypt hashing on this environment."""
-    test_pw = "Test1234"
-    diag: dict = {"bcrypt_lib_available": bcrypt_lib is not None}
-    try:
-        hashed = _hash_password(test_pw)
-        diag["hash"] = hashed[:20] + "..."
-        diag["hash_method"] = "bcrypt_lib" if (bcrypt_lib is not None) else "passlib"
-        diag["verify_result"] = _verify_password(test_pw, hashed)
-
-        # Also check a user in the DB
-        db = SessionLocal()
-        try:
-            from sqlalchemy import func
-            db_user = db.query(UserModel).filter(
-                func.lower(UserModel.username) == "statuscheck999"
-            ).first()
-            if db_user:
-                diag["db_user_found"] = True
-                diag["db_hash_prefix"] = db_user.password_hash[:20] + "..."
-                diag["db_verify_raw_bcrypt"] = None
-                diag["db_verify_passlib"] = None
-                if bcrypt_lib is not None:
-                    try:
-                        diag["db_verify_raw_bcrypt"] = bcrypt_lib.checkpw(
-                            test_pw.encode(), db_user.password_hash.encode()
-                        )
-                    except Exception as e:
-                        diag["db_verify_raw_bcrypt"] = f"ERROR: {e}"
-                try:
-                    diag["db_verify_passlib"] = pwd_context.verify(test_pw, db_user.password_hash)
-                except Exception as e:
-                    diag["db_verify_passlib"] = f"ERROR: {e}"
-            else:
-                diag["db_user_found"] = False
-        finally:
-            db.close()
-    except Exception as e:
-        diag["error"] = f"{type(e).__name__}: {e}"
-    return diag
-
-
 @router.post("/register", response_model=AuthResponse)
 def register(user: UserRegister, request: Request):
     normalized_username = _normalize_username(user.username)
