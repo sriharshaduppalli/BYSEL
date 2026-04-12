@@ -1613,10 +1613,11 @@ async def get_symbols_count():
 
 # ==================== HEALTH ====================
 
-@router.get("/health", response_model=HealthCheck)
+@router.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return HealthCheck(status="healthy", version="2.0.0")
+    gemini_ok = bool(os.environ.get("GEMINI_API_KEY"))
+    return {"status": "healthy", "version": "2.0.0", "gemini": gemini_ok}
 
 
 # ==================== AI STOCK ASSISTANT ====================
