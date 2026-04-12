@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.repository.AuthRepository
 import com.bysel.trader.data.repository.Result
+import com.bysel.trader.data.auth.AuthSessionManager
 import com.bysel.trader.ui.theme.LocalAppTheme
 import android.app.Activity
 import android.content.ActivityNotFoundException
@@ -648,6 +649,25 @@ fun AuthScreen(
                 if (isLoginMode) "New user? Register" else "Already registered? Login",
                 color = appTheme.primary
             )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Guest mode — skip login for feature testing
+        TextButton(
+            onClick = {
+                if (loading) return@TextButton
+                // Create a guest session so the app lets us through
+                AuthSessionManager.saveSession(
+                    accessToken = "guest-token",
+                    refreshToken = "guest-refresh",
+                    userId = 0
+                )
+                onAuthenticated()
+            },
+            enabled = !loading
+        ) {
+            Text("Skip Login (Guest Mode)", color = appTheme.textSecondary)
         }
     }
 }
