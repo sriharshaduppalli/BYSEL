@@ -935,6 +935,31 @@ def _get_user_id_from_authorization(authorization: str | None) -> int:
         db.close()
 
 
+@router.delete("/admin/delete-user/{username}")
+def admin_delete_user(username: str):
+    """Temporary admin endpoint — remove after debugging."""
+    db: Session = SessionLocal()
+    try:
+        user = db.query(UserModel).filter(
+            func.lower(UserModel.username) == username.lower()
+        ).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        uid = user.id
+        db.query(RefreshTokenModel).filter(RefreshTokenModel.user_id == uid).delete()
+        db.query(WalletModel).filter(WalletModel.user_id == uid).delete()
+        db.delete(user)
+        db.commit()
+        return {"status": "ok", "deleted_user_id": uid, "username": username}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        db.close()
+
+
 @router.post("/register", response_model=AuthResponse)
 def register(user: UserRegister, request: Request):
     normalized_username = _normalize_username(user.username)
