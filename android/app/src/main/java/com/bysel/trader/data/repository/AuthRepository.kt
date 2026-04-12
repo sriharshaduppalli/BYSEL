@@ -14,6 +14,7 @@ import com.bysel.trader.data.models.LoginRequest
 import com.bysel.trader.data.models.SendOTPRequest
 import com.bysel.trader.data.models.VerifyOTPRequest
 import com.bysel.trader.data.models.FirebasePhoneAuthRequest
+import com.bysel.trader.data.models.DeleteAccountRequest
 import com.bysel.trader.data.models.OTPResponse
 import com.bysel.trader.data.models.LogoutRequest
 import com.bysel.trader.data.models.RefreshTokenRequest
@@ -185,6 +186,16 @@ class AuthRepository(
         } catch (_: Exception) {
             AuthSessionManager.clearSession()
             Result.Success(Unit)
+        }
+    }
+
+    suspend fun deleteAccount(password: String): Result<Unit> {
+        return try {
+            apiService.deleteAccount(DeleteAccountRequest(password = password))
+            AuthSessionManager.clearSession()
+            Result.Success(Unit)
+        } catch (e: Exception) {
+            Result.Error(toAuthErrorMessage(e, "Account deletion failed"))
         }
     }
 

@@ -52,6 +52,10 @@ fun SettingsScreen(
     var showFeedbackDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showLogoutAllDialog by remember { mutableStateOf(false) }
+    var showDeleteAccountDialog by remember { mutableStateOf(false) }
+    var deleteAccountPassword by remember { mutableStateOf("") }
+    var deleteAccountError by remember { mutableStateOf<String?>(null) }
+    var deleteAccountLoading by remember { mutableStateOf(false) }
     var openWebsite by remember { mutableStateOf(false) }
     var showIntervalDialog by remember { mutableStateOf(false) }
     var heatmapInterval by remember { mutableStateOf(2000) }
@@ -172,6 +176,95 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showLogoutAllDialog = false }) {
+                    Text("Cancel", color = LocalAppTheme.current.textSecondary)
+                }
+            }
+        )
+    }
+    if (showDeleteAccountDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!deleteAccountLoading) {
+                    showDeleteAccountDialog = false
+                    deleteAccountPassword = ""
+                    deleteAccountError = null
+                }
+            },
+            containerColor = LocalAppTheme.current.card,
+            title = {
+                Text(
+                    text = "Delete Account",
+                    color = LocalAppTheme.current.negative,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "This will permanently delete your account and all associated data. This action cannot be undone.",
+                        color = LocalAppTheme.current.textSecondary,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                    OutlinedTextField(
+                        value = deleteAccountPassword,
+                        onValueChange = { deleteAccountPassword = it; deleteAccountError = null },
+                        label = { Text("Enter your password to confirm") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = deleteAccountError != null
+                    )
+                    if (deleteAccountError != null) {
+                        Text(
+                            text = deleteAccountError!!,
+                            color = LocalAppTheme.current.negative,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (deleteAccountPassword.isBlank()) {
+                            deleteAccountError = "Password is required"
+                            return@TextButton
+                        }
+                        deleteAccountLoading = true
+                        scope.launch {
+                            when (val result = authRepository.deleteAccount(deleteAccountPassword)) {
+                                is Result.Success -> {
+                                    showDeleteAccountDialog = false
+                                    deleteAccountPassword = ""
+                                    onLogout()
+                                }
+                                is Result.Error -> {
+                                    deleteAccountError = result.message
+                                    deleteAccountLoading = false
+                                }
+                                else -> {}
+                            }
+                        }
+                    },
+                    enabled = !deleteAccountLoading
+                ) {
+                    if (deleteAccountLoading) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Delete Permanently", color = LocalAppTheme.current.negative)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteAccountDialog = false
+                        deleteAccountPassword = ""
+                        deleteAccountError = null
+                    },
+                    enabled = !deleteAccountLoading
+                ) {
                     Text("Cancel", color = LocalAppTheme.current.textSecondary)
                 }
             }
@@ -317,6 +410,15 @@ fun SettingsScreen(
                 title = "Logout All Devices",
                 subtitle = "Sign out from all devices",
                 onClick = { showLogoutAllDialog = true }
+            )
+        }
+        item {
+            SettingClickItem(
+                icon = Icons.Filled.DeleteForever,
+                title = "Delete Account",
+                subtitle = "Permanently remove your account and data",
+                onClick = { showDeleteAccountDialog = true },
+                tintColor = LocalAppTheme.current.negative
             )
         }
         item {
@@ -709,8 +811,10 @@ fun SettingClickItem(
     icon: ImageVector,
     title: String,
     subtitle: String,
-    onClick: () -> Unit = {}
+    onClick: () -> Unit = {},
+    tintColor: Color? = null
 ) {
+    val color = tintColor ?: LocalAppTheme.current.primary
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -734,7 +838,7 @@ fun SettingClickItem(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = LocalAppTheme.current.primary,
+                    tint = color,
                     modifier = Modifier.size(24.dp)
                 )
                 Column {
@@ -764,6 +868,7 @@ fun SettingClickItem(
 
 @Composable
 fun AboutDialog(onDismiss: () -> Unit) {
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = LocalAppTheme.current.card,
@@ -791,7 +896,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
                 Text(
-                    text = "BYSEL is a modern stock trading simulator that helps you learn and practice stock trading with real market data.",
+                    text = "BYSEL is a modern stock trading simulator that helps you learn and practice stock trading with real market data. No real money is involved.",
                     fontSize = 12.sp,
                     color = LocalAppTheme.current.textSecondary,
                     modifier = Modifier.padding(bottom = 12.dp)
@@ -811,28 +916,36 @@ fun AboutDialog(onDismiss: () -> Unit) {
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
                 Text(
-                    text = "Privacy Policy: https://bysel.com/privacy",
+                    text = "Privacy Policy",
                     fontSize = 12.sp,
-                    color = LocalAppTheme.current.textSecondary,
-                    modifier = Modifier.padding(bottom = 2.dp)
+                    color = LocalAppTheme.current.primary,
+                    modifier = Modifier
+                        .padding(bottom = 6.dp)
+                        .clickable { uriHandler.openUri("https://bysel.com/privacy") }
                 )
                 Text(
-                    text = "Terms of Service: https://bysel.com/terms",
+                    text = "Terms of Service",
                     fontSize = 12.sp,
-                    color = LocalAppTheme.current.textSecondary,
-                    modifier = Modifier.padding(bottom = 2.dp)
+                    color = LocalAppTheme.current.primary,
+                    modifier = Modifier
+                        .padding(bottom = 6.dp)
+                        .clickable { uriHandler.openUri("https://bysel.com/terms") }
                 )
                 Text(
-                    text = "Open Source Licenses: https://bysel.com/licenses",
+                    text = "Open Source Licenses",
                     fontSize = 12.sp,
-                    color = LocalAppTheme.current.textSecondary,
-                    modifier = Modifier.padding(bottom = 2.dp)
+                    color = LocalAppTheme.current.primary,
+                    modifier = Modifier
+                        .padding(bottom = 6.dp)
+                        .clickable { uriHandler.openUri("https://bysel.com/licenses") }
                 )
                 Text(
                     text = "Contact: support@bysel.com",
                     fontSize = 12.sp,
-                    color = LocalAppTheme.current.textSecondary,
-                    modifier = Modifier.padding(bottom = 2.dp)
+                    color = LocalAppTheme.current.primary,
+                    modifier = Modifier
+                        .padding(bottom = 2.dp)
+                        .clickable { uriHandler.openUri("mailto:support@bysel.com") }
                 )
             }
         },

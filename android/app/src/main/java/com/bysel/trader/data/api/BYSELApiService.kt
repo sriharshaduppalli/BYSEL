@@ -44,6 +44,9 @@ interface BYSELApiService {
     @POST("/auth/firebase-phone")
     suspend fun firebasePhoneAuth(@Body request: FirebasePhoneAuthRequest): AuthResponse
 
+    @POST("/auth/delete-account")
+    suspend fun deleteAccount(@Body request: DeleteAccountRequest): Map<String, String>
+
     // ==================== QUOTES ====================
     @GET("/quotes")
     suspend fun getQuotes(@Query("symbols") symbols: String): List<Quote>

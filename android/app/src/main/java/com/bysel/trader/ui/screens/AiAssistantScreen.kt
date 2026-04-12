@@ -132,6 +132,22 @@ fun AiAssistantScreen(
             }
         }
 
+        // Simulation/educational disclaimer banner
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFFFFF3E0))
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "📊 Simulation Mode — Paper trading with real market data. No real money involved.",
+                fontSize = 11.sp,
+                color = Color(0xFF9E6B00),
+                lineHeight = 14.sp
+            )
+        }
+
         // Chat messages
         if (chatHistory.isEmpty()) {
             // Welcome screen
@@ -626,6 +642,17 @@ private fun ChatBubble(
                 fontSize = 10.sp,
                 color = Color(0xFF7C4DFF).copy(alpha = 0.7f),
                 modifier = Modifier.padding(start = 8.dp, top = 2.dp)
+            )
+        }
+
+        // AI disclaimer for all AI responses
+        if (!message.isUser) {
+            Text(
+                text = "⚠ AI analysis is for educational purposes only. Not financial advice. Always do your own research.",
+                fontSize = 9.sp,
+                color = LocalAppTheme.current.textSecondary.copy(alpha = 0.6f),
+                modifier = Modifier.padding(start = 8.dp, top = 4.dp, end = 8.dp),
+                lineHeight = 12.sp
             )
         }
 

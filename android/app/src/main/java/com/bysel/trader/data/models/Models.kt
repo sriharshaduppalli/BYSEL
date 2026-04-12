@@ -781,6 +781,10 @@ data class FirebasePhoneAuthRequest(
     @SerializedName("firebase_id_token") val firebaseIdToken: String
 )
 
+data class DeleteAccountRequest(
+    val password: String
+)
+
 data class AuthResponse(
     val status: String,
     val user_id: Int,
