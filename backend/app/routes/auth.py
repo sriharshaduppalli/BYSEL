@@ -1926,3 +1926,51 @@ def firebase_phone_auth(request: FirebasePhoneAuthRequest):
         )
     finally:
         db.close()
+
+
+# ---------- Account Deletion (Google Play requirement) ----------
+
+class DeleteAccountRequest(BaseModel):
+    password: str
+
+@auth_router.post("/auth/delete-account")
+async def delete_account(
+    body: DeleteAccountRequest,
+    authorization: str = Header(None),
+):
+    """Permanently delete the user's account and all associated data.
+    Required by Google Play Store policy (effective June 2024)."""
+    user_id = _get_user_id_from_authorization(authorization)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    db: Session = SessionLocal()
+    try:
+        user = db.query(UserModel).filter(UserModel.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Verify password before deletion
+        if not _verify_password(body.password, user.password_hash):
+            raise HTTPException(status_code=401, detail="Invalid password")
+
+        # Delete all associated data
+        db.query(RefreshTokenModel).filter(RefreshTokenModel.user_id == user_id).delete()
+        db.query(WalletModel).filter(WalletModel.user_id == user_id).delete()
+        db.query(OTPModel).filter(OTPModel.user_id == user_id).delete()
+        db.query(PasswordResetTokenModel).filter(PasswordResetTokenModel.user_id == user_id).delete()
+
+        # Delete the user
+        db.delete(user)
+        db.commit()
+
+        logger.info("auth.account_deleted user_id=%s", user_id)
+        return {"status": "ok", "detail": "Account permanently deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error("auth.delete_account_error user_id=%s error=%s", user_id, e)
+        raise HTTPException(status_code=500, detail="Account deletion failed")
+    finally:
+        db.close()

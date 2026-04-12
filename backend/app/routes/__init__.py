@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, HTTPException, Header
+from fastapi import APIRouter, Depends, Query, HTTPException, Header, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
@@ -1625,6 +1625,29 @@ async def health_check():
 class AiQuery(BaseModel):
     query: str
 
+# ---------- AI rate limiter (20 req/min per IP) ----------
+_ai_rate_buckets: Dict[str, list] = {}
+_ai_rate_lock = __import__("threading").Lock()
+
+def _check_ai_rate_limit(request):
+    """Simple per-IP rate limit for AI endpoints: 20 requests/minute."""
+    ip = getattr(request.client, "host", "unknown") if request.client else "unknown"
+    now = time.time()
+    with _ai_rate_lock:
+        bucket = _ai_rate_buckets.setdefault(ip, [])
+        # Prune entries older than 60s
+        _ai_rate_buckets[ip] = bucket = [t for t in bucket if now - t < 60]
+        if len(bucket) >= 20:
+            raise HTTPException(status_code=429, detail="AI rate limit exceeded. Please wait a moment.")
+        bucket.append(now)
+        # Prune stale IPs every so often
+        if len(_ai_rate_buckets) > 2000:
+            cutoff = now - 120
+            for k in list(_ai_rate_buckets):
+                if all(t < cutoff for t in _ai_rate_buckets.get(k, [])):
+                    del _ai_rate_buckets[k]
+
+
 @router.get("/ai/gemini-status")
 async def gemini_status():
     """Debug: check Gemini availability."""
@@ -1643,9 +1666,10 @@ async def gemini_status():
 
 
 @router.post("/ai/ask")
-async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
+async def ai_ask_endpoint(body: AiQuery, request: Request, db: Session = Depends(get_db)):
     """Natural language AI stock assistant.
     Examples: 'Should I buy RELIANCE?', 'Predict TCS price', 'Compare INFY and TCS'"""
+    _check_ai_rate_limit(request)
     # Try Gemini first, fall back to rule-based
     try:
         from ..gemini_llm import gemini_available, ask_gemini
