@@ -1008,9 +1008,35 @@ def register(user: UserRegister, request: Request):
         raise
     except Exception as exc:
         logger.exception("auth.register.failed stage=%s reason=%s", stage, str(exc))
-        raise HTTPException(status_code=500, detail=f"Register failed at stage: {stage}")
+        raise HTTPException(status_code=500, detail=f"Register failed at stage: {stage} — {type(exc).__name__}: {exc}")
     finally:
         db.close()
+
+
+@router.get("/db-diag")
+def db_diagnostic():
+    """Temporary diagnostic — remove after debugging."""
+    from sqlalchemy import inspect as _sa_inspect
+    diag: dict = {"status": "checking"}
+    db = SessionLocal()
+    try:
+        inspector = _sa_inspect(engine)
+        diag["tables"] = inspector.get_table_names()
+        if "users" in diag["tables"]:
+            diag["users_columns"] = [c["name"] for c in inspector.get_columns("users")]
+            diag["users_count"] = db.execute(text("SELECT COUNT(*) FROM users")).scalar()
+        else:
+            diag["users_columns"] = None
+            diag["users_count"] = None
+        diag["db_url"] = str(engine.url)
+        diag["status"] = "ok"
+    except Exception as exc:
+        diag["status"] = "error"
+        diag["error"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        db.close()
+    return diag
+
 
 @router.post("/login", response_model=AuthResponse)
 def login(user: UserLogin, request: Request):
