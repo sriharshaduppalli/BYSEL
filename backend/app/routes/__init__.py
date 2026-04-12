@@ -1625,6 +1625,23 @@ async def health_check():
 class AiQuery(BaseModel):
     query: str
 
+@router.get("/ai/gemini-status")
+async def gemini_status():
+    """Debug: check Gemini availability."""
+    key = os.environ.get("GEMINI_API_KEY", "")
+    key_preview = f"{key[:4]}...{key[-4:]}" if len(key) > 8 else ("SET" if key else "MISSING")
+    try:
+        from ..gemini_llm import gemini_available, ask_gemini, _get_model
+        avail = gemini_available()
+        if avail:
+            result = await ask_gemini("Say hello in one sentence.")
+            return {"key": key_preview, "available": avail, "test": result}
+        else:
+            return {"key": key_preview, "available": False, "reason": "gemini_available() returned False"}
+    except Exception as e:
+        return {"key": key_preview, "available": False, "error": str(e)}
+
+
 @router.post("/ai/ask")
 async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
     """Natural language AI stock assistant.
@@ -1647,8 +1664,10 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                 # Merge: use Gemini text but keep structured data from rule engine
                 merged = {**rule_result, "answer": gemini_result["answer"], "source": "gemini"}
                 return merged
-    except Exception:
-        pass  # Fall through to rule-based
+            else:
+                logger.warning("Gemini returned no answer: %s", gemini_result)
+    except Exception as e:
+        logger.error("Gemini fallback error: %s", e)
 
     result = ai_assistant(body.query, db=db)
     result["source"] = "rule-engine"
