@@ -42,7 +42,7 @@ def _get_model():
         import google.generativeai as genai
         genai.configure(api_key=api_key)
         _model = genai.GenerativeModel(
-            "gemini-1.5-flash",
+            "gemini-2.0-flash-lite",
             system_instruction=SYSTEM_PROMPT,
         )
         logger.info("Gemini model initialized successfully")

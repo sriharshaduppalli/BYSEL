@@ -1933,7 +1933,7 @@ def firebase_phone_auth(request: FirebasePhoneAuthRequest):
 class DeleteAccountRequest(BaseModel):
     password: str
 
-@auth_router.post("/auth/delete-account")
+@router.post("/delete-account")
 async def delete_account(
     body: DeleteAccountRequest,
     authorization: str = Header(None),
