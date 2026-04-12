@@ -78,7 +78,7 @@ async def _ask_gemini(prompt: str) -> Dict:
 
 def _ask_groq_sync(prompt: str) -> Dict:
     """Call Groq REST API (no SDK needed). Free tier: 30 RPM, 14400 RPD."""
-    api_key = os.environ.get("GROQ_API_KEY")
+    api_key = os.environ.get("GROQ_API_KEY", "").strip()
     if not api_key:
         return {"error": "Groq not configured"}
 
@@ -109,9 +109,9 @@ def _ask_groq_sync(prompt: str) -> Dict:
             return {"error": "Empty Groq response"}
         return {"answer": text, "source": "groq-llama"}
     except urllib_error.HTTPError as e:
-        body = e.read().decode(errors="replace")[:300]
+        body = e.read().decode(errors="replace")[:500]
         logger.warning("Groq HTTP %s: %s", e.code, body)
-        return {"error": f"Groq HTTP {e.code}"}
+        return {"error": f"Groq HTTP {e.code}: {body[:200]}"}
     except Exception as e:
         logger.warning("Groq error: %s", e)
         return {"error": str(e)}
