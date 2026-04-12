@@ -935,13 +935,19 @@ def _get_user_id_from_authorization(authorization: str | None) -> int:
         db.close()
 
 
-@router.delete("/admin/delete-user/{username}")
-def admin_delete_user(username: str):
+class AdminDeleteRequest(BaseModel):
+    identifier: str
+
+
+@router.post("/admin/delete-user")
+def admin_delete_user(req: AdminDeleteRequest):
     """Temporary admin endpoint — remove after debugging."""
+    identifier = req.identifier.strip().lower()
     db: Session = SessionLocal()
     try:
         user = db.query(UserModel).filter(
-            func.lower(UserModel.username) == username.lower()
+            (func.lower(UserModel.username) == identifier) |
+            (func.lower(UserModel.email) == identifier)
         ).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
@@ -950,7 +956,7 @@ def admin_delete_user(username: str):
         db.query(WalletModel).filter(WalletModel.user_id == uid).delete()
         db.delete(user)
         db.commit()
-        return {"status": "ok", "deleted_user_id": uid, "username": username}
+        return {"status": "ok", "deleted_user_id": uid, "username": user.username}
     except HTTPException:
         raise
     except Exception as exc:
