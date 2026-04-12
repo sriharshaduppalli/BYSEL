@@ -32,7 +32,8 @@ GEMINI_MODELS: List[str] = [
     "gemini-2.0-flash",
     "gemini-2.0-flash-lite",
     "gemini-1.5-flash",
-    "gemini-1.5-flash-8b",
+    "gemini-2.0-flash-thinking-exp-01-21",
+    "gemma-3-27b-it",
 ]
 
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
