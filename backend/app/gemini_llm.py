@@ -1,20 +1,16 @@
 """
 LLM integration for BYSEL AI assistant.
-Providers (tried in order):
-  1. Pollinations.ai — completely FREE, NO API key needed  [PRIMARY]
-  2. Google Gemini  (GEMINI_API_KEY)                        [SECONDARY]
-Falling back to the rule-based ai_engine when neither is available.
+Uses Google Gemini REST API directly (no Cloudflare issues).
+Tries multiple Gemini models — each model has its own daily free quota.
 """
 
 import os
 import json
 import logging
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from urllib import request as urllib_request, error as urllib_error
 
 logger = logging.getLogger(__name__)
-
-_gemini_model = None
 
 SYSTEM_PROMPT = """You are BYSEL AI, an expert Indian stock market assistant.
 You provide concise, actionable stock analysis for NSE/BSE listed stocks.
@@ -30,121 +26,90 @@ Rules:
 - If you don't know something, say so honestly.
 """
 
-# ── Pollinations.ai (PRIMARY — FREE, NO API KEY) ──────
+# Each model has its own daily free quota (1500 RPD each).
+# Try them in order — if one is exhausted, the next one should work.
+GEMINI_MODELS: List[str] = [
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
+]
 
-POLLINATIONS_URL = "https://text.pollinations.ai/openai"
+GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
-def _ask_pollinations_sync(prompt: str) -> Dict:
-    """Call Pollinations.ai free API. No API key required."""
+def _call_gemini_rest(prompt: str, model: str, api_key: str) -> Dict:
+    """Call Gemini REST API directly (no SDK, no Cloudflare issues)."""
+    url = f"{GEMINI_API_BASE}/{model}:generateContent?key={api_key}"
+
     payload = json.dumps({
-        "model": "openai",
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ],
-        "max_tokens": 1024,
+        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 1024,
+        },
     }).encode()
 
     req = urllib_request.Request(
-        POLLINATIONS_URL,
-        data=payload,
+        url, data=payload,
         headers={"Content-Type": "application/json"},
         method="POST",
     )
     try:
-        with urllib_request.urlopen(req, timeout=45) as resp:
+        with urllib_request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read())
-        text = data["choices"][0]["message"]["content"].strip()
+
+        # Extract text from Gemini response
+        candidates = data.get("candidates", [])
+        if not candidates:
+            return {"error": f"{model}: no candidates returned"}
+        parts = candidates[0].get("content", {}).get("parts", [])
+        text = "".join(p.get("text", "") for p in parts).strip()
         if not text:
-            return {"error": "Empty Pollinations response"}
-        model_used = data.get("model", "pollinations")
-        return {"answer": text, "source": f"ai-{model_used}"}
+            return {"error": f"{model}: empty response"}
+        return {"answer": text, "source": f"gemini-{model}"}
+
     except urllib_error.HTTPError as e:
-        body = e.read().decode(errors="replace")[:300]
-        logger.warning("Pollinations HTTP %s: %s", e.code, body)
-        return {"error": f"Pollinations HTTP {e.code}: {body[:200]}"}
+        body = e.read().decode(errors="replace")[:500]
+        if e.code == 429:
+            logger.info("Gemini %s quota exhausted, trying next model", model)
+            return {"error": f"{model}: quota exhausted"}
+        logger.warning("Gemini %s HTTP %s: %s", model, e.code, body[:200])
+        return {"error": f"{model} HTTP {e.code}: {body[:150]}"}
     except Exception as e:
-        logger.warning("Pollinations error: %s", e)
-        return {"error": f"Pollinations: {str(e)}"}
-
-
-# ── Gemini (SECONDARY) ────────────────────────────────
-
-def _get_gemini_model():
-    """Lazy-initialize the Gemini model."""
-    global _gemini_model
-    if _gemini_model is not None:
-        return _gemini_model
-
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        return None
-
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        _gemini_model = genai.GenerativeModel(
-            "gemini-2.0-flash-lite",
-            system_instruction=SYSTEM_PROMPT,
-        )
-        logger.info("Gemini model initialized")
-        return _gemini_model
-    except Exception as e:
-        logger.error("Gemini init failed: %s", e)
-        return None
-
-
-async def _ask_gemini(prompt: str) -> Dict:
-    model = _get_gemini_model()
-    if model is None:
-        return {"error": "Gemini not configured"}
-    try:
-        response = await model.generate_content_async(
-            prompt,
-            generation_config={"temperature": 0.7, "max_output_tokens": 1024},
-        )
-        text = response.text.strip() if response.text else ""
-        if not text:
-            return {"error": "Empty Gemini response"}
-        return {"answer": text, "source": "gemini"}
-    except Exception as e:
-        logger.warning("Gemini error: %s", e)
-        return {"error": str(e)}
+        logger.warning("Gemini %s error: %s", model, e)
+        return {"error": f"{model}: {str(e)}"}
 
 
 # ── Public interface ───────────────────────────────────
 
 def gemini_available() -> bool:
-    """Always true — Pollinations.ai needs no API key."""
-    return True
+    """Check if Gemini API key is configured."""
+    return bool(os.environ.get("GEMINI_API_KEY", "").strip())
 
 
 async def ask_gemini(query: str, context: Optional[str] = None) -> Dict:
     """
-    Try Pollinations first (free, no key), then Gemini as fallback.
-    Returns {"answer": str, "source": "ai-<model>"|"gemini"} on success,
-    or {"error": str} if all providers fail.
+    Try multiple Gemini models in order (each has separate daily quota).
+    Returns {"answer": str, "source": "gemini-<model>"} on success,
+    or {"error": str} if all models fail.
     """
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        return {"error": "GEMINI_API_KEY not set"}
+
     prompt_parts = []
     if context:
         prompt_parts.append(f"Market context:\n{context}\n\n")
     prompt_parts.append(f"User query: {query}")
     full_prompt = "".join(prompt_parts)
 
-    # 1) Try Pollinations.ai (free, no API key needed)
-    result = _ask_pollinations_sync(full_prompt)
-    if "answer" in result:
-        return result
-    poll_err = result.get("error", "unknown")
-    logger.info("Pollinations failed, trying Gemini: %s", poll_err)
-
-    # 2) Try Gemini (secondary, needs GEMINI_API_KEY)
-    gemini_err = "not configured"
-    if os.environ.get("GEMINI_API_KEY"):
-        result = await _ask_gemini(full_prompt)
+    last_err = ""
+    for model in GEMINI_MODELS:
+        result = _call_gemini_rest(full_prompt, model, api_key)
         if "answer" in result:
             return result
-        gemini_err = result.get("error", "unknown")
+        last_err = result.get("error", "unknown")
 
-    return {"error": f"Pollinations: {poll_err} | Gemini: {gemini_err}"}
+    return {"error": f"All Gemini models exhausted. Last: {last_err}"}

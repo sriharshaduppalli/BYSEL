@@ -1654,14 +1654,13 @@ async def gemini_status():
     gemini_key = os.environ.get("GEMINI_API_KEY", "")
     gk_preview = f"{gemini_key[:4]}...{gemini_key[-4:]}" if len(gemini_key) > 8 else ("SET" if gemini_key else "MISSING")
     try:
-        from ..gemini_llm import gemini_available, ask_gemini
+        from ..gemini_llm import gemini_available, ask_gemini, GEMINI_MODELS
         avail = gemini_available()
         result = await ask_gemini("Say hello in one sentence.")
-        return {"primary": "pollinations.ai (no key needed)", "gemini_key": gk_preview,
+        return {"gemini_key": gk_preview, "models": GEMINI_MODELS,
                 "available": avail, "test": result}
     except Exception as e:
-        return {"primary": "pollinations.ai (no key needed)", "gemini_key": gk_preview,
-                "available": False, "error": str(e)}
+        return {"gemini_key": gk_preview, "available": False, "error": str(e)}
 
 
 @router.post("/ai/ask")
