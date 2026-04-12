@@ -1650,19 +1650,16 @@ def _check_ai_rate_limit(request):
 
 @router.get("/ai/gemini-status")
 async def gemini_status():
-    """Debug: check LLM provider availability (HuggingFace primary + Gemini secondary)."""
+    """Debug: check LLM provider availability."""
     gemini_key = os.environ.get("GEMINI_API_KEY", "")
     hf_token = os.environ.get("HF_TOKEN", "")
     gk_preview = f"{gemini_key[:4]}...{gemini_key[-4:]}" if len(gemini_key) > 8 else ("SET" if gemini_key else "MISSING")
-    hf_preview = f"{hf_token[:4]}...{hf_token[-4:]}" if len(hf_token) > 8 else ("SET" if hf_token else "MISSING")
+    hf_preview = f"{hf_token[:4]}...{hf_token[-4:]}" if len(hf_token) > 8 else ("SET (optional)" if hf_token else "NOT SET (works without it)")
     try:
         from ..gemini_llm import gemini_available, ask_gemini
         avail = gemini_available()
-        if avail:
-            result = await ask_gemini("Say hello in one sentence.")
-            return {"hf_token": hf_preview, "gemini_key": gk_preview, "available": avail, "test": result}
-        else:
-            return {"hf_token": hf_preview, "gemini_key": gk_preview, "available": False, "reason": "No LLM provider configured"}
+        result = await ask_gemini("Say hello in one sentence.")
+        return {"hf_token": hf_preview, "gemini_key": gk_preview, "available": avail, "test": result}
     except Exception as e:
         return {"hf_token": hf_preview, "gemini_key": gk_preview, "available": False, "error": str(e)}
 

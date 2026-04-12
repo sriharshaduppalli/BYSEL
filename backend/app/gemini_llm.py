@@ -1,8 +1,8 @@
 """
 LLM integration for BYSEL AI assistant.
 Providers (tried in order):
-  1. HuggingFace Inference API (HF_TOKEN)  — free tier  [PRIMARY]
-  2. Google Gemini  (GEMINI_API_KEY)                     [SECONDARY]
+  1. HuggingFace Serverless Inference — NO API KEY NEEDED  [PRIMARY]
+  2. Google Gemini  (GEMINI_API_KEY)                       [SECONDARY]
 Falling back to the rule-based ai_engine when neither is available.
 """
 
@@ -30,23 +30,27 @@ Rules:
 - If you don't know something, say so honestly.
 """
 
-# ── HuggingFace Inference API (PRIMARY) ────────────────
+# ── HuggingFace Serverless Inference (PRIMARY — NO KEY NEEDED) ──
 
+# Models to try in order. These run on HF's free serverless infra.
+# Using the /v1/chat/completions endpoint (OpenAI-compatible).
 HF_MODELS: List[str] = [
-    "meta-llama/Llama-3.1-8B-Instruct",
     "mistralai/Mistral-7B-Instruct-v0.3",
-    "Qwen/Qwen2.5-7B-Instruct",
+    "HuggingFaceH4/zephyr-7b-beta",
+    "microsoft/Phi-3-mini-4k-instruct",
 ]
-
-HF_BASE_URL = "https://router.huggingface.co/v1/chat/completions"
 
 
 def _ask_hf_sync(prompt: str, model: str) -> Dict:
-    """Call HuggingFace Inference API (OpenAI-compatible)."""
-    api_key = os.environ.get("HF_TOKEN", "").strip()
-    if not api_key:
-        return {"error": "HF_TOKEN not configured"}
+    """Call HuggingFace Inference API. Works WITHOUT a token (lower rate limits)."""
+    headers = {"Content-Type": "application/json"}
 
+    # Use token if available for higher rate limits, but works without it
+    hf_token = os.environ.get("HF_TOKEN", "").strip()
+    if hf_token:
+        headers["Authorization"] = f"Bearer {hf_token}"
+
+    # Try the chat/completions endpoint first (TGI-backed models)
     payload = json.dumps({
         "model": model,
         "messages": [
@@ -57,17 +61,11 @@ def _ask_hf_sync(prompt: str, model: str) -> Dict:
         "max_tokens": 1024,
     }).encode()
 
-    req = urllib_request.Request(
-        HF_BASE_URL,
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
-        method="POST",
-    )
+    url = f"https://api-inference.huggingface.co/models/{model}/v1/chat/completions"
+    req = urllib_request.Request(url, data=payload, headers=headers, method="POST")
+
     try:
-        with urllib_request.urlopen(req, timeout=30) as resp:
+        with urllib_request.urlopen(req, timeout=45) as resp:
             data = json.loads(resp.read())
         text = data["choices"][0]["message"]["content"].strip()
         if not text:
@@ -76,6 +74,10 @@ def _ask_hf_sync(prompt: str, model: str) -> Dict:
     except urllib_error.HTTPError as e:
         body = e.read().decode(errors="replace")[:500]
         logger.warning("HF %s HTTP %s: %s", model, e.code, body)
+
+        # 503 = model loading, include estimated time
+        if e.code == 503:
+            return {"error": f"HF {model}: model loading (cold start)"}
         return {"error": f"HF {model} HTTP {e.code}: {body[:200]}"}
     except Exception as e:
         logger.warning("HF %s error: %s", model, e)
@@ -84,10 +86,6 @@ def _ask_hf_sync(prompt: str, model: str) -> Dict:
 
 def _try_all_hf_models(prompt: str) -> Dict:
     """Try each HuggingFace model in order until one works."""
-    api_key = os.environ.get("HF_TOKEN", "").strip()
-    if not api_key:
-        return {"error": "HF_TOKEN not configured"}
-
     last_err = ""
     for model in HF_MODELS:
         result = _ask_hf_sync(prompt, model)
@@ -147,16 +145,13 @@ async def _ask_gemini(prompt: str) -> Dict:
 # ── Public interface ───────────────────────────────────
 
 def gemini_available() -> bool:
-    """Check if at least one LLM provider is configured."""
-    return (
-        bool(os.environ.get("HF_TOKEN", "").strip())
-        or _get_gemini_model() is not None
-    )
+    """Always true — HuggingFace works without any API key."""
+    return True
 
 
 async def ask_gemini(query: str, context: Optional[str] = None) -> Dict:
     """
-    Try HuggingFace first (primary), then Gemini as fallback.
+    Try HuggingFace first (no key needed), then Gemini as fallback.
     Returns {"answer": str, "source": "hf-<model>"|"gemini"} on success,
     or {"error": str} if all providers fail.
     """
@@ -166,22 +161,19 @@ async def ask_gemini(query: str, context: Optional[str] = None) -> Dict:
     prompt_parts.append(f"User query: {query}")
     full_prompt = "".join(prompt_parts)
 
-    # 1) Try HuggingFace (primary — free tier, multiple models)
-    hf_err = "not configured"
-    if os.environ.get("HF_TOKEN", "").strip():
-        result = _try_all_hf_models(full_prompt)
-        if "answer" in result:
-            return result
-        hf_err = result.get("error", "unknown")
-        logger.info("HF failed, trying Gemini fallback: %s", hf_err)
+    # 1) Try HuggingFace (no API key required, works for free)
+    hf_result = _try_all_hf_models(full_prompt)
+    if "answer" in hf_result:
+        return hf_result
+    hf_err = hf_result.get("error", "unknown")
+    logger.info("HF failed, trying Gemini: %s", hf_err)
 
-    # 2) Try Gemini (secondary)
+    # 2) Try Gemini (secondary, needs GEMINI_API_KEY)
     gemini_err = "not configured"
     if os.environ.get("GEMINI_API_KEY"):
         result = await _ask_gemini(full_prompt)
         if "answer" in result:
             return result
         gemini_err = result.get("error", "unknown")
-        logger.info("Gemini also failed: %s", gemini_err)
 
     return {"error": f"HuggingFace: {hf_err} | Gemini: {gemini_err}"}
