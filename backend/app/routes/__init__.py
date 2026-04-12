@@ -1650,24 +1650,21 @@ def _check_ai_rate_limit(request):
 
 @router.get("/ai/gemini-status")
 async def gemini_status():
-    """Debug: check LLM provider availability (Groq primary + Gemini secondary)."""
+    """Debug: check LLM provider availability (HuggingFace primary + Gemini secondary)."""
     gemini_key = os.environ.get("GEMINI_API_KEY", "")
-    groq_key = os.environ.get("GROQ_API_KEY", "")
+    hf_token = os.environ.get("HF_TOKEN", "")
     gk_preview = f"{gemini_key[:4]}...{gemini_key[-4:]}" if len(gemini_key) > 8 else ("SET" if gemini_key else "MISSING")
-    grk_preview = f"{groq_key[:4]}...{groq_key[-4:]}" if len(groq_key) > 8 else ("SET" if groq_key else "MISSING")
+    hf_preview = f"{hf_token[:4]}...{hf_token[-4:]}" if len(hf_token) > 8 else ("SET" if hf_token else "MISSING")
     try:
-        from ..gemini_llm import gemini_available, ask_gemini, list_groq_models
+        from ..gemini_llm import gemini_available, ask_gemini
         avail = gemini_available()
-        groq_models = list_groq_models()
         if avail:
             result = await ask_gemini("Say hello in one sentence.")
-            return {"gemini_key": gk_preview, "groq_key": grk_preview, "available": avail,
-                    "groq_models": groq_models, "test": result}
+            return {"hf_token": hf_preview, "gemini_key": gk_preview, "available": avail, "test": result}
         else:
-            return {"gemini_key": gk_preview, "groq_key": grk_preview, "available": False,
-                    "groq_models": groq_models, "reason": "No LLM provider configured"}
+            return {"hf_token": hf_preview, "gemini_key": gk_preview, "available": False, "reason": "No LLM provider configured"}
     except Exception as e:
-        return {"gemini_key": gk_preview, "groq_key": grk_preview, "available": False, "error": str(e)}
+        return {"hf_token": hf_preview, "gemini_key": gk_preview, "available": False, "error": str(e)}
 
 
 @router.post("/ai/ask")
