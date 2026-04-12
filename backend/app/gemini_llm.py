@@ -1,15 +1,15 @@
 """
 LLM integration for BYSEL AI assistant.
 Providers (tried in order):
-  1. HuggingFace Serverless Inference — NO API KEY NEEDED  [PRIMARY]
-  2. Google Gemini  (GEMINI_API_KEY)                       [SECONDARY]
+  1. Pollinations.ai — completely FREE, NO API key needed  [PRIMARY]
+  2. Google Gemini  (GEMINI_API_KEY)                        [SECONDARY]
 Falling back to the rule-based ai_engine when neither is available.
 """
 
 import os
 import json
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from urllib import request as urllib_request, error as urllib_error
 
 logger = logging.getLogger(__name__)
@@ -30,72 +30,43 @@ Rules:
 - If you don't know something, say so honestly.
 """
 
-# ── HuggingFace Serverless Inference (PRIMARY — NO KEY NEEDED) ──
+# ── Pollinations.ai (PRIMARY — FREE, NO API KEY) ──────
 
-# Models to try in order. These run on HF's free serverless infra.
-# Using the /v1/chat/completions endpoint (OpenAI-compatible).
-HF_MODELS: List[str] = [
-    "mistralai/Mistral-7B-Instruct-v0.3",
-    "HuggingFaceH4/zephyr-7b-beta",
-    "microsoft/Phi-3-mini-4k-instruct",
-]
+POLLINATIONS_URL = "https://text.pollinations.ai/openai"
 
 
-def _ask_hf_sync(prompt: str, model: str) -> Dict:
-    """Call HuggingFace Inference API. Works WITHOUT a token (lower rate limits)."""
-    headers = {"Content-Type": "application/json"}
-
-    # Use token if available for higher rate limits, but works without it
-    hf_token = os.environ.get("HF_TOKEN", "").strip()
-    if hf_token:
-        headers["Authorization"] = f"Bearer {hf_token}"
-
-    # Try the chat/completions endpoint first (TGI-backed models)
+def _ask_pollinations_sync(prompt: str) -> Dict:
+    """Call Pollinations.ai free API. No API key required."""
     payload = json.dumps({
-        "model": model,
+        "model": "openai",
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.7,
         "max_tokens": 1024,
     }).encode()
 
-    url = f"https://router.huggingface.co/hf-inference/models/{model}/v1/chat/completions"
-    req = urllib_request.Request(url, data=payload, headers=headers, method="POST")
-
+    req = urllib_request.Request(
+        POLLINATIONS_URL,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
     try:
         with urllib_request.urlopen(req, timeout=45) as resp:
             data = json.loads(resp.read())
         text = data["choices"][0]["message"]["content"].strip()
         if not text:
-            return {"error": f"Empty response from {model}"}
-        return {"answer": text, "source": f"hf-{model.split('/')[-1]}"}
+            return {"error": "Empty Pollinations response"}
+        model_used = data.get("model", "pollinations")
+        return {"answer": text, "source": f"ai-{model_used}"}
     except urllib_error.HTTPError as e:
-        body = e.read().decode(errors="replace")[:500]
-        logger.warning("HF %s HTTP %s: %s", model, e.code, body)
-
-        # 503 = model loading, include estimated time
-        if e.code == 503:
-            return {"error": f"HF {model}: model loading (cold start)"}
-        return {"error": f"HF {model} HTTP {e.code}: {body[:200]}"}
+        body = e.read().decode(errors="replace")[:300]
+        logger.warning("Pollinations HTTP %s: %s", e.code, body)
+        return {"error": f"Pollinations HTTP {e.code}: {body[:200]}"}
     except Exception as e:
-        logger.warning("HF %s error: %s", model, e)
-        return {"error": f"HF {model}: {str(e)}"}
-
-
-def _try_all_hf_models(prompt: str) -> Dict:
-    """Try each HuggingFace model in order until one works."""
-    last_err = ""
-    for model in HF_MODELS:
-        result = _ask_hf_sync(prompt, model)
-        if "answer" in result:
-            logger.info("HF model %s succeeded", model)
-            return result
-        last_err = result.get("error", "unknown")
-        logger.info("HF model %s failed: %s — trying next", model, last_err)
-
-    return {"error": f"All HF models failed. Last: {last_err}"}
+        logger.warning("Pollinations error: %s", e)
+        return {"error": f"Pollinations: {str(e)}"}
 
 
 # ── Gemini (SECONDARY) ────────────────────────────────
@@ -145,14 +116,14 @@ async def _ask_gemini(prompt: str) -> Dict:
 # ── Public interface ───────────────────────────────────
 
 def gemini_available() -> bool:
-    """Always true — HuggingFace works without any API key."""
+    """Always true — Pollinations.ai needs no API key."""
     return True
 
 
 async def ask_gemini(query: str, context: Optional[str] = None) -> Dict:
     """
-    Try HuggingFace first (no key needed), then Gemini as fallback.
-    Returns {"answer": str, "source": "hf-<model>"|"gemini"} on success,
+    Try Pollinations first (free, no key), then Gemini as fallback.
+    Returns {"answer": str, "source": "ai-<model>"|"gemini"} on success,
     or {"error": str} if all providers fail.
     """
     prompt_parts = []
@@ -161,12 +132,12 @@ async def ask_gemini(query: str, context: Optional[str] = None) -> Dict:
     prompt_parts.append(f"User query: {query}")
     full_prompt = "".join(prompt_parts)
 
-    # 1) Try HuggingFace (no API key required, works for free)
-    hf_result = _try_all_hf_models(full_prompt)
-    if "answer" in hf_result:
-        return hf_result
-    hf_err = hf_result.get("error", "unknown")
-    logger.info("HF failed, trying Gemini: %s", hf_err)
+    # 1) Try Pollinations.ai (free, no API key needed)
+    result = _ask_pollinations_sync(full_prompt)
+    if "answer" in result:
+        return result
+    poll_err = result.get("error", "unknown")
+    logger.info("Pollinations failed, trying Gemini: %s", poll_err)
 
     # 2) Try Gemini (secondary, needs GEMINI_API_KEY)
     gemini_err = "not configured"
@@ -176,4 +147,4 @@ async def ask_gemini(query: str, context: Optional[str] = None) -> Dict:
             return result
         gemini_err = result.get("error", "unknown")
 
-    return {"error": f"HuggingFace: {hf_err} | Gemini: {gemini_err}"}
+    return {"error": f"Pollinations: {poll_err} | Gemini: {gemini_err}"}
