@@ -1421,6 +1421,43 @@ async def get_portfolio_value_endpoint(db: Session = Depends(get_db)):
     )
 
 
+@router.get("/portfolio/export")
+async def export_portfolio_endpoint(fmt: str = "csv", db: Session = Depends(get_db)):
+    """Export portfolio as CSV. Usage: /portfolio/export?fmt=csv"""
+    from fastapi.responses import StreamingResponse
+    import io, csv as csvmod
+
+    holdings = get_holdings(db)
+
+    if fmt == "csv":
+        output = io.StringIO()
+        writer = csvmod.writer(output)
+        writer.writerow(["Symbol", "Qty", "Avg Price (\u20b9)", "Current Price (\u20b9)", "Value (\u20b9)", "P&L (\u20b9)", "P&L %"])
+        for h in holdings:
+            value = h.last * h.qty
+            invested = h.avgPrice * h.qty
+            pnl = value - invested
+            pnl_pct = round((pnl / invested) * 100, 2) if invested > 0 else 0.0
+            writer.writerow([h.symbol, h.qty, round(h.avgPrice, 2), round(h.last, 2), round(value, 2), round(pnl, 2), pnl_pct])
+
+        # Summary row
+        total_val = sum(h.last * h.qty for h in holdings)
+        total_inv = sum(h.avgPrice * h.qty for h in holdings)
+        total_pnl = total_val - total_inv
+        total_pct = round((total_pnl / total_inv) * 100, 2) if total_inv > 0 else 0.0
+        writer.writerow([])
+        writer.writerow(["TOTAL", "", "", "", round(total_val, 2), round(total_pnl, 2), total_pct])
+
+        output.seek(0)
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=bysel_portfolio.csv"}
+        )
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported format. Use fmt=csv")
+
+
 # ==================== WALLET ====================
 
 
@@ -1591,7 +1628,29 @@ class AiQuery(BaseModel):
 async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
     """Natural language AI stock assistant.
     Examples: 'Should I buy RELIANCE?', 'Predict TCS price', 'Compare INFY and TCS'"""
+    # Try Gemini first, fall back to rule-based
+    try:
+        from ..gemini_llm import gemini_available, ask_gemini
+        if gemini_available():
+            # Build market context from rule-based engine for grounding
+            rule_result = ai_assistant(body.query, db=db)
+            context_parts = []
+            if rule_result.get("analysis"):
+                context_parts.append(f"Technical analysis: {rule_result['analysis']}")
+            if rule_result.get("symbols"):
+                context_parts.append(f"Detected symbols: {rule_result['symbols']}")
+            context = "\n".join(context_parts) if context_parts else None
+
+            gemini_result = await ask_gemini(body.query, context=context)
+            if "answer" in gemini_result:
+                # Merge: use Gemini text but keep structured data from rule engine
+                merged = {**rule_result, "answer": gemini_result["answer"], "source": "gemini"}
+                return merged
+    except Exception:
+        pass  # Fall through to rule-based
+
     result = ai_assistant(body.query, db=db)
+    result["source"] = "rule-engine"
     return result
 
 
