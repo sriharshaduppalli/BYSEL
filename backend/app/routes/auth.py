@@ -368,20 +368,23 @@ def _send_otp_fast2sms(mobile_number: str, otp_code: str) -> bool:
             raw = resp.read().decode("utf-8")
             body = json.loads(raw)
 
-        logger.info("auth.otp.fast2sms_response mobile_number=%s status=%s body=%s",
-                    mobile_number, resp.status if hasattr(resp, 'status') else 'unknown', raw[:500])
+        logger.info("auth.otp.fast2sms_response mobile_number=%s http_status=%d body=%s",
+                    mobile_number, resp.status if hasattr(resp, 'status') else 200, raw[:300])
 
         if body.get("return") is True or body.get("status_code") == 200:
             logger.info("auth.otp.fast2sms_sent mobile_number=%s request_id=%s", mobile_number, body.get("request_id"))
             return True
         else:
-            logger.warning("auth.otp.fast2sms_rejected mobile_number=%s body=%s", mobile_number, body)
+            # Log the error details for debugging
+            error_msg = body.get("message") or body.get("error") or str(body)
+            logger.warning("auth.otp.fast2sms_rejected mobile_number=%s error=%s body=%s", 
+                         mobile_number, error_msg, body)
             return False
 
     except urllib.error.HTTPError as exc:
         error_body = exc.read().decode("utf-8", errors="replace") if exc.fp else "no body"
-        logger.exception("auth.otp.fast2sms_http_error mobile_number=%s status=%s reason=%s body=%s",
-                         mobile_number, exc.code, str(exc), error_body[:500])
+        logger.exception("auth.otp.fast2sms_http_error mobile_number=%s http_status=%d reason=%s body=%s",
+                         mobile_number, exc.code, str(exc.reason), error_body[:300])
         return False
     except Exception as exc:
         logger.exception("auth.otp.fast2sms_error mobile_number=%s reason=%s", mobile_number, str(exc))
@@ -1610,14 +1613,27 @@ def revoke_session(session_id: int, authorization: str | None = Header(default=N
 
 @router.get("/otp-debug")
 def otp_debug():
-    """Temporary diagnostic endpoint to check Fast2SMS config."""
+    """Diagnostic endpoint to check SMS configuration and connectivity."""
     result = {
-        "fast2sms_key_set": bool(FAST2SMS_API_KEY),
-        "fast2sms_key_len": len(FAST2SMS_API_KEY),
-        "fast2sms_key_prefix": FAST2SMS_API_KEY[:8] + "..." if len(FAST2SMS_API_KEY) > 8 else "(too short)",
-        "twilio_configured": bool(TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER),
+        "timestamp": datetime.utcnow().isoformat(),
+        "otp_ttl_seconds": OTP_TTL_SECONDS,
+        "otp_max_attempts": OTP_MAX_ATTEMPTS,
+        "fast2sms": {
+            "enabled": bool(FAST2SMS_API_KEY),
+            "api_key_length": len(FAST2SMS_API_KEY) if FAST2SMS_API_KEY else 0,
+            "api_key_prefix": (FAST2SMS_API_KEY[:8] + "...") if len(FAST2SMS_API_KEY) > 8 else "(empty)",
+            "status": "unknown"
+        },
+        "twilio": {
+            "enabled": bool(TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER),
+            "account_sid_set": bool(TWILIO_ACCOUNT_SID),
+            "auth_token_set": bool(TWILIO_AUTH_TOKEN),
+            "phone_number_set": bool(TWILIO_PHONE_NUMBER),
+        },
+        "diagnostics": []
     }
-    # Test Fast2SMS API connectivity (without sending a real SMS)
+    
+    # Test Fast2SMS connectivity
     if FAST2SMS_API_KEY:
         try:
             req = urllib.request.Request(
@@ -1627,12 +1643,28 @@ def otp_debug():
             )
             with urllib.request.urlopen(req, timeout=10) as resp:
                 body = json.loads(resp.read().decode("utf-8"))
-                result["fast2sms_wallet"] = body
+                result["fast2sms"]["status"] = "connected"
+                result["fast2sms"]["wallet"] = body.get("success", {}) or body.get("data", {})
+                if body.get("return") is False or body.get("status_code") != 200:
+                    result["diagnostics"].append(f"⚠️ Fast2SMS API returned error: {body}")
         except urllib.error.HTTPError as exc:
             error_body = exc.read().decode("utf-8", errors="replace") if exc.fp else "no body"
-            result["fast2sms_wallet_error"] = f"HTTP {exc.code}: {error_body[:300]}"
+            result["fast2sms"]["status"] = f"http_error_{exc.code}"
+            result["diagnostics"].append(f"❌ Fast2SMS HTTP Error {exc.code}: {error_body[:200]}")
         except Exception as exc:
-            result["fast2sms_wallet_error"] = str(exc)
+            result["fast2sms"]["status"] = "error"
+            result["diagnostics"].append(f"❌ Fast2SMS Error: {str(exc)[:200]}")
+    else:
+        result["diagnostics"].append("⚠️ Fast2SMS API key not configured")
+    
+    # Summary
+    if result["fast2sms"]["enabled"] and result["fast2sms"]["status"] == "connected":
+        result["summary"] = "✅ Fast2SMS is properly configured and connected"
+    elif result["twilio"]["enabled"]:
+        result["summary"] = "✅ Twilio is configured as fallback (check Twilio credentials if SMS fails)"
+    else:
+        result["summary"] = "❌ No SMS provider configured. Set FAST2SMS_API_KEY or TWILIO credentials."
+    
     return result
 
 
@@ -1652,6 +1684,11 @@ def send_otp(request: SendOTPRequest):
             mobile_number = f"+91{mobile_number}"
         else:
             raise HTTPException(status_code=400, detail="Invalid mobile number format")
+
+    # Check if SMS providers are configured
+    if not FAST2SMS_API_KEY and (not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN):
+        logger.error("auth.otp.sms_providers_not_configured fast2sms=%s twilio=%s", bool(FAST2SMS_API_KEY), bool(TWILIO_ACCOUNT_SID))
+        raise HTTPException(status_code=503, detail="SMS service not available. Please contact support.")
 
     db: Session = SessionLocal()
     try:
@@ -1689,14 +1726,19 @@ def send_otp(request: SendOTPRequest):
         sms_sent = _send_otp_sms(mobile_number, otp)
 
         if not sms_sent:
-            logger.warning("auth.otp.sms_failed mobile_number=%s", mobile_number)
+            logger.warning("auth.otp.sms_failed mobile_number=%s fast2sms_enabled=%s twilio_enabled=%s", 
+                         mobile_number, bool(FAST2SMS_API_KEY), bool(TWILIO_ACCOUNT_SID))
+            # Return 503 Service Unavailable if SMS fails
+            raise HTTPException(
+                status_code=503, 
+                detail="Unable to send OTP. SMS service temporarily unavailable. Please try again in a moment or contact support."
+            )
 
-        logger.info("auth.otp.sent mobile_number=%s otp_id=%s sms_sent=%s", mobile_number, otp_id, sms_sent)
+        logger.info("auth.otp.sent mobile_number=%s otp_id=%s", mobile_number, otp_id)
 
-        msg = "OTP sent successfully" if sms_sent else "OTP created but SMS delivery failed — check Fast2SMS account"
         return OTPResponse(
-            status="ok" if sms_sent else "sms_failed",
-            message=msg,
+            status="ok",
+            message=f"OTP sent successfully to {mobile_number}. Valid for 5 minutes.",
             otp_id=otp_id,
             expires_in_seconds=OTP_TTL_SECONDS
         )
