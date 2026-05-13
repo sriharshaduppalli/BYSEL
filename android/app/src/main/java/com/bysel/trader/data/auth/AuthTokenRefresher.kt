@@ -14,6 +14,7 @@ object AuthTokenRefresher {
     private val refreshClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .addInterceptor(RequestMetadataInterceptor())
+            .callTimeout(25, TimeUnit.SECONDS)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
