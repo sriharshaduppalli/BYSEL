@@ -1633,6 +1633,64 @@ def _extract_user_query(raw_query: str) -> str:
     return query or original
 
 
+def _resolve_symbol_from_company_name(query: str) -> Optional[str]:
+    """Resolve stock symbol from company name using multiple strategies.
+
+    Handles queries like "South Indian Bank" → "SOUTHBANK", "ICICI Bank" → "ICICIBANK".
+
+    Strategies:
+    1. Exact match (full company name, with/without "Ltd")
+    2. Multi-word normalized match ("South Indian Bank" → parts)
+    3. Word-based match (returns most common symbol)
+    4. Fuzzy match (handles typos)
+    """
+    if not query or not isinstance(query, str):
+        return None
+
+    from .market_data import _COMPANY_NAME_EXACT, _SYMBOL_BY_WORD, _COMPANY_NAME_PARTIAL
+
+    query_lower = query.lower().strip()
+    if not query_lower:
+        return None
+
+    # Strategy 1: Exact match in company name index
+    if query_lower in _COMPANY_NAME_EXACT:
+        return _COMPANY_NAME_EXACT[query_lower]
+
+    # Strategy 2: Multi-word normalized match
+    if query_lower in _SYMBOL_BY_WORD:
+        return _SYMBOL_BY_WORD[query_lower]
+
+    # Strategy 3: Word-based matching (find symbol with most matching words)
+    query_words = set(w.lower() for w in query_lower.split() if len(w) >= 3)
+    if query_words:
+        best_symbol = None
+        best_score = 0
+
+        for word in query_words:
+            if word in _COMPANY_NAME_PARTIAL:
+                for symbol in _COMPANY_NAME_PARTIAL[word]:
+                    best_score += 1
+                    if best_score > 2:  # Found multiple word matches
+                        best_symbol = symbol
+                        break
+
+        if best_symbol:
+            return best_symbol
+
+    # Strategy 4: Fuzzy match (handles typos like "South Inidan Bank")
+    all_names = list(_COMPANY_NAME_EXACT.keys())
+    try:
+        import difflib
+        matches = difflib.get_close_matches(query_lower, all_names, n=1, cutoff=0.75)
+        if matches:
+            return _COMPANY_NAME_EXACT[matches[0]]
+    except Exception:
+        pass
+
+    return None
+
+
 def _extract_context_symbol(raw_query: str) -> Optional[str]:
     """Extract context symbol from app wrapper when user query omits one."""
     original = (raw_query or "").strip()
@@ -1955,14 +2013,44 @@ def ai_assistant(query: str, db=None) -> Dict:
         indian_context = False
 
     symbols_direct = bool(symbols)  # True if _extract_symbols found a specific stock
+    detected_stocks = []  # Track how each symbol was resolved
+
+    # NEW: Try company name resolution (highest priority for company names)
+    if not symbols:
+        company_symbol = _resolve_symbol_from_company_name(user_query)
+        if company_symbol:
+            symbols = [company_symbol]
+            symbols_direct = True
+            company_name = INDIAN_STOCKS.get(company_symbol, (None, company_symbol))[1]
+            detected_stocks.append({
+                "symbol": company_symbol,
+                "company_name": company_name,
+                "confidence": 0.95,
+                "match_method": "company_name"
+            })
 
     if not symbols:
         context_symbol = _extract_context_symbol(query)
         if context_symbol:
             symbols = [context_symbol]
             symbols_direct = True
+            company_name = INDIAN_STOCKS.get(context_symbol, (None, context_symbol))[1]
+            detected_stocks.append({
+                "symbol": context_symbol,
+                "company_name": company_name,
+                "confidence": 0.90,
+                "match_method": "context"
+            })
         else:
             symbols = _resolve_symbols_from_search(user_query)
+            for sym in symbols:
+                company_name = INDIAN_STOCKS.get(sym, (None, sym))[1]
+                detected_stocks.append({
+                    "symbol": sym,
+                    "company_name": company_name,
+                    "confidence": 0.80,
+                    "match_method": "search"
+                })
 
     # ── Hinglish / Hindi keyword normalization ──
     _hinglish_map = {

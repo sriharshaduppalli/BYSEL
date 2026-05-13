@@ -1626,32 +1626,75 @@ class AiQuery(BaseModel):
 
 @router.post("/ai/ask")
 async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
-    """Natural language AI stock assistant.
-    Examples: 'Should I buy RELIANCE?', 'Predict TCS price', 'Compare INFY and TCS'"""
-    # Try Gemini first, fall back to rule-based
+    """Natural language AI stock assistant with structured responses.
+    Examples: 'Should I buy RELIANCE?', 'Predict TCS price', 'Compare INFY and TCS'
+
+    Returns unified response format with:
+    - detected_stock: symbol, confidence, match_method
+    - analysis: technical, fundamental, trading_levels, sentiment
+    - recommendation: signal, confidence, reasoning, risks
+    - source: gemini or rule-engine
+    - data_quality: complete or incomplete
+    """
+    from ..response_validator import ResponseValidator
+
+    # Get base analysis from rule-engine (always run for grounding)
+    rule_result = ai_assistant(body.query, db=db)
+
+    # Try Gemini first if available
     try:
         from ..gemini_llm import gemini_available, ask_gemini
         if gemini_available():
-            # Build market context from rule-based engine for grounding
-            rule_result = ai_assistant(body.query, db=db)
-            context_parts = []
-            if rule_result.get("analysis"):
-                context_parts.append(f"Technical analysis: {rule_result['analysis']}")
-            if rule_result.get("symbols"):
-                context_parts.append(f"Detected symbols: {rule_result['symbols']}")
-            context = "\n".join(context_parts) if context_parts else None
+            # Build structured context dict from rule-engine data
+            symbol = None
+            if rule_result.get("detected_stocks"):
+                symbol = rule_result["detected_stocks"][0].get("symbol")
 
-            gemini_result = await ask_gemini(body.query, context=context)
+            context_dict = {
+                "symbol": symbol,
+                "company_name": rule_result.get("company_name"),
+                "sector": rule_result.get("sector"),
+                "technical": rule_result.get("analysis", {}).get("technical", {}),
+                "fundamental": rule_result.get("analysis", {}).get("fundamental", {}),
+                "trading_levels": rule_result.get("analysis", {}).get("trading_levels", {}),
+                "sentiment": rule_result.get("analysis", {}).get("sentiment", {}),
+            }
+
+            gemini_result = await ask_gemini(body.query, context=context_dict)
             if "answer" in gemini_result:
-                # Merge: use Gemini text but keep structured data from rule engine
-                merged = {**rule_result, "answer": gemini_result["answer"], "source": "gemini"}
+                # Use Gemini's response but keep structured rule-engine data
+                merged = {
+                    **rule_result,
+                    "answer": gemini_result["answer"],
+                    "source": "gemini"
+                }
+
+                # Validate completeness
+                is_valid, missing = ResponseValidator.validate_response(merged)
+                merged["data_quality"] = "complete" if is_valid else f"incomplete: {', '.join(missing[:3])}"
+
                 return merged
-    except Exception:
+    except Exception as e:
+        logger.error(f"Gemini integration error: {e}")
         pass  # Fall through to rule-based
 
-    result = ai_assistant(body.query, db=db)
-    result["source"] = "rule-engine"
-    return result
+    # Fallback: Use rule-engine result with validation
+    rule_result["source"] = "rule-engine"
+
+    # Validate and augment if needed
+    is_valid, missing = ResponseValidator.validate_response(rule_result)
+    if not is_valid:
+        # Try to augment missing fields from analysis
+        analysis_data = rule_result.get("analysis", {})
+        if analysis_data:
+            rule_result = ResponseValidator.augment_incomplete_response(
+                rule_result, analysis_data
+            )
+        rule_result["data_quality"] = f"incomplete: {', '.join(missing[:3])}"
+    else:
+        rule_result["data_quality"] = "complete"
+
+    return rule_result
 
 
 @router.get("/ai/analyze/{symbol}")
