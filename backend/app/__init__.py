@@ -12,9 +12,9 @@ import logging
 from .database.db import OrderModel, SessionLocal
 from .routes import router
 from .routes.auth import router as auth_router
-from .routes.auth_fixed import router as auth_fixed_router
 from .routes.streaming import get_stream_metrics_snapshot, router as streaming_router
 from .routes.ai_v2 import router as ai_v2_router
+from .routes.trade_journal import journal_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -210,9 +210,9 @@ app.add_middleware(
 # Include main and auth routes
 app.include_router(router)
 app.include_router(auth_router, prefix="/auth")
-app.include_router(auth_fixed_router, prefix="/auth")
 app.include_router(streaming_router)
 app.include_router(ai_v2_router)  # Enhanced AI analysis endpoints
+app.include_router(journal_router)  # AI Trade Journal
 
 
 @app.get("/metrics/slo")

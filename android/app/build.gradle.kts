@@ -215,6 +215,10 @@ dependencies {
     // Biometric authentication
     implementation("androidx.biometric:biometric:1.2.0-alpha05")
 
+    // Jetpack Glance — home screen widget
+    implementation("androidx.glance:glance-appwidget:1.0.0")
+    implementation("androidx.glance:glance-material3:1.0.0")
+
     // Encrypted storage for auth tokens
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     

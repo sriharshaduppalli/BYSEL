@@ -2270,6 +2270,33 @@ class TradingViewModel(
         stopFastRefresh()
     }
 
+    suspend fun fetchSentimentScore(symbol: String): com.bysel.trader.data.api.SentimentScoreResponse? =
+        try { com.bysel.trader.data.api.RetrofitClient.apiService.getSentimentScore(symbol) } catch (_: Exception) { null }
+
+    suspend fun fetchChartPatterns(symbol: String): com.bysel.trader.data.api.ChartPatternsResponse? =
+        try { com.bysel.trader.data.api.RetrofitClient.apiService.getChartPatterns(symbol) } catch (_: Exception) { null }
+
+    suspend fun fetchPortfolioRisk(): com.bysel.trader.data.api.PortfolioRiskResponse? {
+        val symbols = holdings.value.joinToString(",") { it.symbol }
+        if (symbols.isBlank()) return null
+        return try { com.bysel.trader.data.api.RetrofitClient.apiService.getPortfolioRisk(symbols) } catch (_: Exception) { null }
+    }
+
+    suspend fun fetchEarningsCalendar(): com.bysel.trader.data.api.EarningsCalendarResponse? {
+        val symbols = watchlist.value.take(12).joinToString(",")
+        return try { com.bysel.trader.data.api.RetrofitClient.apiService.getEarningsCalendar(symbols) } catch (_: Exception) { null }
+    }
+
+    suspend fun fetchJournalEntries(): List<Map<String, Any>> {
+        return try {
+            @Suppress("UNCHECKED_CAST")
+            (com.bysel.trader.data.api.RetrofitClient.apiService.getJournalEntries()["entries"] as? List<Map<String, Any>>) ?: emptyList()
+        } catch (_: Exception) { emptyList() }
+    }
+
+    suspend fun fetchJournalInsights(): Map<String, Any>? =
+        try { com.bysel.trader.data.api.RetrofitClient.apiService.getJournalInsights() } catch (_: Exception) { null }
+
 }
 
 // Chat message for AI Assistant

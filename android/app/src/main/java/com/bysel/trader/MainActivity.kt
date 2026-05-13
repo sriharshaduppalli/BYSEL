@@ -439,7 +439,7 @@ fun BYSELApp(
                 selectedTab = previousTab
             }
 
-            selectedTab in 6..8 || selectedTab in 10..21 -> {
+            selectedTab in 6..8 || selectedTab in 10..24 -> {
                 selectedTab = 5
             }
 
@@ -554,7 +554,7 @@ fun BYSELApp(
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.MoreHoriz, contentDescription = "More", modifier = Modifier.size(22.dp)) },
                         label = { Text("More", fontSize = 10.sp) },
-                        selected = selectedTab in 5..21,
+                        selected = selectedTab in 5..24,
                         onClick = { selectedTab = 5 },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = Color(0xFF7C4DFF),
@@ -592,7 +592,7 @@ fun BYSELApp(
                                         return@detectHorizontalDragGestures
                                     }
 
-                                    val canSwipeBack = selectedTab == 9 || selectedTab in 6..8 || selectedTab in 10..21
+                                    val canSwipeBack = selectedTab == 9 || selectedTab in 6..8 || selectedTab in 10..24
                                     val canSwipeForwardFromMore = selectedTab == 5
                                     val startedFromLeftEdge = dragStartX <= edgeThresholdPx
                                     val startedFromRightEdge = dragStartX >= size.width - edgeThresholdPx
@@ -744,6 +744,9 @@ fun BYSELApp(
                                     onCopilotCenterClick = { selectedTab = 19 },
                                     onSignalLabClick = { selectedTab = 20 },
                                     onInvestorPortfoliosClick = { selectedTab = 21 },
+                                    onRiskLabClick = { selectedTab = 22 },
+                                    onEarningsCalendarClick = { selectedTab = 23 },
+                                    onTradeJournalClick = { selectedTab = 24 },
                                 )
                                 10 -> com.bysel.trader.ui.screens.AchievementsScreen(viewModel)
                                 11 -> MutualFundsScreen(viewModel)
@@ -786,6 +789,18 @@ fun BYSELApp(
                                         viewModel.fetchAndSelectQuote(symbol)
                                         selectedTab = 9
                                     },
+                                )
+                                22 -> com.bysel.trader.ui.screens.RiskLabScreen(
+                                    viewModel = viewModel,
+                                    onBack = { selectedTab = 5 }
+                                )
+                                23 -> com.bysel.trader.ui.screens.EarningsCalendarScreen(
+                                    viewModel = viewModel,
+                                    onBack = { selectedTab = 5 }
+                                )
+                                24 -> com.bysel.trader.ui.screens.TradeJournalScreen(
+                                    viewModel = viewModel,
+                                    onBack = { selectedTab = 5 }
                                 )
                                 6 -> SearchScreen(
                                     quotes = quotes,

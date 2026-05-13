@@ -220,6 +220,25 @@ fun StockDetailScreen(
         onDispose { viewModel.stopFastRefresh() }
     }
 
+    // Fetch sentiment score for this stock
+    var sentimentData by remember(quote.symbol) { mutableStateOf<com.bysel.trader.data.api.SentimentScoreResponse?>(null) }
+    var sentimentLoading by remember(quote.symbol) { mutableStateOf(false) }
+    LaunchedEffect(quote.symbol) {
+        sentimentLoading = true
+        try {
+            sentimentData = viewModel.fetchSentimentScore(quote.symbol)
+        } catch (_: Exception) {}
+        sentimentLoading = false
+    }
+
+    // Fetch chart patterns for overlay
+    var chartPatterns by remember(quote.symbol) { mutableStateOf<List<com.bysel.trader.data.api.ChartPattern>>(emptyList()) }
+    LaunchedEffect(quote.symbol) {
+        try {
+            chartPatterns = viewModel.fetchChartPatterns(quote.symbol)?.patterns ?: emptyList()
+        } catch (_: Exception) {}
+    }
+
     LaunchedEffect(quote.symbol, historyWindow.period, historyWindow.interval) {
         viewModel.fetchQuoteHistory(quote.symbol, historyWindow.period, historyWindow.interval)
     }
@@ -377,6 +396,9 @@ fun StockDetailScreen(
                     history = history,
                     historyLabel = historyWindow.label,
                     intradayRangePct = intradayRangePct,
+                    patterns = chartPatterns,
+                    sentimentData = sentimentData,
+                    sentimentLoading = sentimentLoading,
                 )
             }
 
@@ -820,6 +842,9 @@ private fun PriceStoryCard(
     history: List<HistoryCandle>,
     historyLabel: String,
     intradayRangePct: Double,
+    patterns: List<com.bysel.trader.data.api.ChartPattern> = emptyList(),
+    sentimentData: com.bysel.trader.data.api.SentimentScoreResponse? = null,
+    sentimentLoading: Boolean = false,
 ) {
     val theme = LocalAppTheme.current
     Card(
@@ -851,8 +876,20 @@ private fun PriceStoryCard(
                     fontSize = 13.sp,
                 )
             } else {
-                PriceHistoryChart(history = history, modifier = Modifier.fillMaxWidth())
+                PriceHistoryChart(
+                    history = history,
+                    symbol = quote.symbol,
+                    modifier = Modifier.fillMaxWidth(),
+                    patterns = patterns,
+                )
             }
+
+            // Sentiment bar — below chart
+            com.bysel.trader.ui.components.SentimentBar(
+                sentiment = sentimentData,
+                isLoading = sentimentLoading,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            )
 
             DetailLineItem(label = "Open", value = formatCurrency(quote.open ?: quote.prevClose ?: quote.last))
             DetailLineItem(label = "Day high", value = formatCurrency(quote.dayHigh ?: quote.last))
