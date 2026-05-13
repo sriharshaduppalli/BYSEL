@@ -22,6 +22,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField as M3OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -1349,10 +1350,22 @@ fun WealthOsScreen(viewModel: TradingViewModel) {
     var linkInstrumentsInput by remember { mutableStateOf("NIFTYBEES,PPFAS") }
     var incrementAmountInput by remember { mutableStateOf("2000") }
 
-    LaunchedEffect(Unit) {
+    val refreshWealthContext = {
         viewModel.loadFamilyDashboard()
         viewModel.loadGoalPlans()
     }
+
+    LaunchedEffect(Unit) { refreshWealthContext() }
+
+    val summary = dashboard
+    val members = summary?.members.orEmpty()
+    val allocationEntries = summary?.allocation.orEmpty().entries.sortedByDescending { it.value }
+    val totalGoalTarget = goals.sumOf { it.targetAmount }
+    val totalGoalCurrent = goals.sumOf { it.currentAmount }
+    val averageGoalProgress = if (goals.isEmpty()) 0.0 else goals.map { it.progressPercent }.average()
+    val netWorth = summary?.consolidatedNetWorth ?: 0.0
+    val totalAssets = summary?.totalAssets ?: 0.0
+    val totalLiabilities = summary?.totalLiabilities ?: 0.0
 
     LazyColumn(
         modifier = Modifier
@@ -1366,23 +1379,129 @@ fun WealthOsScreen(viewModel: TradingViewModel) {
         }
         item { ActionBanner(viewModel) }
 
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.primary.copy(alpha = 0.14f))) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Family Net Worth", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+                    Text(
+                        text = formatInvestmentCurrency(netWorth),
+                        color = LocalAppTheme.current.text,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "${members.size} member${if (members.size == 1) "" else "s"} • ${goals.size} goal${if (goals.size == 1) "" else "s"}",
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 12.sp,
+                    )
+                    if (goals.isNotEmpty()) {
+                        Text(
+                            text = "Goal corpus ${formatInvestmentCurrency(totalGoalCurrent)} / ${formatInvestmentCurrency(totalGoalTarget)}",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 12.sp,
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = refreshWealthContext) { Text("Refresh") }
+                        TextButton(onClick = { viewModel.loadGoalPlans() }) { Text("Sync Goals") }
+                    }
+                }
+            }
+        }
+
         if (loading) {
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
-                    Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(color = LocalAppTheme.current.primary)
-                        Text("Syncing family wealth data...", color = LocalAppTheme.current.text)
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(color = LocalAppTheme.current.primary)
+                            Text("Syncing family wealth data...", color = LocalAppTheme.current.text)
+                        }
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = LocalAppTheme.current.primary)
                     }
                 }
             }
         }
 
         item {
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                WealthMetricTile(
+                    title = "Assets",
+                    value = formatInvestmentCurrency(totalAssets),
+                    caption = "Total household assets",
+                )
+                WealthMetricTile(
+                    title = "Liabilities",
+                    value = formatInvestmentCurrency(totalLiabilities),
+                    caption = "Loans and obligations",
+                )
+                WealthMetricTile(
+                    title = "Goal Progress",
+                    value = "${String.format("%.1f", averageGoalProgress)}%",
+                    caption = "Average across all goals",
+                )
+                WealthMetricTile(
+                    title = "Corpus Gap",
+                    value = formatInvestmentCurrency((totalGoalTarget - totalGoalCurrent).coerceAtLeast(0.0)),
+                    caption = "Amount left to reach targets",
+                )
+            }
+        }
+
+        if (allocationEntries.isNotEmpty()) {
+            item {
+                WealthSectionHeader(
+                    title = "Allocation Map",
+                    subtitle = "Current asset-class distribution across the household portfolio.",
+                )
+            }
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                    Row(
+                        modifier = Modifier.padding(12.dp).fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        allocationEntries.forEach { allocation ->
+                            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.primary.copy(alpha = 0.14f))) {
+                                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                    Text(allocation.key, color = LocalAppTheme.current.text, fontWeight = FontWeight.Medium, fontSize = 12.sp)
+                                    Text(
+                                        "${String.format("%.1f", allocation.value)}%",
+                                        color = LocalAppTheme.current.textSecondary,
+                                        fontSize = 11.sp,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            WealthSectionHeader(
+                title = "Add Family Member",
+                subtitle = "Extend the household balance sheet and keep one consolidated wealth view.",
+            )
+        }
+
+        item {
             Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Add Family Member", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(value = memberName, onValueChange = { memberName = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true)
-                    OutlinedTextField(value = memberRelation, onValueChange = { memberRelation = it.uppercase() }, modifier = Modifier.fillMaxWidth(), label = { Text("Relation") }, singleLine = true)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf("SELF", "SPOUSE", "CHILD", "PARENT", "OTHER").forEach { relation ->
+                            TextButton(onClick = { memberRelation = relation }) {
+                                Text(if (memberRelation == relation) "● $relation" else relation)
+                            }
+                        }
+                    }
                     OutlinedTextField(value = memberEquityInput, onValueChange = { memberEquityInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Equity Value") }, singleLine = true)
                     OutlinedTextField(value = memberMfInput, onValueChange = { memberMfInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Mutual Fund Value") }, singleLine = true)
                     OutlinedTextField(value = memberCashInput, onValueChange = { memberCashInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Cash Value") }, singleLine = true)
@@ -1408,37 +1527,63 @@ fun WealthOsScreen(viewModel: TradingViewModel) {
             }
         }
 
-        dashboard?.let { summary ->
+        if (members.isNotEmpty()) {
             item {
-                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Text("Family Dashboard", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
-                        Text("Consolidated Net Worth: ₹${String.format("%,.2f", summary.consolidatedNetWorth)}", color = LocalAppTheme.current.text)
-                        Text("Assets: ₹${String.format("%,.2f", summary.totalAssets)} • Liabilities: ₹${String.format("%,.2f", summary.totalLiabilities)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        if (summary.allocation.isNotEmpty()) {
-                            Text("Allocation: ${summary.allocation.entries.joinToString { "${it.key} ${String.format("%.1f", it.value)}%" }}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        }
-                        summary.members.forEach { member ->
-                            Text(
-                                "• ${member.name} (${member.relation}) Net: ₹${String.format("%,.2f", member.netWorth)}",
-                                color = LocalAppTheme.current.textSecondary,
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
+                WealthSectionHeader(
+                    title = "Family Ledger",
+                    subtitle = "Each member's net-worth contribution in the consolidated household view.",
+                )
+            }
+        }
+
+        items(members, key = { it.id }) { member ->
+            val sharePercent = if (netWorth > 0.0) ((member.netWorth / netWorth) * 100.0).coerceAtLeast(0.0) else 0.0
+            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "${member.name} • ${member.relation}",
+                        color = LocalAppTheme.current.text,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "Net worth ${formatInvestmentCurrency(member.netWorth)}",
+                        color = LocalAppTheme.current.text,
+                        fontSize = 13.sp,
+                    )
+                    Text(
+                        text = "Assets ${formatInvestmentCurrency(member.totalAssets)} • Liabilities ${formatInvestmentCurrency(member.liabilitiesValue)}",
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 12.sp,
+                    )
+                    Text(
+                        text = "Household share ${String.format("%.1f", sharePercent)}%",
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 12.sp,
+                    )
+                    LinearProgressIndicator(
+                        progress = { (sharePercent / 100.0).toFloat().coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = LocalAppTheme.current.primary,
+                    )
                 }
             }
         }
 
         item {
+            WealthSectionHeader(
+                title = "Goal Planner",
+                subtitle = "Create target-based plans with contribution and risk profile in one flow.",
+            )
+        }
+
+        item {
             Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Goal Planner", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(value = goalName, onValueChange = { goalName = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Goal Name") }, singleLine = true)
                     OutlinedTextField(value = targetAmountInput, onValueChange = { targetAmountInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Target Amount") }, singleLine = true)
                     OutlinedTextField(value = targetDate, onValueChange = { targetDate = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Target Date (YYYY-MM-DD)") }, singleLine = true)
                     OutlinedTextField(value = monthlyContributionInput, onValueChange = { monthlyContributionInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Monthly Contribution") }, singleLine = true)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
                         listOf("LOW", "MODERATE", "HIGH").forEach { option ->
                             TextButton(onClick = { riskProfile = option }) {
                                 Text(if (riskProfile == option) "● $option" else option)
@@ -1465,9 +1610,15 @@ fun WealthOsScreen(viewModel: TradingViewModel) {
         }
 
         item {
+            WealthSectionHeader(
+                title = "Goal Linking",
+                subtitle = "Map instruments to goals and set the incremental amount per contribution cycle.",
+            )
+        }
+
+        item {
             Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Goal Linking", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(
                         value = linkInstrumentsInput,
                         onValueChange = { linkInstrumentsInput = it.uppercase() },
@@ -1487,41 +1638,91 @@ fun WealthOsScreen(viewModel: TradingViewModel) {
         }
 
         item {
-            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Goals", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
-                    if (goals.isEmpty()) {
-                        Text("No goals yet.", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                    } else {
-                        goals.forEach { goal ->
-                            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(goal.goalName, color = LocalAppTheme.current.text, fontWeight = FontWeight.Medium)
-                                Text(
-                                    "Progress ${String.format("%.1f", goal.progressPercent)}% • ₹${String.format("%,.0f", goal.currentAmount)} / ₹${String.format("%,.0f", goal.targetAmount)}",
-                                    color = LocalAppTheme.current.textSecondary,
-                                    fontSize = 12.sp
-                                )
-                                Text("Risk: ${goal.riskProfile} • Target: ${goal.targetDate}", color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
-                                TextButton(
-                                    onClick = {
-                                        val instruments = linkInstrumentsInput
-                                            .split(",")
-                                            .map { it.trim() }
-                                            .filter { it.isNotBlank() }
-                                        viewModel.linkGoalInvestments(
-                                            goalId = goal.id,
-                                            instruments = instruments,
-                                            incrementAmount = incrementAmountInput.toDoubleOrNull() ?: 0.0,
-                                        )
-                                    }
-                                ) {
-                                    Text("Link Instruments")
-                                }
-                            }
-                        }
+            WealthSectionHeader(
+                title = "Goals Timeline",
+                subtitle = "Track progress against each target and push additional instruments when needed.",
+            )
+        }
+
+        if (goals.isEmpty()) {
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("No goals yet.", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                        Text("Create your first goal to start tracking household progress and corpus readiness.", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                     }
                 }
             }
+        }
+
+        items(goals.sortedBy { it.targetDate }, key = { it.id }) { goal ->
+            val progressRatio = (goal.progressPercent / 100.0).toFloat().coerceIn(0f, 1f)
+            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(goal.goalName, color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Progress ${String.format("%.1f", goal.progressPercent)}% • ${formatInvestmentCurrency(goal.currentAmount)} / ${formatInvestmentCurrency(goal.targetAmount)}",
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 12.sp,
+                    )
+                    LinearProgressIndicator(
+                        progress = { progressRatio },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = LocalAppTheme.current.primary,
+                    )
+                    Text(
+                        "Risk ${goal.riskProfile} • Target ${goal.targetDate} • Monthly ${formatInvestmentCurrency(goal.monthlyContribution)}",
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 11.sp,
+                    )
+                    if (goal.linkedInstruments.isNotEmpty()) {
+                        Text(
+                            "Linked: ${goal.linkedInstruments.joinToString()}",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 11.sp,
+                        )
+                    }
+                    TextButton(
+                        onClick = {
+                            val instruments = linkInstrumentsInput
+                                .split(",")
+                                .map { it.trim() }
+                                .filter { it.isNotBlank() }
+                            viewModel.linkGoalInvestments(
+                                goalId = goal.id,
+                                instruments = instruments,
+                                incrementAmount = incrementAmountInput.toDoubleOrNull() ?: 0.0,
+                            )
+                        }
+                    ) {
+                        Text("Link Instruments")
+                    }
+                }
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(90.dp)) }
+    }
+}
+
+@Composable
+private fun WealthSectionHeader(title: String, subtitle: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(title, color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+        Text(subtitle, color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun WealthMetricTile(title: String, value: String, caption: String) {
+    Card(
+        modifier = Modifier.width(190.dp),
+        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
+            Text(value, color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(caption, color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
         }
     }
 }

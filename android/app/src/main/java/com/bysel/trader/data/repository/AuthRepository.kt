@@ -14,6 +14,7 @@ import com.bysel.trader.data.models.LoginRequest
 import com.bysel.trader.data.models.SendOTPRequest
 import com.bysel.trader.data.models.VerifyOTPRequest
 import com.bysel.trader.data.models.FirebasePhoneAuthRequest
+import com.bysel.trader.data.models.DeleteAccountRequest
 import com.bysel.trader.data.models.OTPResponse
 import com.bysel.trader.data.models.LogoutRequest
 import com.bysel.trader.data.models.RefreshTokenRequest
@@ -188,6 +189,16 @@ class AuthRepository(
         }
     }
 
+    suspend fun deleteAccount(password: String): Result<Unit> {
+        return try {
+            apiService.deleteAccount(DeleteAccountRequest(password = password))
+            AuthSessionManager.clearSession()
+            Result.Success(Unit)
+        } catch (e: Exception) {
+            Result.Error(toAuthErrorMessage(e, "Account deletion failed"))
+        }
+    }
+
     suspend fun sendOtp(mobileNumber: String): Result<OTPResponse> {
         val normalizedMobile = mobileNumber.trim()
         return try {
@@ -220,6 +231,9 @@ class AuthRepository(
     }
 
     suspend fun firebasePhoneAuth(firebaseIdToken: String): Result<AuthResponse> {
+        if (firebaseIdToken.isBlank()) {
+            return Result.Error("Empty authentication token")
+        }
         return try {
             val response = apiService.firebasePhoneAuth(
                 FirebasePhoneAuthRequest(firebaseIdToken = firebaseIdToken)

@@ -1,7 +1,14 @@
 package com.bysel.trader.ui.theme
 
+import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
 
 // CompositionLocal for app theme - accessible from any composable
 val LocalAppTheme = compositionLocalOf { getTheme("default") }
@@ -214,4 +221,57 @@ fun getTheme(themeName: String): AppTheme {
     }
 }
 
-val allThemes = listOf("Default", "Amoled", "Light", "Ocean", "Forest", "Sunset", "Royal", "Cyberpunk", "Monochrome")
+val allThemes = listOf("Default", "Amoled", "Light", "Ocean", "Forest", "Sunset", "Royal", "Cyberpunk", "Monochrome", "Dynamic")
+
+fun AppTheme.toMaterialColorScheme(): ColorScheme {
+    val isLightTheme = surface.luminance() > 0.5f
+    val onPrimary = if (primary.luminance() > 0.5f) Color.Black else Color.White
+    val outlineColor = textSecondary.copy(alpha = 0.65f)
+
+    return if (isLightTheme) {
+        lightColorScheme(
+            primary = primary,
+            onPrimary = onPrimary,
+            secondary = primary,
+            onSecondary = onPrimary,
+            background = surface,
+            onBackground = text,
+            surface = card,
+            onSurface = text,
+            surfaceVariant = surface,
+            onSurfaceVariant = textSecondary,
+            outline = outlineColor,
+            error = negative,
+            onError = Color.White,
+        )
+    } else {
+        darkColorScheme(
+            primary = primary,
+            onPrimary = onPrimary,
+            secondary = primary,
+            onSecondary = onPrimary,
+            background = surface,
+            onBackground = text,
+            surface = card,
+            onSurface = text,
+            surfaceVariant = card,
+            onSurfaceVariant = textSecondary,
+            outline = outlineColor,
+            error = negative,
+            onError = Color.White,
+        )
+    }
+}
+
+fun getMaterialColorScheme(themeName: String, context: android.content.Context): ColorScheme {
+    return if (themeName.lowercase() == "dynamic") {
+        val isLight = context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_NO
+        if (isLight) {
+            dynamicLightColorScheme(context)
+        } else {
+            dynamicDarkColorScheme(context)
+        }
+    } else {
+        getTheme(themeName).toMaterialColorScheme()
+    }
+}

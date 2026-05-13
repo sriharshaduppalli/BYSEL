@@ -5,6 +5,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -28,7 +29,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.MarketStatus
+import com.bysel.trader.ui.components.appOutlinedTextFieldColors
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.components.PriceHistoryChart
 import com.bysel.trader.ui.components.PullToRefreshBox
 import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
 import com.bysel.trader.ui.components.OrderRejectionBanner
@@ -129,6 +132,53 @@ private fun computeWatchlistInsight(quote: Quote): WatchlistInsight {
     )
 }
 
+private data class TradeWorkspaceTab(
+    val title: String,
+    val caption: String,
+)
+
+private val TRADE_WORKSPACE_TABS = listOf(
+    TradeWorkspaceTab("Spot", "Equities"),
+    TradeWorkspaceTab("Advanced", "Triggers & baskets"),
+    TradeWorkspaceTab("Options", "Chain & Greeks"),
+    TradeWorkspaceTab("Futures", "Radar"),
+)
+
+private data class WatchlistSubTab(
+    val title: String,
+    val symbols: List<String>,
+)
+
+private fun watchlistLeadChar(symbol: String): Char {
+    val base = symbol.substringBefore(".").trim().uppercase()
+    return base.firstOrNull { it.isLetterOrDigit() } ?: '#'
+}
+
+private fun buildWatchlistSubTabs(symbols: List<String>): List<WatchlistSubTab> {
+    val cleaned = symbols
+        .map { it.trim().uppercase() }
+        .filter { it.isNotBlank() }
+        .distinct()
+        .sorted()
+
+    fun inRange(symbol: String, start: Char, end: Char): Boolean {
+        val lead = watchlistLeadChar(symbol)
+        if (lead.isDigit()) {
+            return start == 'A'
+        }
+        return lead in start..end
+    }
+
+    return listOf(
+        WatchlistSubTab("All", cleaned),
+        WatchlistSubTab("A-E", cleaned.filter { inRange(it, 'A', 'E') }),
+        WatchlistSubTab("F-J", cleaned.filter { inRange(it, 'F', 'J') }),
+        WatchlistSubTab("K-O", cleaned.filter { inRange(it, 'K', 'O') }),
+        WatchlistSubTab("P-T", cleaned.filter { inRange(it, 'P', 'T') }),
+        WatchlistSubTab("U-Z", cleaned.filter { inRange(it, 'U', 'Z') }),
+    )
+}
+
 @Composable
 fun TradingScreen(
     isLoading: Boolean,
@@ -148,11 +198,185 @@ fun TradingScreen(
         viewModel.startFastRefresh()
         onDispose { viewModel.stopFastRefresh() }
     }
+    val liveQuotes by viewModel.quotes.collectAsState()
+    val watchlistSymbols by viewModel.watchlist.collectAsState()
+    val selectedQuote by viewModel.selectedQuote.collectAsState()
+    // AI Trade Coach Dialog
+    val tradeCoachTip by viewModel.tradeCoachTip.collectAsState()
+    if (tradeCoachTip != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearTradeCoachTip() },
+            title = { Text("Coach says…", fontWeight = FontWeight.Bold) },
+            text = { Text(tradeCoachTip ?: "") },
+            confirmButton = {
+                Button(onClick = { viewModel.clearTradeCoachTip() }) {
+                    Text("Got it!")
+                }
+            }
+        )
+    }
+    var showAddFundsDialog by remember { mutableStateOf(false) }
+    var selectedWorkspaceIndex by remember { mutableIntStateOf(0) }
+    var activeTradeSymbol by remember { mutableStateOf<String?>(null) }
+
+    fun openTradeSheet(quote: Quote) {
+        activeTradeSymbol = quote.symbol.uppercase()
+        viewModel.setSelectedQuote(quote)
+    }
+
+    fun openTradeSheet(symbol: String) {
+        val normalizedSymbol = symbol.trim().uppercase()
+        if (normalizedSymbol.isBlank()) {
+            return
+        }
+
+        activeTradeSymbol = normalizedSymbol
+        val existingQuote = liveQuotes.firstOrNull { it.symbol.equals(normalizedSymbol, ignoreCase = true) }
+        if (existingQuote != null) {
+            viewModel.setSelectedQuote(existingQuote)
+        } else {
+            viewModel.fetchAndSelectQuote(normalizedSymbol)
+        }
+    }
+
+    if (activeTradeSymbol != null && selectedQuote?.symbol?.equals(activeTradeSymbol, ignoreCase = true) == true) {
+        TradeBottomSheet(
+            quote = selectedQuote!!,
+            walletBalance = walletBalance,
+            marketStatus = marketStatus,
+            onDismiss = {
+                activeTradeSymbol = null
+                viewModel.clearPreTradeCopilotSignal()
+            },
+            onBuy = { qty -> onBuy(selectedQuote!!.symbol, qty) },
+            onSell = { qty -> onSell(selectedQuote!!.symbol, qty) },
+            onTraceSupportLookup = onTraceSupportLookup,
+            viewModel = viewModel,
+        )
+    }
+
+    if (showAddFundsDialog) {
+        AddFundsDialog(
+            onDismiss = { showAddFundsDialog = false },
+            onAdd = { amount, upiProvider ->
+                onAddFunds(amount, upiProvider)
+                showAddFundsDialog = false
+            }
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LocalAppTheme.current.surface)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Trade Hub",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = LocalAppTheme.current.text,
+                )
+                Text(
+                    text = "Spot, advanced orders, options, and futures tools in one workspace.",
+                    fontSize = 12.sp,
+                    color = LocalAppTheme.current.textSecondary,
+                )
+            }
+        }
+
+        ScrollableTabRow(
+            selectedTabIndex = selectedWorkspaceIndex,
+            modifier = Modifier.fillMaxWidth(),
+            edgePadding = 12.dp,
+            containerColor = LocalAppTheme.current.surface,
+            contentColor = LocalAppTheme.current.text,
+            divider = {}
+        ) {
+            TRADE_WORKSPACE_TABS.forEachIndexed { index, tab ->
+                Tab(
+                    selected = selectedWorkspaceIndex == index,
+                    onClick = { selectedWorkspaceIndex = index },
+                    text = {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(tab.title, fontWeight = FontWeight.SemiBold)
+                            Text(tab.caption, fontSize = 10.sp)
+                        }
+                    }
+                )
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+        ) {
+            when (selectedWorkspaceIndex) {
+                0 -> SpotTradingWorkspace(
+                    isLoading = isLoading,
+                    error = error,
+                    walletBalance = walletBalance,
+                    marketStatus = marketStatus,
+                    onRefresh = onRefresh,
+                    onShowAddFunds = { showAddFundsDialog = true },
+                    onErrorDismiss = onErrorDismiss,
+                    onTraceSupportLookup = onTraceSupportLookup,
+                    onSelectQuote = { openTradeSheet(it) },
+                    onOpenSymbol = { symbol -> openTradeSheet(symbol) },
+                    onOpenAdvancedWorkspace = { selectedWorkspaceIndex = 1 },
+                    onOpenDerivativesWorkspace = { selectedWorkspaceIndex = 2 },
+                    viewModel = viewModel,
+                )
+                1 -> AdvancedOrdersScreen(viewModel)
+                2 -> DerivativesIntelligenceScreen(viewModel)
+                else -> FuturesRadarScreen(
+                    viewModel = viewModel,
+                    quotes = liveQuotes,
+                    marketStatus = marketStatus,
+                    watchlistSymbols = watchlistSymbols,
+                    onOpenSpotTrade = { openTradeSheet(it) },
+                    onOpenOptions = { selectedWorkspaceIndex = 2 },
+                    onOpenAdvanced = { selectedWorkspaceIndex = 1 },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpotTradingWorkspace(
+    isLoading: Boolean,
+    error: String?,
+    walletBalance: Double,
+    marketStatus: MarketStatus?,
+    onRefresh: () -> Unit,
+    onShowAddFunds: () -> Unit,
+    onErrorDismiss: () -> Unit,
+    onTraceSupportLookup: ((String) -> Unit)? = null,
+    onSelectQuote: (Quote) -> Unit,
+    onOpenSymbol: (String) -> Unit,
+    onOpenAdvancedWorkspace: () -> Unit,
+    onOpenDerivativesWorkspace: () -> Unit,
+    viewModel: TradingViewModel,
+) {
     var showAddWatchlistDialog by remember { mutableStateOf(false) }
     var newWatchSymbol by remember { mutableStateOf("") }
+    var selectedWatchlistSubTab by remember { mutableIntStateOf(0) }
     val watchlistSymbols by viewModel.watchlist.collectAsState()
+    val watchlistSubTabs = remember(watchlistSymbols) { buildWatchlistSubTabs(watchlistSymbols) }
+    val activeWatchlistSymbols = watchlistSubTabs.getOrElse(selectedWatchlistSubTab) { watchlistSubTabs.first() }.symbols
     val liveQuotes by viewModel.quotes.collectAsState()
+    val liveQuoteMap = remember(liveQuotes) { liveQuotes.associateBy { it.symbol.uppercase() } }
     val lastQuoteUpdateAt by viewModel.lastQuoteUpdateAt.collectAsState()
+    val streamHealth by viewModel.streamHealth.collectAsState()
     val statusNow by produceState(initialValue = System.currentTimeMillis()) {
         while (true) {
             value = System.currentTimeMillis()
@@ -183,53 +407,16 @@ fun TradingScreen(
             else -> LocalAppTheme.current.negative
         }
     }
-    val watchlistInsights = remember(watchlistSymbols, liveQuotes) {
-        val quoteMap = liveQuotes.associateBy { it.symbol.uppercase() }
-        watchlistSymbols
-            .mapNotNull { symbol -> quoteMap[symbol.uppercase()]?.let { computeWatchlistInsight(it) } }
+    LaunchedEffect(watchlistSubTabs.size) {
+        if (selectedWatchlistSubTab >= watchlistSubTabs.size) {
+            selectedWatchlistSubTab = 0
+        }
+    }
+
+    val watchlistInsights = remember(activeWatchlistSymbols, liveQuotes) {
+        activeWatchlistSymbols
+            .mapNotNull { symbol -> liveQuoteMap[symbol.uppercase()]?.let { computeWatchlistInsight(it) } }
             .sortedByDescending { it.confidence }
-    }
-    // AI Trade Coach Dialog
-    val tradeCoachTip by viewModel.tradeCoachTip.collectAsState()
-    val streamHealth by viewModel.streamHealth.collectAsState()
-    if (tradeCoachTip != null) {
-        AlertDialog(
-            onDismissRequest = { viewModel.clearTradeCoachTip() },
-            title = { Text("Coach says…", fontWeight = FontWeight.Bold) },
-            text = { Text(tradeCoachTip ?: "") },
-            confirmButton = {
-                Button(onClick = { viewModel.clearTradeCoachTip() }) {
-                    Text("Got it!")
-                }
-            }
-        )
-    }
-    var selectedQuote by remember { mutableStateOf<Quote?>(null) }
-    var showAddFundsDialog by remember { mutableStateOf(false) }
-
-    if (selectedQuote != null) {
-        TradeBottomSheet(
-            quote = selectedQuote!!,
-            walletBalance = walletBalance,
-            marketStatus = marketStatus,
-            onDismiss = {
-                selectedQuote = null
-                viewModel.clearPreTradeCopilotSignal()
-            },
-            onBuy = { qty -> onBuy(selectedQuote!!.symbol, qty) },
-            onSell = { qty -> onSell(selectedQuote!!.symbol, qty) },
-            viewModel = viewModel,
-        )
-    }
-
-    if (showAddFundsDialog) {
-        AddFundsDialog(
-            onDismiss = { showAddFundsDialog = false },
-            onAdd = { amount, upiProvider ->
-                onAddFunds(amount, upiProvider)
-                showAddFundsDialog = false
-            }
-        )
     }
 
     Column(
@@ -237,20 +424,113 @@ fun TradingScreen(
             .fillMaxSize()
             .background(LocalAppTheme.current.surface)
     ) {
-        // Watchlist header
-        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Row {
-                watchlistSymbols.take(4).forEach { s ->
-                    AssistChip(onClick = { viewModel.fetchAndSelectQuote(s) }, label = { Text(s) }, modifier = Modifier.padding(end = 8.dp))
-                }
-                if (watchlistSymbols.size > 4) {
-                    AssistChip(onClick = { }, label = { Text("+${watchlistSymbols.size - 4}") })
-                }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column {
+                Text(
+                    text = "Watchlists",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = LocalAppTheme.current.text,
+                )
+                Text(
+                    text = "Browse tracked symbols in grouped sub-tabs",
+                    fontSize = 11.sp,
+                    color = LocalAppTheme.current.textSecondary,
+                )
             }
             Button(onClick = { showAddWatchlistDialog = true }, modifier = Modifier.height(36.dp)) { Text("+ Watchlist") }
         }
 
         if (watchlistSymbols.isNotEmpty()) {
+            ScrollableTabRow(
+                selectedTabIndex = selectedWatchlistSubTab,
+                modifier = Modifier.fillMaxWidth(),
+                edgePadding = 12.dp,
+                containerColor = LocalAppTheme.current.surface,
+                contentColor = LocalAppTheme.current.text,
+                divider = {}
+            ) {
+                watchlistSubTabs.forEachIndexed { index, tab ->
+                    Tab(
+                        selected = selectedWatchlistSubTab == index,
+                        onClick = { selectedWatchlistSubTab = index },
+                        text = {
+                            Text(
+                                text = "${tab.title} (${tab.symbols.size})",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        },
+                    )
+                }
+            }
+
+            LazyRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(activeWatchlistSymbols) { symbol ->
+                    AssistChip(
+                        onClick = {
+                            liveQuoteMap[symbol.uppercase()]?.let(onSelectQuote) ?: onOpenSymbol(symbol)
+                        },
+                        label = { Text(symbol) },
+                    )
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E)),
+            shape = RoundedCornerShape(10.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Filled.AccountBalanceWallet,
+                        contentDescription = null,
+                        tint = Color(0xFF7C4DFF),
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Column(modifier = Modifier.padding(start = 10.dp)) {
+                        Text(
+                            text = "Wallet Balance",
+                            fontSize = 11.sp,
+                            color = LocalAppTheme.current.textSecondary
+                        )
+                        Text(
+                            text = "₹${String.format("%,.2f", walletBalance)}",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = LocalAppTheme.current.text
+                        )
+                    }
+                }
+                Button(
+                    onClick = onShowAddFunds,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF)),
+                    modifier = Modifier.height(34.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp)
+                ) {
+                    Text("+ Add Funds", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        if (activeWatchlistSymbols.isNotEmpty()) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -271,7 +551,7 @@ fun TradingScreen(
                             color = LocalAppTheme.current.text
                         )
                         Text(
-                            text = "${watchlistInsights.size}/${watchlistSymbols.size} live",
+                            text = "${watchlistInsights.size}/${activeWatchlistSymbols.size} live",
                             fontSize = 11.sp,
                             color = LocalAppTheme.current.textSecondary
                         )
@@ -289,7 +569,7 @@ fun TradingScreen(
                         watchlistInsights.take(3).forEach { insight ->
                             WatchlistInsightRow(
                                 insight = insight,
-                                onOpenTrade = { selectedQuote = insight.quote }
+                                onOpenTrade = { onSelectQuote(insight.quote) }
                             )
                         }
                     }
@@ -307,10 +587,45 @@ fun TradingScreen(
                     showAddWatchlistDialog = false
                 }) { Text("Add") }
             }, title = { Text("Add to Watchlist") }, text = {
-                OutlinedTextField(value = newWatchSymbol, onValueChange = { newWatchSymbol = it }, label = { Text("Symbol") })
+                OutlinedTextField(
+                    value = newWatchSymbol,
+                    onValueChange = { newWatchSymbol = it },
+                    label = { Text("Symbol (e.g., INFY, NSE:INFY, 500325.BO)") },
+                    colors = appOutlinedTextFieldColors(containerColor = LocalAppTheme.current.surface),
+                )
             }, dismissButton = { TextButton(onClick = { showAddWatchlistDialog = false }) { Text("Cancel") } })
         }
-        // Header
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Decision Tools",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = LocalAppTheme.current.text,
+                )
+                Text(
+                    text = "Use charges, margin, and options-risk context before placing market or limit orders.",
+                    fontSize = 11.sp,
+                    color = LocalAppTheme.current.textSecondary,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(onClick = onOpenAdvancedWorkspace) {
+                        Text("Charges & Margin")
+                    }
+                    OutlinedButton(onClick = onOpenDerivativesWorkspace) {
+                        Text("Options Risk")
+                    }
+                }
+            }
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -320,7 +635,7 @@ fun TradingScreen(
         ) {
             Column {
                 Text(
-                    text = "Trading Market",
+                    text = "Spot Market",
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
                     color = LocalAppTheme.current.text
@@ -348,7 +663,6 @@ fun TradingScreen(
             }
         }
 
-        // Market Status Banner
         if (marketStatus != null) {
             Card(
                 modifier = Modifier
@@ -385,53 +699,6 @@ fun TradingScreen(
             }
         }
 
-        // Wallet Balance Card
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E)),
-            shape = RoundedCornerShape(10.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(14.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Filled.AccountBalanceWallet,
-                        contentDescription = null,
-                        tint = Color(0xFF7C4DFF),
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Column(modifier = Modifier.padding(start = 10.dp)) {
-                        Text(
-                            text = "Wallet Balance",
-                            fontSize = 11.sp,
-                            color = LocalAppTheme.current.textSecondary
-                        )
-                        Text(
-                            text = "\u20B9${String.format("%,.2f", walletBalance)}",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = LocalAppTheme.current.text
-                        )
-                    }
-                }
-                Button(
-                    onClick = { showAddFundsDialog = true },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF)),
-                    modifier = Modifier.height(34.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp)
-                ) {
-                    Text("+ Add Funds", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-
         if (error != null) {
             TraceAwareErrorSnackbar(
                 error = error,
@@ -444,34 +711,31 @@ fun TradingScreen(
         }
 
         if (isLoading) {
-                // show skeleton list placeholders for better cold-start UX
-                Column(modifier = Modifier.fillMaxSize().padding(8.dp)) {
-                    repeat(6) {
-                        Card(modifier = Modifier
+            Column(modifier = Modifier.fillMaxSize().padding(8.dp)) {
+                repeat(6) {
+                    Card(modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp), colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card), shape = RoundedCornerShape(12.dp)) {
+                        Box(modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 6.dp), colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card), shape = RoundedCornerShape(12.dp)) {
-                            Box(modifier = Modifier
-                                .fillMaxWidth()
-                                .height(80.dp)
-                                .padding(16.dp)) {
-                                // simple gray blocks as skeleton
-                                Column(modifier = Modifier.fillMaxSize()) {
-                                    Box(modifier = Modifier
-                                        .fillMaxWidth(0.4f)
-                                        .height(16.dp)
-                                        .background(Color.Gray.copy(alpha = 0.2f)))
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Box(modifier = Modifier
-                                        .fillMaxWidth(0.6f)
-                                        .height(14.dp)
-                                        .background(Color.Gray.copy(alpha = 0.15f)))
-                                }
+                            .height(80.dp)
+                            .padding(16.dp)) {
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                Box(modifier = Modifier
+                                    .fillMaxWidth(0.4f)
+                                    .height(16.dp)
+                                    .background(Color.Gray.copy(alpha = 0.2f)))
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Box(modifier = Modifier
+                                    .fillMaxWidth(0.6f)
+                                    .height(14.dp)
+                                    .background(Color.Gray.copy(alpha = 0.15f)))
                             }
                         }
                     }
                 }
+            }
         } else {
-            // Use paged quotes for large lists and load more when scrolled
             val paged by viewModel.pagedQuotes.collectAsState()
             val watchlistSet by viewModel.watchlist.collectAsState()
             PullToRefreshBox(
@@ -484,53 +748,284 @@ fun TradingScreen(
                         .fillMaxSize()
                         .padding(horizontal = 8.dp)
                 ) {
-                itemsIndexed(paged, key = { _, q -> q.symbol }) { index: Int, quote: Quote ->
-                    val isWatchlisted = quote.symbol.uppercase() in watchlistSet.map { it.uppercase() }
-                    if (isWatchlisted) {
-                        val swipeDismissState = rememberSwipeToDismissBoxState(
-                            confirmValueChange = { value ->
-                                if (value == SwipeToDismissBoxValue.EndToStart) {
-                                    viewModel.removeFromWatchlist(quote.symbol)
-                                    true
-                                } else false
-                            }
-                        )
-                        SwipeToDismissBox(
-                            state = swipeDismissState,
-                            backgroundContent = {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(horizontal = 6.dp, vertical = 4.dp)
-                                        .background(
-                                            LocalAppTheme.current.negative.copy(alpha = 0.85f),
-                                            RoundedCornerShape(12.dp)
-                                        ),
-                                    contentAlignment = Alignment.CenterEnd
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(end = 20.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(Icons.Filled.Delete, contentDescription = "Remove", tint = Color.White, modifier = Modifier.size(20.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Remove", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                    }
+                    itemsIndexed(paged, key = { _, q -> q.symbol }) { index: Int, quote: Quote ->
+                        val isWatchlisted = quote.symbol.uppercase() in watchlistSet.map { it.uppercase() }
+                        if (isWatchlisted) {
+                            val swipeDismissState = rememberSwipeToDismissBoxState(
+                                confirmValueChange = { value ->
+                                    if (value == SwipeToDismissBoxValue.EndToStart) {
+                                        viewModel.removeFromWatchlist(quote.symbol)
+                                        true
+                                    } else false
                                 }
-                            },
-                            enableDismissFromStartToEnd = false,
-                            enableDismissFromEndToStart = true,
-                        ) {
-                            TradingQuoteCard(quote) { selectedQuote = quote }
+                            )
+                            SwipeToDismissBox(
+                                state = swipeDismissState,
+                                backgroundContent = {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                                            .background(
+                                                LocalAppTheme.current.negative.copy(alpha = 0.85f),
+                                                RoundedCornerShape(12.dp)
+                                            ),
+                                        contentAlignment = Alignment.CenterEnd
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(end = 20.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Filled.Delete, contentDescription = "Remove", tint = Color.White, modifier = Modifier.size(20.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Remove", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                        }
+                                    }
+                                },
+                                enableDismissFromStartToEnd = false,
+                                enableDismissFromEndToStart = true,
+                            ) {
+                                TradingQuoteCard(quote) { onSelectQuote(quote) }
+                            }
+                        } else {
+                            TradingQuoteCard(quote) { onSelectQuote(quote) }
                         }
-                    } else {
-                        TradingQuoteCard(quote) { selectedQuote = quote }
-                    }
-                    if (index >= paged.size - 5) {
-                        LaunchedEffect(index) { viewModel.loadNextQuotesPage() }
+                        if (index >= paged.size - 5) {
+                            LaunchedEffect(index) { viewModel.loadNextQuotesPage() }
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun FuturesRadarScreen(
+    viewModel: TradingViewModel,
+    quotes: List<Quote>,
+    marketStatus: MarketStatus?,
+    watchlistSymbols: List<String>,
+    onOpenSpotTrade: (Quote) -> Unit,
+    onOpenOptions: () -> Unit,
+    onOpenAdvanced: () -> Unit,
+) {
+    val futuresContracts by viewModel.futuresContracts.collectAsState()
+    val futuresTicketPreview by viewModel.futuresTicketPreview.collectAsState()
+    val loading by viewModel.derivativesLoading.collectAsState()
+
+    val candidateSymbols = remember(quotes, watchlistSymbols) {
+        val watchlistOrder = watchlistSymbols.map { it.uppercase() }
+        val rankedQuotes = quotes
+            .sortedWith(
+                compareByDescending<Quote> { kotlin.math.abs(it.pctChange) }
+                    .thenByDescending { it.volume ?: 0L }
+            )
+
+        val watchlistCandidates = watchlistOrder.mapNotNull { symbol ->
+            rankedQuotes.firstOrNull { it.symbol.uppercase() == symbol }
+        }
+        (watchlistCandidates + rankedQuotes)
+            .distinctBy { it.symbol.uppercase() }
+            .take(6)
+    }
+
+    val defaultUnderlying = remember(candidateSymbols) {
+        candidateSymbols.firstOrNull()?.symbol ?: "NIFTY"
+    }
+    var underlyingInput by remember(defaultUnderlying) { mutableStateOf(defaultUnderlying) }
+    var lotsInput by remember { mutableStateOf("1") }
+    var selectedExpiry by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(defaultUnderlying) {
+        if (futuresContracts == null && defaultUnderlying.isNotBlank()) {
+            underlyingInput = defaultUnderlying
+            viewModel.loadFuturesContracts(defaultUnderlying)
+        }
+    }
+
+    LaunchedEffect(futuresContracts?.generatedAt) {
+        val firstExpiry = futuresContracts?.contracts?.firstOrNull()?.expiry
+        if (!firstExpiry.isNullOrBlank() && selectedExpiry.isNullOrBlank()) {
+            selectedExpiry = firstExpiry
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LocalAppTheme.current.surface)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Futures Radar", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold, fontSize = 24.sp)
+                    Text(
+                        "Load live futures contracts for an underlying, compare expiry-level liquidity and margin, then preview lot-based ticket risk before execution.",
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 12.sp,
+                    )
+                    marketStatus?.let {
+                        Text(
+                            text = if (it.isOpen) "Market live: ${it.message}" else "Market status: ${it.message}",
+                            color = if (it.isOpen) LocalAppTheme.current.positive else LocalAppTheme.current.negative,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Futures Contract Loader", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = underlyingInput,
+                            onValueChange = { underlyingInput = it.uppercase() },
+                            modifier = Modifier.weight(1f),
+                            label = { Text("Underlying") },
+                            placeholder = { Text("INFY") },
+                            colors = appOutlinedTextFieldColors(containerColor = LocalAppTheme.current.surface),
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            value = lotsInput,
+                            onValueChange = { lotsInput = it.filter { ch -> ch.isDigit() } },
+                            modifier = Modifier.width(100.dp),
+                            label = { Text("Lots") },
+                            colors = appOutlinedTextFieldColors(containerColor = LocalAppTheme.current.surface),
+                            singleLine = true,
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { viewModel.loadFuturesContracts(underlyingInput) }) {
+                            Text("Load Contracts")
+                        }
+                        OutlinedButton(onClick = onOpenOptions) { Text("Options") }
+                        OutlinedButton(onClick = onOpenAdvanced) { Text("Advanced") }
+                    }
+                    if (loading) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            }
+        }
+
+        item {
+            Text("Live Contract Radar", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+        }
+
+        val activeContracts = futuresContracts?.contracts ?: emptyList()
+        if (activeContracts.isEmpty()) {
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("No futures contracts loaded yet.", color = LocalAppTheme.current.text)
+                        Text("Load an underlying (for example RELIANCE, TCS, INFY) to fetch expiry contracts and preview margins.", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                    }
+                }
+            }
+        } else {
+            items(activeContracts, key = { it.contractSymbol }) { contract ->
+                val linkedQuote = candidateSymbols.firstOrNull { quote ->
+                    quote.symbol.uppercase() == futuresContracts?.symbol?.uppercase()
+                }
+                val parsedLots = lotsInput.toIntOrNull()?.coerceAtLeast(1) ?: 1
+                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(contract.contractSymbol, color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "${formatCurrency(contract.last)} • ${formatSignedPct(contract.pctChange)}",
+                                    color = if (contract.pctChange >= 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative,
+                                    fontSize = 12.sp,
+                                )
+                            }
+                            AssistChip(
+                                onClick = { selectedExpiry = contract.expiry },
+                                label = {
+                                    Text(
+                                        if (selectedExpiry == contract.expiry) "Selected ${contract.expiry}"
+                                        else "Expiry ${contract.expiry}"
+                                    )
+                                }
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            AssistChip(onClick = {}, label = { Text("Lot ${contract.lotSize}") })
+                            AssistChip(onClick = {}, label = { Text("OI ${contract.oi}") })
+                            AssistChip(onClick = {}, label = { Text("Basis ${formatCurrency(contract.basis)}") })
+                            AssistChip(onClick = {}, label = { Text("Mgn/Lot ${formatCurrency(contract.marginPerLot)}") })
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = {
+                                    selectedExpiry = contract.expiry
+                                    viewModel.previewFuturesTicket(
+                                        symbol = futuresContracts?.symbol ?: underlyingInput,
+                                        expiry = contract.expiry,
+                                        side = "BUY",
+                                        lots = parsedLots,
+                                    )
+                                }
+                            ) {
+                                Text("Preview Buy")
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    selectedExpiry = contract.expiry
+                                    viewModel.previewFuturesTicket(
+                                        symbol = futuresContracts?.symbol ?: underlyingInput,
+                                        expiry = contract.expiry,
+                                        side = "SELL",
+                                        lots = parsedLots,
+                                    )
+                                }
+                            ) {
+                                Text("Preview Sell")
+                            }
+                            if (linkedQuote != null) {
+                                OutlinedButton(onClick = { onOpenSpotTrade(linkedQuote) }) {
+                                    Text("Open Spot")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        futuresTicketPreview?.let { preview ->
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Futures Ticket Preview", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                        Text(preview.contractSymbol, color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold)
+                        Text(
+                            "${preview.side} ${preview.lots} lot(s) = ${preview.quantity} qty @ ${formatCurrency(preview.referencePrice)}",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 12.sp,
+                        )
+                        Text("Notional: ${formatCurrency(preview.notionalValue)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        Text("Estimated Margin: ${formatCurrency(preview.estimatedMargin)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        Text("Estimated Charges: ${formatCurrency(preview.estimatedCharges)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        Text("Max Loss Buffer: ${formatCurrency(preview.maxLossBuffer)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = onOpenAdvanced) { Text("Route To Advanced") }
+                            OutlinedButton(onClick = onOpenOptions) { Text("Open Options") }
+                        }
+                    }
+                }
             }
         }
     }
@@ -716,6 +1211,7 @@ fun TradeBottomSheet(
     onDismiss: () -> Unit,
     onBuy: (Int) -> Unit,
     onSell: (Int) -> Unit,
+    onTraceSupportLookup: ((String) -> Unit)? = null,
     viewModel: TradingViewModel,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -745,6 +1241,7 @@ fun TradeBottomSheet(
             onDismiss = onDismiss,
             onBuy = { qty -> haptic.performHapticFeedback(HapticFeedbackType.LongPress); onBuy(qty) },
             onSell = { qty -> haptic.performHapticFeedback(HapticFeedbackType.LongPress); onSell(qty) },
+            onTraceSupportLookup = onTraceSupportLookup,
             viewModel = viewModel,
         )
     }
@@ -758,14 +1255,24 @@ private fun TradeBottomSheetContent(
     onDismiss: () -> Unit,
     onBuy: (Int) -> Unit,
     onSell: (Int) -> Unit,
+    onTraceSupportLookup: ((String) -> Unit)? = null,
     viewModel: TradingViewModel,
 ) {
     var quantity by remember { mutableStateOf("") }
     var tradeType by remember { mutableStateOf("BUY") }
     var orderType by remember { mutableStateOf("MARKET") }
     var limitPriceInput by remember { mutableStateOf(String.format("%.2f", quote.last)) }
+    var showConfirmDialog by remember { mutableStateOf(false) }
+    val history by viewModel.quoteHistory.collectAsState()
+    val holdings by viewModel.holdings.collectAsState()
     val preTradeSignal by viewModel.copilotPreTradeSignal.collectAsState()
     val preTradeEstimate by viewModel.preTradeEstimate.collectAsState()
+    val lastExecutedOrder by viewModel.lastExecutedOrder.collectAsState()
+    val postTradeReview by viewModel.copilotPostTradeReview.collectAsState()
+    val productActionMessage by viewModel.productActionMessage.collectAsState()
+    val copilotPortfolioActions by viewModel.copilotPortfolioActions.collectAsState()
+    val lastOrderTraceId by viewModel.lastOrderTraceId.collectAsState()
+    val orderExecutionLoading by viewModel.orderExecutionLoading.collectAsState()
     val copilotLoading by viewModel.copilotLoading.collectAsState()
     val lastError by viewModel.error.collectAsState()
 
@@ -809,6 +1316,11 @@ private fun TradeBottomSheetContent(
     val effectiveSignal = preTradeEstimate?.signal ?: preTradeSignal
     val estimateWarnings = preTradeEstimate?.warnings ?: emptyList()
     val copilotBlocksTrade = effectiveSignal?.verdict?.equals("BLOCK", ignoreCase = true) == true
+    val currentHolding = holdings.firstOrNull { it.symbol.equals(quote.symbol, ignoreCase = true) }
+    val currentHoldingPnl = currentHolding?.let { (quote.last - it.avgPrice) * it.qty }
+    val lastExecutedForSymbol = lastExecutedOrder?.takeIf {
+        it.order.symbol.equals(quote.symbol, ignoreCase = true)
+    }
 
     // Detect if the last error has a structured rejection resolution for this symbol's context
     val rejectionBannerError = remember(lastError, qty) {
@@ -836,6 +1348,12 @@ private fun TradeBottomSheetContent(
                 triggerPrice = null,
             )
         )
+    }
+
+    LaunchedEffect(quote.symbol) {
+        if (copilotPortfolioActions == null) {
+            viewModel.loadPortfolioCopilotActions()
+        }
     }
 
     Column(
@@ -918,6 +1436,70 @@ private fun TradeBottomSheetContent(
             modifier = Modifier.padding(bottom = 14.dp)
         )
 
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+            colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.surface),
+            shape = RoundedCornerShape(10.dp)
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text(
+                    text = "Chart-Linked Context",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = LocalAppTheme.current.text
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                if (history.isNotEmpty()) {
+                    PriceHistoryChart(
+                        history = history.takeLast(30),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                    )
+                } else {
+                    Text(
+                        text = "Loading recent price structure for ${quote.symbol}...",
+                        fontSize = 11.sp,
+                        color = LocalAppTheme.current.textSecondary
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                TradeSummaryLine(
+                    label = "Intraday move",
+                    value = formatSignedPct(quote.pctChange),
+                    valueColor = if (quote.pctChange >= 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
+                )
+                TradeSummaryLine(
+                    label = "Spread",
+                    value = "${String.format("%.2f", spreadPct)}%"
+                )
+                TradeSummaryLine(
+                    label = "Range",
+                    value = "${String.format("%.1f", intradayRangePct)}%"
+                )
+                currentHolding?.let { holding ->
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 6.dp),
+                        color = LocalAppTheme.current.textSecondary.copy(alpha = 0.15f)
+                    )
+                    Text(
+                        text = "Position Snapshot",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = LocalAppTheme.current.textSecondary,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    TradeSummaryLine(label = "Holding", value = "${holding.qty} qty")
+                    TradeSummaryLine(label = "Average", value = formatCurrency(holding.avgPrice))
+                    TradeSummaryLine(
+                        label = "Live PnL",
+                        value = formatCurrency(currentHoldingPnl ?: 0.0),
+                        valueColor = if ((currentHoldingPnl ?: 0.0) >= 0.0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
+                    )
+                }
+            }
+        }
+
         // Buy / Sell toggle
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
@@ -964,12 +1546,7 @@ private fun TradeBottomSheetContent(
                 onValueChange = { limitPriceInput = it },
                 label = { Text("Limit Price", color = LocalAppTheme.current.textSecondary) },
                 modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = LocalAppTheme.current.text,
-                    unfocusedTextColor = LocalAppTheme.current.textSecondary,
-                    focusedBorderColor = LocalAppTheme.current.primary,
-                    unfocusedBorderColor = Color(0xFF2A2A2A)
-                )
+                colors = appOutlinedTextFieldColors(containerColor = LocalAppTheme.current.surface),
             )
         }
 
@@ -979,12 +1556,7 @@ private fun TradeBottomSheetContent(
             onValueChange = { quantity = it },
             label = { Text("Quantity", color = LocalAppTheme.current.textSecondary) },
             modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = LocalAppTheme.current.text,
-                unfocusedTextColor = LocalAppTheme.current.textSecondary,
-                focusedBorderColor = LocalAppTheme.current.primary,
-                unfocusedBorderColor = Color(0xFF2A2A2A)
-            )
+            colors = appOutlinedTextFieldColors(containerColor = LocalAppTheme.current.surface),
         )
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
@@ -1093,6 +1665,29 @@ private fun TradeBottomSheetContent(
                 }
             }
 
+            TicketTrustToolsCard(
+                portfolioActions = copilotPortfolioActions,
+                lastOrderTraceId = lastOrderTraceId,
+                hasEstimate = preTradeEstimate != null,
+                onRefreshGuidance = {
+                    viewModel.loadPortfolioCopilotActions()
+                    if (qty > 0 && isMarketOpen && !limitInvalid && !limitDeviationHardBlock) {
+                        viewModel.fetchPreTradeEstimate(
+                            com.bysel.trader.data.models.AdvancedOrderRequest(
+                                symbol = quote.symbol,
+                                qty = qty,
+                                side = tradeType,
+                                orderType = orderType,
+                                validity = "DAY",
+                                limitPrice = if (orderType == "LIMIT") limitPrice else null,
+                                triggerPrice = null,
+                            )
+                        )
+                    }
+                },
+                onTraceSupportLookup = onTraceSupportLookup,
+            )
+
             // Rejection banner if last error applies
             rejectionBannerError?.let { errMsg ->
                 OrderRejectionBanner(
@@ -1128,26 +1723,114 @@ private fun TradeBottomSheetContent(
             }
         }
 
+        if (lastExecutedForSymbol != null) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.surface),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = "Execution Feedback",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = LocalAppTheme.current.text
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    productActionMessage?.takeIf { it.isNotBlank() }?.let { message ->
+                        Text(
+                            text = message,
+                            fontSize = 11.sp,
+                            color = LocalAppTheme.current.textSecondary,
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
+                    }
+                    TradeSummaryLine(
+                        label = "Last order",
+                        value = "${lastExecutedForSymbol.order.side} ${lastExecutedForSymbol.order.qty} • ${lastExecutedForSymbol.orderStatus ?: lastExecutedForSymbol.status.uppercase()}"
+                    )
+                    lastExecutedForSymbol.executedPrice?.let { executedPrice ->
+                        TradeSummaryLine(label = "Executed", value = formatCurrency(executedPrice))
+                    }
+                    lastExecutedForSymbol.total?.let { total ->
+                        TradeSummaryLine(label = "Notional", value = formatCurrency(total))
+                    }
+                    lastOrderTraceId?.takeIf { it.isNotBlank() }?.let { traceId ->
+                        TradeSummaryLine(label = "Trace", value = traceId)
+                        onTraceSupportLookup?.let { lookup ->
+                            OutlinedButton(
+                                onClick = { lookup(traceId) },
+                                modifier = Modifier.padding(top = 6.dp)
+                            ) {
+                                Text("Open Trace Support")
+                            }
+                        }
+                    }
+                    postTradeReview?.let { review ->
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 6.dp),
+                            color = LocalAppTheme.current.textSecondary.copy(alpha = 0.15f)
+                        )
+                        Text(
+                            text = review.summary,
+                            fontSize = 11.sp,
+                            color = LocalAppTheme.current.text,
+                        )
+                        TradeSummaryLine(
+                            label = "P&L now",
+                            value = formatCurrency(review.pnlNow),
+                            valueColor = if (review.pnlNow >= 0.0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
+                        )
+                        review.coaching.take(2).forEach { tip ->
+                            Text(
+                                text = "• $tip",
+                                fontSize = 11.sp,
+                                color = LocalAppTheme.current.textSecondary,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         if (limitInvalid) {
             Text("Enter a valid limit price to continue.", fontSize = 12.sp, color = LocalAppTheme.current.negative)
         }
 
         // Confirm / Cancel
         Spacer(modifier = Modifier.height(16.dp))
+        if (orderExecutionLoading) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = LocalAppTheme.current.primary
+                )
+                Text(
+                    text = "Submitting order and refreshing execution context...",
+                    fontSize = 11.sp,
+                    color = LocalAppTheme.current.textSecondary
+                )
+            }
+        }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(
                 onClick = onDismiss,
                 modifier = Modifier.weight(1f).height(48.dp),
                 shape = RoundedCornerShape(12.dp)
-            ) { Text("Cancel") }
+            ) { Text("Close") }
             Button(
                 onClick = {
                     if (qty > 0) {
-                        if (tradeType == "BUY") onBuy(qty) else onSell(qty)
-                        onDismiss()
+                        showConfirmDialog = true
                     }
                 },
-                enabled = qty > 0 && isMarketOpen && !limitInvalid && !limitDeviationHardBlock && !copilotBlocksTrade && (tradeType == "SELL" || canAfford),
+                enabled = qty > 0 && isMarketOpen && !limitInvalid && !limitDeviationHardBlock && !copilotBlocksTrade && !orderExecutionLoading && (tradeType == "SELL" || canAfford),
                 modifier = Modifier.weight(2f).height(48.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (tradeType == "BUY") Color(0xFF00B050) else LocalAppTheme.current.negative,
@@ -1155,11 +1838,135 @@ private fun TradeBottomSheetContent(
                 ),
                 shape = RoundedCornerShape(12.dp)
             ) {
+                if (orderExecutionLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White
+                    )
+                } else {
+                    Text(
+                        if (orderType == "MARKET") tradeType else "LIMIT $tradeType",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                }
+            }
+        }
+    }
+
+    // Order Confirmation Dialog
+    if (showConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showConfirmDialog = false },
+            title = {
                 Text(
-                    if (orderType == "MARKET") tradeType else "LIMIT $tradeType",
+                    "Confirm $tradeType Order",
                     fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
+                    color = if (tradeType == "BUY") Color(0xFF00B050) else LocalAppTheme.current.negative
                 )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("${quote.symbol} • $qty share${if (qty == 1) "" else "s"}")
+                    Text("Order type: ${if (orderType == "MARKET") "Market" else "Limit @ ₹${String.format("%.2f", limitPrice)}"}")
+                    Text("Est. value: ₹${String.format("%,.2f", tradeValue)}")
+                    Text("Est. charges: ₹${String.format("%.2f", totalCharges)}")
+                    Text(
+                        "Net amount: ₹${String.format("%,.2f", netAmount)}",
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showConfirmDialog = false
+                        if (tradeType == "BUY") onBuy(qty) else onSell(qty)
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (tradeType == "BUY") Color(0xFF00B050) else LocalAppTheme.current.negative
+                    )
+                ) {
+                    Text("Confirm $tradeType")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirmDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun TicketTrustToolsCard(
+    portfolioActions: com.bysel.trader.data.models.CopilotPortfolioActionsResponse?,
+    lastOrderTraceId: String?,
+    hasEstimate: Boolean,
+    onRefreshGuidance: () -> Unit,
+    onTraceSupportLookup: ((String) -> Unit)? = null,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.surface),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Trust & Support",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = LocalAppTheme.current.text,
+                )
+                AssistChip(
+                    onClick = {},
+                    label = { Text(if (hasEstimate) "Estimate synced" else "Live quote synced") },
+                )
+            }
+
+            portfolioActions?.let { actions ->
+                Text(
+                    text = "${actions.priority}: ${actions.rationale}",
+                    fontSize = 11.sp,
+                    color = LocalAppTheme.current.textSecondary,
+                )
+                actions.actions.take(2).forEach { action ->
+                    Text(
+                        text = "• $action",
+                        fontSize = 11.sp,
+                        color = LocalAppTheme.current.text,
+                    )
+                }
+            } ?: Text(
+                text = "Copilot portfolio guidance will appear here as account context refreshes.",
+                fontSize = 11.sp,
+                color = LocalAppTheme.current.textSecondary,
+            )
+
+            lastOrderTraceId?.takeIf { it.isNotBlank() }?.let { traceId ->
+                Text(
+                    text = "Latest support trace: $traceId",
+                    fontSize = 11.sp,
+                    color = LocalAppTheme.current.textSecondary,
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onRefreshGuidance) {
+                    Text("Refresh Guidance")
+                }
+                if (onTraceSupportLookup != null && !lastOrderTraceId.isNullOrBlank()) {
+                    FilledTonalButton(onClick = { onTraceSupportLookup(lastOrderTraceId) }) {
+                        Text("Open Trace")
+                    }
+                }
             }
         }
     }
@@ -1175,7 +1982,16 @@ fun TradeDialog(
     onBuy: (Int) -> Unit,
     onSell: (Int) -> Unit,
     viewModel: TradingViewModel,
-) = TradeBottomSheet(quote, walletBalance, marketStatus, onDismiss, onBuy, onSell, viewModel)
+) = TradeBottomSheet(
+    quote = quote,
+    walletBalance = walletBalance,
+    marketStatus = marketStatus,
+    onDismiss = onDismiss,
+    onBuy = onBuy,
+    onSell = onSell,
+    onTraceSupportLookup = null,
+    viewModel = viewModel,
+)
 
 @Composable
 private fun TradeSummaryLine(
@@ -1258,12 +2074,7 @@ fun AddFundsDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 16.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = LocalAppTheme.current.text,
-                        unfocusedTextColor = LocalAppTheme.current.textSecondary,
-                        focusedBorderColor = Color(0xFF7C4DFF),
-                        unfocusedBorderColor = Color(0xFF2A2A2A)
-                    )
+                    colors = appOutlinedTextFieldColors(containerColor = LocalAppTheme.current.surface),
                 )
 
                 Text("Quick Add", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary, modifier = Modifier.padding(bottom = 8.dp))

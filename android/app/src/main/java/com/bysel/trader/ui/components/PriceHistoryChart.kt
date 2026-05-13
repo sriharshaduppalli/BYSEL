@@ -12,12 +12,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.bysel.trader.BuildConfig
+import com.bysel.trader.data.api.ChartPattern
 import com.bysel.trader.data.models.HistoryCandle
 
 @Composable
 fun PriceHistoryChart(
     history: List<HistoryCandle>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    symbol: String = "",
+    isDarkTheme: Boolean = true,
+    patterns: List<ChartPattern> = emptyList(),
 ) {
     return when (BuildConfig.CHART_ENGINE.uppercase()) {
         "SCICHART" -> {
@@ -32,6 +36,7 @@ fun PriceHistoryChart(
                 Text("SciChart mode selected. Add SciChart SDK/license to enable native renderer.")
             }
         }
-        else -> CandlestickChart(history = history, modifier = modifier)
+        "CANVAS" -> CandlestickChart(history = history, modifier = modifier)
+        else -> TradingViewChart(symbol = symbol, history = history, modifier = modifier, isDarkTheme = isDarkTheme, patterns = patterns)
     }
 }

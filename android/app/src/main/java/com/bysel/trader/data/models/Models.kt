@@ -154,6 +154,7 @@ data class AiAssistantResponse(
     val suggestions: List<String> = emptyList(),
     val data: Map<String, Any>? = null,
     val stocks: List<Map<String, Any>>? = null,
+    val source: String = "rule-engine",
     // Enhanced AI features (Level 2)
     val enhancedFeatures: EnhancedFeatures? = null,
     val apiVersion: String = "v1"
@@ -778,6 +779,10 @@ data class OTPResponse(
 
 data class FirebasePhoneAuthRequest(
     @SerializedName("firebase_id_token") val firebaseIdToken: String
+)
+
+data class DeleteAccountRequest(
+    val password: String
 )
 
 data class AuthResponse(

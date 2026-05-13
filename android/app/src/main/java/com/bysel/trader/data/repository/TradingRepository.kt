@@ -1,4 +1,4 @@
-package com.bysel.trader.data.repository
+﻿package com.bysel.trader.data.repository
 
 import com.bysel.trader.data.api.BYSELApiService
 import com.bysel.trader.data.api.PortfolioSummary
@@ -21,6 +21,12 @@ open class TradingRepository(private val database: BYSELDatabase) {
     private fun normalizeSymbol(value: String): String = value.trim().uppercase()
 
     private fun normalizeSide(value: String): String = value.trim().uppercase()
+
+    private fun historyCacheKey(symbol: String, period: String = "1mo", interval: String = "1d"): String {
+        val normalizedPeriod = period.trim().lowercase().ifBlank { "1mo" }
+        val normalizedInterval = interval.trim().lowercase().ifBlank { "1d" }
+        return "${normalizeSymbol(symbol)}|$normalizedPeriod|$normalizedInterval"
+    }
 
     private fun buildIdempotencyKey(order: Order): String {
         val windowBucket = System.currentTimeMillis() / IDEMPOTENCY_WINDOW_MILLIS
@@ -107,11 +113,12 @@ open class TradingRepository(private val database: BYSELDatabase) {
     suspend fun getQuoteHistory(symbol: String, period: String = "1mo", interval: String = "1d"): Result<List<HistoryCandle>> {
         return try {
             val history = apiService.getQuoteHistory(symbol, period, interval)
+            val cacheKey = historyCacheKey(symbol, period, interval)
             // persist fetched history to local DB
             try {
                 val entities = history.map { h ->
                     com.bysel.trader.data.models.HistoryEntity(
-                        symbol = symbol,
+                        symbol = cacheKey,
                         timestamp = h.timestamp,
                         open = h.open,
                         high = h.high,
@@ -120,7 +127,7 @@ open class TradingRepository(private val database: BYSELDatabase) {
                         volume = h.volume
                     )
                 }
-                database.historyDao().deleteHistoryForSymbol(symbol)
+                database.historyDao().deleteHistoryForSymbol(cacheKey)
                 database.historyDao().insertCandles(entities)
             } catch (_: Exception) {
                 // ignore persistence errors
@@ -132,9 +139,9 @@ open class TradingRepository(private val database: BYSELDatabase) {
     }
 
     // Return locally cached history as a Flow
-    fun getCachedHistory(symbol: String) = kotlinx.coroutines.flow.flow {
+    fun getCachedHistory(symbol: String, period: String = "1mo", interval: String = "1d") = kotlinx.coroutines.flow.flow {
         try {
-            val rows = database.historyDao().getHistoryForSymbol(symbol)
+            val rows = database.historyDao().getHistoryForSymbol(historyCacheKey(symbol, period, interval))
             val candles = rows.map { r -> HistoryCandle(timestamp = r.timestamp, open = r.open, high = r.high, low = r.low, close = r.close, volume = r.volume) }
             emit(candles)
         } catch (e: Exception) {
@@ -142,11 +149,12 @@ open class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
-    suspend fun saveHistory(symbol: String, candles: List<HistoryCandle>) {
+    suspend fun saveHistory(symbol: String, candles: List<HistoryCandle>, period: String = "1mo", interval: String = "1d") {
         try {
+            val cacheKey = historyCacheKey(symbol, period, interval)
             val entities = candles.map { h ->
                 com.bysel.trader.data.models.HistoryEntity(
-                    symbol = symbol,
+                    symbol = cacheKey,
                     timestamp = h.timestamp,
                     open = h.open,
                     high = h.high,
@@ -155,7 +163,7 @@ open class TradingRepository(private val database: BYSELDatabase) {
                     volume = h.volume
                 )
             }
-            database.historyDao().deleteHistoryForSymbol(symbol)
+            database.historyDao().deleteHistoryForSymbol(cacheKey)
             database.historyDao().insertCandles(entities)
         } catch (_: Exception) {
             // ignore
@@ -328,7 +336,11 @@ open class TradingRepository(private val database: BYSELDatabase) {
     // ==================== SEARCH ====================
     suspend fun searchStocks(query: String): Result<List<StockSearchResult>> {
         return try {
-            val results = apiService.searchStocks(query)
+            val normalizedQuery = query.trim()
+            if (normalizedQuery.isBlank()) {
+                return Result.Success(emptyList())
+            }
+            val results = apiService.searchStocks(normalizedQuery)
             Result.Success(results)
         } catch (e: Exception) {
             Result.Error(e.message ?: "Unknown error")
@@ -410,10 +422,60 @@ open class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
+    suspend fun aiAnalyzeFast(symbol: String): Result<StockAnalysis> {
+        return try {
+            val analysis = apiService.aiAnalyzeFast(symbol)
+            Result.Success(analysis)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
     suspend fun aiPredict(symbol: String): Result<StockPredictionResponse> {
         return try {
             val prediction = apiService.aiPredict(symbol)
             Result.Success(prediction)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getStockRecommendations(limit: Int = 10): Result<StockRecommendationsResponse> {
+        return try {
+            val recommendations = apiService.getStockRecommendations(limit)
+            Result.Success(recommendations)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    // ==================== ENHANCED AI ANALYSIS (LEVEL 2) ====================
+    suspend fun aiAnalyzeEnhanced(symbol: String, query: String? = null): Result<EnhancedStockAnalysisResponse> {
+        return try {
+            val response = apiService.aiAnalyzeEnhanced(symbol, query)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun aiAnalyzeQueryIntent(query: String): Result<Map<String, Any>> {
+        return try {
+            val response = apiService.aiAnalyzeQueryIntent(mapOf("query" to query))
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun aiGetConfidenceBreakdown(
+        symbol: String,
+        prediction: Map<String, Any>? = null,
+        modelAccuracy: Double? = 65.0
+    ): Result<ConfidenceBreakdownResponse> {
+        return try {
+            val response = apiService.aiGetConfidenceBreakdown(symbol, prediction, modelAccuracy)
+            Result.Success(response)
         } catch (e: Exception) {
             Result.Error(e.message ?: "Unknown error")
         }
@@ -601,6 +663,16 @@ open class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
+    suspend fun getSignalLabBuckets(limitPerBucket: Int = 8): Result<SignalLabBucketsResponse> {
+        return try {
+            val normalizedLimit = limitPerBucket.coerceIn(3, 20)
+            val response = apiService.getSignalLabBuckets(limitPerBucket = normalizedLimit)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
     // ==================== ADVANCED ORDER ENGINE ====================
     suspend fun placeAdvancedOrder(request: AdvancedOrderRequest): Result<AdvancedOrderResponse> {
         return try {
@@ -679,6 +751,24 @@ open class TradingRepository(private val database: BYSELDatabase) {
     suspend fun previewStrategy(request: StrategyPreviewRequest): Result<StrategyPreviewResponse> {
         return try {
             val response = apiService.previewStrategy(request)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getFuturesContracts(symbol: String): Result<FuturesContractsResponse> {
+        return try {
+            val response = apiService.getFuturesContracts(symbol = symbol)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun previewFuturesTicket(request: FuturesTicketPreviewRequest): Result<FuturesTicketPreviewResponse> {
+        return try {
+            val response = apiService.previewFuturesTicket(request)
             Result.Success(response)
         } catch (e: Exception) {
             Result.Error(e.message ?: "Unknown error")
@@ -791,6 +881,30 @@ open class TradingRepository(private val database: BYSELDatabase) {
     suspend fun getOrderByTrace(traceId: String): Result<OrderTraceLookupResponse> {
         return try {
             val response = apiService.getOrderByTrace(traceId.trim())
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getInvestorPortfolios(): Result<List<InvestorPortfolio>> {
+        return try {
+            val response = apiService.getInvestorPortfolios()
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getInvestorPortfolioInsights(
+        maxChangesPerInvestor: Int = 3,
+        ideaLimit: Int = 8,
+    ): Result<InvestorPortfolioInsightsResponse> {
+        return try {
+            val response = apiService.getInvestorPortfolioInsights(
+                maxChangesPerInvestor = maxChangesPerInvestor.coerceIn(1, 8),
+                ideaLimit = ideaLimit.coerceIn(3, 20),
+            )
             Result.Success(response)
         } catch (e: Exception) {
             Result.Error(e.message ?: "Unknown error")

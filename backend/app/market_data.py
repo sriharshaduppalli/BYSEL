@@ -548,8 +548,37 @@ NSE_SYMBOLS: Dict[str, str] = {k: v[0] for k, v in INDIAN_STOCKS.items()}
 
 # Build name lookup (lowercase company name → symbol) for search
 _NAME_INDEX: Dict[str, str] = {}
+
+# Enhanced indices for better company name matching
+_COMPANY_NAME_EXACT: Dict[str, str] = {}  # Full company name → symbol
+_COMPANY_NAME_PARTIAL: Dict[str, list] = {}  # Word → list of symbols
+_SYMBOL_BY_WORD: Dict[str, list] = {}  # Multi-word normalized → symbol
+
 for _sym, (_ticker, _name) in INDIAN_STOCKS.items():
-    _NAME_INDEX[_name.lower()] = _sym
+    _name_lower = _name.lower()
+    _NAME_INDEX[_name_lower] = _sym
+    _COMPANY_NAME_EXACT[_name_lower] = _sym
+
+    # Strip " Ltd" suffix and add variant
+    _name_no_ltd = _name_lower.replace(" ltd", "").replace(" limited", "").strip()
+    if _name_no_ltd and _name_no_ltd != _name_lower:
+        _COMPANY_NAME_EXACT[_name_no_ltd] = _sym
+
+    # Add multi-word normalized key (handles "South Indian Bank" → "SOUTHBANK")
+    _words = _name_no_ltd.split()
+    if len(_words) >= 2:
+        _multi_key = " ".join(_words[:-1]).strip()  # Drop last word typically (Ltd, Inc, etc)
+        if _multi_key and len(_multi_key) >= 3:
+            _SYMBOL_BY_WORD[_multi_key] = _sym
+
+    # Index individual words for partial matching
+    for _word in _name_lower.split():
+        _word = _word.strip()
+        if len(_word) >= 3:  # Only meaningful words
+            if _word not in _COMPANY_NAME_PARTIAL:
+                _COMPANY_NAME_PARTIAL[_word] = []
+            if _sym not in _COMPANY_NAME_PARTIAL[_word]:
+                _COMPANY_NAME_PARTIAL[_word].append(_sym)
 
 # Default symbols shown on app home / dashboard
 DEFAULT_SYMBOLS = [

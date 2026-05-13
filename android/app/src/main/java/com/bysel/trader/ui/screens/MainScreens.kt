@@ -34,6 +34,8 @@ import com.bysel.trader.ui.components.LoadingScreen
 import com.bysel.trader.ui.components.PullToRefreshBox
 import com.bysel.trader.ui.components.SwipeToDismissItem
 import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
+import com.bysel.trader.ui.components.PortfolioSkeletonLoader
+import com.bysel.trader.ui.components.DashboardSkeletonLoader
 import com.bysel.trader.ui.theme.LocalAppTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.Refresh
@@ -48,7 +50,9 @@ fun WatchlistScreen(
     onErrorDismiss: () -> Unit
 ) {
     if (isLoading && quotes.isEmpty()) {
-        LoadingScreen()
+        DashboardSkeletonLoader(
+            modifier = Modifier.fillMaxSize().background(LocalAppTheme.current.surface)
+        )
     } else if (error != null && quotes.isEmpty()) {
         ErrorScreen(error) { onRefresh() }
     } else {
@@ -142,6 +146,13 @@ fun UpgradedQuoteCard(quote: Quote, onClick: () -> Unit) {
                         color = LocalAppTheme.current.textSecondary,
                         modifier = Modifier.padding(top = 4.dp)
                     )
+                    val ago = remember(quote.timestamp) { formatTimeAgo(quote.timestamp) }
+                    Text(
+                        text = ago,
+                        fontSize = 10.sp,
+                        color = LocalAppTheme.current.textSecondary.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
                 }
 
                 Column(horizontalAlignment = Alignment.End) {
@@ -210,7 +221,9 @@ fun PortfolioScreen(
     // `quotes` parameter intentionally kept for future use (API stability)
 
     if (isLoading && holdings.isEmpty()) {
-        LoadingScreen()
+        PortfolioSkeletonLoader(
+            modifier = Modifier.fillMaxSize().background(LocalAppTheme.current.surface)
+        )
     } else {
         Column(
             modifier = Modifier
@@ -230,13 +243,40 @@ fun PortfolioScreen(
                     fontWeight = FontWeight.Bold,
                     color = LocalAppTheme.current.text
                 )
-                Button(
-                    onClick = onRefresh,
-                    modifier = Modifier.height(40.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("Refresh", fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val ctx = androidx.compose.ui.platform.LocalContext.current
+                    OutlinedButton(
+                        onClick = {
+                            // Build CSV in-memory and share via intent
+                            val sb = StringBuilder()
+                            sb.appendLine("Symbol,Qty,Avg Price,Current Price,Value,P&L,P&L %")
+                            holdings.forEach { h ->
+                                val value = h.last * h.qty
+                                val invested = h.avgPrice * h.qty
+                                val pnl = value - invested
+                                val pct = if (invested > 0) "%.2f".format(pnl / invested * 100) else "0.00"
+                                sb.appendLine("${h.symbol},${h.qty},${"%.2f".format(h.avgPrice)},${"%.2f".format(h.last)},${"%.2f".format(value)},${"%.2f".format(pnl)},$pct")
+                            }
+                            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(android.content.Intent.EXTRA_SUBJECT, "BYSEL Portfolio Export")
+                                putExtra(android.content.Intent.EXTRA_TEXT, sb.toString())
+                            }
+                            ctx.startActivity(android.content.Intent.createChooser(intent, "Share Portfolio"))
+                        },
+                        modifier = Modifier.height(40.dp),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Export", fontSize = 12.sp)
+                    }
+                    Button(
+                        onClick = onRefresh,
+                        modifier = Modifier.height(40.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Refresh", fontSize = 12.sp)
+                    }
                 }
             }
 
@@ -278,6 +318,14 @@ fun PortfolioScreen(
                             color = Color(0xFF666666),
                             modifier = Modifier.padding(top = 8.dp)
                         )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = { /* navigate to trading */ },
+                            colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Start Trading")
+                        }
                     }
                 }
             } else {
@@ -628,5 +676,16 @@ fun PortfolioHealthCard(
                 }
             }
         }
+    }
+}
+
+/** Format a millisecond timestamp into a human-readable "Xs ago" / "Xm ago" label */
+private fun formatTimeAgo(timestampMs: Long): String {
+    val diff = System.currentTimeMillis() - timestampMs
+    return when {
+        diff < 60_000 -> "${diff / 1000}s ago"
+        diff < 3_600_000 -> "${diff / 60_000}m ago"
+        diff < 86_400_000 -> "${diff / 3_600_000}h ago"
+        else -> "${diff / 86_400_000}d ago"
     }
 }

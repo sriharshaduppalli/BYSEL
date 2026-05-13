@@ -44,6 +44,9 @@ interface BYSELApiService {
     @POST("/auth/firebase-phone")
     suspend fun firebasePhoneAuth(@Body request: FirebasePhoneAuthRequest): AuthResponse
 
+    @POST("/auth/delete-account")
+    suspend fun deleteAccount(@Body request: DeleteAccountRequest): Map<String, String>
+
     // ==================== QUOTES ====================
     @GET("/quotes")
     suspend fun getQuotes(@Query("symbols") symbols: String): List<Quote>
@@ -278,6 +281,44 @@ interface BYSELApiService {
         @Query("model_accuracy") modelAccuracy: Double? = 65.0
     ): ConfidenceBreakdownResponse
 
+    @GET("/api/ai/v2/daily-brief")
+    suspend fun getAiDailyBrief(): AiDailyBriefResponse
+
+    @POST("/api/ai/v2/parse-trade-intent")
+    suspend fun parseTradeIntent(@Body body: Map<String, String>): TradeIntentResponse
+
+    @GET("/api/ai/v2/sentiment/{symbol}")
+    suspend fun getSentimentScore(@Path("symbol") symbol: String): SentimentScoreResponse
+
+    @GET("/api/ai/v2/patterns/{symbol}")
+    suspend fun getChartPatterns(
+        @Path("symbol") symbol: String,
+        @Query("period") period: String = "3mo"
+    ): ChartPatternsResponse
+
+    @GET("/api/ai/v2/portfolio/risk-analysis")
+    suspend fun getPortfolioRisk(
+        @Query("symbols") symbols: String,
+        @Query("weights") weights: String = ""
+    ): PortfolioRiskResponse
+
+    @GET("/api/ai/v2/earnings-calendar")
+    suspend fun getEarningsCalendar(
+        @Query("symbols") symbols: String = ""
+    ): EarningsCalendarResponse
+
+    @POST("/api/ai/v2/journal/log")
+    suspend fun logTrade(@Body entry: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
+
+    @GET("/api/ai/v2/journal/entries")
+    suspend fun getJournalEntries(
+        @Query("limit") limit: Int = 50,
+        @Query("symbol") symbol: String? = null
+    ): Map<String, Any>
+
+    @GET("/api/ai/v2/journal/insights")
+    suspend fun getJournalInsights(): Map<String, Any>
+
     // ==================== PORTFOLIO HEALTH ====================
     @GET("/portfolio/health")
     suspend fun getPortfolioHealth(): PortfolioHealthScore
@@ -383,4 +424,88 @@ data class AlertResponse(
     val status: String,
     val message: String,
     val id: Int? = null
+)
+
+data class AiDailyBriefResponse(
+    val session: String,
+    val timestamp: String,
+    val greeting: String,
+    val overallSentiment: String,
+    val outlook: String,
+    val topMovers: List<Map<String, Any>> = emptyList(),
+    val headlineCount: Int = 0,
+    val headlines: List<Map<String, Any>> = emptyList(),
+)
+
+data class TradeIntentResponse(
+    val intent: String,
+    val symbol: String?,
+    val qty: Int?,
+    val price: Double?,
+    val confidence: Double,
+    val raw: String,
+)
+
+data class SentimentScoreResponse(
+    val symbol: String,
+    val score: Int,
+    val scoreBar: Double,
+    val level: String,
+    val strength: String,
+    val headlineCount: Int,
+    val summary: String,
+)
+
+data class ChartPattern(
+    val pattern: String,
+    val type: String,
+    val confidence: Int,
+    val signal: String,
+    val description: String,
+    val startIdx: Int,
+    val endIdx: Int,
+    val historicalSuccessRate: Int,
+)
+
+data class ChartPatternsResponse(
+    val symbol: String,
+    val period: String,
+    val patterns: List<ChartPattern>,
+    val patternCount: Int,
+    val generatedAt: String,
+)
+
+data class PortfolioRiskMetrics(
+    val var95: Double,
+    val var99: Double,
+    val maxDrawdown: Double,
+    val sharpeRatio: Double,
+    val annualizedReturn: Double,
+    val annualizedVolatility: Double,
+)
+
+data class PortfolioRiskResponse(
+    val symbols: List<String>,
+    val weights: List<Double>,
+    val metrics: PortfolioRiskMetrics,
+    val monteCarloMedian: Double,
+    val monteCarloP5: Double,
+    val monteCarloP95: Double,
+    val correlationMatrix: List<List<Double>>,
+)
+
+data class EarningsEntry(
+    val symbol: String,
+    val earningsDate: String?,
+    val epsEstimate: Double?,
+    val epsActual: Double?,
+    val revenueEstimate: Long?,
+    val trailingPE: Double?,
+    val forwardPE: Double?,
+)
+
+data class EarningsCalendarResponse(
+    val earnings: List<EarningsEntry>,
+    val count: Int,
+    val generatedAt: String,
 )
