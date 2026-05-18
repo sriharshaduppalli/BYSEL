@@ -1,0 +1,15 @@
+android/
+*.aab
+*.apk
+*.jks
+*.b64
+*.p12
+.otp_patch_tmp/
+docs/
+playstore-graphics/
+playstore-metadata/
+website/
+*.md
+.git/
+__pycache__/
+*.pyc
