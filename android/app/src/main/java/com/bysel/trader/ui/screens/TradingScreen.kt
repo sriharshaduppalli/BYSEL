@@ -507,16 +507,24 @@ private fun SpotTradingWorkspace(
                     )
                     Column(modifier = Modifier.padding(start = 10.dp)) {
                         Text(
-                            text = "Wallet Balance",
+                            text = "Paper Trading Balance",
                             fontSize = 11.sp,
                             color = LocalAppTheme.current.textSecondary
                         )
-                        Text(
-                            text = "₹${String.format("%,.2f", walletBalance)}",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = LocalAppTheme.current.text
-                        )
+                        if (walletBalance > 0.0) {
+                            Text(
+                                text = "₹${String.format("%,.2f", walletBalance)}",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = LocalAppTheme.current.text
+                            )
+                        } else {
+                            Text(
+                                text = "Add funds to start trading",
+                                fontSize = 13.sp,
+                                color = LocalAppTheme.current.textSecondary
+                            )
+                        }
                     }
                 }
                 Button(
