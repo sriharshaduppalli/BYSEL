@@ -44,7 +44,7 @@ fun SettingsScreen(
     val authRepository = remember { AuthRepository() }
     val scope = rememberCoroutineScope()
 
-    var darkMode by remember { mutableStateOf(true) }
+    var darkMode by remember { mutableStateOf(currentTheme.lowercase() != "light") }
     var enableNotifications by remember { mutableStateOf(true) }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
@@ -325,7 +325,15 @@ fun SettingsScreen(
                 title = "Dark Mode",
                 subtitle = if (darkMode) "Enabled" else "Disabled",
                 value = darkMode,
-                onValueChange = { darkMode = it }
+                onValueChange = { enabled ->
+                    darkMode = enabled
+                    if (!enabled) {
+                        onThemeChange("light")
+                    } else {
+                        // Restore to default dark theme if currently on light
+                        if (selectedTheme.lowercase() == "light") onThemeChange("default")
+                    }
+                }
             )
         }
         item {

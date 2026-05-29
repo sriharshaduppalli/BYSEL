@@ -91,12 +91,11 @@ fun TradeJournalScreen(
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = appTheme.primary)
             }
-            return@Column
-        }
-
-        when (selectedTab) {
-            0 -> JournalInsightsTab(insights = insights, appTheme = appTheme)
-            1 -> JournalEntriesTab(entries = entries, appTheme = appTheme)
+        } else {
+            when (selectedTab) {
+                0 -> JournalInsightsTab(insights = insights, appTheme = appTheme)
+                1 -> JournalEntriesTab(entries = entries, appTheme = appTheme)
+            }
         }
     }
 }
@@ -285,8 +284,11 @@ private fun JournalEntryCard(
     val side = entry["side"] as? String ?: "BUY"
     val sideColor = if (side == "BUY") Color(0xFF4CAF50) else Color(0xFFE53935)
     @Suppress("UNCHECKED_CAST")
-    val notes = entry["autoNotes"] as? List<String> ?: emptyList()
+    val notes = (entry["autoNotes"] as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
     val timestamp = (entry["timestamp"] as? String)?.take(16)?.replace("T", " ") ?: ""
+    val price = (entry["price"] as? Number)?.toDouble() ?: 0.0
+    val total = (entry["total"] as? Number)?.toDouble() ?: 0.0
+    val qty = (entry["qty"] as? Number)?.toInt() ?: 0
 
     Card(
         colors = CardDefaults.cardColors(containerColor = appTheme.card),
@@ -316,15 +318,15 @@ private fun JournalEntryCard(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Column {
                     Text("Qty", fontSize = 10.sp, color = appTheme.textSecondary)
-                    Text("${entry["qty"] ?: 0}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = appTheme.text)
+                    Text("$qty", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = appTheme.text)
                 }
                 Column {
                     Text("Price", fontSize = 10.sp, color = appTheme.textSecondary)
-                    Text("₹${String.format("%.2f", (entry["price"] as? Double) ?: 0.0)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = appTheme.text)
+                    Text("₹${String.format("%.2f", price)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = appTheme.text)
                 }
                 Column {
                     Text("Total", fontSize = 10.sp, color = appTheme.textSecondary)
-                    Text("₹${String.format("%.0f", (entry["total"] as? Double) ?: 0.0)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = appTheme.text)
+                    Text("₹${String.format("%.0f", total)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = appTheme.text)
                 }
             }
 
