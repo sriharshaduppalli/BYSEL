@@ -501,9 +501,9 @@ def withdraw_funds(db: Session, user_id: int, amount: float) -> WalletResponse:
     )
 
 
-def get_holdings(db: Session) -> list[Holding]:
-    """Get all holdings with live prices."""
-    holdings_db = db.query(HoldingModel).all()
+def get_holdings(db: Session, user_id: int = 1) -> list[Holding]:
+    """Get all holdings with live prices for a specific user."""
+    holdings_db = db.query(HoldingModel).filter(HoldingModel.user_id == user_id).all()
     holdings = []
     for h in holdings_db:
         # Fetch live price for each holding
@@ -525,9 +525,9 @@ def get_holdings(db: Session) -> list[Holding]:
     return holdings
 
 
-def get_holding(db: Session, symbol: str) -> Holding | None:
-    """Get a single holding by symbol with live price."""
-    h = db.query(HoldingModel).filter(HoldingModel.symbol == symbol).first()
+def get_holding(db: Session, symbol: str, user_id: int = 1) -> Holding | None:
+    """Get a single holding by symbol with live price for a specific user."""
+    h = db.query(HoldingModel).filter(HoldingModel.symbol == symbol, HoldingModel.user_id == user_id).first()
     if not h:
         return None
 
@@ -566,7 +566,10 @@ def _execute_order_at_price(
         raise ValueError("execution_price must be positive")
 
     wallet = _wallet_for_user(db, user_id)
-    existing = db.query(HoldingModel).filter(HoldingModel.symbol == normalized_order.symbol).first()
+    existing = db.query(HoldingModel).filter(
+        HoldingModel.symbol == normalized_order.symbol,
+        HoldingModel.user_id == user_id,
+    ).first()
 
     if side == "BUY":
         order_cost = execution_price * normalized_order.qty
@@ -612,6 +615,7 @@ def _execute_order_at_price(
         else:
             db.add(
                 HoldingModel(
+                    user_id=user_id,
                     symbol=normalized_order.symbol,
                     quantity=normalized_order.qty,
                     avg_price=execution_price,

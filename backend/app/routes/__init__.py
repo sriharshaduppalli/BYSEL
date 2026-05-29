@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, HTTPException, Header, Request
+from fastapi import APIRouter, Depends, Query, HTTPException, Header
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
@@ -1195,15 +1195,15 @@ async def get_quote_history_endpoint(
 # ==================== HOLDINGS ====================
 
 @router.get("/holdings", response_model=list[Holding])
-async def get_holdings_endpoint(db: Session = Depends(get_db)):
-    """Get all holdings with live prices."""
-    return get_holdings(db)
+async def get_holdings_endpoint(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Get holdings for the authenticated user."""
+    return get_holdings(db, user.id)
 
 
 @router.get("/holdings/{symbol}", response_model=Holding)
-async def get_holding_endpoint(symbol: str, db: Session = Depends(get_db)):
-    """Get a single holding by symbol."""
-    holding = get_holding(db, symbol.upper())
+async def get_holding_endpoint(symbol: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Get a single holding by symbol for the authenticated user."""
+    holding = get_holding(db, symbol.upper(), user.id)
     if not holding:
         raise HTTPException(status_code=404, detail=f"No holding found for {symbol}")
     return holding
@@ -1385,9 +1385,9 @@ async def get_order_by_trace_endpoint(
 # ==================== PORTFOLIO ====================
 
 @router.get("/portfolio", response_model=PortfolioSummary)
-async def get_portfolio_endpoint(db: Session = Depends(get_db)):
+async def get_portfolio_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
     """Get portfolio summary with live values."""
-    holdings = get_holdings(db)
+    holdings = get_holdings(db, user_id)
 
     total_value = sum(h.last * h.qty for h in holdings)
     total_invested = sum(h.avgPrice * h.qty for h in holdings)
@@ -1404,9 +1404,9 @@ async def get_portfolio_endpoint(db: Session = Depends(get_db)):
 
 
 @router.get("/portfolio/value", response_model=PortfolioValue)
-async def get_portfolio_value_endpoint(db: Session = Depends(get_db)):
+async def get_portfolio_value_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
     """Get portfolio current value with live prices."""
-    holdings = get_holdings(db)
+    holdings = get_holdings(db, user_id)
 
     total_value = sum(h.last * h.qty for h in holdings)
     total_invested = sum(h.avgPrice * h.qty for h in holdings)
@@ -1422,17 +1422,17 @@ async def get_portfolio_value_endpoint(db: Session = Depends(get_db)):
 
 
 @router.get("/portfolio/export")
-async def export_portfolio_endpoint(fmt: str = "csv", db: Session = Depends(get_db)):
+async def export_portfolio_endpoint(fmt: str = "csv", db: Session = Depends(get_db), user_id: int = Header(1)):
     """Export portfolio as CSV. Usage: /portfolio/export?fmt=csv"""
     from fastapi.responses import StreamingResponse
     import io, csv as csvmod
 
-    holdings = get_holdings(db)
+    holdings = get_holdings(db, user_id)
 
     if fmt == "csv":
         output = io.StringIO()
         writer = csvmod.writer(output)
-        writer.writerow(["Symbol", "Qty", "Avg Price (\u20b9)", "Current Price (\u20b9)", "Value (\u20b9)", "P&L (\u20b9)", "P&L %"])
+        writer.writerow(["Symbol", "Qty", "Avg Price (₹)", "Current Price (₹)", "Value (₹)", "P&L (₹)", "P&L %"])
         for h in holdings:
             value = h.last * h.qty
             invested = h.avgPrice * h.qty
@@ -1613,11 +1613,10 @@ async def get_symbols_count():
 
 # ==================== HEALTH ====================
 
-@router.get("/health")
+@router.get("/health", response_model=HealthCheck)
 async def health_check():
     """Health check endpoint."""
-    gemini_ok = bool(os.environ.get("GEMINI_API_KEY"))
-    return {"status": "healthy", "version": "2.0.0", "gemini": gemini_ok}
+    return HealthCheck(status="healthy", version="2.0.0")
 
 
 # ==================== AI STOCK ASSISTANT ====================
@@ -1625,75 +1624,78 @@ async def health_check():
 class AiQuery(BaseModel):
     query: str
 
-# ---------- AI rate limiter (20 req/min per IP) ----------
-_ai_rate_buckets: Dict[str, list] = {}
-_ai_rate_lock = __import__("threading").Lock()
-
-def _check_ai_rate_limit(request):
-    """Simple per-IP rate limit for AI endpoints: 20 requests/minute."""
-    ip = getattr(request.client, "host", "unknown") if request.client else "unknown"
-    now = time.time()
-    with _ai_rate_lock:
-        bucket = _ai_rate_buckets.setdefault(ip, [])
-        # Prune entries older than 60s
-        _ai_rate_buckets[ip] = bucket = [t for t in bucket if now - t < 60]
-        if len(bucket) >= 20:
-            raise HTTPException(status_code=429, detail="AI rate limit exceeded. Please wait a moment.")
-        bucket.append(now)
-        # Prune stale IPs every so often
-        if len(_ai_rate_buckets) > 2000:
-            cutoff = now - 120
-            for k in list(_ai_rate_buckets):
-                if all(t < cutoff for t in _ai_rate_buckets.get(k, [])):
-                    del _ai_rate_buckets[k]
-
-
-@router.get("/ai/gemini-status")
-async def gemini_status():
-    """Debug: check LLM provider availability."""
-    gemini_key = os.environ.get("GEMINI_API_KEY", "")
-    gk_preview = f"{gemini_key[:4]}...{gemini_key[-4:]}" if len(gemini_key) > 8 else ("SET" if gemini_key else "MISSING")
-    try:
-        from ..gemini_llm import gemini_available, ask_gemini, GEMINI_MODELS
-        avail = gemini_available()
-        result = await ask_gemini("Say hello in one sentence.")
-        return {"gemini_key": gk_preview, "models": GEMINI_MODELS,
-                "available": avail, "test": result}
-    except Exception as e:
-        return {"gemini_key": gk_preview, "available": False, "error": str(e)}
-
-
 @router.post("/ai/ask")
-async def ai_ask_endpoint(body: AiQuery, request: Request, db: Session = Depends(get_db)):
-    """Natural language AI stock assistant.
-    Examples: 'Should I buy RELIANCE?', 'Predict TCS price', 'Compare INFY and TCS'"""
-    _check_ai_rate_limit(request)
-    # Try Gemini first, fall back to rule-based
+async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
+    """Natural language AI stock assistant with structured responses.
+    Examples: 'Should I buy RELIANCE?', 'Predict TCS price', 'Compare INFY and TCS'
+
+    Returns unified response format with:
+    - detected_stock: symbol, confidence, match_method
+    - analysis: technical, fundamental, trading_levels, sentiment
+    - recommendation: signal, confidence, reasoning, risks
+    - source: gemini or rule-engine
+    - data_quality: complete or incomplete
+    """
+    from ..response_validator import ResponseValidator
+
+    # Get base analysis from rule-engine (always run for grounding)
+    rule_result = ai_assistant(body.query, db=db)
+
+    # Try Gemini first if available
     try:
         from ..gemini_llm import gemini_available, ask_gemini
         if gemini_available():
-            # Build market context from rule-based engine for grounding
-            rule_result = ai_assistant(body.query, db=db)
-            context_parts = []
-            if rule_result.get("analysis"):
-                context_parts.append(f"Technical analysis: {rule_result['analysis']}")
-            if rule_result.get("symbols"):
-                context_parts.append(f"Detected symbols: {rule_result['symbols']}")
-            context = "\n".join(context_parts) if context_parts else None
+            # Build structured context dict from rule-engine data
+            symbol = None
+            if rule_result.get("detected_stocks"):
+                symbol = rule_result["detected_stocks"][0].get("symbol")
 
-            gemini_result = await ask_gemini(body.query, context=context)
+            context_dict = {
+                "symbol": symbol,
+                "company_name": rule_result.get("company_name"),
+                "sector": rule_result.get("sector"),
+                "current_price": rule_result.get("current_price") or rule_result.get("analysis", {}).get("current_price"),
+                "technical": rule_result.get("analysis", {}).get("technical") or {},
+                "fundamental": rule_result.get("analysis", {}).get("fundamental") or {},
+                "trading_levels": rule_result.get("analysis", {}).get("trading_levels") or {},
+                "sentiment": rule_result.get("analysis", {}).get("sentiment") or {},
+            }
+
+            gemini_result = await ask_gemini(body.query, context=context_dict)
             if "answer" in gemini_result:
-                # Merge: use LLM text but keep structured data from rule engine
-                merged = {**rule_result, "answer": gemini_result["answer"], "source": gemini_result.get("source", "llm")}
-                return merged
-            else:
-                logger.warning("LLM returned no answer: %s", gemini_result)
-    except Exception as e:
-        logger.error("LLM fallback error: %s", e)
+                # Use Gemini's response but keep structured rule-engine data
+                merged = {
+                    **rule_result,
+                    "answer": gemini_result["answer"],
+                    "source": "gemini"
+                }
 
-    result = ai_assistant(body.query, db=db)
-    result["source"] = "rule-engine"
-    return result
+                # Validate completeness
+                is_valid, missing = ResponseValidator.validate_response(merged)
+                merged["data_quality"] = "complete" if is_valid else f"incomplete: {', '.join(missing[:3])}"
+
+                return merged
+    except Exception as e:
+        logger.error(f"Gemini integration error: {e}")
+        pass  # Fall through to rule-based
+
+    # Fallback: Use rule-engine result with validation
+    rule_result["source"] = "rule-engine"
+
+    # Validate and augment if needed
+    is_valid, missing = ResponseValidator.validate_response(rule_result)
+    if not is_valid:
+        # Try to augment missing fields from analysis
+        analysis_data = rule_result.get("analysis", {})
+        if analysis_data:
+            rule_result = ResponseValidator.augment_incomplete_response(
+                rule_result, analysis_data
+            )
+        rule_result["data_quality"] = f"incomplete: {', '.join(missing[:3])}"
+    else:
+        rule_result["data_quality"] = "complete"
+
+    return rule_result
 
 
 @router.get("/ai/analyze/{symbol}")
@@ -2650,7 +2652,7 @@ async def upsert_family_member_endpoint(
 @router.get("/wealth/family/dashboard", response_model=FamilyDashboardResponse)
 async def family_dashboard_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
     members = db.query(FamilyMemberModel).filter(FamilyMemberModel.user_id == user_id).all()
-    holdings = get_holdings(db)
+    holdings = get_holdings(db, user_id)
     holdings_value = sum((item.last * item.qty) for item in holdings)
     wallet_balance = get_wallet(db, user_id).balance
 
@@ -2809,8 +2811,8 @@ async def copilot_post_trade_endpoint(payload: CopilotPostTradeRequest, db: Sess
 
 
 @router.get("/ai/copilot/portfolio-actions", response_model=CopilotPortfolioActionsResponse)
-async def copilot_portfolio_actions_endpoint(db: Session = Depends(get_db)):
-    holdings = get_holdings(db)
+async def copilot_portfolio_actions_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
+    holdings = get_holdings(db, user_id)
     if not holdings:
         return CopilotPortfolioActionsResponse(
             actions=["Start with staggered entries in 2-3 diversified large-cap names.", "Create one downside alert before first trade."],
