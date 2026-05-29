@@ -1718,6 +1718,11 @@ class TradingViewModel(
 
     fun createAlert(symbol: String, thresholdPrice: Double, alertType: String) {
         viewModelScope.launch {
+            val duplicate = _alerts.value.any { it.symbol == symbol && it.thresholdPrice == thresholdPrice && it.alertType == alertType }
+            if (duplicate) {
+                _error.value = "Alert already exists for $symbol at ₹${String.format("%.2f", thresholdPrice)}"
+                return@launch
+            }
             val a = Alert(symbol = symbol, thresholdPrice = thresholdPrice, alertType = alertType)
             when (val r = repository.createAlert(a)) { is Result.Error -> _error.value = r.message; else -> {} }
         }
