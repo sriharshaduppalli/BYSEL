@@ -41,6 +41,7 @@ class QuoteModel(Base):
 class HoldingModel(Base):
     __tablename__ = "holdings"
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True, default=1)
     symbol = Column(String, index=True)
     quantity = Column(Integer)
     avg_price = Column(Float)
@@ -317,6 +318,10 @@ def _ensure_user_columns() -> None:
     _ensure_column("users", "token_version", "token_version INTEGER NOT NULL DEFAULT 0")
 
 
+def _ensure_holdings_columns() -> None:
+    _ensure_column("holdings", "user_id", "user_id INTEGER NOT NULL DEFAULT 1")
+
+
 def _ensure_order_columns() -> None:
     _ensure_column("orders", "user_id", "user_id INTEGER NOT NULL DEFAULT 1")
     _ensure_column("orders", "order_type", "order_type VARCHAR NULL")
@@ -505,6 +510,7 @@ def _merge_legacy_auth_rows_into_active_db() -> None:
 
 _ensure_refresh_token_columns()
 _ensure_user_columns()
+_ensure_holdings_columns()
 _ensure_order_columns()
 _ensure_order_indexes()
 _merge_legacy_auth_rows_into_active_db()

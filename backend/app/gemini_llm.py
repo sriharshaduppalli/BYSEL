@@ -14,15 +14,23 @@ logger = logging.getLogger(__name__)
 _model = None
 
 # Enhanced system prompt with detailed structural requirements
-SYSTEM_PROMPT = """You are BYSEL AI, an expert Indian stock market analyst.
+SYSTEM_PROMPT = """You are BYSEL AI, an expert Indian stock market analyst assistant.
 
-CRITICAL: For EVERY stock query, provide STRUCTURED analysis with these MANDATORY sections:
+STEP 1 — DIRECT ANSWER (always first):
+Read the user's question carefully. Before any analysis, answer it directly:
+- "Should I buy X?" → State BUY / SELL / HOLD with one-sentence reason
+- "What is X price?" → Give the price from the context data
+- "Compare A vs B?" → State which is better in one sentence
+- "Predict X price?" → Give a range estimate with probability
+- General questions (news, market, sector) → Answer directly without stock analysis template
+
+STEP 2 — STRUCTURED ANALYSIS (only if a specific stock is asked about):
 
 1. SYMBOL & CONTEXT
    - Stock symbol, full name, sector, market cap
 
 2. TECHNICAL ANALYSIS (MUST include):
-   - RSI: [0-100] value and interpretation (>70=overbought, <30=oversold)
+   - RSI: [value from data] and interpretation (>70=overbought, <30=oversold)
    - MACD: bullish/bearish/neutral with histogram direction
    - Bollinger Bands: price position (above/middle/below)
    - Moving Average Trend: 5/20/50/200 SMA status, trend direction
@@ -33,12 +41,11 @@ CRITICAL: For EVERY stock query, provide STRUCTURED analysis with these MANDATOR
    - Market Cap: formatted in ₹ crores
    - Dividend Yield: [%] if applicable
    - 52-Week: ₹[low] - ₹[high] and current position (top/middle/bottom)
-   - Earnings Next: [date if known]
    - Business Quality: moat, competitive position, growth prospects
 
 4. TRADING LEVELS (MUST include):
-   - Support 1: ₹[level] (recent support)
-   - Resistance 1: ₹[level] (recent resistance)
+   - Support 1: ₹[level]
+   - Resistance 1: ₹[level]
    - Stop Loss (if buying): ₹[level]
    - Take Profit Target (1-month): ₹[target]
    - Risk/Reward Ratio: [calculated]
@@ -47,28 +54,24 @@ CRITICAL: For EVERY stock query, provide STRUCTURED analysis with these MANDATOR
    - News Sentiment: [positive% / negative% / neutral%] breakdown
    - Recent Events: earnings, splits, FII/DII flows, regulatory news
    - Sector Trend: bullish/neutral/bearish
-   - Sentiment Impact: how it affects price momentum
 
 6. SIGNAL & RECOMMENDATION (MUST include):
    - PRIMARY SIGNAL: BUY / SELL / HOLD
-   - Confidence: [0-100]% (never vague - be specific)
-   - Why Confident: 2-3 key reasons with specific data points
+   - Confidence: [0-100]% (never vague — be specific)
+   - Why Confident: 2-3 key reasons with specific data points from provided context
    - Key Risks: 2-3 downside risks specific to this stock
    - Time Horizon: day trade / swing / 1-month / 3-month / long-term
 
 7. DISCLAIMER: "Not financial advice. Do your own research. Consult a registered advisor."
 
-FORMATTING RULES:
-- Use Indian market terminology (NSE, BSE, NIFTY, SENSEX, etc.)
-- Format prices in ₹ with Indian number system (₹1,23,456)
-- Support Hinglish queries naturally
-- If ANY required data is missing, EXPLICITLY STATE "Data not available: [field]"
-- Never omit a section - even if data unavailable, mention it
-- Confidence scores must be specific (78%, not "quite confident")
-- Give probability-weighted ranges for predictions, never single-point forecasts
-
-CRITICAL: If you notice conflicting signals (e.g., bullish technicals but bearish fundamentals),
-explicitly highlight this conflict and explain the trade-off.
+CRITICAL RULES:
+- ONLY use numbers from the provided context data. Never invent RSI, P/E, price levels.
+- If a data field is missing, write "Data not available" — never make up a number.
+- Use Indian market terminology (NSE, BSE, NIFTY, SENSEX).
+- Format prices in ₹ with Indian number system (₹1,23,456).
+- Support Hinglish queries naturally — respond in the same language mix used by the user.
+- Confidence scores must be specific (78%, not "quite confident").
+- If signals conflict (e.g. bullish technicals but bearish fundamentals), explicitly highlight it.
 
 Indian Market Context:
 - Consider FII/DII flows, RBI decisions, rupee strength
@@ -122,65 +125,80 @@ def _format_context_for_gemini(context_dict: Optional[Dict]) -> str:
             parts.append(f"Company: {context_dict['company_name']}")
         if context_dict.get("sector"):
             parts.append(f"Sector: {context_dict['sector']}")
+        if context_dict.get("current_price"):
+            parts.append(f"Current Price: ₹{context_dict['current_price']}")
         parts.append("")
 
     # Technical metrics
-    if context_dict.get("technical"):
-        tech = context_dict["technical"]
+    tech = context_dict.get("technical") or {}
+    if any(tech.values()):
         parts.append("TECHNICAL DATA PROVIDED:")
-        if "rsi" in tech:
-            parts.append(f"  RSI: {tech['rsi']} (interpretation: {tech.get('rsi_interpretation', 'neutral')})")
-        if "macd" in tech:
+        if tech.get("rsi"):
+            parts.append(f"  RSI: {tech['rsi']} ({tech.get('rsi_interpretation', 'neutral')})")
+        if tech.get("macd"):
             parts.append(f"  MACD: {tech['macd']}")
-        if "bollinger_bands" in tech:
+        if tech.get("bollinger_bands"):
             parts.append(f"  Bollinger Bands: {tech['bollinger_bands']}")
-        if "moving_averages" in tech:
+        if tech.get("moving_averages"):
             parts.append(f"  Moving Averages: {tech['moving_averages']}")
-        if "trend" in tech:
+        if tech.get("trend"):
             parts.append(f"  Trend: {tech['trend']}")
+        parts.append("")
+    else:
+        parts.append("TECHNICAL DATA: Not available from data provider at this time.")
         parts.append("")
 
     # Fundamentals
-    if context_dict.get("fundamental"):
-        fund = context_dict["fundamental"]
+    fund = context_dict.get("fundamental") or {}
+    if any(fund.values()):
         parts.append("FUNDAMENTAL DATA PROVIDED:")
-        if "pe_ratio" in fund:
+        if fund.get("pe_ratio"):
             parts.append(f"  P/E Ratio: {fund['pe_ratio']} (sector avg: {fund.get('pe_sector_avg', 'N/A')})")
-        if "market_cap" in fund:
+        if fund.get("market_cap"):
             parts.append(f"  Market Cap: {fund['market_cap']}")
-        if "dividend_yield" in fund:
+        if fund.get("dividend_yield"):
             parts.append(f"  Dividend Yield: {fund['dividend_yield']}")
-        if "week_52" in fund:
+        if fund.get("week_52"):
             parts.append(f"  52-Week: {fund['week_52']}")
+        parts.append("")
+    else:
+        parts.append("FUNDAMENTAL DATA: Not available from data provider at this time.")
         parts.append("")
 
     # Trading levels
-    if context_dict.get("trading_levels"):
-        tl = context_dict["trading_levels"]
+    tl = context_dict.get("trading_levels") or {}
+    if any(tl.values()):
         parts.append("TRADING LEVELS PROVIDED:")
-        if "support_1" in tl:
+        if tl.get("support_1"):
             parts.append(f"  Support 1: ₹{tl['support_1']}")
-        if "resistance_1" in tl:
+        if tl.get("resistance_1"):
             parts.append(f"  Resistance 1: ₹{tl['resistance_1']}")
-        if "stop_loss" in tl:
+        if tl.get("stop_loss"):
             parts.append(f"  Recommended SL: ₹{tl['stop_loss']}")
-        if "take_profit" in tl:
+        if tl.get("take_profit"):
             parts.append(f"  Recommended TP: ₹{tl['take_profit']}")
+        parts.append("")
+    else:
+        parts.append("TRADING LEVELS: Not available from data provider at this time.")
         parts.append("")
 
     # Sentiment
-    if context_dict.get("sentiment"):
-        sent = context_dict["sentiment"]
+    sent = context_dict.get("sentiment") or {}
+    if any(sent.values()):
         parts.append("SENTIMENT ANALYSIS PROVIDED:")
-        if "overall" in sent:
+        if sent.get("overall"):
             parts.append(f"  Overall: {sent['overall']}")
-        if "breakdown" in sent:
+        if sent.get("breakdown"):
             parts.append(f"  Breakdown: {sent['breakdown']}")
-        if "recent_events" in sent:
-            parts.append(f"  Recent Events: {', '.join(sent['recent_events'])}")
+        events = sent.get("recent_events")
+        if events and isinstance(events, list):
+            parts.append(f"  Recent Events: {', '.join(events)}")
+        parts.append("")
+    else:
+        parts.append("SENTIMENT DATA: No recent news found for this stock.")
         parts.append("")
 
-    parts.append("Based on the provided data above, structure your response exactly as specified in your instructions.")
+    parts.append("IMPORTANT: Base your analysis ONLY on the data provided above. Do not invent numbers.")
     return "\n".join(parts)
 
 
@@ -218,8 +236,8 @@ async def ask_gemini(query: str, context: Optional[Dict] = None) -> Dict:
         response = await model.generate_content_async(
             full_prompt,
             generation_config={
-                "temperature": 0.7,
-                "max_output_tokens": 2048,  # Increased for structured analysis
+                "temperature": 0.4,
+                "max_output_tokens": 2048,
             },
         )
         text = response.text.strip() if response.text else ""

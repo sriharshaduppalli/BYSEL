@@ -1195,15 +1195,15 @@ async def get_quote_history_endpoint(
 # ==================== HOLDINGS ====================
 
 @router.get("/holdings", response_model=list[Holding])
-async def get_holdings_endpoint(db: Session = Depends(get_db)):
-    """Get all holdings with live prices."""
-    return get_holdings(db)
+async def get_holdings_endpoint(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Get holdings for the authenticated user."""
+    return get_holdings(db, user.id)
 
 
 @router.get("/holdings/{symbol}", response_model=Holding)
-async def get_holding_endpoint(symbol: str, db: Session = Depends(get_db)):
-    """Get a single holding by symbol."""
-    holding = get_holding(db, symbol.upper())
+async def get_holding_endpoint(symbol: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Get a single holding by symbol for the authenticated user."""
+    holding = get_holding(db, symbol.upper(), user.id)
     if not holding:
         raise HTTPException(status_code=404, detail=f"No holding found for {symbol}")
     return holding
@@ -1385,9 +1385,9 @@ async def get_order_by_trace_endpoint(
 # ==================== PORTFOLIO ====================
 
 @router.get("/portfolio", response_model=PortfolioSummary)
-async def get_portfolio_endpoint(db: Session = Depends(get_db)):
+async def get_portfolio_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
     """Get portfolio summary with live values."""
-    holdings = get_holdings(db)
+    holdings = get_holdings(db, user_id)
 
     total_value = sum(h.last * h.qty for h in holdings)
     total_invested = sum(h.avgPrice * h.qty for h in holdings)
@@ -1404,9 +1404,9 @@ async def get_portfolio_endpoint(db: Session = Depends(get_db)):
 
 
 @router.get("/portfolio/value", response_model=PortfolioValue)
-async def get_portfolio_value_endpoint(db: Session = Depends(get_db)):
+async def get_portfolio_value_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
     """Get portfolio current value with live prices."""
-    holdings = get_holdings(db)
+    holdings = get_holdings(db, user_id)
 
     total_value = sum(h.last * h.qty for h in holdings)
     total_invested = sum(h.avgPrice * h.qty for h in holdings)
@@ -1422,12 +1422,12 @@ async def get_portfolio_value_endpoint(db: Session = Depends(get_db)):
 
 
 @router.get("/portfolio/export")
-async def export_portfolio_endpoint(fmt: str = "csv", db: Session = Depends(get_db)):
+async def export_portfolio_endpoint(fmt: str = "csv", db: Session = Depends(get_db), user_id: int = Header(1)):
     """Export portfolio as CSV. Usage: /portfolio/export?fmt=csv"""
     from fastapi.responses import StreamingResponse
     import io, csv as csvmod
 
-    holdings = get_holdings(db)
+    holdings = get_holdings(db, user_id)
 
     if fmt == "csv":
         output = io.StringIO()
@@ -1654,10 +1654,11 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                 "symbol": symbol,
                 "company_name": rule_result.get("company_name"),
                 "sector": rule_result.get("sector"),
-                "technical": rule_result.get("analysis", {}).get("technical", {}),
-                "fundamental": rule_result.get("analysis", {}).get("fundamental", {}),
-                "trading_levels": rule_result.get("analysis", {}).get("trading_levels", {}),
-                "sentiment": rule_result.get("analysis", {}).get("sentiment", {}),
+                "current_price": rule_result.get("current_price") or rule_result.get("analysis", {}).get("current_price"),
+                "technical": rule_result.get("analysis", {}).get("technical") or {},
+                "fundamental": rule_result.get("analysis", {}).get("fundamental") or {},
+                "trading_levels": rule_result.get("analysis", {}).get("trading_levels") or {},
+                "sentiment": rule_result.get("analysis", {}).get("sentiment") or {},
             }
 
             gemini_result = await ask_gemini(body.query, context=context_dict)
@@ -2651,7 +2652,7 @@ async def upsert_family_member_endpoint(
 @router.get("/wealth/family/dashboard", response_model=FamilyDashboardResponse)
 async def family_dashboard_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
     members = db.query(FamilyMemberModel).filter(FamilyMemberModel.user_id == user_id).all()
-    holdings = get_holdings(db)
+    holdings = get_holdings(db, user_id)
     holdings_value = sum((item.last * item.qty) for item in holdings)
     wallet_balance = get_wallet(db, user_id).balance
 
@@ -2810,8 +2811,8 @@ async def copilot_post_trade_endpoint(payload: CopilotPostTradeRequest, db: Sess
 
 
 @router.get("/ai/copilot/portfolio-actions", response_model=CopilotPortfolioActionsResponse)
-async def copilot_portfolio_actions_endpoint(db: Session = Depends(get_db)):
-    holdings = get_holdings(db)
+async def copilot_portfolio_actions_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
+    holdings = get_holdings(db, user_id)
     if not holdings:
         return CopilotPortfolioActionsResponse(
             actions=["Start with staggered entries in 2-3 diversified large-cap names.", "Create one downside alert before first trade."],
