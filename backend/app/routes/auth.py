@@ -80,7 +80,7 @@ AUTH_SECRET = os.getenv("AUTH_SECRET", "")
 if not AUTH_SECRET:
     AUTH_SECRET = secrets.token_hex(32)
     logger.warning("auth.secret.generated — AUTH_SECRET env var not set; using random secret (tokens will not survive restarts)")
-ACCESS_TOKEN_TTL_SECONDS = int(os.getenv("ACCESS_TOKEN_TTL_SECONDS", "900"))
+ACCESS_TOKEN_TTL_SECONDS = int(os.getenv("ACCESS_TOKEN_TTL_SECONDS", "7200"))
 REFRESH_TOKEN_TTL_SECONDS = int(os.getenv("REFRESH_TOKEN_TTL_SECONDS", "2592000"))
 LOGIN_RATE_LIMIT_ATTEMPTS = int(os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "6"))
 LOGIN_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", "60"))
@@ -93,7 +93,7 @@ AUTH_DEBUG_ENDPOINTS_ENABLED = os.getenv("AUTH_DEBUG_ENDPOINTS_ENABLED", "false"
 AUTH_DEBUG_TOKEN = os.getenv("AUTH_DEBUG_TOKEN", "")
 REFRESH_TOKEN_RETENTION_DAYS = int(os.getenv("REFRESH_TOKEN_RETENTION_DAYS", "30"))
 MAX_ACTIVE_SESSIONS_PER_USER = int(os.getenv("MAX_ACTIVE_SESSIONS_PER_USER", "5"))
-REFRESH_TOKEN_REPLAY_GRACE_SECONDS = int(os.getenv("REFRESH_TOKEN_REPLAY_GRACE_SECONDS", "15"))
+REFRESH_TOKEN_REPLAY_GRACE_SECONDS = int(os.getenv("REFRESH_TOKEN_REPLAY_GRACE_SECONDS", "30"))
 PASSWORD_RESET_TOKEN_TTL_SECONDS = int(os.getenv("PASSWORD_RESET_TOKEN_TTL_SECONDS", "900"))
 RATE_LIMIT_BUCKET_MAX_KEYS = int(os.getenv("RATE_LIMIT_BUCKET_MAX_KEYS", "5000"))
 RATE_LIMIT_PRUNE_INTERVAL_SECONDS = int(os.getenv("RATE_LIMIT_PRUNE_INTERVAL_SECONDS", "30"))
@@ -104,6 +104,7 @@ SMTP_USERNAME = os.getenv("SMTP_USERNAME", "").strip()
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", SUPPORT_EMAIL).strip() or SUPPORT_EMAIL
 SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
 PASSWORD_RESET_DEBUG_RESPONSE_ENABLED = os.getenv(
     "AUTH_PASSWORD_RESET_DEBUG_RESPONSE",
     "false"
@@ -302,7 +303,50 @@ def _smtp_password_reset_configured() -> bool:
     return bool(SMTP_HOST and SMTP_FROM_EMAIL)
 
 
+def _send_password_reset_email_resend(recipient_email: str, username: str, reset_code: str) -> bool:
+    """Send password reset email via Resend API (https://resend.com — free tier: 100 emails/day)."""
+    if not RESEND_API_KEY:
+        return False
+    minutes = max(1, PASSWORD_RESET_TOKEN_TTL_SECONDS // 60)
+    from_addr = SMTP_FROM_EMAIL if SMTP_FROM_EMAIL != SUPPORT_EMAIL else "BYSEL <onboarding@resend.dev>"
+    body = "\n".join([
+        f"Hi {username},",
+        "",
+        f"Your BYSEL password reset code is: {reset_code}",
+        f"This code expires in {minutes} minute(s).",
+        "",
+        "If you did not request this, you can safely ignore this email.",
+        "",
+        "— BYSEL Team",
+    ])
+    payload = json.dumps({
+        "from": from_addr,
+        "to": [recipient_email],
+        "subject": "BYSEL Password Reset Code",
+        "text": body,
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=payload,
+        headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status == 200
+    except Exception as exc:
+        logger.exception(
+            "auth.password_reset.resend_failed email=%s reason=%s",
+            _mask_identifier(recipient_email), str(exc),
+        )
+        return False
+
+
 def _send_password_reset_email(recipient_email: str, username: str, reset_code: str) -> bool:
+    # Try Resend first (no SMTP config needed — just RESEND_API_KEY env var)
+    if RESEND_API_KEY and _send_password_reset_email_resend(recipient_email, username, reset_code):
+        return True
+
+    # Fall back to SMTP
     if not _smtp_password_reset_configured():
         return False
 
