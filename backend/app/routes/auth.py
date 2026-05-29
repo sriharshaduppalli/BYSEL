@@ -984,6 +984,8 @@ def admin_delete_user(req: AdminDeleteRequest):
 def register(user: UserRegister, request: Request):
     normalized_username = _normalize_username(user.username)
     normalized_email = _normalize_email(user.email)
+    if "@" not in normalized_email or "." not in normalized_email.split("@")[-1]:
+        raise HTTPException(status_code=400, detail="Please enter a valid email address.")
     raw_password = str(user.password)
     if len(raw_password) < 6:
         _metric_inc("register.failure_password_too_short")
@@ -1066,6 +1068,8 @@ def register(user: UserRegister, request: Request):
 def login(user: UserLogin, request: Request):
     client_ip = _client_ip(request)
     normalized_username = _normalize_username(user.username)
+    if not normalized_username:
+        raise HTTPException(status_code=400, detail="Username or email is required")
     username_key = normalized_username.lower()
     login_key = f"{client_ip}:{username_key}"
     try:
@@ -2018,7 +2022,7 @@ async def delete_account(
         # Delete all associated data
         db.query(RefreshTokenModel).filter(RefreshTokenModel.user_id == user_id).delete()
         db.query(WalletModel).filter(WalletModel.user_id == user_id).delete()
-        db.query(OTPModel).filter(OTPModel.user_id == user_id).delete()
+        db.query(OTPModel).filter(OTPModel.mobile_number == (user.mobile_number or "")).delete()
         db.query(PasswordResetTokenModel).filter(PasswordResetTokenModel.user_id == user_id).delete()
 
         # Delete the user
