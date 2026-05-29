@@ -9,6 +9,8 @@ import androidx.lifecycle.viewModelScope
 import com.bysel.trader.data.models.*
 import com.bysel.trader.data.repository.Result
 import com.bysel.trader.data.repository.TradingRepository
+import com.bysel.trader.data.auth.AuthSessionManager
+import com.bysel.trader.data.auth.AuthTokenRefresher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -878,12 +880,31 @@ class TradingViewModel(
         _streamHealth.value = StreamHealth.OFFLINE
     }
 
+    private fun proactiveTokenRefresh() {
+        if (!AuthSessionManager.isAccessTokenExpiringSoon()) return
+        val refreshToken = AuthSessionManager.getRefreshToken() ?: return
+        viewModelScope.launch {
+            try {
+                val refreshed = AuthTokenRefresher.refresh(refreshToken)
+                AuthSessionManager.saveSession(
+                    accessToken = refreshed.access_token,
+                    refreshToken = refreshed.refresh_token,
+                    userId = refreshed.user_id,
+                )
+            } catch (_: Exception) {
+                // Non-critical — OkHttp Authenticator handles actual 401s reactively
+            }
+        }
+    }
+
     fun onAppForegroundResume(force: Boolean = false) {
         val now = System.currentTimeMillis()
         if (!force && now - lastForegroundWarmupAt < FOREGROUND_WARMUP_DEBOUNCE) {
             return
         }
         lastForegroundWarmupAt = now
+
+        proactiveTokenRefresh()
 
         refreshMarketStatus()
         refreshWallet()
