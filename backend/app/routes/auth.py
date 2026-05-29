@@ -48,16 +48,27 @@ def _get_firebase_app():
         return None
     if _firebase_app is not None:
         return _firebase_app
-    # Try service-account JSON file first, then fall back to project-ID-only init
-    sa_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
-    if sa_path and os.path.isfile(sa_path):
-        cred = firebase_credentials.Certificate(sa_path)
-        _firebase_app = firebase_admin.initialize_app(cred)
-    elif FIREBASE_PROJECT_ID:
-        # Minimal init — sufficient for ID-token verification without a service-account key
-        _firebase_app = firebase_admin.initialize_app(options={"projectId": FIREBASE_PROJECT_ID})
-    else:
-        logger.warning("auth.firebase.no_config — set FIREBASE_PROJECT_ID or FIREBASE_SERVICE_ACCOUNT_JSON")
+    try:
+        sa_env = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
+        if sa_env:
+            if sa_env.startswith("{"):
+                # Inline JSON string (set the env var to the full JSON content)
+                sa_dict = json.loads(sa_env)
+                cred = firebase_credentials.Certificate(sa_dict)
+                _firebase_app = firebase_admin.initialize_app(cred)
+            elif os.path.isfile(sa_env):
+                # Path to a JSON file on disk
+                cred = firebase_credentials.Certificate(sa_env)
+                _firebase_app = firebase_admin.initialize_app(cred)
+            else:
+                logger.warning("auth.firebase.sa_env_invalid — FIREBASE_SERVICE_ACCOUNT_JSON is set but is neither JSON nor a valid file path")
+        if _firebase_app is None and FIREBASE_PROJECT_ID:
+            _firebase_app = firebase_admin.initialize_app(options={"projectId": FIREBASE_PROJECT_ID})
+        if _firebase_app is None:
+            logger.warning("auth.firebase.no_config — set FIREBASE_PROJECT_ID or FIREBASE_SERVICE_ACCOUNT_JSON")
+            return None
+    except Exception as exc:
+        logger.exception("auth.firebase.init_failed reason=%s", str(exc))
         return None
     return _firebase_app
 
@@ -95,7 +106,7 @@ SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", SUPPORT_EMAIL).strip() or SUPPORT
 SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
 PASSWORD_RESET_DEBUG_RESPONSE_ENABLED = os.getenv(
     "AUTH_PASSWORD_RESET_DEBUG_RESPONSE",
-    "true" if DEBUG else "false"
+    "false"
 ).lower() == "true"
 
 # SMS Configuration — Fast2SMS (primary, free for Indian numbers) + Twilio (fallback)
@@ -974,6 +985,9 @@ def register(user: UserRegister, request: Request):
     normalized_username = _normalize_username(user.username)
     normalized_email = _normalize_email(user.email)
     raw_password = str(user.password)
+    if len(raw_password) < 6:
+        _metric_inc("register.failure_password_too_short")
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
     if len(raw_password) > 72:
         _metric_inc("register.failure_password_too_long")
         raise HTTPException(status_code=400, detail="Password must be 72 characters or less.")
@@ -1459,6 +1473,10 @@ def logout(body: LogoutRequest, authorization: str | None = Header(default=None,
     token_hash = _hash_token(body.refreshToken)
 
     try:
+        db_user = db.query(UserModel).filter(UserModel.id == user_id).first()
+        if db_user:
+            db_user.token_version = int(getattr(db_user, "token_version", 0) or 0) + 1
+
         token_row = db.query(RefreshTokenModel).filter(
             RefreshTokenModel.user_id == user_id,
             RefreshTokenModel.token_hash == token_hash
@@ -1470,6 +1488,7 @@ def logout(body: LogoutRequest, authorization: str | None = Header(default=None,
             _metric_inc("logout.success_current_device")
             logger.info("auth.logout.success user_id=%s scope=current_device", user_id)
         else:
+            db.commit()
             _metric_inc("logout.noop_current_device")
             logger.info("auth.logout.noop user_id=%s scope=current_device", user_id)
     finally:
@@ -1901,7 +1920,7 @@ def firebase_phone_auth(request: FirebasePhoneAuthRequest):
         raise HTTPException(status_code=401, detail="Firebase token revoked")
     except Exception as exc:
         logger.exception("auth.firebase.verify_failed reason=%s", str(exc))
-        raise HTTPException(status_code=401, detail="Firebase token verification failed")
+        raise HTTPException(status_code=401, detail=f"Firebase token verification failed: {type(exc).__name__}")
 
     # Extract phone number from the verified token
     phone_number = decoded.get("phone_number")
