@@ -267,10 +267,10 @@ async def slo_metrics_endpoint() -> dict:
 async def startup_event():
     logger.info("BYSEL Backend starting up...")
     try:
-        from .llm_integration import _load_assistant, _LLM_DATA
-        logger.info("LLM data path: %s (exists=%s)", _LLM_DATA, _LLM_DATA.exists())
-        result = _load_assistant()
-        logger.info("LLM load result: %s", "OK" if result else "FAILED")
+        from .llm_integration import llm_available, _LLM_DATA, _LLM_PKG
+        logger.info("LLM pkg: %s (exists=%s)", _LLM_PKG, _LLM_PKG.exists())
+        logger.info("LLM data: %s (exists=%s)", _LLM_DATA, _LLM_DATA.exists())
+        logger.info("LLM available: %s", llm_available())
     except Exception as e:
         logger.error("LLM startup check failed: %s", e)
 
