@@ -30,6 +30,7 @@ import com.bysel.trader.alerts.AlertsManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 
 /**
  * Clean, minimal TradingViewModel that exposes the state and actions used
