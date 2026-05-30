@@ -1641,11 +1641,33 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
     # Get base analysis from rule-engine (always run for grounding)
     rule_result = ai_assistant(body.query, db=db)
 
-    # Try Gemini first if available
+    # Try Indian Stock LLM first
+    try:
+        from ..llm_integration import llm_available, ask_llm
+        if llm_available():
+            llm_result = ask_llm(body.query)
+            if llm_result and llm_result.get("answer"):
+                answer = llm_result["answer"]
+                if llm_result.get("disclaimer"):
+                    answer = f"{answer}\n\n{llm_result['disclaimer']}"
+                merged = {
+                    **rule_result,
+                    "answer": answer,
+                    "source": "indian-stock-llm",
+                    "llm_intent": llm_result.get("intent"),
+                    "llm_confidence": llm_result.get("confidence"),
+                    "llm_citations": llm_result.get("citations", []),
+                }
+                is_valid, missing = ResponseValidator.validate_response(merged)
+                merged["data_quality"] = "complete" if is_valid else f"incomplete: {', '.join(missing[:3])}"
+                return merged
+    except Exception as e:
+        logger.error(f"Indian Stock LLM error: {e}")
+
+    # Try Gemini if LLM unavailable
     try:
         from ..gemini_llm import gemini_available, ask_gemini
         if gemini_available():
-            # Build structured context dict from rule-engine data
             symbol = None
             if rule_result.get("detected_stocks"):
                 symbol = rule_result["detected_stocks"][0].get("symbol")
@@ -1663,17 +1685,13 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
 
             gemini_result = await ask_gemini(body.query, context=context_dict)
             if "answer" in gemini_result:
-                # Use Gemini's response but keep structured rule-engine data
                 merged = {
                     **rule_result,
                     "answer": gemini_result["answer"],
                     "source": "gemini"
                 }
-
-                # Validate completeness
                 is_valid, missing = ResponseValidator.validate_response(merged)
                 merged["data_quality"] = "complete" if is_valid else f"incomplete: {', '.join(missing[:3])}"
-
                 return merged
     except Exception as e:
         logger.error(f"Gemini integration error: {e}")
