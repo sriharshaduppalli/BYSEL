@@ -127,8 +127,13 @@ def _format_context(context: Optional[Dict]) -> str:
     tech = context.get("technical") or {}
     if any(tech.values()):
         parts.append("TECHNICAL DATA:")
-        for key, label in [("rsi", "RSI"), ("macd", "MACD"), ("bollinger_bands", "Bollinger Bands"),
-                           ("moving_averages", "Moving Averages"), ("trend", "Trend")]:
+        for key, label in [
+            ("rsi", "RSI"),
+            ("macd", "MACD"),
+            ("bollinger_bands", "Bollinger Bands"),
+            ("moving_averages", "Moving Average Trend"),
+            ("trend", "Overall Trend"),
+        ]:
             if tech.get(key):
                 parts.append(f"  {label}: {tech[key]}")
         parts.append("")
@@ -140,11 +145,13 @@ def _format_context(context: Optional[Dict]) -> str:
     if any(fund.values()):
         parts.append("FUNDAMENTAL DATA:")
         if fund.get("pe_ratio"):
-            parts.append(f"  P/E Ratio: {fund['pe_ratio']} (sector avg: {fund.get('pe_sector_avg', 'N/A')})")
+            parts.append(f"  P/E Ratio: {fund['pe_ratio']} (sector avg: {fund.get('pe_sector_avg', '~25')})")
         if fund.get("market_cap"):
             parts.append(f"  Market Cap: {fund['market_cap']}")
+        if fund.get("dividend_yield"):
+            parts.append(f"  Dividend Yield: {fund['dividend_yield']}")
         if fund.get("week_52"):
-            parts.append(f"  52-Week: {fund['week_52']}")
+            parts.append(f"  52-Week Range: {fund['week_52']}")
         parts.append("")
     else:
         parts.append("FUNDAMENTAL DATA: Not available.")
@@ -153,19 +160,42 @@ def _format_context(context: Optional[Dict]) -> str:
     tl = context.get("trading_levels") or {}
     if any(tl.values()):
         parts.append("TRADING LEVELS:")
-        for key, label in [("support_1", "Support 1"), ("resistance_1", "Resistance 1"),
-                           ("stop_loss", "Stop Loss"), ("take_profit", "Take Profit")]:
-            if tl.get(key):
-                parts.append(f"  {label}: ₹{tl[key]}")
+        if tl.get("support_1"):
+            parts.append(f"  Support 1 (20-day): ₹{tl['support_1']}")
+        if tl.get("support_2"):
+            parts.append(f"  Support 2 (52-week): ₹{tl['support_2']}")
+        if tl.get("resistance_1"):
+            parts.append(f"  Resistance 1 (20-day): ₹{tl['resistance_1']}")
+        if tl.get("resistance_2"):
+            parts.append(f"  Resistance 2 (52-week): ₹{tl['resistance_2']}")
+        if tl.get("stop_loss"):
+            parts.append(f"  Stop Loss (if buying): ₹{tl['stop_loss']}")
+        if tl.get("take_profit"):
+            parts.append(f"  Take Profit Target: ₹{tl['take_profit']}")
+        if tl.get("risk_reward"):
+            parts.append(f"  Risk/Reward Ratio: {tl['risk_reward']}")
+        parts.append("")
+    else:
+        parts.append("TRADING LEVELS: Not available.")
         parts.append("")
 
     sent = context.get("sentiment") or {}
     if any(sent.values()):
-        parts.append("SENTIMENT:")
+        parts.append("MARKET SENTIMENT:")
         if sent.get("overall"):
-            parts.append(f"  Overall: {sent['overall']}")
+            parts.append(f"  News Sentiment: {sent['overall']}")
         if sent.get("breakdown"):
             parts.append(f"  Breakdown: {sent['breakdown']}")
+        events = sent.get("recent_events") or []
+        if events:
+            parts.append("  Recent Events:")
+            for e in events[:4]:
+                parts.append(f"    • {e}")
+        if sent.get("sector_trend"):
+            parts.append(f"  Sector Trend: {sent['sector_trend']}")
+        parts.append("")
+    else:
+        parts.append("SENTIMENT: Not available.")
         parts.append("")
 
     news = context.get("news_summary", "")
