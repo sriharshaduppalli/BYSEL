@@ -352,8 +352,8 @@ def _fetch_yfinance(symbol: str) -> dict:
         }
 
     except Exception as exc:
-        logger.warning("yfinance fetch failed for %s: %s", symbol, exc)
-        return {}
+        logger.error("yfinance fetch failed for %s: %s", symbol, exc, exc_info=True)
+        raise  # re-raise so enricher-test endpoint can catch it
 
 
 async def enrich(symbol: str) -> dict:

@@ -277,13 +277,16 @@ async def startup_event():
 
 @app.get("/ai/enricher-test/{symbol}")
 async def enricher_test(symbol: str):
-    import traceback
+    import traceback, asyncio
+    error = None
+    raw = {}
     try:
-        from .stock_enricher import enrich
-        data = await enrich(symbol.upper())
-        return {"ok": True, "symbol": symbol.upper(), "data": data}
+        from .stock_enricher import _fetch_yfinance
+        loop = asyncio.get_event_loop()
+        raw = await loop.run_in_executor(None, _fetch_yfinance, symbol.upper())
     except Exception:
-        return {"ok": False, "error": traceback.format_exc()}
+        error = traceback.format_exc()
+    return {"ok": bool(raw), "symbol": symbol.upper(), "data": raw, "error": error}
 
 @app.get("/ai/llm-status")
 def llm_status():
