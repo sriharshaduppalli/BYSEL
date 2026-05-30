@@ -67,6 +67,9 @@ _NAME_TO_SYMBOL: dict[str, str] = {
     "indusind": "INDUSINDBK", "indusind bank": "INDUSINDBK",
 }
 
+# Set of all valid NSE symbols we know — used to reject false ticker matches
+_VALID_SYMBOLS: set[str] = set(_NAME_TO_SYMBOL.values())
+
 _POS_WORDS = {
     "surge", "rally", "growth", "profit", "strong", "beat", "record",
     "gain", "rise", "bull", "upgrade", "positive", "high", "wins",
@@ -91,22 +94,141 @@ _NSE_HEADERS = {
     "Referer": "https://www.nseindia.com/",
 }
 
+# Hardcoded fallback for sector (never shows "N/A" for major stocks)
+_SYMBOL_SECTOR: dict[str, str] = {
+    "RELIANCE": "Oil & Gas / Refineries",
+    "TCS": "Information Technology",
+    "INFY": "Information Technology",
+    "HDFCBANK": "Banking & Financial Services",
+    "ICICIBANK": "Banking & Financial Services",
+    "WIPRO": "Information Technology",
+    "HCLTECH": "Information Technology",
+    "SBIN": "Banking & Financial Services",
+    "BAJFINANCE": "Financial Services / NBFC",
+    "KOTAKBANK": "Banking & Financial Services",
+    "AXISBANK": "Banking & Financial Services",
+    "MARUTI": "Automobiles",
+    "ADANIENT": "Infrastructure / Diversified",
+    "ADANIPORTS": "Infrastructure / Ports",
+    "TITAN": "Consumer Goods / Jewellery",
+    "ULTRACEMCO": "Cement",
+    "NESTLEIND": "FMCG",
+    "LTIM": "Information Technology",
+    "TECHM": "Information Technology",
+    "SUNPHARMA": "Pharmaceuticals",
+    "ASIANPAINT": "Paints / Consumer Goods",
+    "BHARTIARTL": "Telecom",
+    "ONGC": "Oil & Gas",
+    "POWERGRID": "Power / Utilities",
+    "NTPC": "Power / Utilities",
+    "COALINDIA": "Mining / Energy",
+    "JIOFIN": "Financial Services",
+    "TATAMOTORS": "Automobiles",
+    "TATASTEEL": "Steel / Metals",
+    "HINDALCO": "Metals & Mining",
+    "JSWSTEEL": "Steel / Metals",
+    "GRASIM": "Diversified / Chemicals",
+    "BPCL": "Oil & Gas",
+    "HEROMOTOCO": "Automobiles",
+    "BAJAJ-AUTO": "Automobiles",
+    "DIVISLAB": "Pharmaceuticals",
+    "CIPLA": "Pharmaceuticals",
+    "DRREDDY": "Pharmaceuticals",
+    "EICHERMOT": "Automobiles",
+    "SHRIRAMFIN": "Financial Services / NBFC",
+    "UPL": "Agrochemicals",
+    "BRITANNIA": "FMCG",
+    "INDUSINDBK": "Banking & Financial Services",
+}
+
+# Hardcoded full company names (fallback when all APIs return nothing)
+_SYMBOL_COMPANY: dict[str, str] = {
+    "RELIANCE": "Reliance Industries Ltd",
+    "TCS": "Tata Consultancy Services Ltd",
+    "INFY": "Infosys Ltd",
+    "HDFCBANK": "HDFC Bank Ltd",
+    "ICICIBANK": "ICICI Bank Ltd",
+    "WIPRO": "Wipro Ltd",
+    "HCLTECH": "HCL Technologies Ltd",
+    "SBIN": "State Bank of India",
+    "BAJFINANCE": "Bajaj Finance Ltd",
+    "KOTAKBANK": "Kotak Mahindra Bank Ltd",
+    "AXISBANK": "Axis Bank Ltd",
+    "MARUTI": "Maruti Suzuki India Ltd",
+    "ADANIENT": "Adani Enterprises Ltd",
+    "ADANIPORTS": "Adani Ports and SEZ Ltd",
+    "TITAN": "Titan Company Ltd",
+    "ULTRACEMCO": "UltraTech Cement Ltd",
+    "NESTLEIND": "Nestle India Ltd",
+    "LTIM": "LTIMindtree Ltd",
+    "TECHM": "Tech Mahindra Ltd",
+    "SUNPHARMA": "Sun Pharmaceutical Industries Ltd",
+    "ASIANPAINT": "Asian Paints Ltd",
+    "BHARTIARTL": "Bharti Airtel Ltd",
+    "ONGC": "Oil and Natural Gas Corporation Ltd",
+    "POWERGRID": "Power Grid Corporation of India Ltd",
+    "NTPC": "NTPC Ltd",
+    "COALINDIA": "Coal India Ltd",
+    "JIOFIN": "Jio Financial Services Ltd",
+    "TATAMOTORS": "Tata Motors Ltd",
+    "TATASTEEL": "Tata Steel Ltd",
+    "HINDALCO": "Hindalco Industries Ltd",
+    "JSWSTEEL": "JSW Steel Ltd",
+    "GRASIM": "Grasim Industries Ltd",
+    "BPCL": "Bharat Petroleum Corporation Ltd",
+    "HEROMOTOCO": "Hero MotoCorp Ltd",
+    "BAJAJ-AUTO": "Bajaj Auto Ltd",
+    "DIVISLAB": "Divi's Laboratories Ltd",
+    "CIPLA": "Cipla Ltd",
+    "DRREDDY": "Dr. Reddy's Laboratories Ltd",
+    "EICHERMOT": "Eicher Motors Ltd",
+    "SHRIRAMFIN": "Shriram Finance Ltd",
+    "UPL": "UPL Ltd",
+    "BRITANNIA": "Britannia Industries Ltd",
+    "INDUSINDBK": "IndusInd Bank Ltd",
+}
+
 
 def extract_symbol_from_query(query: str) -> Optional[str]:
-    q = query.upper().strip()
-    _SKIP = {
-        "IS", "IN", "AT", "OR", "AND", "THE", "FOR", "BUY", "SELL",
-        "NOW", "UP", "DOWN", "GET", "CAN", "HOW", "WHY", "WHAT",
-        "ARE", "ITS", "THIS", "THAT", "WILL", "HAS", "HIT", "NEW",
-    }
-    tokens = re.findall(r'\b[A-Z][A-Z0-9\-]{1,9}\b', q)
-    for tok in tokens:
-        if tok not in _SKIP and len(tok) >= 2:
-            return tok
+    # Step 1: name-based lookup first — most reliable for natural language
     q_lower = query.lower()
     for name, sym in sorted(_NAME_TO_SYMBOL.items(), key=lambda x: -len(x[0])):
         if name in q_lower:
             return sym
+
+    # Step 2: regex for explicit uppercase tickers — only accept known NSE symbols
+    # to avoid false positives like BEST, BANK, TOP, GOOD, etc.
+    _SKIP = {
+        # articles / prepositions / conjunctions
+        "A", "AN", "BY", "TO", "OF", "ON", "AS",
+        "IS", "IN", "AT", "OR", "AND", "THE", "FOR",
+        # question words
+        "HOW", "WHY", "WHAT", "WHEN", "WHERE", "WHICH", "WHO",
+        # pronouns
+        "IT", "ITS", "THIS", "THAT", "THEY", "THEM",
+        # common verbs
+        "BUY", "SELL", "GET", "CAN", "WILL", "HAS", "HIT", "ARE", "WAS",
+        "GIVE", "SHOW", "TELL", "LIST", "FIND", "SHOULD", "WANT",
+        # directional / status
+        "UP", "DOWN", "NOW", "NEW", "TOP", "BEST", "HIGH", "LOW", "BIG",
+        "MID", "MOST", "LESS", "MORE", "ALL", "ANY",
+        # market/finance terms that look like tickers
+        "STOCK", "STOCKS", "SHARE", "SHARES", "MARKET", "SECTOR", "SECTORS",
+        "BANK", "BANKS", "FUND", "FUNDS", "INDEX", "NIFTY", "NSE", "BSE",
+        "SENSEX", "IPO", "FII", "DII",
+        # descriptive
+        "GOOD", "SAFE", "RISK", "RISKY", "SMALL", "LARGE", "CAP",
+        "VALUE", "INDIA", "INDIAN",
+        # time
+        "YEAR", "MONTH", "WEEK", "TERM", "LONG", "SHORT", "NEXT", "LAST",
+        "TODAY",
+    }
+    q_upper = query.upper().strip()
+    tokens = re.findall(r'\b[A-Z][A-Z0-9\-]{1,9}\b', q_upper)
+    for tok in tokens:
+        if tok not in _SKIP and tok in _VALID_SYMBOLS:
+            return tok
+
     return None
 
 
@@ -221,6 +343,68 @@ def _fetch_nse_fundamentals(symbol: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Source 1b: Yahoo Finance direct API — P/E, sector, dividend (cloud-reliable)
+# ---------------------------------------------------------------------------
+_YF_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
+def _fetch_yahoo_fundamentals(symbol: str) -> dict:
+    """
+    Direct Yahoo Finance quoteSummary API call using requests (not yfinance lib).
+    More reliable on cloud/Docker than ticker.info because we control the session.
+    Returns P/E, dividend yield, sector, company name.
+    """
+    try:
+        import requests
+        yf_sym = f"{symbol}.NS"
+        url = (
+            "https://query1.finance.yahoo.com/v10/finance/quoteSummary/"
+            f"{yf_sym}?modules=summaryDetail,summaryProfile,defaultKeyStatistics"
+        )
+        resp = requests.get(url, headers=_YF_HEADERS, timeout=10)
+        if resp.status_code != 200:
+            # try query2 mirror
+            url2 = url.replace("query1", "query2")
+            resp = requests.get(url2, headers=_YF_HEADERS, timeout=10)
+        if resp.status_code != 200:
+            logger.warning("Yahoo Finance direct API %s for %s", resp.status_code, symbol)
+            return {}
+        result = (resp.json()
+                  .get("quoteSummary", {})
+                  .get("result") or [{}])[0]
+
+        def _raw(d: dict, key: str):
+            v = d.get(key, {})
+            return v.get("raw") if isinstance(v, dict) else v
+
+        summary = result.get("summaryDetail", {})
+        profile = result.get("summaryProfile", {})
+        stats = result.get("defaultKeyStatistics", {})
+
+        pe = _raw(summary, "trailingPE") or _raw(stats, "forwardPE")
+        div = _raw(summary, "dividendYield") or _raw(summary, "trailingAnnualDividendYield")
+        sector = profile.get("sector") or profile.get("industry")
+        company = profile.get("longBusinessSummary")  # not the name, but we skip it
+
+        return {
+            "pe": float(pe) if pe else None,
+            "div_yield": float(div) if div else None,
+            "sector": sector,
+        }
+    except Exception as e:
+        logger.warning("Yahoo Finance direct API failed for %s: %s", symbol, e)
+        return {}
+
+
+# ---------------------------------------------------------------------------
 # Source 2: Google News RSS — aggregates ET, MoneyControl, Business Standard
 # ---------------------------------------------------------------------------
 def _fetch_google_news_headlines(symbol: str, company_name: str = "") -> list[str]:
@@ -264,17 +448,30 @@ def _fetch_yfinance(symbol: str) -> dict:
 
         # --- Source 1: NSE India API (primary for fundamentals) ---
         nse = _fetch_nse_fundamentals(symbol)
-        company_name: str = nse.get("company_name") or symbol
-        sector: str = nse.get("sector") or "N/A"
+        company_name: str = nse.get("company_name") or _SYMBOL_COMPANY.get(symbol) or symbol
+        sector: str = nse.get("sector") or ""
         price = nse.get("price")
         pe = nse.get("pe")
         pe_sector_avg = nse.get("pe_sector")
         week52_high = nse.get("week52_high")
         week52_low = nse.get("week52_low")
 
+        # --- Source 1b: Yahoo Finance direct API (fills gaps when NSE is blocked) ---
+        yf_fund = _fetch_yahoo_fundamentals(symbol)
+        if not pe:
+            pe = yf_fund.get("pe")
+        div_yield = yf_fund.get("div_yield")
+        if not sector:
+            sector = yf_fund.get("sector") or ""
+
+        # --- Hardcoded fallbacks (100% reliable for NIFTY 50) ---
+        if not sector:
+            sector = _SYMBOL_SECTOR.get(symbol, "N/A")
+        if not company_name or company_name == symbol:
+            company_name = _SYMBOL_COMPANY.get(symbol, symbol)
+
         # --- Source 3: yfinance fast_info (market cap + fallback price) ---
         market_cap = None
-        div_yield = None
         try:
             fi = ticker.fast_info
             market_cap = getattr(fi, "market_cap", None) or getattr(fi, "marketCap", None)
@@ -287,16 +484,17 @@ def _fetch_yfinance(symbol: str) -> dict:
         except Exception as e:
             logger.warning("fast_info failed for %s: %s", symbol, e)
 
-        # yfinance ticker.info: dividend yield + any remaining gaps
+        # yfinance ticker.info: last-resort fill for anything still missing
         try:
             info = ticker.info or {}
-            div_yield = info.get("dividendYield")
+            if not div_yield:
+                div_yield = info.get("dividendYield")
             if not pe:
                 pe = info.get("trailingPE") or info.get("forwardPE")
             if not sector or sector == "N/A":
-                sector = info.get("sector") or info.get("industry") or "N/A"
+                sector = info.get("sector") or info.get("industry") or _SYMBOL_SECTOR.get(symbol, "N/A")
             if not company_name or company_name == symbol:
-                company_name = info.get("longName") or info.get("shortName") or symbol
+                company_name = info.get("longName") or info.get("shortName") or _SYMBOL_COMPANY.get(symbol, symbol)
             if not market_cap:
                 market_cap = info.get("marketCap")
             if not week52_high:
