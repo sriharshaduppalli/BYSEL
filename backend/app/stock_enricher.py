@@ -1,7 +1,10 @@
 """
 Real-time stock context enricher.
-Fetches live price, fundamentals, technicals, trading levels,
-news headlines, and sentiment from yfinance — all free, no API key.
+Sources (all free, no API key):
+  1. NSE India API  — P/E, sector, company name, 52-week range, live price
+  2. Google News RSS — headlines from ET, MoneyControl, Business Standard
+  3. yfinance fast_info — market cap, fallback price
+  4. yf.download()   — OHLCV history for RSI, Bollinger, SMAs, S/R levels
 """
 from __future__ import annotations
 
@@ -10,6 +13,8 @@ import logging
 import re
 from time import time
 from typing import Optional
+from urllib.parse import quote_plus
+from xml.etree import ElementTree as ET
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +80,17 @@ _NEG_WORDS = {
     "disappointing", "slowdown", "contraction", "pressure", "debt",
 }
 
+_NSE_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.nseindia.com/",
+}
+
 
 def extract_symbol_from_query(query: str) -> Optional[str]:
     q = query.upper().strip()
@@ -92,13 +108,6 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
         if name in q_lower:
             return sym
     return None
-
-
-def _fmt_price(val) -> Optional[str]:
-    try:
-        return f"{float(val):,.2f}"
-    except (TypeError, ValueError):
-        return None
 
 
 def _fmt_inr_cr(val) -> Optional[str]:
@@ -169,6 +178,83 @@ def _news_sentiment(headlines: list[str]) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# Source 1: NSE India API — P/E, sector, company name, 52-week, live price
+# ---------------------------------------------------------------------------
+def _fetch_nse_fundamentals(symbol: str) -> dict:
+    """
+    NSE India official API. Returns P/E, sector P/E avg, company name,
+    industry/sector, 52-week high/low, and live price. No API key needed.
+    """
+    try:
+        import requests
+        session = requests.Session()
+        session.headers.update(_NSE_HEADERS)
+        # Step 1: visit home page to get cookies (NSE checks for session)
+        session.get("https://www.nseindia.com/", timeout=8)
+        resp = session.get(
+            f"https://www.nseindia.com/api/quote-equity?symbol={symbol}",
+            timeout=8,
+        )
+        if resp.status_code != 200:
+            logger.warning("NSE API returned %s for %s", resp.status_code, symbol)
+            return {}
+        d = resp.json()
+        meta = d.get("metadata", {})
+        price_info = d.get("priceInfo", {})
+        info = d.get("info", {})
+        whl = price_info.get("weekHighLow", {})
+        pe_val = meta.get("pdSymbolPe")
+        pe_sector_val = meta.get("pdSectorPe")
+        return {
+            "company_name": info.get("companyName"),
+            "sector": info.get("industry") or meta.get("industry"),
+            "price": price_info.get("lastPrice") or price_info.get("close"),
+            "pe": float(pe_val) if pe_val else None,
+            "pe_sector": float(pe_sector_val) if pe_sector_val else None,
+            "week52_high": float(whl["max"]) if whl.get("max") else None,
+            "week52_low": float(whl["min"]) if whl.get("min") else None,
+        }
+    except Exception as e:
+        logger.warning("NSE fetch failed for %s: %s", symbol, e)
+        return {}
+
+
+# ---------------------------------------------------------------------------
+# Source 2: Google News RSS — aggregates ET, MoneyControl, Business Standard
+# ---------------------------------------------------------------------------
+def _fetch_google_news_headlines(symbol: str, company_name: str = "") -> list[str]:
+    """
+    Google News RSS feed for the stock. Aggregates headlines from
+    Economic Times, MoneyControl, Business Standard etc. — no scraping needed.
+    """
+    try:
+        import requests
+        query = quote_plus(f"{company_name or symbol} NSE stock India")
+        url = (
+            f"https://news.google.com/rss/search"
+            f"?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
+        )
+        resp = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+        if resp.status_code != 200:
+            return []
+        root = ET.fromstring(resp.content)
+        headlines: list[str] = []
+        for item in root.findall(".//item")[:10]:
+            title = item.findtext("title", "").strip()
+            if title:
+                # Google News appends " - Source Name"; strip it
+                title = title.rsplit(" - ", 1)[0].strip()
+                headlines.append(title)
+        return headlines
+    except Exception as e:
+        logger.warning("Google News RSS failed for %s: %s", symbol, e)
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Main enricher: merges all four sources
+# ---------------------------------------------------------------------------
 def _fetch_yfinance(symbol: str) -> dict:
     try:
         import yfinance as yf
@@ -176,45 +262,55 @@ def _fetch_yfinance(symbol: str) -> dict:
         nse_sym = symbol if symbol.endswith(".NS") else f"{symbol}.NS"
         ticker = yf.Ticker(nse_sym)
 
-        # --- fast_info: reliable on all yfinance versions including Docker/Render ---
-        price = None
-        week52_high = None
-        week52_low = None
+        # --- Source 1: NSE India API (primary for fundamentals) ---
+        nse = _fetch_nse_fundamentals(symbol)
+        company_name: str = nse.get("company_name") or symbol
+        sector: str = nse.get("sector") or "N/A"
+        price = nse.get("price")
+        pe = nse.get("pe")
+        pe_sector_avg = nse.get("pe_sector")
+        week52_high = nse.get("week52_high")
+        week52_low = nse.get("week52_low")
+
+        # --- Source 3: yfinance fast_info (market cap + fallback price) ---
         market_cap = None
+        div_yield = None
         try:
             fi = ticker.fast_info
-            price = getattr(fi, "last_price", None) or getattr(fi, "regularMarketPrice", None)
-            week52_high = getattr(fi, "fifty_two_week_high", None) or getattr(fi, "yearHigh", None)
-            week52_low = getattr(fi, "fifty_two_week_low", None) or getattr(fi, "yearLow", None)
             market_cap = getattr(fi, "market_cap", None) or getattr(fi, "marketCap", None)
+            if not price:
+                price = getattr(fi, "last_price", None)
+            if not week52_high:
+                week52_high = getattr(fi, "fifty_two_week_high", None)
+            if not week52_low:
+                week52_low = getattr(fi, "fifty_two_week_low", None)
         except Exception as e:
             logger.warning("fast_info failed for %s: %s", symbol, e)
 
-        # --- ticker.info: fundamentals only (P/E, sector, dividend) ---
-        info: dict = {}
+        # yfinance ticker.info: dividend yield + any remaining gaps
         try:
             info = ticker.info or {}
+            div_yield = info.get("dividendYield")
+            if not pe:
+                pe = info.get("trailingPE") or info.get("forwardPE")
+            if not sector or sector == "N/A":
+                sector = info.get("sector") or info.get("industry") or "N/A"
+            if not company_name or company_name == symbol:
+                company_name = info.get("longName") or info.get("shortName") or symbol
+            if not market_cap:
+                market_cap = info.get("marketCap")
+            if not week52_high:
+                week52_high = info.get("fiftyTwoWeekHigh")
+            if not week52_low:
+                week52_low = info.get("fiftyTwoWeekLow")
+            if not price:
+                price = (info.get("currentPrice")
+                         or info.get("regularMarketPrice")
+                         or info.get("previousClose"))
         except Exception as e:
             logger.warning("ticker.info failed for %s: %s", symbol, e)
 
-        pe = info.get("trailingPE") or info.get("forwardPE")
-        div_yield = info.get("dividendYield")
-        sector = info.get("sector") or info.get("industry") or "N/A"
-        company_name = info.get("longName") or info.get("shortName") or symbol
-        pe_sector_avg = info.get("industryPe") or info.get("fiveYearAvgDivYield")
-
-        # Fallback price from info if fast_info gave nothing
-        if not price:
-            price = (info.get("currentPrice")
-                     or info.get("regularMarketPrice")
-                     or info.get("previousClose"))
-        if not week52_high:
-            week52_high = info.get("fiftyTwoWeekHigh")
-        if not week52_low:
-            week52_low = info.get("fiftyTwoWeekLow")
-        if not market_cap:
-            market_cap = info.get("marketCap")
-
+        # 52-week position string
         pos_52w = None
         if price and week52_high and week52_low and week52_high > week52_low:
             pct = (price - week52_low) / (week52_high - week52_low) * 100
@@ -226,7 +322,7 @@ def _fetch_yfinance(symbol: str) -> dict:
                 position = "middle of range"
             pos_52w = f"₹{week52_low:,.2f} – ₹{week52_high:,.2f} | Current at {pct:.0f}% ({position})"
 
-        # --- yf.download(): reliable OHLCV history on Docker/Render ---
+        # --- Source 4: yf.download() for OHLCV (technicals) ---
         closes, highs, lows = [], [], []
         try:
             hist = yf.download(nse_sym, period="1y", progress=False, auto_adjust=True)
@@ -290,6 +386,8 @@ def _fetch_yfinance(symbol: str) -> dict:
 
         # RSI
         rsi_val = _calc_rsi(closes)
+        rsi_interp = None
+        rsi_str = None
         if rsi_val is not None:
             if rsi_val > 70:
                 rsi_interp = "overbought"
@@ -298,14 +396,10 @@ def _fetch_yfinance(symbol: str) -> dict:
             else:
                 rsi_interp = "neutral"
             rsi_str = f"{rsi_val} ({rsi_interp})"
-        else:
-            rsi_str = None
 
-        # Support & Resistance (20-day range)
+        # Support & Resistance
         support1 = round(min(lows[-20:]), 2) if len(lows) >= 20 else None
         resistance1 = round(max(highs[-20:]), 2) if len(highs) >= 20 else None
-
-        # Wider support/resistance (52-week)
         support2 = round(min(lows[-52:]), 2) if len(lows) >= 52 else None
         resistance2 = round(max(highs[-52:]), 2) if len(highs) >= 52 else None
 
@@ -319,30 +413,31 @@ def _fetch_yfinance(symbol: str) -> dict:
             if risk > 0:
                 rr_ratio = f"1 : {reward/risk:.1f}"
 
-        # Sector trend (derived from stock's own 1-month momentum vs 3-month)
+        # Sector trend from 1-month price momentum
         sector_trend = "Neutral"
-        if len(closes) >= 63:
-            ret_1m = (closes[-1] - closes[-21]) / closes[-21] * 100 if len(closes) >= 21 else None
-            ret_3m = (closes[-1] - closes[-63]) / closes[-63] * 100
-            if ret_1m is not None:
-                if ret_1m > 3:
-                    sector_trend = f"Bullish (stock +{ret_1m:.1f}% in 1 month)"
-                elif ret_1m < -3:
-                    sector_trend = f"Bearish (stock {ret_1m:.1f}% in 1 month)"
-                else:
-                    sector_trend = f"Neutral (stock {ret_1m:+.1f}% in 1 month)"
+        if len(closes) >= 21:
+            ret_1m = (closes[-1] - closes[-21]) / closes[-21] * 100
+            if ret_1m > 3:
+                sector_trend = f"Bullish (stock +{ret_1m:.1f}% in 1 month)"
+            elif ret_1m < -3:
+                sector_trend = f"Bearish (stock {ret_1m:.1f}% in 1 month)"
+            else:
+                sector_trend = f"Neutral (stock {ret_1m:+.1f}% in 1 month)"
 
-        # --- News ---
-        headlines: list[str] = []
-        try:
-            raw_news = ticker.news or []
-            for item in raw_news[:8]:
-                title = (item.get("title")
-                         or (item.get("content") or {}).get("title", ""))
-                if title:
-                    headlines.append(title)
-        except Exception:
-            pass
+        # --- Source 2: Google News RSS (primary for headlines) ---
+        headlines = _fetch_google_news_headlines(symbol, company_name)
+
+        # Fallback: yfinance news if Google News returned nothing
+        if not headlines:
+            try:
+                raw_news = ticker.news or []
+                for item in raw_news[:8]:
+                    title = (item.get("title")
+                             or (item.get("content") or {}).get("title", ""))
+                    if title:
+                        headlines.append(title)
+            except Exception:
+                pass
 
         sentiment = _news_sentiment(headlines) if headlines else {}
 
@@ -360,7 +455,7 @@ def _fetch_yfinance(symbol: str) -> dict:
             },
             "technical": {
                 "rsi": rsi_str,
-                "rsi_interpretation": rsi_interp if rsi_val else None,
+                "rsi_interpretation": rsi_interp,
                 "bollinger_bands": bb_band,
                 "moving_averages": ma_trend,
                 "trend": ("strong_bullish" if current and sma50 and sma200 and current > sma50 > sma200
@@ -386,8 +481,8 @@ def _fetch_yfinance(symbol: str) -> dict:
         }
 
     except Exception as exc:
-        logger.error("yfinance fetch failed for %s: %s", symbol, exc, exc_info=True)
-        raise  # re-raise so enricher-test endpoint can catch it
+        logger.error("Stock enricher failed for %s: %s", symbol, exc, exc_info=True)
+        raise
 
 
 async def enrich(symbol: str) -> dict:
