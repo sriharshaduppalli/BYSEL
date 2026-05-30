@@ -168,6 +168,11 @@ def _format_context(context: Optional[Dict]) -> str:
             parts.append(f"  Breakdown: {sent['breakdown']}")
         parts.append("")
 
+    news = context.get("news_summary", "")
+    if news:
+        parts.append(news)
+        parts.append("")
+
     parts.append("IMPORTANT: Base your analysis ONLY on the data above. Do not invent numbers.")
     return "\n".join(parts)
 

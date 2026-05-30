@@ -1628,18 +1628,20 @@ class AiQuery(BaseModel):
 async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
     """Natural language AI stock assistant.
     Priority: Groq (free cloud LLM) → Indian Stock LLM → rule-engine fallback.
-    source field indicates which tier answered: groq | indian-stock-llm | rule-engine
+    Groq receives live price, fundamentals, and news headlines from yfinance.
+    source field: groq | indian-stock-llm | rule-engine
     """
     from ..response_validator import ResponseValidator
+    from ..stock_enricher import extract_symbol_from_query, enrich, format_news_for_prompt
 
-    # Rule-engine always runs first — provides live price, RSI, P/E etc. as context
+    # Rule-engine always runs first — detects stock, builds base signals
     rule_result = ai_assistant(body.query, db=db)
 
     def _validated(result: dict, source: str) -> dict:
         result["source"] = source
         is_valid, missing = ResponseValidator.validate_response(result)
         if not is_valid:
-            analysis_data = result.get("analysis", {})
+            analysis_data = result.get("data", {}) or result.get("analysis", {})
             if analysis_data:
                 result = ResponseValidator.augment_incomplete_response(result, analysis_data)
             result["data_quality"] = f"incomplete: {', '.join(missing[:3])}"
@@ -1647,23 +1649,53 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
             result["data_quality"] = "complete"
         return result
 
-    def _build_context(rule: dict) -> dict:
-        analysis = rule.get("analysis", {})
-        detected = rule.get("detected_stock", {})
-        return {
-            "symbol": detected.get("symbol") or rule.get("symbol"),
-            "current_price": rule.get("current_price"),
-            "technical": analysis.get("technical", {}),
-            "fundamental": analysis.get("fundamental", {}),
-            "trading_levels": analysis.get("trading_levels", {}),
-            "sentiment": analysis.get("sentiment", {}),
+    async def _build_enriched_context() -> dict:
+        # Resolve symbol — prefer rule-engine detection, fallback to query extraction
+        symbol = (rule_result.get("symbol")
+                  or (rule_result.get("detected_stock") or {}).get("symbol")
+                  or extract_symbol_from_query(body.query))
+
+        # data dict from rule-engine (contains technical/fundamental/trading_levels/sentiment)
+        data = rule_result.get("data") or {}
+
+        ctx: dict = {
+            "symbol": symbol,
+            "current_price": rule_result.get("current_price"),
+            "technical": data.get("technical", {}),
+            "fundamental": data.get("fundamental", {}),
+            "trading_levels": data.get("trading_levels", {}),
+            "sentiment": data.get("sentiment", {}),
         }
 
-    # Tier 1: Groq (free cloud LLM — set GROQ_API_KEY in Render env vars)
+        # Enrich with live yfinance data when a symbol is known
+        if symbol:
+            try:
+                live = await enrich(symbol)
+                if live:
+                    # Fill in missing price and fundamentals from yfinance
+                    if not ctx["current_price"]:
+                        ctx["current_price"] = live.get("current_price")
+                    ctx["company_name"] = live.get("company_name")
+                    ctx["sector"] = live.get("sector")
+
+                    live_fund = live.get("fundamental", {})
+                    merged_fund = {**live_fund, **{k: v for k, v in ctx["fundamental"].items() if v}}
+                    ctx["fundamental"] = merged_fund
+
+                    headlines = live.get("news_headlines", [])
+                    if headlines:
+                        ctx["news_summary"] = format_news_for_prompt(headlines)
+            except Exception as exc:
+                logger.warning("Enrichment failed for %s: %s", symbol, exc)
+
+        return ctx
+
+    # Tier 1: Groq — enriched with live price, fundamentals, and news
     try:
         from ..groq_llm import groq_available, ask_groq
         if groq_available():
-            groq_result = await ask_groq(body.query, context=_build_context(rule_result))
+            enriched_ctx = await _build_enriched_context()
+            groq_result = await ask_groq(body.query, context=enriched_ctx)
             if groq_result.get("answer"):
                 merged = {**rule_result, "answer": groq_result["answer"]}
                 return _validated(merged, "groq")
