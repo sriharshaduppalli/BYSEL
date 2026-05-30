@@ -275,6 +275,16 @@ async def startup_event():
         logger.error("LLM startup check failed: %s", e)
 
 
+@app.get("/ai/enricher-test/{symbol}")
+async def enricher_test(symbol: str):
+    import traceback
+    try:
+        from .stock_enricher import enrich
+        data = await enrich(symbol.upper())
+        return {"ok": True, "symbol": symbol.upper(), "data": data}
+    except Exception:
+        return {"ok": False, "error": traceback.format_exc()}
+
 @app.get("/ai/llm-status")
 def llm_status():
     import traceback
