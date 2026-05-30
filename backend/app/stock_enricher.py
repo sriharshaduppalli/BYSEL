@@ -1,16 +1,22 @@
 """
 Real-time stock context enricher.
 Sources (all free, no API key):
-  1. NSE India API  — P/E, sector, company name, 52-week range, live price
-  2. Google News RSS — headlines from ET, MoneyControl, Business Standard
-  3. yfinance fast_info — market cap, fallback price
-  4. yf.download()   — OHLCV history for RSI, Bollinger, SMAs, S/R levels
+  1. NSE equity CSV   — company names for ALL 2000+ NSE-listed stocks
+  2. NSE India API    — P/E, sector P/E avg, 52-week range, live price
+  3. Yahoo Finance API— P/E, sector, dividend yield (direct HTTP, not yfinance lib)
+  4. Google News RSS  — headlines from ET, MoneyControl, Business Standard
+  5. yfinance fast_info — market cap, fallback price
+  6. yf.download()    — OHLCV history for RSI, Bollinger, SMAs, S/R levels
+  7. Hardcoded maps   — sector + company name fallback for top 200 stocks
 """
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import logging
 import re
+import threading
 from time import time
 from typing import Optional
 from urllib.parse import quote_plus
@@ -20,6 +26,46 @@ logger = logging.getLogger(__name__)
 
 _cache: dict[str, tuple[float, dict]] = {}
 _CACHE_TTL = 60  # seconds
+
+# Loaded from NSE archives CSV — covers ALL ~2000+ NSE-listed stocks
+_NSE_EQUITY_MAP: dict[str, str] = {}   # symbol -> full company name
+_NSE_EQUITY_LOADED = False
+_NSE_EQUITY_LOCK = threading.Lock()
+
+
+def _load_nse_equity_map() -> None:
+    """
+    Downloads NSE EQUITY_L.csv once and builds symbol→company name map.
+    Called lazily on first enrich() call. Cached for the process lifetime.
+    """
+    global _NSE_EQUITY_MAP, _NSE_EQUITY_LOADED
+    with _NSE_EQUITY_LOCK:
+        if _NSE_EQUITY_LOADED:
+            return
+        try:
+            import requests
+            resp = requests.get(
+                "https://archives.nseindia.com/content/equities/EQUITY_L.csv",
+                headers={
+                    "User-Agent": "Mozilla/5.0",
+                    "Referer": "https://www.nseindia.com/",
+                },
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                reader = csv.DictReader(io.StringIO(resp.text))
+                for row in reader:
+                    sym = row.get("SYMBOL", "").strip()
+                    name = row.get("NAME OF COMPANY", "").strip()
+                    if sym and name:
+                        _NSE_EQUITY_MAP[sym] = name
+                logger.info("NSE equity list loaded: %d symbols", len(_NSE_EQUITY_MAP))
+            else:
+                logger.warning("NSE equity CSV returned %s", resp.status_code)
+        except Exception as e:
+            logger.warning("NSE equity list load failed: %s", e)
+        finally:
+            _NSE_EQUITY_LOADED = True  # don't retry even on failure
 
 _NAME_TO_SYMBOL: dict[str, str] = {
     "reliance": "RELIANCE", "ril": "RELIANCE",
@@ -424,14 +470,33 @@ _SYMBOL_COMPANY: dict[str, str] = {
 
 
 def extract_symbol_from_query(query: str) -> Optional[str]:
-    # Step 1: name-based lookup first — most reliable for natural language
     q_lower = query.lower()
+
+    # Step 1: reject general market / list queries — no specific stock being asked
+    _GENERAL_PATTERNS = [
+        r'\btop\b.{0,30}\bstocks?\b',
+        r'\bbest\b.{0,30}\bstocks?\b',
+        r'\bwhich\b.{0,30}\bstocks?\b',
+        r'\blist\b.{0,30}\bstocks?\b',
+        r'\bstocks?\b.{0,20}\bto\s+(buy|sell|watch|invest|trade)\b',
+        r'\bstocks?\b.{0,20}\bfor\s+(swing|day|long|short|momentum|growth|value|intraday)\b',
+        r'\bstocks?\s+(in|from|under|below|above)\b',
+        r'\bundervalued\b.{0,30}\bstocks?\b',
+        r'\bovervalued\b.{0,30}\bstocks?\b',
+        r'\bgood\b.{0,20}\bstocks?\b',
+        r'\brecommend\b',
+        r'\bsuggestion[s]?\b',
+    ]
+    for pattern in _GENERAL_PATTERNS:
+        if re.search(pattern, q_lower):
+            return None
+
+    # Step 2: name-based lookup — most reliable for natural language
     for name, sym in sorted(_NAME_TO_SYMBOL.items(), key=lambda x: -len(x[0])):
         if name in q_lower:
             return sym
 
-    # Step 2: regex — accept any uppercase token not in the skip list
-    # (allows unknown tickers like LUPIN, PAYTM, etc. that aren't in our name map)
+    # Step 3: regex for explicit uppercase tickers (e.g. "Is LUPIN a buy?")
     _SKIP = {
         # articles / prepositions / conjunctions
         "A", "AN", "BY", "TO", "OF", "ON", "AS",
@@ -446,16 +511,31 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
         # directional / status
         "UP", "DOWN", "NOW", "NEW", "TOP", "BEST", "HIGH", "LOW", "BIG",
         "MID", "MOST", "LESS", "MORE", "ALL", "ANY",
-        # market/finance terms that look like tickers
+        # market / finance terms that look like tickers
         "STOCK", "STOCKS", "SHARE", "SHARES", "MARKET", "SECTOR", "SECTORS",
         "BANK", "BANKS", "FUND", "FUNDS", "INDEX", "NIFTY", "NSE", "BSE",
-        "SENSEX", "IPO", "FII", "DII",
-        # descriptive
-        "GOOD", "SAFE", "RISK", "RISKY", "SMALL", "LARGE", "CAP",
-        "VALUE", "INDIA", "INDIAN",
+        "SENSEX", "IPO", "FII", "DII", "NIFTY50", "NIFTY100",
+        # trading / strategy terms
+        "MOMENTUM", "SWING", "TRADING", "TRADE", "TRADER", "INTRADAY",
+        "SCALP", "SCALPING", "BREAKOUT", "PULLBACK", "REBOUND",
+        "RALLY", "RALLY", "TREND", "TRENDING",
+        "BULLISH", "BEARISH", "NEUTRAL",
+        "TECHNICAL", "ANALYSIS", "SCREENER",
+        # financial metrics / concepts
+        "GROWTH", "INCOME", "DIVIDEND", "DIVIDENDS", "YIELD",
+        "VALUE", "QUALITY", "RETURNS", "PROFIT", "LOSS",
+        "SUPPORT", "RESIST", "VOLATILE", "VOLATILITY",
+        "OVERVALUE", "UNDERVALUE",
+        # size / category
+        "SMALL", "LARGE", "MIDCAP", "LARGECAP", "SMALLCAP", "CAP",
+        "MICRO", "NANO",
+        # descriptive / general
+        "GOOD", "SAFE", "RISK", "RISKY", "INDIA", "INDIAN",
+        "OPTION", "OPTIONS", "FUTURE", "FUTURES",
+        "PORTFOLIO", "DIVERSIFY",
         # time
-        "YEAR", "MONTH", "WEEK", "TERM", "LONG", "SHORT", "NEXT", "LAST",
-        "TODAY",
+        "YEAR", "MONTH", "WEEK", "TERM", "LONG", "SHORT",
+        "NEXT", "LAST", "TODAY", "DAILY", "WEEKLY", "MONTHLY",
     }
     q_upper = query.upper().strip()
     tokens = re.findall(r'\b[A-Z][A-Z0-9\-]{1,9}\b', q_upper)
@@ -626,12 +706,13 @@ def _fetch_yahoo_fundamentals(symbol: str) -> dict:
         pe = _raw(summary, "trailingPE") or _raw(stats, "forwardPE")
         div = _raw(summary, "dividendYield") or _raw(summary, "trailingAnnualDividendYield")
         sector = profile.get("sector") or profile.get("industry")
-        company = profile.get("longBusinessSummary")  # not the name, but we skip it
+        company_name = profile.get("longName") or profile.get("shortName")
 
         return {
             "pe": float(pe) if pe else None,
             "div_yield": float(div) if div else None,
             "sector": sector,
+            "company_name": company_name,
         }
     except Exception as e:
         logger.warning("Yahoo Finance direct API failed for %s: %s", symbol, e)
@@ -677,12 +758,16 @@ def _fetch_yfinance(symbol: str) -> dict:
     try:
         import yfinance as yf
 
+        # Ensure NSE equity list is loaded (covers all 2000+ NSE stocks)
+        if not _NSE_EQUITY_LOADED:
+            _load_nse_equity_map()
+
         nse_sym = symbol if symbol.endswith(".NS") else f"{symbol}.NS"
         ticker = yf.Ticker(nse_sym)
 
         # --- Source 1: NSE India API (primary for fundamentals) ---
         nse = _fetch_nse_fundamentals(symbol)
-        company_name: str = nse.get("company_name") or _SYMBOL_COMPANY.get(symbol) or symbol
+        company_name: str = nse.get("company_name") or ""
         sector: str = nse.get("sector") or ""
         price = nse.get("price")
         pe = nse.get("pe")
@@ -697,11 +782,17 @@ def _fetch_yfinance(symbol: str) -> dict:
         div_yield = yf_fund.get("div_yield")
         if not sector:
             sector = yf_fund.get("sector") or ""
+        if not company_name:
+            company_name = yf_fund.get("company_name") or ""
 
-        # --- Hardcoded fallbacks (100% reliable for NIFTY 50) ---
+        # --- NSE equity list (covers ALL NSE-listed stocks) ---
+        if not company_name:
+            company_name = _NSE_EQUITY_MAP.get(symbol, "")
+
+        # --- Hardcoded maps (top 200 stocks, 100% reliable) ---
         if not sector:
             sector = _SYMBOL_SECTOR.get(symbol, "N/A")
-        if not company_name or company_name == symbol:
+        if not company_name:
             company_name = _SYMBOL_COMPANY.get(symbol, symbol)
 
         # --- Source 3: yfinance fast_info (market cap + fallback price) ---
@@ -728,7 +819,9 @@ def _fetch_yfinance(symbol: str) -> dict:
             if not sector or sector == "N/A":
                 sector = info.get("sector") or info.get("industry") or _SYMBOL_SECTOR.get(symbol, "N/A")
             if not company_name or company_name == symbol:
-                company_name = info.get("longName") or info.get("shortName") or _SYMBOL_COMPANY.get(symbol, symbol)
+                company_name = (info.get("longName") or info.get("shortName")
+                                or _NSE_EQUITY_MAP.get(symbol)
+                                or _SYMBOL_COMPANY.get(symbol, symbol))
             if not market_cap:
                 market_cap = info.get("marketCap")
             if not week52_high:
