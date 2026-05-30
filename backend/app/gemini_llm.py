@@ -198,6 +198,13 @@ def _format_context_for_gemini(context_dict: Optional[Dict]) -> str:
         parts.append("SENTIMENT DATA: No recent news found for this stock.")
         parts.append("")
 
+    # Indian stock market domain knowledge (from Indian_stock_market knowledge base)
+    ism_context = context_dict.get("indian_market_context", "")
+    if ism_context:
+        parts.append("INDIAN MARKET DOMAIN KNOWLEDGE:")
+        parts.append(ism_context)
+        parts.append("")
+
     parts.append("IMPORTANT: Base your analysis ONLY on the data provided above. Do not invent numbers.")
     return "\n".join(parts)
 

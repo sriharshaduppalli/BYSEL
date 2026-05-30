@@ -1641,46 +1641,35 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
     # Get base analysis from rule-engine (always run for grounding)
     rule_result = ai_assistant(body.query, db=db)
 
-    # Try Indian Stock LLM first
+    # Retrieve Indian stock domain context from knowledge base
     try:
-        from ..llm_integration import llm_available, ask_llm
-        if llm_available():
-            llm_result = ask_llm(body.query)
-            if llm_result and llm_result.get("answer"):
-                answer = llm_result["answer"]
-                if llm_result.get("disclaimer"):
-                    answer = f"{answer}\n\n{llm_result['disclaimer']}"
-                merged = {
-                    **rule_result,
-                    "answer": answer,
-                    "source": "indian-stock-llm",
-                    "llm_intent": llm_result.get("intent"),
-                    "llm_confidence": llm_result.get("confidence"),
-                    "llm_citations": llm_result.get("citations", []),
-                }
-                is_valid, missing = ResponseValidator.validate_response(merged)
-                merged["data_quality"] = "complete" if is_valid else f"incomplete: {', '.join(missing[:3])}"
-                return merged
-    except Exception as e:
-        logger.error(f"Indian Stock LLM error: {e}")
+        from ..llm_integration import retrieve_context, resolve_symbol
+        domain_context = retrieve_context(body.query)
+        resolved = resolve_symbol(body.query)
+    except Exception:
+        domain_context = ""
+        resolved = None
 
-    # Try Gemini if LLM unavailable
+    # Try Gemini enriched with domain knowledge
     try:
         from ..gemini_llm import gemini_available, ask_gemini
         if gemini_available():
             symbol = None
-            if rule_result.get("detected_stocks"):
+            if resolved:
+                symbol = resolved.get("symbol")
+            elif rule_result.get("detected_stocks"):
                 symbol = rule_result["detected_stocks"][0].get("symbol")
 
             context_dict = {
                 "symbol": symbol,
-                "company_name": rule_result.get("company_name"),
+                "company_name": rule_result.get("company_name") or (resolved or {}).get("company_name"),
                 "sector": rule_result.get("sector"),
                 "current_price": rule_result.get("current_price") or rule_result.get("analysis", {}).get("current_price"),
                 "technical": rule_result.get("analysis", {}).get("technical") or {},
                 "fundamental": rule_result.get("analysis", {}).get("fundamental") or {},
                 "trading_levels": rule_result.get("analysis", {}).get("trading_levels") or {},
                 "sentiment": rule_result.get("analysis", {}).get("sentiment") or {},
+                "indian_market_context": domain_context,
             }
 
             gemini_result = await ask_gemini(body.query, context=context_dict)
@@ -1688,7 +1677,7 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                 merged = {
                     **rule_result,
                     "answer": gemini_result["answer"],
-                    "source": "gemini"
+                    "source": "gemini+ism-kb",
                 }
                 is_valid, missing = ResponseValidator.validate_response(merged)
                 merged["data_quality"] = "complete" if is_valid else f"incomplete: {', '.join(missing[:3])}"

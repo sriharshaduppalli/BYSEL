@@ -292,11 +292,6 @@ def llm_status():
         "llm_available": available,
         "error": error,
     }
-        "llm_src_exists": _LLM_SRC.exists(),
-        "llm_data_path": str(_LLM_DATA),
-        "llm_data_exists": _LLM_DATA.exists(),
-        "llm_available": llm_available(),
-    }
 
 @app.on_event("shutdown")
 async def shutdown_event():
