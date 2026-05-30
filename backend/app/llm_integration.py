@@ -2,13 +2,11 @@
 from __future__ import annotations
 
 import logging
-import sys
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_LLM_SRC = Path(__file__).parents[1] / "llm" / "src"
-_LLM_DATA = Path(__file__).parents[1] / "llm" / "data"
+_LLM_DATA = Path(__file__).parent.parent / "llm_data"
 
 _assistant = None
 
@@ -17,11 +15,6 @@ def _load_assistant():
     global _assistant
     if _assistant is not None:
         return _assistant
-    if not _LLM_SRC.exists():
-        logger.warning("LLM source not found at %s — skipping", _LLM_SRC)
-        return None
-    if str(_LLM_SRC) not in sys.path:
-        sys.path.insert(0, str(_LLM_SRC))
     try:
         from indian_stock_llm import StockMarketAssistant
         from indian_stock_llm.config import default_config
@@ -39,7 +32,7 @@ def _load_assistant():
             }
         )
         _assistant = StockMarketAssistant(config=cfg)
-        logger.info("Indian Stock LLM loaded successfully")
+        logger.info("Indian Stock LLM loaded OK (data=%s)", _LLM_DATA)
         return _assistant
     except Exception as exc:
         logger.error("Failed to load Indian Stock LLM: %s", exc)
@@ -47,7 +40,6 @@ def _load_assistant():
 
 
 def ask_llm(query: str) -> dict | None:
-    """Query the Indian Stock LLM. Returns None if unavailable."""
     assistant = _load_assistant()
     if assistant is None:
         return None
