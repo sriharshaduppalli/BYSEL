@@ -3,6 +3,8 @@ package com.bysel.trader.viewmodel
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
+import com.bysel.trader.ai.LlmDownloadState
+import com.bysel.trader.ai.OnDeviceLlmManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -149,6 +151,8 @@ class TradingViewModel(
     val aiLoading: StateFlow<Boolean> = _aiLoading.asStateFlow()
     private val _chatHistory = MutableStateFlow<List<ChatMessage>>(emptyList())
     val chatHistory: StateFlow<List<ChatMessage>> = _chatHistory.asStateFlow()
+
+    val onDeviceLlmState: StateFlow<LlmDownloadState> = OnDeviceLlmManager.state
 
     // portfolio/health/heatmap
     private val _portfolioHealth = MutableStateFlow<PortfolioHealthScore?>(null)
@@ -381,6 +385,12 @@ class TradingViewModel(
 
     init {
         loadAchievements()
+        // Initialize on-device LLM if already downloaded from a previous session
+        viewModelScope.launch {
+            if (OnDeviceLlmManager.isModelDownloaded(getApplication())) {
+                OnDeviceLlmManager.initialize(getApplication())
+            }
+        }
         // observe active alerts from DB
         viewModelScope.launch {
             repository.getActiveAlerts()
@@ -1815,6 +1825,20 @@ class TradingViewModel(
 
             val prompt = PromptBuilder.buildPrompt(cleanedQuery, holdingsSummary, wallet, portfolio?.overallScore, _selectedQuote.value, recentHistory)
 
+            // Try on-device LLM first — runs entirely on the user's phone, no server needed
+            if (OnDeviceLlmManager.isReady()) {
+                val stockCtx = contextParts.joinToString("; ")
+                val devicePrompt = OnDeviceLlmManager.buildPrompt(cleanedQuery, stockCtx)
+                val answer = withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    OnDeviceLlmManager.generateResponse(devicePrompt)
+                }
+                if (!answer.isNullOrBlank()) {
+                    _chatHistory.value = _chatHistory.value + ChatMessage(answer.trim(), isUser = false, source = "on-device")
+                    _aiLoading.value = false
+                    return@launch
+                }
+            }
+
             // Check if we should use enhanced AI analysis
             val shouldUseEnhanced = shouldUseEnhancedAnalysis(cleanedQuery, symbol)
 
@@ -1917,6 +1941,12 @@ class TradingViewModel(
     }
 
     fun clearChatHistory() { _chatHistory.value = emptyList(); _aiResponse.value = null }
+
+    fun downloadOnDeviceModel() {
+        viewModelScope.launch {
+            OnDeviceLlmManager.downloadModel(getApplication())
+        }
+    }
 
     fun optimizePortfolio() {
         val holdings = _holdings.value
@@ -2032,8 +2062,10 @@ class TradingViewModel(
     }
 
     fun loadMarketHeatmap(force: Boolean = false) {
+        // Auto-refresh only during NSE market hours; manual force-refresh always allowed
+        if (!force && !isNseMarketOpen()) return
+
         val now = System.currentTimeMillis()
-        // Use 1-second cache: skip fetch if data exists and cache not expired
         if (!force && _marketHeatmap.value != null && (now - lastHeatmapRefreshAt) < HEATMAP_REFRESH_DEBOUNCE) {
             return
         }
@@ -2050,6 +2082,14 @@ class TradingViewModel(
             }
             _heatmapLoading.value = false
         }
+    }
+
+    private fun isNseMarketOpen(): Boolean {
+        val ist = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Kolkata"))
+        val dow = ist.get(java.util.Calendar.DAY_OF_WEEK)
+        if (dow == java.util.Calendar.SATURDAY || dow == java.util.Calendar.SUNDAY) return false
+        val timeInMin = ist.get(java.util.Calendar.HOUR_OF_DAY) * 60 + ist.get(java.util.Calendar.MINUTE)
+        return timeInMin in (9 * 60 + 15)..(15 * 60 + 30)
     }
 
     fun loadSignalLabBuckets(force: Boolean = false, limitPerBucket: Int = 8) {

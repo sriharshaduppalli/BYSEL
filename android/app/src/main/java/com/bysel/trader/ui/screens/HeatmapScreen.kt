@@ -28,6 +28,16 @@ import com.bysel.trader.data.models.HeatmapStock
 import com.bysel.trader.data.models.MarketHeatmap
 import com.bysel.trader.ui.components.PullToRefreshBox
 import com.bysel.trader.ui.theme.LocalAppTheme
+import java.util.Calendar
+import java.util.TimeZone
+
+private fun isNseMarketOpen(): Boolean {
+    val ist = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata"))
+    val dow = ist.get(Calendar.DAY_OF_WEEK)
+    if (dow == Calendar.SATURDAY || dow == Calendar.SUNDAY) return false
+    val timeInMin = ist.get(Calendar.HOUR_OF_DAY) * 60 + ist.get(Calendar.MINUTE)
+    return timeInMin in (9 * 60 + 15)..(15 * 60 + 30)
+}
 
 @Composable
 fun HeatmapScreen(
@@ -35,18 +45,26 @@ fun HeatmapScreen(
     isLoading: Boolean,
     onRefresh: () -> Unit,
     onStockClick: (String) -> Unit,
-    heatmapInterval: Int = 1000  // Reduced from 2000ms to 1000ms for sub-1s market updates
+    heatmapInterval: Int = 1000
 ) {
-    // Initial load
+    var marketOpen by remember { mutableStateOf(isNseMarketOpen()) }
+
+    // Initial load (always, to show last available data)
     LaunchedEffect(Unit) {
         if (heatmap == null) onRefresh()
     }
 
-    // Periodic refresh using user interval (1 second for real-time market data)
+    // Periodic refresh — only during NSE market hours (Mon–Fri 9:15 AM–3:30 PM IST)
     LaunchedEffect(heatmapInterval) {
         while (true) {
-            onRefresh()
-            kotlinx.coroutines.delay(heatmapInterval.toLong())
+            marketOpen = isNseMarketOpen()
+            if (marketOpen) {
+                onRefresh()
+                kotlinx.coroutines.delay(heatmapInterval.toLong())
+            } else {
+                // Market closed — re-check every 60 seconds instead of hammering the API
+                kotlinx.coroutines.delay(60_000L)
+            }
         }
     }
 
@@ -57,6 +75,9 @@ fun HeatmapScreen(
     ) {
         // Header with market mood
         HeatmapHeader(heatmap)
+
+        // Market status banner
+        MarketStatusBanner(marketOpen)
 
         if (isLoading && heatmap == null) {
             Box(
@@ -92,6 +113,31 @@ fun HeatmapScreen(
             }
             }
         }
+    }
+}
+
+@Composable
+private fun MarketStatusBanner(marketOpen: Boolean) {
+    val ist = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata"))
+    val dow = ist.get(Calendar.DAY_OF_WEEK)
+    val isWeekend = dow == Calendar.SATURDAY || dow == Calendar.SUNDAY
+
+    val (bgColor, icon, message) = when {
+        marketOpen -> Triple(Color(0xFF1B5E20), Icons.Filled.TrendingUp, "Market Open  •  Live data refreshing")
+        isWeekend -> Triple(Color(0xFF1A1A2E), Icons.Filled.Weekend, "Weekend  •  Market closed  •  Showing last session data")
+        else -> Triple(Color(0xFF4A1010), Icons.Filled.Schedule, "Market Closed  •  NSE opens Mon–Fri 9:15 AM IST  •  Showing last session data")
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(bgColor)
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(14.dp))
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(message, color = Color.White.copy(alpha = 0.9f), fontSize = 11.sp)
     }
 }
 
