@@ -1626,22 +1626,51 @@ class AiQuery(BaseModel):
 
 @router.post("/ai/ask")
 async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
-    """Natural language AI stock assistant with structured responses.
-    Examples: 'Should I buy RELIANCE?', 'Predict TCS price', 'Compare INFY and TCS'
-
-    Returns unified response format with:
-    - detected_stock: symbol, confidence, match_method
-    - analysis: technical, fundamental, trading_levels, sentiment
-    - recommendation: signal, confidence, reasoning, risks
-    - source: gemini or rule-engine
-    - data_quality: complete or incomplete
+    """Natural language AI stock assistant.
+    Priority: Groq (free cloud LLM) → Indian Stock LLM → rule-engine fallback.
+    source field indicates which tier answered: groq | indian-stock-llm | rule-engine
     """
     from ..response_validator import ResponseValidator
 
-    # Get base market data from rule-engine (live price, RSI, P/E etc.)
+    # Rule-engine always runs first — provides live price, RSI, P/E etc. as context
     rule_result = ai_assistant(body.query, db=db)
 
-    # Try Indian Stock LLM (free, no API key needed)
+    def _validated(result: dict, source: str) -> dict:
+        result["source"] = source
+        is_valid, missing = ResponseValidator.validate_response(result)
+        if not is_valid:
+            analysis_data = result.get("analysis", {})
+            if analysis_data:
+                result = ResponseValidator.augment_incomplete_response(result, analysis_data)
+            result["data_quality"] = f"incomplete: {', '.join(missing[:3])}"
+        else:
+            result["data_quality"] = "complete"
+        return result
+
+    def _build_context(rule: dict) -> dict:
+        analysis = rule.get("analysis", {})
+        detected = rule.get("detected_stock", {})
+        return {
+            "symbol": detected.get("symbol") or rule.get("symbol"),
+            "current_price": rule.get("current_price"),
+            "technical": analysis.get("technical", {}),
+            "fundamental": analysis.get("fundamental", {}),
+            "trading_levels": analysis.get("trading_levels", {}),
+            "sentiment": analysis.get("sentiment", {}),
+        }
+
+    # Tier 1: Groq (free cloud LLM — set GROQ_API_KEY in Render env vars)
+    try:
+        from ..groq_llm import groq_available, ask_groq
+        if groq_available():
+            groq_result = await ask_groq(body.query, context=_build_context(rule_result))
+            if groq_result.get("answer"):
+                merged = {**rule_result, "answer": groq_result["answer"]}
+                return _validated(merged, "groq")
+    except Exception as e:
+        logger.error("Groq LLM error: %s", e)
+
+    # Tier 2: Indian Stock LLM (pure Python, no API key, bundled in repo)
     try:
         from ..llm_integration import llm_available, ask_llm
         if llm_available():
@@ -1650,46 +1679,15 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                 merged = {
                     **rule_result,
                     "answer": llm_result["answer"],
-                    "source": "indian-stock-llm",
                     "llm_intent": llm_result.get("intent"),
                     "llm_confidence": llm_result.get("confidence"),
                 }
-                is_valid, missing = ResponseValidator.validate_response(merged)
-                merged["data_quality"] = "complete" if is_valid else f"incomplete: {', '.join(missing[:3])}"
-                return merged
+                return _validated(merged, "indian-stock-llm")
     except Exception as e:
-        logger.error(f"Indian Stock LLM error: {e}")
+        logger.error("Indian Stock LLM error: %s", e)
 
-    # Fallback: rule-engine only
-    rule_result["source"] = "rule-engine"
-    is_valid, missing = ResponseValidator.validate_response(rule_result)
-    if not is_valid:
-        analysis_data = rule_result.get("analysis", {})
-        if analysis_data:
-            from ..response_validator import ResponseValidator as RV
-            rule_result = RV.augment_incomplete_response(rule_result, analysis_data)
-        rule_result["data_quality"] = f"incomplete: {', '.join(missing[:3])}"
-    else:
-        rule_result["data_quality"] = "complete"
-    return rule_result
-
-    # Fallback: Use rule-engine result with validation
-    rule_result["source"] = "rule-engine"
-
-    # Validate and augment if needed
-    is_valid, missing = ResponseValidator.validate_response(rule_result)
-    if not is_valid:
-        # Try to augment missing fields from analysis
-        analysis_data = rule_result.get("analysis", {})
-        if analysis_data:
-            rule_result = ResponseValidator.augment_incomplete_response(
-                rule_result, analysis_data
-            )
-        rule_result["data_quality"] = f"incomplete: {', '.join(missing[:3])}"
-    else:
-        rule_result["data_quality"] = "complete"
-
-    return rule_result
+    # Tier 3: rule-engine only
+    return _validated(rule_result, "rule-engine")
 
 
 @router.get("/ai/analyze/{symbol}")
