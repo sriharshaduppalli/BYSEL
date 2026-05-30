@@ -266,6 +266,37 @@ async def slo_metrics_endpoint() -> dict:
 @app.on_event("startup")
 async def startup_event():
     logger.info("BYSEL Backend starting up...")
+    try:
+        from .llm_integration import _load_assistant, _LLM_DATA
+        logger.info("LLM data path: %s (exists=%s)", _LLM_DATA, _LLM_DATA.exists())
+        result = _load_assistant()
+        logger.info("LLM load result: %s", "OK" if result else "FAILED")
+    except Exception as e:
+        logger.error("LLM startup check failed: %s", e)
+
+
+@app.get("/ai/llm-status")
+def llm_status():
+    import traceback
+    from .llm_integration import _LLM_DATA
+    error = None
+    available = False
+    try:
+        from .llm_integration import llm_available
+        available = llm_available()
+    except Exception as e:
+        error = traceback.format_exc()
+    return {
+        "llm_data_path": str(_LLM_DATA),
+        "llm_data_exists": _LLM_DATA.exists(),
+        "llm_available": available,
+        "error": error,
+    }
+        "llm_src_exists": _LLM_SRC.exists(),
+        "llm_data_path": str(_LLM_DATA),
+        "llm_data_exists": _LLM_DATA.exists(),
+        "llm_available": llm_available(),
+    }
 
 @app.on_event("shutdown")
 async def shutdown_event():
