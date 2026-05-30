@@ -1672,15 +1672,31 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
             try:
                 live = await enrich(symbol)
                 if live:
-                    # Fill in missing price and fundamentals from yfinance
+                    # Price
                     if not ctx["current_price"]:
                         ctx["current_price"] = live.get("current_price")
                     ctx["company_name"] = live.get("company_name")
                     ctx["sector"] = live.get("sector")
 
+                    # Fundamentals: live wins, rule-engine fills gaps
                     live_fund = live.get("fundamental", {})
-                    merged_fund = {**live_fund, **{k: v for k, v in ctx["fundamental"].items() if v}}
-                    ctx["fundamental"] = merged_fund
+                    rule_fund = {k: v for k, v in ctx["fundamental"].items() if v}
+                    ctx["fundamental"] = {**live_fund, **rule_fund}
+
+                    # Technicals: live wins (has BB, full MAs), rule-engine fills gaps
+                    live_tech = live.get("technical", {})
+                    rule_tech = {k: v for k, v in ctx["technical"].items() if v}
+                    ctx["technical"] = {**live_tech, **rule_tech}
+
+                    # Trading levels: live always wins (rule-engine rarely has these)
+                    live_tl = live.get("trading_levels", {})
+                    rule_tl = {k: v for k, v in ctx["trading_levels"].items() if v}
+                    ctx["trading_levels"] = {**live_tl, **rule_tl}
+
+                    # Sentiment: live always wins (has news-based sentiment + sector trend)
+                    live_sent = live.get("sentiment", {})
+                    rule_sent = {k: v for k, v in ctx["sentiment"].items() if v}
+                    ctx["sentiment"] = {**live_sent, **rule_sent}
 
                     headlines = live.get("news_headlines", [])
                     if headlines:
