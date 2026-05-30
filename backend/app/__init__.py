@@ -293,6 +293,23 @@ def llm_status():
         "error": error,
     }
 
+@app.get("/ai/groq-status")
+def groq_status():
+    import traceback, os
+    error = None
+    available = False
+    key_set = bool(os.environ.get("GROQ_API_KEY"))
+    try:
+        from .groq_llm import groq_available
+        available = groq_available()
+    except Exception:
+        error = traceback.format_exc()
+    return {
+        "groq_key_set": key_set,
+        "groq_available": available,
+        "error": error,
+    }
+
 @app.on_event("shutdown")
 async def shutdown_event():
     logger.info("BYSEL Backend shutting down...")
