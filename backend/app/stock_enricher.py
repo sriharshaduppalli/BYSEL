@@ -175,20 +175,45 @@ def _fetch_yfinance(symbol: str) -> dict:
 
         nse_sym = symbol if symbol.endswith(".NS") else f"{symbol}.NS"
         ticker = yf.Ticker(nse_sym)
-        info = ticker.info or {}
 
-        # --- Fundamentals ---
-        price = (info.get("currentPrice")
-                 or info.get("regularMarketPrice")
-                 or info.get("previousClose"))
+        # --- fast_info: reliable on all yfinance versions including Docker/Render ---
+        price = None
+        week52_high = None
+        week52_low = None
+        market_cap = None
+        try:
+            fi = ticker.fast_info
+            price = getattr(fi, "last_price", None) or getattr(fi, "regularMarketPrice", None)
+            week52_high = getattr(fi, "fifty_two_week_high", None) or getattr(fi, "yearHigh", None)
+            week52_low = getattr(fi, "fifty_two_week_low", None) or getattr(fi, "yearLow", None)
+            market_cap = getattr(fi, "market_cap", None) or getattr(fi, "marketCap", None)
+        except Exception as e:
+            logger.warning("fast_info failed for %s: %s", symbol, e)
+
+        # --- ticker.info: fundamentals only (P/E, sector, dividend) ---
+        info: dict = {}
+        try:
+            info = ticker.info or {}
+        except Exception as e:
+            logger.warning("ticker.info failed for %s: %s", symbol, e)
+
         pe = info.get("trailingPE") or info.get("forwardPE")
-        market_cap = info.get("marketCap")
         div_yield = info.get("dividendYield")
-        week52_high = info.get("fiftyTwoWeekHigh")
-        week52_low = info.get("fiftyTwoWeekLow")
         sector = info.get("sector") or info.get("industry") or "N/A"
         company_name = info.get("longName") or info.get("shortName") or symbol
         pe_sector_avg = info.get("industryPe") or info.get("fiveYearAvgDivYield")
+
+        # Fallback price from info if fast_info gave nothing
+        if not price:
+            price = (info.get("currentPrice")
+                     or info.get("regularMarketPrice")
+                     or info.get("previousClose"))
+        if not week52_high:
+            week52_high = info.get("fiftyTwoWeekHigh")
+        if not week52_low:
+            week52_low = info.get("fiftyTwoWeekLow")
+        if not market_cap:
+            market_cap = info.get("marketCap")
 
         pos_52w = None
         if price and week52_high and week52_low and week52_high > week52_low:
@@ -201,13 +226,22 @@ def _fetch_yfinance(symbol: str) -> dict:
                 position = "middle of range"
             pos_52w = f"₹{week52_low:,.2f} – ₹{week52_high:,.2f} | Current at {pct:.0f}% ({position})"
 
-        # --- Historical data for technicals ---
-        hist = ticker.history(period="1y", interval="1d")
+        # --- yf.download(): reliable OHLCV history on Docker/Render ---
         closes, highs, lows = [], [], []
-        if not hist.empty:
-            closes = list(hist["Close"].dropna())
-            highs = list(hist["High"].dropna())
-            lows = list(hist["Low"].dropna())
+        try:
+            hist = yf.download(nse_sym, period="1y", progress=False, auto_adjust=True)
+            if not hist.empty:
+                # Newer yfinance returns MultiIndex columns (field, ticker) — flatten
+                if hasattr(hist.columns, "levels"):
+                    hist.columns = hist.columns.get_level_values(0)
+                if "Close" in hist.columns:
+                    closes = [float(v) for v in hist["Close"].dropna()]
+                if "High" in hist.columns:
+                    highs = [float(v) for v in hist["High"].dropna()]
+                if "Low" in hist.columns:
+                    lows = [float(v) for v in hist["Low"].dropna()]
+        except Exception as e:
+            logger.warning("yf.download failed for %s: %s", symbol, e)
 
         current = closes[-1] if closes else price
 
