@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.viewmodel.ChatMessage
+import com.bysel.trader.ai.LlmDownloadState
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.components.ConfidenceCard
 import com.bysel.trader.ui.components.PredictionReasoningCard
@@ -56,7 +57,9 @@ fun AiAssistantScreen(
     selectedSymbol: String? = null,
     onTradeAction: ((symbol: String, side: String, qty: Int?) -> Unit)? = null,
     onAlertAction: ((symbol: String, price: Double?, alertType: String) -> Unit)? = null,
-    onNavigateToStock: ((symbol: String) -> Unit)? = null
+    onNavigateToStock: ((symbol: String) -> Unit)? = null,
+    onDeviceLlmState: LlmDownloadState = LlmDownloadState.NotDownloaded,
+    onDownloadModel: () -> Unit = {},
 ) {
     var query by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -146,6 +149,81 @@ fun AiAssistantScreen(
                 color = Color(0xFF9E6B00),
                 lineHeight = 14.sp
             )
+        }
+
+        // On-device AI model download banner
+        when (onDeviceLlmState) {
+            is LlmDownloadState.NotDownloaded -> {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFE8F5E9))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("On-device AI available", fontWeight = FontWeight.Medium, fontSize = 12.sp, color = Color(0xFF1B5E20))
+                        Text("Download Gemma 2B (~1.4GB) for offline AI — no server needed", fontSize = 11.sp, color = Color(0xFF2E7D32))
+                    }
+                    TextButton(onClick = onDownloadModel) {
+                        Text("Download", fontSize = 12.sp, color = Color(0xFF1B5E20))
+                    }
+                }
+            }
+            is LlmDownloadState.Downloading -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFE3F2FD))
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text("Downloading AI model… ${onDeviceLlmState.progressPct}%", fontSize = 12.sp, color = Color(0xFF0D47A1))
+                    LinearProgressIndicator(
+                        progress = { onDeviceLlmState.progressPct / 100f },
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        color = Color(0xFF1565C0),
+                    )
+                }
+            }
+            is LlmDownloadState.Initializing -> {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFE3F2FD))
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Loading AI model into memory…", fontSize = 12.sp, color = Color(0xFF0D47A1))
+                }
+            }
+            is LlmDownloadState.Ready -> {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFE8F5E9))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("On-device AI active — responses are fully offline", fontSize = 11.sp, color = Color(0xFF1B5E20))
+                }
+            }
+            is LlmDownloadState.Error -> {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFFFEBEE))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("AI model error: ${onDeviceLlmState.message.take(60)}", fontSize = 11.sp, color = Color(0xFFB71C1C), modifier = Modifier.weight(1f))
+                    TextButton(onClick = onDownloadModel) { Text("Retry", fontSize = 11.sp, color = Color(0xFFB71C1C)) }
+                }
+            }
         }
 
         // Chat messages
@@ -329,8 +407,8 @@ private fun buildAdaptiveSuggestions(
             suggestions.add("When is a good entry price for $focusSymbol?" to Icons.AutoMirrored.Filled.TrendingUp)
             suggestions.add("Should I SIP into $focusSymbol?" to Icons.Filled.Payments)
         } else {
-            suggestions.add("Top stocks to accumulate this month" to Icons.AutoMirrored.Filled.TrendingUp)
-            suggestions.add("Best stocks for medium-term investing" to Icons.AutoMirrored.Filled.TrendingUp)
+            suggestions.add("Top stocks to buy this month" to Icons.AutoMirrored.Filled.TrendingUp)
+            suggestions.add("Best large-cap stocks for SIP" to Icons.AutoMirrored.Filled.TrendingUp)
         }
     }
 
@@ -339,17 +417,17 @@ private fun buildAdaptiveSuggestions(
             suggestions.add("RSI and MACD view for $focusSymbol" to Icons.Filled.Analytics)
             suggestions.add("Breakout setup check for $focusSymbol" to Icons.AutoMirrored.Filled.ShowChart)
         } else {
-            suggestions.add("Technical setup for NIFTY IT stocks" to Icons.Filled.Analytics)
-            suggestions.add("Stocks near breakout today" to Icons.AutoMirrored.Filled.ShowChart)
+            suggestions.add("Technical analysis for IT sector stocks" to Icons.Filled.Analytics)
+            suggestions.add("Which NIFTY stocks are near a breakout?" to Icons.AutoMirrored.Filled.ShowChart)
         }
     }
 
     // Profit / Money / Portfolio related context
     val hasProfit = recent.any { textContainsAny(it, listOf("profit", "gain", "return", "earning", "money", "portfolio", "optimize", "loss", "rebalance")) }
     if (hasProfit) {
-        suggestions.add("Optimize my portfolio for maximum returns" to Icons.Filled.Payments)
-        suggestions.add("Which of my holdings should I exit?" to Icons.Filled.Warning)
-        suggestions.add("Best stocks for quick 10% gains" to Icons.AutoMirrored.Filled.TrendingUp)
+        suggestions.add("How to diversify portfolio across Indian sectors?" to Icons.Filled.Payments)
+        suggestions.add("When should I book profits and exit a stock?" to Icons.Filled.Warning)
+        suggestions.add("Which NIFTY 50 stocks have strong momentum?" to Icons.AutoMirrored.Filled.TrendingUp)
         if (focusSymbol != null) {
             suggestions.add("Set profit target and stop-loss for $focusSymbol" to Icons.Filled.PriceCheck)
         }
@@ -376,55 +454,79 @@ private fun normalizePrompt(text: String): String {
 }
 
 private fun buildDefaultSuggestionPool(): List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>> = listOf(
-    // Profit & Action-oriented (NEW)
-    "Best stocks for quick 10% gains" to Icons.AutoMirrored.Filled.TrendingUp,
-    "Top momentum stocks for swing trading" to Icons.AutoMirrored.Filled.TrendingUp,
-    "Stocks near 52-week low with strong fundamentals" to Icons.Filled.PriceCheck,
-    "Best entry points for blue chips today" to Icons.Filled.Payments,
-    "Dividend stocks paying this month" to Icons.Filled.Payments,
-    "Optimize my portfolio for max returns" to Icons.Filled.Analytics,
-    "Which of my holdings should I exit?" to Icons.Filled.Warning,
-    "Safest stocks to park money right now" to Icons.Filled.AccountBalance,
-    // Buy / Invest
+    // Buy / Invest — specific stocks
     "Should I buy RELIANCE?" to Icons.AutoMirrored.Filled.TrendingUp,
     "Should I buy TCS?" to Icons.AutoMirrored.Filled.TrendingUp,
     "Should I buy HDFCBANK?" to Icons.AutoMirrored.Filled.TrendingUp,
     "Should I buy SBIN?" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Should I buy LUPIN?" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Is ZOMATO a good buy right now?" to Icons.AutoMirrored.Filled.TrendingUp,
     "Is Infosys a good investment?" to Icons.AutoMirrored.Filled.TrendingUp,
     "Should I invest in Tata Motors?" to Icons.AutoMirrored.Filled.TrendingUp,
-    // Predict
+    "Should I buy ICICIBANK?" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Should I invest in BAJFINANCE?" to Icons.AutoMirrored.Filled.TrendingUp,
+    // Predict — specific stocks
     "Predict TCS price" to Icons.Filled.Timeline,
     "Predict RELIANCE price" to Icons.Filled.Timeline,
     "Predict WIPRO price" to Icons.Filled.Timeline,
     "Predict SUNPHARMA price" to Icons.Filled.Timeline,
     "Predict TATAMOTORS price" to Icons.Filled.Timeline,
     "Predict ICICIBANK price" to Icons.Filled.Timeline,
-    // Compare
+    "Predict HDFCBANK price next month" to Icons.Filled.Timeline,
+    "Predict LUPIN price this quarter" to Icons.Filled.Timeline,
+    // Compare — specific pairs
     "Compare INFY and TCS" to Icons.AutoMirrored.Filled.CompareArrows,
     "Compare ICICI Bank and HDFC Bank" to Icons.AutoMirrored.Filled.CompareArrows,
     "Compare TCS with Wipro" to Icons.AutoMirrored.Filled.CompareArrows,
     "Compare TATAMOTORS and MARUTI" to Icons.AutoMirrored.Filled.CompareArrows,
     "Compare SBIN and HDFCBANK" to Icons.AutoMirrored.Filled.CompareArrows,
     "Compare SUNPHARMA and DRREDDY" to Icons.AutoMirrored.Filled.CompareArrows,
-    // Sector screens
-    "Best bank stocks" to Icons.Filled.AccountBalance,
-    "Top IT stocks" to Icons.Filled.Analytics,
-    "Best pharma stocks" to Icons.Filled.Analytics,
-    "Top energy stocks" to Icons.Filled.Bolt,
-    "Best auto stocks" to Icons.AutoMirrored.Filled.TrendingUp,
-    "Top FMCG stocks" to Icons.Filled.Analytics,
-    "Best defence stocks" to Icons.Filled.Analytics,
-    // Analyze
+    "Compare LUPIN and CIPLA" to Icons.AutoMirrored.Filled.CompareArrows,
+    "Compare AXISBANK and ICICIBANK" to Icons.AutoMirrored.Filled.CompareArrows,
+    // Analyze — specific stocks
     "Analyze HDFCBANK" to Icons.Filled.Analytics,
     "Analyze Larsen and Toubro" to Icons.Filled.Analytics,
     "Analyze ICICIBANK" to Icons.Filled.Analytics,
     "Analyze WIPRO" to Icons.Filled.Analytics,
     "Analyze SUNPHARMA" to Icons.Filled.Analytics,
-    // Overvaluation
+    "Analyze LUPIN" to Icons.Filled.Analytics,
+    "Analyze ZOMATO" to Icons.Filled.Analytics,
+    "Analyze TATAMOTORS" to Icons.Filled.Analytics,
+    "Analyze BAJFINANCE" to Icons.Filled.Analytics,
+    // Valuation — specific stocks
     "Is SBIN overvalued?" to Icons.Filled.PriceCheck,
     "Is Wipro undervalued?" to Icons.Filled.PriceCheck,
     "Is TCS fairly valued?" to Icons.Filled.PriceCheck,
     "Is RELIANCE overvalued?" to Icons.Filled.PriceCheck,
+    "Is LUPIN fairly valued?" to Icons.Filled.PriceCheck,
+    "Is BAJFINANCE overvalued?" to Icons.Filled.PriceCheck,
+    "Is ZOMATO worth the current price?" to Icons.Filled.PriceCheck,
+    // Sector screens — clear general questions (AI handles well)
+    "Best bank stocks in India" to Icons.Filled.AccountBalance,
+    "Top IT stocks to watch" to Icons.Filled.Analytics,
+    "Best pharma stocks" to Icons.Filled.Analytics,
+    "Top energy stocks in India" to Icons.Filled.Analytics,
+    "Best auto stocks" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Top FMCG stocks" to Icons.Filled.Analytics,
+    "Best defence stocks" to Icons.Filled.Analytics,
+    "Top PSU bank stocks" to Icons.Filled.AccountBalance,
+    "Best EV-related stocks in India" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Top infrastructure stocks in India" to Icons.Filled.Analytics,
+    // Market & Macro — good general AI questions
+    "NIFTY 50 market outlook this week" to Icons.AutoMirrored.Filled.ShowChart,
+    "Which sector is performing best this quarter?" to Icons.Filled.Analytics,
+    "Impact of RBI rate cut on banking stocks" to Icons.Filled.AccountBalance,
+    "Effect of rupee weakness on IT stocks" to Icons.Filled.Analytics,
+    "Best dividend-paying stocks in NIFTY 50" to Icons.Filled.Payments,
+    "Large-cap stocks near their 52-week lows" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Which defensive stocks are safe to hold?" to Icons.Filled.Analytics,
+    "Is it a good time to invest in IT sector?" to Icons.Filled.Analytics,
+    // Educational — clear, focused questions
+    "What does RSI above 70 mean?" to Icons.AutoMirrored.Filled.Help,
+    "How to read Bollinger Bands?" to Icons.AutoMirrored.Filled.Help,
+    "What is a good P/E ratio for Indian stocks?" to Icons.AutoMirrored.Filled.Help,
+    "When should I use stop-loss?" to Icons.AutoMirrored.Filled.Help,
+    "Explain support and resistance levels" to Icons.AutoMirrored.Filled.Help,
 )
 
 @Composable
