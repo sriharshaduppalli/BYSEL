@@ -7,8 +7,8 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_LLM_SRC = Path(__file__).parents[2] / "llm" / "src"
-_LLM_DATA = Path(__file__).parents[2] / "llm" / "data"
+_LLM_SRC = Path(__file__).parents[1] / "llm" / "src"
+_LLM_DATA = Path(__file__).parents[1] / "llm" / "data"
 
 _assistant = None
 
