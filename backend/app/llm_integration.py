@@ -9,9 +9,6 @@ logger = logging.getLogger(__name__)
 _LLM_DATA = Path(__file__).parent.parent / "llm_data"
 
 _assistant = None
-
-
-def _load_assistant():
     global _assistant
     if _assistant is not None:
         return _assistant
