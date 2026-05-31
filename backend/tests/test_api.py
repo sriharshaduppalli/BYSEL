@@ -1,3 +1,4 @@
+import json
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
@@ -10,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app import app
 from app import ai_engine
+import app.market_heatmap as market_heatmap_module
 import app.routes as routes_module
 import app.routes.trading as trading_module
 import app.routes.streaming as streaming_module
@@ -1509,6 +1511,51 @@ def test_signal_lab_buckets_endpoint_returns_results_and_institutional(monkeypat
         assert first["companyName"]
         assert isinstance(first["confidence"], int)
         assert first["score"] >= 0
+
+
+def test_market_heatmap_returns_persisted_snapshot_when_market_closed(monkeypatch, tmp_path):
+    snapshot = {
+        "sectors": [
+            {
+                "name": "Pharma",
+                "stocks": [{"symbol": "LUPIN", "price": 2100.0, "pctChange": 1.25, "change": 25.0, "intensity": "positive", "name": "Lupin Limited"}],
+                "avgChange": 1.25,
+                "advances": 1,
+                "declines": 0,
+                "unchanged": 0,
+                "totalStocks": 1,
+                "intensity": "positive",
+                "topGainer": {"symbol": "LUPIN"},
+                "topLoser": {"symbol": "LUPIN"},
+            }
+        ],
+        "marketBreadth": {
+            "advances": 1,
+            "declines": 0,
+            "unchanged": 0,
+            "total": 1,
+            "advanceRatio": 1.0,
+        },
+        "mood": "BULLISH",
+        "moodEmoji": "🟢",
+        "moodDescription": "Persisted prior session snapshot",
+        "bestSector": {"name": "Pharma", "change": 1.25},
+        "worstSector": {"name": "Pharma", "change": 1.25},
+        "lastUpdated": "2026-05-31T09:15:00",
+    }
+
+    snapshot_path = tmp_path / "market_heatmap_snapshot.json"
+    snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_SNAPSHOT_PATH", snapshot_path)
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_CACHE", {"data": None, "timestamp": 0})
+    monkeypatch.setattr(market_heatmap_module, "_is_nse_market_open", lambda: False)
+
+    result = market_heatmap_module.get_market_heatmap()
+
+    assert result["lastUpdated"] == snapshot["lastUpdated"]
+    assert result["marketBreadth"]["total"] == 1
+    assert result["sectors"][0]["stocks"][0]["symbol"] == "LUPIN"
 
 
 def test_investor_portfolio_insights_endpoint_returns_changes_and_ideas(monkeypatch):

@@ -2011,6 +2011,9 @@ class TradingViewModel(
     }
 
     fun loadMarketHeatmap(force: Boolean = false) {
+        // When the market is closed, still allow an initial load so the UI can
+        // show the backend's last persisted session snapshot.
+        if (!force && !isNseMarketOpen() && _marketHeatmap.value != null) return
         val now = System.currentTimeMillis()
         // Use 1-second cache: skip fetch if data exists and cache not expired
         if (!force && _marketHeatmap.value != null && (now - lastHeatmapRefreshAt) < HEATMAP_REFRESH_DEBOUNCE) {
