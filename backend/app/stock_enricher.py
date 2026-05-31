@@ -469,6 +469,69 @@ _SYMBOL_COMPANY: dict[str, str] = {
 }
 
 
+def normalize_hinglish(query: str) -> str:
+    """
+    Normalize Hinglish (Hindi-English mix) queries to English for NLP processing.
+    Preserves stock symbols and financial terms.
+    Examples:
+    • "RELIANCE ka P/E kya hai?" → "RELIANCE of P/E what is?"
+    • "₹1500 par buy karna chahiye?" → "₹1500 at buy should?"
+    • "NIFTY me RELIANCE best hai?" → "NIFTY in RELIANCE best is?"
+    """
+    q = query
+
+    # Hindi question words (placed at start for clarity)
+    hinglish_words = {
+        # Question words
+        r'\bkya\b': 'what',
+        r'\bkaun\b': 'who',
+        r'\bkaise\b': 'how',
+        r'\bkyun\b': 'why',
+        r'\bkab\b': 'when',
+        r'\bkahan\b': 'where',
+        # Common postpositions / suffixes
+        r'\bka\b': 'of',  # possession
+        r'\bke\b': 'of',
+        r'\bki\b': 'of',
+        r'\bpar\b': 'at',  # location/price
+        r'\bpe\b': 'at',
+        r'\bme\b': 'in',  # location
+        r'\bko\b': 'to',  # object marker
+        r'\bse\b': 'from',  # ablative
+        r'\btak\b': 'till',
+        # Common verbs
+        r'\bhona\b': 'is',
+        r'\bhai\b': 'is',
+        r'\bhain\b': 'are',
+        r'\btha\b': 'was',
+        r'\bthe\b': 'were',
+        r'\bchahunga\b': 'want',
+        r'\bchaiye\b': 'should',
+        r'\bchahiye\b': 'should',
+        r'\bsakte\b': 'can',
+        r'\bsakte\s+ho\b': 'can',
+        r'\bbata\b': 'tell',
+        r'\bdo\b': 'give',
+        r'\blena\b': 'take',
+        r'\bkarna\b': 'do',
+        # Interjections / common words
+        r'\bji\b': '',  # respectful marker, remove
+        r'\bna\b': 'not',  # negation
+        r'\bnahi\b': 'no',
+        r'\baur\b': 'and',
+        r'\bya\b': 'or',
+        r'\bto\b': 'then',
+    }
+
+    # Apply case-insensitive replacements
+    for hindi, english in hinglish_words.items():
+        q = re.sub(hindi, english, q, flags=re.IGNORECASE)
+
+    # Clean up extra whitespace
+    q = re.sub(r'\s+', ' ', q).strip()
+    return q
+
+
 def extract_all_symbols_from_query(query: str) -> list[str]:
     """
     Extract ALL symbols/stock names from query (not just first one).
@@ -671,7 +734,18 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
         if tok not in _SKIP and len(tok) >= 3:
             return tok
 
+    # Step 4: fuzzy matching fallback for typos (e.g., "RELIANGE" → "RELIANCE")
+    from difflib import get_close_matches
+    extracted_tokens = re.findall(r'\b[A-Za-z0-9\-]{3,10}\b', query.upper())
+    if extracted_tokens:
+        for token in extracted_tokens:
+            if token not in _SKIP:
+                candidates = get_close_matches(token, list(_NAME_TO_SYMBOL.values()), n=1, cutoff=0.75)
+                if candidates:
+                    return candidates[0]
+
     return None
+
 
 
 def _fmt_inr_cr(val) -> Optional[str]:

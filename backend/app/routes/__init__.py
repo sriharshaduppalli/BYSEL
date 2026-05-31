@@ -1668,12 +1668,27 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
         from ..groq_llm import detect_sentiment_from_query
         user_sentiment = detect_sentiment_from_query(body.query)
 
+        # Extract user's current portfolio for personalized advice
+        portfolio_context = {"total_holdings": 0, "symbols": [], "concentrations": {}}
+        try:
+            holdings = get_holdings(db)
+            if holdings:
+                portfolio_context = {
+                    "total_holdings": len(holdings),
+                    "symbols": [h.symbol for h in holdings if h.symbol],
+                    "concentrations": {h.symbol: h.quantity for h in holdings if h.symbol},
+                    "total_value": sum(getattr(h, "last_price", 0) * (h.quantity or 0) for h in holdings if h.symbol),
+                }
+        except Exception as e:
+            logger.debug("Could not extract portfolio context: %s", e)
+
         ctx: dict = {
             "symbol": symbol,
             "all_symbols": all_symbols,  # list of ALL detected symbols
             "entities": entities,  # extracted price targets, time horizons, etc.
             "current_price": rule_result.get("current_price"),
             "user_sentiment": user_sentiment,  # urgency, risk_appetite, emotion, user_profile
+            "portfolio_context": portfolio_context,  # user's current holdings
             "technical": data.get("technical", {}),
             "fundamental": data.get("fundamental", {}),
             "trading_levels": data.get("trading_levels", {}),
@@ -1725,11 +1740,12 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
 
     # Tier 1: Groq — enriched with live price, fundamentals, pre-computed signals, extracted entities, and conversation history
     try:
-        from ..groq_llm import groq_available, ask_groq, classify_intent
+        from ..groq_llm import groq_available, ask_groq, classify_intent, expand_acronyms_in_query
         if groq_available():
             enriched_ctx = await _build_enriched_context()
-            # Normalize Hinglish before intent classification
-            normalized_query = normalize_hinglish(body.query)
+            # Expand acronyms, then normalize Hinglish before intent classification
+            expanded_query = expand_acronyms_in_query(body.query)
+            normalized_query = normalize_hinglish(expanded_query)
             intent_result = classify_intent(normalized_query)  # returns {"intent": ..., "confidence": ..., "alternatives": ...}
             groq_result = await ask_groq(
                 normalized_query,

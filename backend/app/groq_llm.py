@@ -195,7 +195,63 @@ The user is comparing 2+ stocks. Structure your response:
 3. FINAL RECOMMENDATION: Which stock to pick given current market conditions
 4. RISKS: Specific risk for each stock, not generic
 Be comparative and specific — don't give generic analysis for each stock separately.
-"""
+""",
+
+    "COMPARE_CONCEPTS": """
+--- CONCEPT COMPARISON ---
+The user is comparing investment concepts, strategies, or asset classes (not specific stocks).
+1. DEFINITION: Clearly define each concept in simple language (1-2 sentences each)
+2. COMPARISON TABLE: Feature | Concept A | Concept B | Better For
+   Include: Risk level, Time horizon, Returns potential, Volatility, Effort required, Suitable for whom
+3. PROS & CONS: List 3 pros and 3 cons for each concept
+4. WHO SHOULD CHOOSE WHAT: Give specific recommendations based on investor type (beginner/experienced, aggressive/conservative, short/long-term)
+5. VERDICT: Which concept suits different investor goals
+Be educational and practical — help user make an informed decision based on their profile.
+""",
+
+
+# ---------------------------------------------------------------------------
+# Acronym expansion — expand Indian financial terms before NLP processing
+# ---------------------------------------------------------------------------
+_ACRONYMS = {
+    "FII": "Foreign Institutional Investors",
+    "DII": "Domestic Institutional Investors",
+    "RBI": "Reserve Bank of India",
+    "NSE": "National Stock Exchange",
+    "BSE": "Bombay Stock Exchange",
+    "NIFTY": "NIFTY 50 index",
+    "SENSEX": "BSE 30 index",
+    "CAGR": "Compound Annual Growth Rate",
+    "P/E": "Price-to-Earnings ratio",
+    "PE": "Price-to-Earnings ratio",
+    "ROE": "Return on Equity",
+    "ROCE": "Return on Capital Employed",
+    "EPS": "Earnings Per Share",
+    "IPO": "Initial Public Offering",
+    "FPO": "Follow-on Public Offering",
+    "F&O": "Futures & Options",
+    "SIP": "Systematic Investment Plan",
+    "ELSS": "Equity Linked Savings Scheme",
+    "PB": "Price-to-Book ratio",
+    "PEG": "Price/Earnings to Growth ratio",
+    "MACD": "Moving Average Convergence Divergence",
+    "RSI": "Relative Strength Index",
+    "BB": "Bollinger Bands",
+    "SMA": "Simple Moving Average",
+    "EMA": "Exponential Moving Average",
+    "MNC": "Multi-National Corporation",
+}
+
+
+def expand_acronyms_in_query(query: str) -> str:
+    """Expand common Indian financial acronyms to full forms."""
+    expanded = query
+    for acronym, expansion in _ACRONYMS.items():
+        # Replace acronym with parenthetical expansion (preserve original)
+        import re
+        pattern = r'\b' + re.escape(acronym) + r'\b'
+        expanded = re.sub(pattern, f"{acronym} ({expansion})", expanded, flags=re.IGNORECASE)
+    return expanded
 
 
 # ---------------------------------------------------------------------------
@@ -208,9 +264,34 @@ def classify_intent(query: str) -> dict:
         "intent": "PREDICT|COMPARE|...|GENERAL",
         "confidence": 85,  # 0-100 confidence score
         "alternatives": [("TECHNICAL", 62), ("EDUCATIONAL", 45)]  # next 2 runner-ups
+        "reasoning": "Detected intent based on..."  # explanation
     }
     """
     q = query.lower()
+
+    # Check for concept comparisons first (non-stock comparisons)
+    _CONCEPT_PAIRS = {
+        "growth vs value": "COMPARE_CONCEPTS",
+        "safe vs aggressive": "COMPARE_CONCEPTS",
+        "dividend vs growth": "COMPARE_CONCEPTS",
+        "large-cap vs small-cap": "COMPARE_CONCEPTS",
+        "large cap vs small cap": "COMPARE_CONCEPTS",
+        "debt vs equity": "COMPARE_CONCEPTS",
+        "long term vs short term": "COMPARE_CONCEPTS",
+        "active vs passive": "COMPARE_CONCEPTS",
+        "mutual fund vs stock": "COMPARE_CONCEPTS",
+        "etf vs mutual fund": "COMPARE_CONCEPTS",
+    }
+
+    for concept_pair, intent in _CONCEPT_PAIRS.items():
+        if concept_pair in q:
+            return {
+                "intent": intent,
+                "confidence": 95,
+                "alternatives": [("EDUCATIONAL", 50)],
+                "reasoning": f"Detected concept comparison: {concept_pair.title()}",
+            }
+
     scores: Dict[str, int] = {
         "PREDICT": 0, "COMPARE": 0, "BUY_SELL": 0, "TECHNICAL": 0,
         "FUNDAMENTAL": 0, "SECTOR_SCREEN": 0, "PORTFOLIO": 0, "EDUCATIONAL": 0,
@@ -283,11 +364,23 @@ def classify_intent(query: str) -> dict:
     if best_score == 0:
         confidence = 0
         best = "GENERAL"
+        reasoning = "No specific intent detected; treating as general market question"
     else:
         second_score = sorted_intents[1][1] if len(sorted_intents) > 1 else 0
         # Confidence based on gap between top and runner-up
         gap = best_score - second_score
         confidence = min(100, 50 + gap * 5)  # 50-100 scale
+
+        # Build reasoning message
+        alt_intent = sorted_intents[1][0] if len(sorted_intents) > 1 else None
+        alt_confidence = min(100, 50 + second_score * 5) if alt_intent else 0
+
+        if alt_intent and confidence < 65:
+            reasoning = f"Detected {best} (confidence {confidence}%) with secondary interpretation: {alt_intent} ({alt_confidence}%); query may be ambiguous"
+        elif alt_intent:
+            reasoning = f"Detected {best} (confidence {confidence}%) based on primary keywords; {alt_intent} also possible ({alt_confidence}%)"
+        else:
+            reasoning = f"Detected {best} with high confidence ({confidence}%)"
 
     alternatives = [(name, min(100, 50 + score * 5)) for name, score in sorted_intents[1:3]]
 
@@ -295,6 +388,7 @@ def classify_intent(query: str) -> dict:
         "intent": best,
         "confidence": confidence,
         "alternatives": alternatives,
+        "reasoning": reasoning,
     }
 
 
@@ -454,6 +548,17 @@ def _format_context(context: Optional[Dict]) -> str:
             parts.append(f"  Tone: {user_sentiment['emotion'].title()}")
         if user_sentiment.get("user_profile") and user_sentiment["user_profile"] != "unknown":
             parts.append(f"  Profile: {user_sentiment['user_profile'].title()}")
+        parts.append("")
+
+    # Portfolio context block
+    portfolio = context.get("portfolio_context") or {}
+    if portfolio and portfolio.get("total_holdings", 0) > 0:
+        parts.append("YOUR CURRENT PORTFOLIO:")
+        parts.append(f"  Total Holdings: {portfolio['total_holdings']} stocks")
+        if portfolio.get("symbols"):
+            parts.append(f"  Stocks: {', '.join(portfolio['symbols'][:10])}")  # First 10
+            if len(portfolio['symbols']) > 10:
+                parts.append(f"  (+{len(portfolio['symbols']) - 10} more)")
         parts.append("")
 
     # Extracted entities block (price targets, time horizons, etc.)
