@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException, Header
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
-from typing import Dict
+from typing import Dict, List, Optional
 import logging
 import os
 import time
@@ -1623,6 +1623,7 @@ async def health_check():
 
 class AiQuery(BaseModel):
     query: str
+    conversation_history: Optional[List[Dict]] = None  # last N turns: [{"role":"user"|"assistant","content":str}]
 
 @router.post("/ai/ask")
 async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
@@ -1701,19 +1702,33 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                     headlines = live.get("news_headlines", [])
                     if headlines:
                         ctx["news_summary"] = format_news_for_prompt(headlines)
+
+                    # Pre-computed signal conclusions from enricher
+                    if live.get("pre_signals"):
+                        ctx["pre_signals"] = live["pre_signals"]
             except Exception as exc:
                 logger.warning("Enrichment failed for %s: %s", symbol, exc)
 
         return ctx
 
-    # Tier 1: Groq — enriched with live price, fundamentals, and news
+    # Tier 1: Groq — enriched with live price, fundamentals, pre-computed signals, and news
     try:
-        from ..groq_llm import groq_available, ask_groq
+        from ..groq_llm import groq_available, ask_groq, classify_intent
         if groq_available():
             enriched_ctx = await _build_enriched_context()
-            groq_result = await ask_groq(body.query, context=enriched_ctx)
+            intent = classify_intent(body.query)
+            groq_result = await ask_groq(
+                body.query,
+                context=enriched_ctx,
+                conversation_history=body.conversation_history,
+                intent=intent,
+            )
             if groq_result.get("answer"):
-                merged = {**rule_result, "answer": groq_result["answer"]}
+                merged = {
+                    **rule_result,
+                    "answer": groq_result["answer"],
+                    "intent": groq_result.get("intent", intent),
+                }
                 return _validated(merged, "groq")
     except Exception as e:
         logger.error("Groq LLM error: %s", e)

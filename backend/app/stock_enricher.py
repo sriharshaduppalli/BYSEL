@@ -995,36 +995,43 @@ def _fetch_yfinance(symbol: str) -> dict:
 
         sentiment = _news_sentiment(headlines) if headlines else {}
 
+        fundamental_data = {
+            "pe_ratio": f"{pe:.1f}" if pe else None,
+            "pe_sector_avg": f"{pe_sector_avg:.1f}" if pe_sector_avg else "~25 (market avg)",
+            "market_cap": _fmt_inr_cr(market_cap),
+            "dividend_yield": f"{div_yield*100:.2f}%" if div_yield else "Not declared",
+            "week_52": pos_52w,
+        }
+        trading_levels_data = {
+            "support_1": f"{support1:,.2f}" if support1 else None,
+            "support_2": f"{support2:,.2f}" if support2 else None,
+            "resistance_1": f"{resistance1:,.2f}" if resistance1 else None,
+            "resistance_2": f"{resistance2:,.2f}" if resistance2 else None,
+            "stop_loss": f"{stop_loss:,.2f}" if stop_loss else None,
+            "take_profit": f"{take_profit:,.2f}" if take_profit else None,
+            "risk_reward": rr_ratio,
+        }
+        technical_data = {
+            "rsi": rsi_str,
+            "rsi_interpretation": rsi_interp,
+            "bollinger_bands": bb_band,
+            "moving_averages": ma_trend,
+            "trend": ("strong_bullish" if current and sma50 and sma200 and current > sma50 > sma200
+                      else "bearish" if current and sma50 and sma200 and current < sma50 < sma200
+                      else "neutral"),
+        }
+
+        # Pre-compute signal conclusions for each indicator
+        pre_signals = compute_pre_signals(technical_data, fundamental_data, trading_levels_data, current)
+
         return {
             "symbol": symbol,
             "company_name": company_name,
             "sector": sector,
             "current_price": f"{current:,.2f}" if current else None,
-            "fundamental": {
-                "pe_ratio": f"{pe:.1f}" if pe else None,
-                "pe_sector_avg": f"{pe_sector_avg:.1f}" if pe_sector_avg else "~25 (market avg)",
-                "market_cap": _fmt_inr_cr(market_cap),
-                "dividend_yield": f"{div_yield*100:.2f}%" if div_yield else "Not declared",
-                "week_52": pos_52w,
-            },
-            "technical": {
-                "rsi": rsi_str,
-                "rsi_interpretation": rsi_interp,
-                "bollinger_bands": bb_band,
-                "moving_averages": ma_trend,
-                "trend": ("strong_bullish" if current and sma50 and sma200 and current > sma50 > sma200
-                          else "bearish" if current and sma50 and sma200 and current < sma50 < sma200
-                          else "neutral"),
-            },
-            "trading_levels": {
-                "support_1": f"{support1:,.2f}" if support1 else None,
-                "support_2": f"{support2:,.2f}" if support2 else None,
-                "resistance_1": f"{resistance1:,.2f}" if resistance1 else None,
-                "resistance_2": f"{resistance2:,.2f}" if resistance2 else None,
-                "stop_loss": f"{stop_loss:,.2f}" if stop_loss else None,
-                "take_profit": f"{take_profit:,.2f}" if take_profit else None,
-                "risk_reward": rr_ratio,
-            },
+            "fundamental": fundamental_data,
+            "technical": technical_data,
+            "trading_levels": trading_levels_data,
             "sentiment": {
                 "overall": sentiment.get("overall"),
                 "breakdown": sentiment.get("breakdown"),
@@ -1032,6 +1039,7 @@ def _fetch_yfinance(symbol: str) -> dict:
                 "sector_trend": sector_trend,
             },
             "news_headlines": headlines,
+            "pre_signals": pre_signals,
         }
 
     except Exception as exc:
@@ -1056,3 +1064,133 @@ def format_news_for_prompt(headlines: list[str]) -> str:
         return ""
     lines = "\n".join(f"  • {h}" for h in headlines)
     return f"RECENT NEWS HEADLINES:\n{lines}"
+
+
+def compute_pre_signals(
+    tech: dict, fund: dict, tl: dict, current_price: Optional[float]
+) -> dict:
+    """
+    Pre-compute human-readable signal conclusions from raw data so the LLM
+    receives analysis results rather than raw numbers.
+    """
+    signals: dict = {}
+
+    # RSI signal
+    try:
+        rsi_val = float(str(tech.get("rsi", "")).split()[0].replace(",", ""))
+        if rsi_val >= 75:
+            signals["rsi_signal"] = f"RSI {rsi_val:.0f} — Strongly overbought, high reversal risk, avoid chasing"
+        elif rsi_val >= 70:
+            signals["rsi_signal"] = f"RSI {rsi_val:.0f} — Overbought zone, potential short-term pullback"
+        elif rsi_val <= 25:
+            signals["rsi_signal"] = f"RSI {rsi_val:.0f} — Strongly oversold, watch for reversal/bounce"
+        elif rsi_val <= 30:
+            signals["rsi_signal"] = f"RSI {rsi_val:.0f} — Oversold, potential accumulation zone"
+        elif 48 <= rsi_val <= 55:
+            signals["rsi_signal"] = f"RSI {rsi_val:.0f} — Neutral momentum, no directional signal"
+        elif rsi_val > 55:
+            signals["rsi_signal"] = f"RSI {rsi_val:.0f} — Bullish momentum building, trend intact"
+        else:
+            signals["rsi_signal"] = f"RSI {rsi_val:.0f} — Bearish momentum, wait for stabilization"
+    except (ValueError, TypeError):
+        pass
+
+    # MA trend signal
+    ma_str = str(tech.get("moving_averages", "") or tech.get("trend", "")).lower()
+    if "strong_bullish" in ma_str or "strongly bullish" in ma_str:
+        signals["ma_signal"] = "All major MAs aligned bullish — strong uptrend, dips are buying opportunities"
+    elif "bullish" in ma_str and "above" in ma_str:
+        signals["ma_signal"] = "Price above key MAs — uptrend intact, pullbacks to 50-SMA are entry zones"
+    elif "strong_bearish" in ma_str or "strongly bearish" in ma_str:
+        signals["ma_signal"] = "Price below all major MAs — strong downtrend, avoid buying until MA reclaim"
+    elif "bearish" in ma_str and "below" in ma_str:
+        signals["ma_signal"] = "Price below key MAs — downtrend, wait for 20-SMA reclaim before buying"
+    elif ma_str:
+        signals["ma_signal"] = "Mixed MA signals — sideways consolidation, wait for directional breakout"
+
+    # 52-week position
+    week52_str = str(fund.get("week_52", "") or "")
+    if current_price and week52_str:
+        try:
+            nums = re.findall(r"[\d]+\.?\d*", week52_str.replace(",", ""))
+            if len(nums) >= 2:
+                low52, high52 = float(nums[0]), float(nums[-1])
+                rng = high52 - low52
+                if rng > 0:
+                    pos_pct = (current_price - low52) / rng * 100
+                    if pos_pct >= 90:
+                        signals["week52_signal"] = (
+                            f"Near 52-week HIGH ({pos_pct:.0f}% of range) — "
+                            f"resistance at ₹{high52:,.0f}, profit booking risk"
+                        )
+                    elif pos_pct >= 70:
+                        signals["week52_signal"] = (
+                            f"Upper half of 52-week range ({pos_pct:.0f}%) — "
+                            f"momentum favors bulls but watch ₹{high52:,.0f} resistance"
+                        )
+                    elif pos_pct <= 10:
+                        signals["week52_signal"] = (
+                            f"Near 52-week LOW ({pos_pct:.0f}% of range) — "
+                            f"potential value zone, but confirm before buying"
+                        )
+                    elif pos_pct <= 30:
+                        signals["week52_signal"] = (
+                            f"Lower 52-week range ({pos_pct:.0f}%) — "
+                            f"contrarian opportunity, but sentiment still negative"
+                        )
+                    else:
+                        signals["week52_signal"] = (
+                            f"Mid 52-week range ({pos_pct:.0f}%) — "
+                            f"neutral zone, ₹{high52:,.0f} target | ₹{low52:,.0f} floor"
+                        )
+        except (ValueError, IndexError):
+            pass
+
+    # Support/Resistance proximity
+    if current_price and tl.get("support_1") and tl.get("resistance_1"):
+        try:
+            s1 = float(str(tl["support_1"]).replace(",", "").replace("₹", ""))
+            r1 = float(str(tl["resistance_1"]).replace(",", "").replace("₹", ""))
+            dist_sup = (current_price - s1) / current_price * 100
+            dist_res = (r1 - current_price) / current_price * 100
+            if dist_sup < 2:
+                signals["level_signal"] = (
+                    f"Price ≈ support ₹{s1:,.0f} ({dist_sup:.1f}% away) — "
+                    f"low-risk entry zone, stop below ₹{s1:,.0f}"
+                )
+            elif dist_res < 2:
+                signals["level_signal"] = (
+                    f"Price ≈ resistance ₹{r1:,.0f} ({dist_res:.1f}% away) — "
+                    f"breakout or rejection imminent, wait for confirmation"
+                )
+            elif dist_res < dist_sup:
+                signals["level_signal"] = (
+                    f"Limited upside to resistance ₹{r1:,.0f} ({dist_res:.1f}%) "
+                    f"vs downside to support ₹{s1:,.0f} ({dist_sup:.1f}%) — "
+                    f"unfavorable risk/reward until breakout"
+                )
+            else:
+                signals["level_signal"] = (
+                    f"Good risk/reward — ₹{dist_res:.1f}% upside to ₹{r1:,.0f} "
+                    f"vs ₹{dist_sup:.1f}% risk to support ₹{s1:,.0f}"
+                )
+        except (ValueError, TypeError):
+            pass
+
+    # P/E valuation signal
+    try:
+        pe = float(str(fund.get("pe_ratio", "") or "").replace(",", "").split()[0])
+        if pe < 10:
+            signals["pe_signal"] = f"P/E {pe:.1f} — Very cheap, potential value trap or turnaround; check earnings trend"
+        elif pe < 18:
+            signals["pe_signal"] = f"P/E {pe:.1f} — Reasonably valued, room for re-rating if earnings grow"
+        elif pe < 30:
+            signals["pe_signal"] = f"P/E {pe:.1f} — Fairly to slightly premium, earnings growth must sustain"
+        elif pe < 50:
+            signals["pe_signal"] = f"P/E {pe:.1f} — Premium valuation, growth expectations already priced in"
+        else:
+            signals["pe_signal"] = f"P/E {pe:.1f} — Expensive, high risk if earnings disappoint"
+    except (ValueError, TypeError):
+        pass
+
+    return signals

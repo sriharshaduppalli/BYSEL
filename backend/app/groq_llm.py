@@ -6,8 +6,9 @@ Falls back gracefully when the key is absent.
 """
 
 import os
+import re
 import logging
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,10 @@ _DEFAULT_MODEL = "llama-3.1-8b-instant"
 
 _client = None
 
-SYSTEM_PROMPT = """You are BYSEL AI, an expert Indian stock market analyst assistant.
+# ---------------------------------------------------------------------------
+# Base system prompt (always included)
+# ---------------------------------------------------------------------------
+_BASE_SYSTEM_PROMPT = """You are BYSEL AI, an expert Indian stock market analyst assistant.
 
 STEP 1 — DIRECT ANSWER (always first):
 Read the user's question carefully. Before any analysis, answer it directly:
@@ -60,7 +64,7 @@ STEP 2 — STRUCTURED ANALYSIS (only if a specific stock is asked about):
 
 6. SIGNAL & RECOMMENDATION (MUST include):
    - PRIMARY SIGNAL: BUY / SELL / HOLD
-   - Confidence: [0-100]% (be specific)
+   - Confidence: [0-100]% (be specific — e.g. 72%, not "high confidence")
    - Why Confident: 2-3 key reasons with specific data points
    - Key Risks: 2-3 downside risks
    - Time Horizon: day trade / swing / 1-month / 3-month / long-term
@@ -75,13 +79,193 @@ CRITICAL RULES:
 - Support Hinglish queries naturally — respond in the same language mix used by the user.
 - Confidence scores must be specific (78%, not "quite confident").
 - If signals conflict, explicitly highlight it.
+- USE the PRE-COMPUTED SIGNALS block (if provided) — these are already analyzed conclusions, weave them directly into your response.
 Indian Market Context:
 - Consider FII/DII flows, RBI decisions, rupee strength
 - Account for monsoon, agricultural cycles, festive patterns
 - Reference NIFTY 50, NIFTY Next 50 comparisons
 """
 
+# ---------------------------------------------------------------------------
+# Intent-specific system prompt addendums
+# ---------------------------------------------------------------------------
+_INTENT_PROMPTS: Dict[str, str] = {
+    "PREDICT": """
+--- PREDICTION FOCUS ---
+The user wants a PRICE PREDICTION. Structure your response around:
+1. SHORT-TERM (2-4 weeks): Price range with probability % (e.g. "65% chance of ₹1200–1350")
+2. MEDIUM-TERM (3 months): Bull case / Base case / Bear case with specific price targets
+3. KEY CATALYSTS: What triggers each scenario (earnings date, RBI policy, sector tailwind)
+4. CONFIDENCE LEVEL: Specific % with reasoning (use technical + fundamental signals)
+DO NOT say "it depends" — give a directional view with numbers. Users need actionable targets.
+""",
 
+    "COMPARE": """
+--- COMPARISON FOCUS ---
+The user wants to COMPARE two or more stocks. Structure your response as:
+1. SIDE-BY-SIDE TABLE: Metric | Stock A | Stock B | Winner
+   Include: Current Price, P/E, Market Cap, 52-week performance, RSI trend, Dividend
+2. TECHNICAL winner (short-term momentum)
+3. FUNDAMENTAL winner (long-term value)
+4. VERDICT: Better for swing traders? For long-term SIP? Risk-averse investors?
+Be decisive — name a clear winner for each category, not just "both have merits".
+""",
+
+    "BUY_SELL": """
+--- BUY/SELL/HOLD FOCUS ---
+The user wants a clear BUY / SELL / HOLD decision. Structure as:
+1. VERDICT (first line): BUY at ₹[price] / SELL at ₹[price] / HOLD — one sentence reason
+2. FOR (if BUY/HOLD): 3 specific data-backed reasons from the context
+3. AGAINST (if SELL/HOLD): 3 specific risks
+4. EXACT ENTRY ZONE: ₹[low] – ₹[high] (never skip)
+5. STOP LOSS: ₹[level] — mandatory, calculated from support
+6. TARGET: ₹[level] in [timeframe]
+7. RISK/REWARD: [ratio]
+8. WHO SHOULD BUY: Long-term investor / Swing trader / Avoid if [condition]
+""",
+
+    "TECHNICAL": """
+--- TECHNICAL ANALYSIS FOCUS ---
+Deep technical breakdown:
+1. RSI [value]: Is it overbought/oversold? Any divergence visible?
+2. MACD: Histogram direction, signal line crossover, bullish/bearish confirmation
+3. BOLLINGER BANDS: Band position, squeeze (low volatility before move) or expansion
+4. MOVING AVERAGES: All SMA crossovers (golden cross / death cross), MA as support/resistance
+5. SUPPORT & RESISTANCE: Exact levels, how many times tested, strength
+6. PATTERN: Any forming chart pattern (flag, triangle, H&S, double bottom)
+7. SHORT-TERM OUTLOOK: Next 5-10 trading sessions — likely direction with probability
+Refer to the PRE-COMPUTED SIGNALS for ready conclusions on each indicator.
+""",
+
+    "FUNDAMENTAL": """
+--- FUNDAMENTAL ANALYSIS FOCUS ---
+Deep fundamental breakdown:
+1. VALUATION: P/E vs sector average and 5-year historical average — cheap/fair/expensive?
+2. QUALITY: ROE, ROCE, Debt/Equity interpretation — strong/moderate/weak business?
+3. GROWTH: Revenue and profit trend — accelerating/steady/declining?
+4. PROMOTER & INSTITUTIONAL: Promoter holding %, pledging concern, FII/DII trend
+5. DIVIDEND: History, payout ratio, sustainability
+6. LONG-TERM VERDICT: 5-year investment thesis — accumulate/avoid/watch
+Compare P/E signal from PRE-COMPUTED SIGNALS if available.
+""",
+
+    "SECTOR_SCREEN": """
+--- SECTOR SCREENER FOCUS ---
+The user wants stock recommendations from a sector. Provide:
+1. SECTOR OUTLOOK: Current tailwinds and headwinds (RBI, monsoon, global factors)
+2. TOP PICKS (3–5 stocks with brief reason for each):
+   - Best for VALUE investors (low P/E, strong fundamentals)
+   - Best for GROWTH investors (earnings momentum, expansion)
+   - Best for SWING TRADERS (technical breakout setup)
+3. AVOID (with specific reason — not just "risky")
+4. SECTOR CATALYST to watch in next 30–60 days
+""",
+
+    "PORTFOLIO": """
+--- PORTFOLIO ADVISORY FOCUS ---
+The user is asking about portfolio strategy. Cover:
+1. CURRENT ALLOCATION: Based on mentioned stocks/sectors, identify concentration risk
+2. DIVERSIFICATION GAPS: Which sectors/market caps are missing?
+3. REBALANCING SUGGESTION: What to trim (overvalued/overbought) and what to add
+4. SIP RECOMMENDATION: Best SIP candidate from NIFTY 50 / quality mid-cap given current market
+5. RISK PROFILE: Conservative / Moderate / Aggressive — tailor advice accordingly
+""",
+
+    "EDUCATIONAL": """
+--- EDUCATIONAL FOCUS ---
+The user wants to LEARN or UNDERSTAND a concept. Structure as:
+1. SIMPLE EXPLANATION (1-2 sentences, no jargon)
+2. TECHNICAL DEFINITION (precise, complete)
+3. INDIAN MARKET EXAMPLE: Use a real NSE-listed stock to illustrate the concept
+4. HOW TO USE IT: Practical application in daily trading/investing decisions
+5. COMMON MISTAKES: What beginners get wrong about this concept
+Keep it clear and actionable — the goal is understanding, not showing off terminology.
+""",
+
+    "GENERAL": "",
+}
+
+
+# ---------------------------------------------------------------------------
+# Intent classifier — pure Python, ~0ms, no extra LLM call
+# ---------------------------------------------------------------------------
+def classify_intent(query: str) -> str:
+    """
+    Classify user query into one of 8 intents using keyword scoring.
+    Returns: PREDICT | COMPARE | BUY_SELL | TECHNICAL | FUNDAMENTAL |
+             SECTOR_SCREEN | PORTFOLIO | EDUCATIONAL | GENERAL
+    """
+    q = query.lower()
+    scores: Dict[str, int] = {
+        "PREDICT": 0, "COMPARE": 0, "BUY_SELL": 0, "TECHNICAL": 0,
+        "FUNDAMENTAL": 0, "SECTOR_SCREEN": 0, "PORTFOLIO": 0, "EDUCATIONAL": 0,
+    }
+
+    # PREDICT
+    for kw in ["predict", "forecast", "will reach", "price target", "target price",
+               "expected price", "future price", "next month", "next year", "bull case",
+               "bear case", "upside potential", "downside potential", "will it go"]:
+        if kw in q: scores["PREDICT"] += 2
+    if re.search(r'\bwill\b.{0,30}\b(price|reach|go|touch|hit|cross)\b', q):
+        scores["PREDICT"] += 3
+    if re.search(r'\b(price\s+)?target\b', q):
+        scores["PREDICT"] += 2
+
+    # COMPARE
+    for kw in ["vs ", "versus", "compare", "better than", "which is better",
+               "difference between", "or between"]:
+        if kw in q: scores["COMPARE"] += 2
+    if re.search(r'\b\w+\s+(vs|versus)\s+\w+\b', q):
+        scores["COMPARE"] += 4
+
+    # BUY_SELL
+    for kw in ["should i buy", "should i sell", "buy or sell", "good time to buy",
+               "good to buy", "should i invest", "worth buying", "good investment",
+               "is it safe to buy", "add more"]:
+        if kw in q: scores["BUY_SELL"] += 3
+    if re.search(r'\b(buy|sell|invest|entry|exit)\b', q):
+        scores["BUY_SELL"] += 1
+
+    # TECHNICAL
+    for kw in ["rsi", "macd", "bollinger", "moving average", "sma", "ema",
+               "support level", "resistance level", "chart", "technical analysis",
+               "oversold", "overbought", "candlestick", "breakout setup", "golden cross",
+               "death cross", "trend reversal", "price action"]:
+        if kw in q: scores["TECHNICAL"] += 2
+
+    # FUNDAMENTAL
+    for kw in ["pe ratio", "p/e", "earnings", " eps", "revenue", "quarterly results",
+               "fundamentals", "valuation", "roe", "roce", "debt", "balance sheet",
+               "promoter", "pledging", "dividend yield", "payout"]:
+        if kw in q: scores["FUNDAMENTAL"] += 2
+
+    # SECTOR_SCREEN
+    for kw in ["sector", "banking stocks", "pharma stocks", "it stocks", "fmcg stocks",
+               "auto stocks", "defence stocks", "energy stocks", "nse listed", "screener"]:
+        if kw in q: scores["SECTOR_SCREEN"] += 2
+    if re.search(r'\b(top|best|good)\b.{0,20}\bstocks?\b', q):
+        scores["SECTOR_SCREEN"] += 3
+
+    # PORTFOLIO
+    for kw in ["portfolio", "my holdings", "sip", "diversify", "allocation",
+               "rebalance", "asset allocation", "my stocks", "long term investment"]:
+        if kw in q: scores["PORTFOLIO"] += 3
+
+    # EDUCATIONAL
+    for kw in ["what is", "what are", "explain", "how does", "what does",
+               "meaning of", "define", "understand", "how to calculate", "why is",
+               "difference between rsi", "what is macd", "what is pe"]:
+        if kw in q: scores["EDUCATIONAL"] += 2
+    if re.search(r'\bwhat (is|are)\b', q):
+        scores["EDUCATIONAL"] += 2
+
+    best = max(scores, key=lambda k: scores[k])
+    return best if scores[best] >= 2 else "GENERAL"
+
+
+# ---------------------------------------------------------------------------
+# Groq client
+# ---------------------------------------------------------------------------
 def _get_client():
     global _client
     if _client is not None:
@@ -107,8 +291,11 @@ def groq_available() -> bool:
     return _get_client() is not None
 
 
+# ---------------------------------------------------------------------------
+# Context formatter — injects pre-computed signals prominently
+# ---------------------------------------------------------------------------
 def _format_context(context: Optional[Dict]) -> str:
-    """Format structured rule-engine data into a Groq prompt context block."""
+    """Format structured rule-engine + enricher data into a Groq prompt context block."""
     if not context or not isinstance(context, dict):
         return ""
 
@@ -124,9 +311,19 @@ def _format_context(context: Optional[Dict]) -> str:
             parts.append(f"Current Price: ₹{context['current_price']}")
         parts.append("")
 
+    # Pre-computed signals block — injected first so LLM uses conclusions, not raw numbers
+    pre = context.get("pre_signals") or {}
+    if pre:
+        parts.append("PRE-COMPUTED SIGNALS (use these conclusions directly):")
+        signal_keys = ["rsi_signal", "ma_signal", "week52_signal", "level_signal", "pe_signal"]
+        for key in signal_keys:
+            if pre.get(key):
+                parts.append(f"  ► {pre[key]}")
+        parts.append("")
+
     tech = context.get("technical") or {}
     if any(tech.values()):
-        parts.append("TECHNICAL DATA:")
+        parts.append("TECHNICAL DATA (raw numbers):")
         for key, label in [
             ("rsi", "RSI"),
             ("macd", "MACD"),
@@ -207,10 +404,20 @@ def _format_context(context: Optional[Dict]) -> str:
     return "\n".join(parts)
 
 
-async def ask_groq(query: str, context: Optional[Dict] = None) -> Dict:
+# ---------------------------------------------------------------------------
+# Main ask function — intent-aware, conversation-aware
+# ---------------------------------------------------------------------------
+async def ask_groq(
+    query: str,
+    context: Optional[Dict] = None,
+    conversation_history: Optional[List[Dict]] = None,
+    intent: Optional[str] = None,
+) -> Dict:
     """
     Send query to Groq with optional structured market context.
-    Returns {"answer": str, "source": "groq"} or {"error": str}.
+    - intent: one of PREDICT|COMPARE|BUY_SELL|TECHNICAL|FUNDAMENTAL|SECTOR_SCREEN|PORTFOLIO|EDUCATIONAL|GENERAL
+    - conversation_history: list of {"role": "user"|"assistant", "content": str} — last N turns
+    Returns {"answer": str, "source": "groq", "intent": str} or {"error": str}.
     """
     client = _get_client()
     if client is None:
@@ -218,6 +425,15 @@ async def ask_groq(query: str, context: Optional[Dict] = None) -> Dict:
 
     model = os.environ.get("GROQ_MODEL", _DEFAULT_MODEL)
 
+    # Classify intent if not provided
+    if not intent:
+        intent = classify_intent(query)
+
+    # Build system prompt: base + intent-specific addendum
+    intent_addendum = _INTENT_PROMPTS.get(intent, "")
+    system_prompt = _BASE_SYSTEM_PROMPT + intent_addendum
+
+    # Build user content with market context
     user_content = ""
     if context and isinstance(context, dict):
         formatted = _format_context(context)
@@ -225,21 +441,32 @@ async def ask_groq(query: str, context: Optional[Dict] = None) -> Dict:
             user_content = f"MARKET CONTEXT:\n{formatted}\n\n"
     user_content += f"User query: {query}"
 
+    # Build messages array — include conversation history for follow-up awareness
+    messages = [{"role": "system", "content": system_prompt}]
+    if conversation_history:
+        for turn in conversation_history[-4:]:  # last 4 turns (2 exchanges)
+            role = turn.get("role", "")
+            content = turn.get("content", "")
+            if role in ("user", "assistant") and content:
+                messages.append({"role": role, "content": str(content)[:800]})  # truncate long turns
+
+    messages.append({"role": "user", "content": user_content})
+
+    # Tune temperature per intent — predictions need slightly more creativity
+    temperature = 0.5 if intent in ("PREDICT", "SECTOR_SCREEN") else 0.35
+
     try:
         response = await client.chat.completions.create(
             model=model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_content},
-            ],
-            temperature=0.4,
+            messages=messages,
+            temperature=temperature,
             max_tokens=2048,
         )
         text = response.choices[0].message.content or ""
         text = text.strip()
         if not text:
             return {"error": "Empty response from Groq"}
-        return {"answer": text, "source": "groq"}
+        return {"answer": text, "source": "groq", "intent": intent}
     except Exception as e:
         logger.error("Groq API error: %s", e)
         return {"error": f"Groq error: {str(e)}"}
