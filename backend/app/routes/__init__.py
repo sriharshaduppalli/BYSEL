@@ -1624,13 +1624,26 @@ async def health_check():
 class AiQuery(BaseModel):
     query: str
     conversation_history: Optional[List[Dict]] = None  # last N turns: [{"role":"user"|"assistant","content":str}]
+    tier: Optional[str] = "auto"  # NEW: "auto" (default) | "groq" | "indian-stock-llm" | "rule-engine"
 
 @router.post("/ai/ask")
 async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
-    """Natural language AI stock assistant.
-    Priority: Groq (free cloud LLM) → Indian Stock LLM → rule-engine fallback.
-    Groq receives live price, fundamentals, and news headlines from yfinance.
-    source field: groq | indian-stock-llm | rule-engine
+    """Natural language AI stock assistant with optional tier selection.
+
+    Auto mode (default): Groq → Indian Stock LLM → Rule Engine (with fallback)
+    Explicit tier: Use only requested tier, no fallback
+
+    Parameters:
+    - query: User's stock market question
+    - conversation_history: (Optional) Previous turns for context
+    - tier: (Optional) "auto" (default) | "groq" | "indian-stock-llm" | "rule-engine"
+
+    Response fields:
+    - answer: Analysis or recommendation
+    - source: Which LLM answered (groq | indian-stock-llm | rule-engine)
+    - tier_requested: What tier was requested (useful for debugging)
+    - symbol: Detected stock symbol (if applicable)
+    - current_price: Live price (if applicable)
     """
     from ..response_validator import ResponseValidator
     from ..stock_enricher import extract_symbol_from_query, enrich, format_news_for_prompt
@@ -1638,7 +1651,7 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
     # Rule-engine always runs first — detects stock, builds base signals
     rule_result = ai_assistant(body.query, db=db)
 
-    def _validated(result: dict, source: str) -> dict:
+    def _validated(result: dict, source: str, tier_requested: str = "auto") -> dict:
         from ..groq_llm import _strip_internal_metadata
 
         # Keep only user-facing fields, remove internal metadata
@@ -1651,6 +1664,7 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
         user_response = {
             "answer": answer,
             "source": source,
+            "tier_requested": tier_requested,
         }
 
         # Optionally include other user-relevant fields if present
@@ -1788,58 +1802,79 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
 
         return ctx
 
+    # Parse tier preference
+    requested_tier = (body.tier or "auto").lower().strip()
+    valid_tiers = {"auto", "groq", "indian-stock-llm", "rule-engine"}
+    if requested_tier not in valid_tiers:
+        requested_tier = "auto"
+
+    logger.info(f"DEBUG: Tier requested = {requested_tier}")
+
     # Tier 1: Groq — enriched with live price, fundamentals, pre-computed signals, extracted entities, and conversation history
-    try:
-        from ..groq_llm import groq_available, ask_groq, classify_intent, expand_acronyms_in_query
-        logger.info(f"DEBUG: groq_available() = {groq_available()}")
-        if groq_available():
-            enriched_ctx = await _build_enriched_context()
-            expanded_query = expand_acronyms_in_query(body.query)
-            normalized_query = normalize_hinglish(expanded_query)
-            intent_result = classify_intent(normalized_query)
-            logger.info(f"DEBUG: Calling Groq with intent={intent_result.get('intent')}, symbol={enriched_ctx.get('symbol')}")
-            groq_result = await ask_groq(
-                normalized_query,
-                context=enriched_ctx,
-                conversation_history=body.conversation_history,
-                intent_result=intent_result,
-            )
-            if groq_result.get("answer"):
-                logger.info("DEBUG: Groq returned answer, using Groq response")
-                merged = {
-                    **rule_result,
-                    "answer": groq_result["answer"],
-                }
-                return _validated(merged, "groq")
+    if requested_tier in ("auto", "groq"):
+        try:
+            from ..groq_llm import groq_available, ask_groq, classify_intent, expand_acronyms_in_query
+            logger.info(f"DEBUG: groq_available() = {groq_available()}")
+            if groq_available():
+                enriched_ctx = await _build_enriched_context()
+                expanded_query = expand_acronyms_in_query(body.query)
+                normalized_query = normalize_hinglish(expanded_query)
+                intent_result = classify_intent(normalized_query)
+                logger.info(f"DEBUG: Calling Groq with intent={intent_result.get('intent')}, symbol={enriched_ctx.get('symbol')}")
+                groq_result = await ask_groq(
+                    normalized_query,
+                    context=enriched_ctx,
+                    conversation_history=body.conversation_history,
+                    intent_result=intent_result,
+                )
+                if groq_result.get("answer"):
+                    logger.info("DEBUG: Groq returned answer, using Groq response")
+                    merged = {
+                        **rule_result,
+                        "answer": groq_result["answer"],
+                    }
+                    return _validated(merged, "groq", requested_tier)
+                else:
+                    logger.info("DEBUG: Groq returned empty, falling back to Tier 2")
             else:
-                logger.info("DEBUG: Groq returned empty, falling back to Tier 2")
-        else:
-            logger.info("DEBUG: Groq not available, skipping to Tier 2")
-    except Exception as e:
-        logger.error("Groq LLM error: %s", e)
+                logger.info("DEBUG: Groq not available")
+                if requested_tier == "groq":
+                    # User explicitly requested Groq but it's not available
+                    return _validated({"answer": "Groq LLM not available. Please use tier='auto' for fallback."}, "none", requested_tier)
+        except Exception as e:
+            logger.error("Groq LLM error: %s", e)
+            if requested_tier == "groq":
+                # User explicitly requested Groq but got error
+                return _validated({"answer": f"Groq LLM error: {str(e)}"}, "none", requested_tier)
 
     # Tier 2: Indian Stock LLM (pure Python, no API key, bundled in repo)
-    try:
-        from ..llm_integration import llm_available, ask_llm
-        if llm_available():
-            llm_result = ask_llm(body.query)
-            # Only use LLM if it has a confident answer (not withheld for safety)
-            if llm_result and llm_result.get("answer") and llm_result.get("confidence", 0) >= 0.4:
-                logger.info("DEBUG: Using Indian Stock LLM (confidence=%.2f)", llm_result.get("confidence", 0))
-                merged = {
-                    **rule_result,
-                    "answer": llm_result["answer"],
-                }
-                return _validated(merged, "indian-stock-llm")
-            else:
-                low_conf = llm_result.get("confidence", 0) if llm_result else 0
-                logger.info("DEBUG: Indian Stock LLM confidence too low (%.2f), falling back to Rule Engine", low_conf)
-    except Exception as e:
-        logger.error("Indian Stock LLM error: %s", e)
+    if requested_tier in ("auto", "indian-stock-llm"):
+        try:
+            from ..llm_integration import llm_available, ask_llm
+            if llm_available():
+                llm_result = ask_llm(body.query)
+                # Only use LLM if it has a confident answer (not withheld for safety)
+                if llm_result and llm_result.get("answer") and llm_result.get("confidence", 0) >= 0.4:
+                    logger.info("DEBUG: Using Indian Stock LLM (confidence=%.2f)", llm_result.get("confidence", 0))
+                    merged = {
+                        **rule_result,
+                        "answer": llm_result["answer"],
+                    }
+                    return _validated(merged, "indian-stock-llm", requested_tier)
+                else:
+                    low_conf = llm_result.get("confidence", 0) if llm_result else 0
+                    logger.info("DEBUG: Indian Stock LLM confidence too low (%.2f), falling back to Rule Engine", low_conf)
+                    if requested_tier == "indian-stock-llm":
+                        # User explicitly requested Indian Stock LLM but confidence too low
+                        return _validated(llm_result or {"answer": "Low confidence"}, "indian-stock-llm", requested_tier)
+        except Exception as e:
+            logger.error("Indian Stock LLM error: %s", e)
+            if requested_tier == "indian-stock-llm":
+                return _validated({"answer": f"Indian Stock LLM error: {str(e)}"}, "none", requested_tier)
 
     # Tier 3: rule-engine only
     logger.info("DEBUG: Falling back to rule-engine only")
-    return _validated(rule_result, "rule-engine")
+    return _validated(rule_result, "rule-engine", requested_tier)
 
 
 @router.get("/ai/analyze/{symbol}")
