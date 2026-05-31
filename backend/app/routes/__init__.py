@@ -1814,8 +1814,10 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
     if requested_tier in ("auto", "groq"):
         try:
             from ..groq_llm import groq_available, ask_groq, classify_intent, expand_acronyms_in_query
-            logger.info(f"DEBUG: groq_available() = {groq_available()}")
-            if groq_available():
+            groq_avail = groq_available()
+            logger.info(f"DEBUG: groq_available() = {groq_avail}")
+            if groq_avail:
+                logger.info(f"DEBUG: Starting Groq tier for query: {body.query}")
                 enriched_ctx = await _build_enriched_context()
                 expanded_query = expand_acronyms_in_query(body.query)
                 normalized_query = normalize_hinglish(expanded_query)
@@ -1827,22 +1829,25 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                     conversation_history=body.conversation_history,
                     intent_result=intent_result,
                 )
+                logger.info(f"DEBUG: Groq returned: {type(groq_result)} with keys {groq_result.keys() if isinstance(groq_result, dict) else 'N/A'}")
                 if groq_result.get("answer"):
-                    logger.info("DEBUG: Groq returned answer, using Groq response")
+                    logger.info(f"DEBUG: Groq returned answer ({len(groq_result.get('answer', ''))} chars), using Groq response")
                     merged = {
                         **rule_result,
                         "answer": groq_result["answer"],
                     }
                     return _validated(merged, "groq", requested_tier)
                 else:
-                    logger.info("DEBUG: Groq returned empty, falling back to Tier 2")
+                    logger.info(f"DEBUG: Groq returned empty or error: {groq_result.get('error', 'no error field')}")
+                    if requested_tier == "groq":
+                        return _validated({"answer": f"Groq error: {groq_result.get('error', 'empty response')}"}, "none", requested_tier)
             else:
-                logger.info("DEBUG: Groq not available")
+                logger.info("DEBUG: Groq not available - skipping to next tier")
                 if requested_tier == "groq":
                     # User explicitly requested Groq but it's not available
                     return _validated({"answer": "Groq LLM not available. Please use tier='auto' for fallback."}, "none", requested_tier)
         except Exception as e:
-            logger.error("Groq LLM error: %s", e)
+            logger.error(f"Groq LLM error: {str(e)}", exc_info=True)
             if requested_tier == "groq":
                 # User explicitly requested Groq but got error
                 return _validated({"answer": f"Groq LLM error: {str(e)}"}, "none", requested_tier)
@@ -1851,21 +1856,23 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
     if requested_tier in ("auto", "gemini"):
         try:
             from ..gemini_llm import gemini_available, ask_gemini
-            logger.info(f"DEBUG: gemini_available() = {gemini_available()}")
-            if gemini_available():
+            gemini_avail = gemini_available()
+            logger.info(f"DEBUG: gemini_available() = {gemini_avail}")
+            if gemini_avail:
+                logger.info(f"DEBUG: Starting Gemini tier for query: {body.query}")
                 enriched_ctx = await _build_enriched_context()
                 from ..groq_llm import expand_acronyms_in_query, classify_intent
                 expanded_query = expand_acronyms_in_query(body.query)
                 normalized_query = normalize_hinglish(expanded_query)
                 intent_result = classify_intent(normalized_query)
                 logger.info(f"DEBUG: Calling Gemini with intent={intent_result.get('intent')}, symbol={enriched_ctx.get('symbol')}")
-                # ask_gemini is synchronous (Gemini API doesn't support async)
                 gemini_result = ask_gemini(
                     normalized_query,
                     context=enriched_ctx,
                 )
+                logger.info(f"DEBUG: Gemini returned: {type(gemini_result)} with keys {gemini_result.keys() if isinstance(gemini_result, dict) else 'N/A'}")
                 if gemini_result.get("answer") and not gemini_result.get("error"):
-                    logger.info("DEBUG: Gemini returned answer, using Gemini response")
+                    logger.info(f"DEBUG: Gemini returned answer ({len(gemini_result.get('answer', ''))} chars), using Gemini response")
                     merged = {
                         **rule_result,
                         "answer": gemini_result["answer"],
@@ -1873,14 +1880,16 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                     return _validated(merged, "gemini", requested_tier)
                 else:
                     error_msg = gemini_result.get("error", "Unknown error")
-                    logger.info(f"DEBUG: Gemini returned error or empty ({error_msg}), falling back to Tier 2")
+                    logger.info(f"DEBUG: Gemini returned error or empty: {error_msg}")
+                    if requested_tier == "gemini":
+                        return _validated({"answer": f"Gemini error: {error_msg}"}, "none", requested_tier)
             else:
-                logger.info("DEBUG: Gemini not available")
+                logger.info("DEBUG: Gemini not available - skipping to next tier")
                 if requested_tier == "gemini":
                     # User explicitly requested Gemini but it's not available
                     return _validated({"answer": "Gemini LLM not available. Please use tier='auto' for fallback."}, "none", requested_tier)
         except Exception as e:
-            logger.error("Gemini LLM error: %s", e, exc_info=True)
+            logger.error(f"Gemini LLM error: {str(e)}", exc_info=True)
             if requested_tier == "gemini":
                 # User explicitly requested Gemini but got error
                 return _validated({"answer": f"Gemini LLM error: {str(e)}"}, "none", requested_tier)
@@ -1889,11 +1898,18 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
     if requested_tier in ("auto", "indian-stock-llm"):
         try:
             from ..llm_integration import llm_available, ask_llm
-            if llm_available():
+            llm_avail = llm_available()
+            logger.info(f"DEBUG: Indian Stock LLM available = {llm_avail}")
+            if llm_avail:
+                logger.info(f"DEBUG: Starting Indian Stock LLM tier for query: {body.query}")
                 llm_result = ask_llm(body.query)
+                if llm_result:
+                    confidence = llm_result.get("confidence", 0)
+                    answer_len = len(llm_result.get("answer", ""))
+                    logger.info(f"DEBUG: Indian Stock LLM returned: confidence={confidence:.2f}, answer_len={answer_len}")
                 # Only use LLM if it has a confident answer (not withheld for safety)
                 if llm_result and llm_result.get("answer") and llm_result.get("confidence", 0) >= 0.4:
-                    logger.info("DEBUG: Using Indian Stock LLM (confidence=%.2f)", llm_result.get("confidence", 0))
+                    logger.info(f"DEBUG: Using Indian Stock LLM (confidence={llm_result.get('confidence', 0):.2f})")
                     merged = {
                         **rule_result,
                         "answer": llm_result["answer"],
@@ -1901,17 +1917,17 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                     return _validated(merged, "indian-stock-llm", requested_tier)
                 else:
                     low_conf = llm_result.get("confidence", 0) if llm_result else 0
-                    logger.info("DEBUG: Indian Stock LLM confidence too low (%.2f), falling back to Rule Engine", low_conf)
+                    logger.info(f"DEBUG: Indian Stock LLM confidence too low ({low_conf:.2f}), falling back to Rule Engine")
                     if requested_tier == "indian-stock-llm":
                         # User explicitly requested Indian Stock LLM but confidence too low
                         return _validated(llm_result or {"answer": "Low confidence"}, "indian-stock-llm", requested_tier)
         except Exception as e:
-            logger.error("Indian Stock LLM error: %s", e)
+            logger.error(f"Indian Stock LLM error: {str(e)}", exc_info=True)
             if requested_tier == "indian-stock-llm":
                 return _validated({"answer": f"Indian Stock LLM error: {str(e)}"}, "none", requested_tier)
 
     # Tier 3: rule-engine only
-    logger.info("DEBUG: Falling back to rule-engine only")
+    logger.info(f"DEBUG: All LLM tiers exhausted, using Rule Engine fallback. rule_result answer length: {len(rule_result.get('answer', ''))}")
     return _validated(rule_result, "rule-engine", requested_tier)
 
 
