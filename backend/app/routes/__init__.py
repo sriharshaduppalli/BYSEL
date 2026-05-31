@@ -1630,17 +1630,17 @@ class AiQuery(BaseModel):
 async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
     """Natural language AI stock assistant with optional tier selection.
 
-    Auto mode (default): Groq → Indian Stock LLM → Rule Engine (with fallback)
+    Auto mode (default): Groq → Gemini → Indian Stock LLM → Rule Engine (with fallback)
     Explicit tier: Use only requested tier, no fallback
 
     Parameters:
     - query: User's stock market question
     - conversation_history: (Optional) Previous turns for context
-    - tier: (Optional) "auto" (default) | "groq" | "indian-stock-llm" | "rule-engine"
+    - tier: (Optional) "auto" (default) | "groq" | "gemini" | "indian-stock-llm" | "rule-engine"
 
     Response fields:
     - answer: Analysis or recommendation
-    - source: Which LLM answered (groq | indian-stock-llm | rule-engine)
+    - source: Which LLM answered (groq | gemini | indian-stock-llm | rule-engine)
     - tier_requested: What tier was requested (useful for debugging)
     - symbol: Detected stock symbol (if applicable)
     - current_price: Live price (if applicable)
@@ -1804,7 +1804,7 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
 
     # Parse tier preference
     requested_tier = (body.tier or "auto").lower().strip()
-    valid_tiers = {"auto", "groq", "indian-stock-llm", "rule-engine"}
+    valid_tiers = {"auto", "groq", "gemini", "indian-stock-llm", "rule-engine"}
     if requested_tier not in valid_tiers:
         requested_tier = "auto"
 
@@ -1846,6 +1846,42 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
             if requested_tier == "groq":
                 # User explicitly requested Groq but got error
                 return _validated({"answer": f"Groq LLM error: {str(e)}"}, "none", requested_tier)
+
+    # Tier 1.5: Gemini — same as Groq but using Google's Gemini API
+    if requested_tier in ("auto", "gemini"):
+        try:
+            from ..gemini_llm import gemini_available, ask_gemini
+            logger.info(f"DEBUG: gemini_available() = {gemini_available()}")
+            if gemini_available():
+                enriched_ctx = await _build_enriched_context()
+                from ..groq_llm import expand_acronyms_in_query, classify_intent
+                expanded_query = expand_acronyms_in_query(body.query)
+                normalized_query = normalize_hinglish(expanded_query)
+                intent_result = classify_intent(normalized_query)
+                logger.info(f"DEBUG: Calling Gemini with intent={intent_result.get('intent')}, symbol={enriched_ctx.get('symbol')}")
+                gemini_result = await ask_gemini(
+                    normalized_query,
+                    context=enriched_ctx,
+                )
+                if gemini_result.get("answer"):
+                    logger.info("DEBUG: Gemini returned answer, using Gemini response")
+                    merged = {
+                        **rule_result,
+                        "answer": gemini_result["answer"],
+                    }
+                    return _validated(merged, "gemini", requested_tier)
+                else:
+                    logger.info("DEBUG: Gemini returned empty, falling back to Tier 2")
+            else:
+                logger.info("DEBUG: Gemini not available")
+                if requested_tier == "gemini":
+                    # User explicitly requested Gemini but it's not available
+                    return _validated({"answer": "Gemini LLM not available. Please use tier='auto' for fallback."}, "none", requested_tier)
+        except Exception as e:
+            logger.error("Gemini LLM error: %s", e)
+            if requested_tier == "gemini":
+                # User explicitly requested Gemini but got error
+                return _validated({"answer": f"Gemini LLM error: {str(e)}"}, "none", requested_tier)
 
     # Tier 2: Indian Stock LLM (pure Python, no API key, bundled in repo)
     if requested_tier in ("auto", "indian-stock-llm"):
