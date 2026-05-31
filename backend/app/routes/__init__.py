@@ -1657,9 +1657,10 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                   or extract_symbol_from_query(body.query))
 
         # Extract all symbols for multi-stock comparisons
-        from ..stock_enricher import extract_all_symbols_from_query, extract_entities_from_query, normalize_hinglish
+        from ..stock_enricher import extract_all_symbols_from_query, extract_entities_from_query, normalize_hinglish, extract_time_window_from_query
         all_symbols = extract_all_symbols_from_query(body.query)
         entities = extract_entities_from_query(body.query)
+        time_window = extract_time_window_from_query(body.query)
 
         # data dict from rule-engine (contains technical/fundamental/trading_levels/sentiment)
         data = rule_result.get("data") or {}
@@ -1733,6 +1734,30 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                     # Pre-computed signal conclusions from enricher
                     if live.get("pre_signals"):
                         ctx["pre_signals"] = live["pre_signals"]
+
+            # Add historical data if temporal query detected
+            if time_window and symbol:
+                try:
+                    from ..market_data import fetch_quote_history
+                    history = fetch_quote_history(symbol, period=time_window['period'])
+                    if history and len(history) > 0:
+                        start_price = history[0].get('close', 0)
+                        end_price = history[-1].get('close', 0)
+                        if start_price > 0:
+                            change_pct = ((end_price - start_price) / start_price) * 100
+                            ctx["historical_data"] = {
+                                'period': time_window['period'],
+                                'lookback_days': time_window['lookback_days'],
+                                'data_points': len(history),
+                                'start_price': round(start_price, 2),
+                                'end_price': round(end_price, 2),
+                                'change_percent': round(change_pct, 2),
+                                'high': round(max(h.get('high', 0) for h in history), 2),
+                                'low': round(min(h.get('low', 0) for h in history), 2),
+                            }
+                except Exception as e:
+                    logger.debug(f"Could not fetch historical data: {e}")
+
             except Exception as exc:
                 logger.warning("Enrichment failed for %s: %s", symbol, exc)
 

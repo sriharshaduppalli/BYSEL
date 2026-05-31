@@ -384,11 +384,28 @@ def classify_intent(query: str) -> dict:
 
     alternatives = [(name, min(100, 50 + score * 5)) for name, score in sorted_intents[1:3]]
 
+    # Multi-intent detection: if top 2 intents both have good scores, flag as multi-intent
+    multi_intent = False
+    detected_intents = [best]
+    if len(sorted_intents) > 1:
+        second_intent, second_score = sorted_intents[1]
+        # Multi-intent if:
+        # 1. Confidence < 55% (ambiguous), OR
+        # 2. Second intent has >70% of top intent's score (strong secondary intent)
+        if confidence < 55 or (second_score > 0 and second_score >= best_score * 0.7):
+            multi_intent = True
+            # Include top 2-3 intents that have meaningful scores
+            for name, score in sorted_intents[:3]:
+                if score > 0 and name not in detected_intents:
+                    detected_intents.append(name)
+
     return {
         "intent": best,
         "confidence": confidence,
         "alternatives": alternatives,
         "reasoning": reasoning,
+        "multi_intent": multi_intent,
+        "intents": detected_intents,  # List of detected intents to process
     }
 
 
@@ -561,6 +578,17 @@ def _format_context(context: Optional[Dict]) -> str:
                 parts.append(f"  (+{len(portfolio['symbols']) - 10} more)")
         parts.append("")
 
+    # Historical data block
+    hist = context.get("historical_data") or {}
+    if hist:
+        parts.append(f"HISTORICAL DATA ({hist['period']} lookback):")
+        parts.append(f"  Data Points: {hist['data_points']} candles")
+        parts.append(f"  Start Price: ₹{hist['start_price']:,}")
+        parts.append(f"  End Price: ₹{hist['end_price']:,}")
+        parts.append(f"  Change: {hist['change_percent']:+.2f}%")
+        parts.append(f"  High: ₹{hist['high']:,} | Low: ₹{hist['low']:,}")
+        parts.append("")
+
     # Extracted entities block (price targets, time horizons, etc.)
     entities = context.get("entities") or {}
     if entities:
@@ -682,6 +710,12 @@ def _format_context(context: Optional[Dict]) -> str:
         parts.append(news)
         parts.append("")
 
+    # Screened stocks summary (from sector screener)
+    screened = context.get("screened_stocks_summary", "")
+    if screened:
+        parts.append(screened)
+        parts.append("")
+
     parts.append("IMPORTANT: Base your analysis ONLY on the data above. Do not invent numbers.")
     return "\n".join(parts)
 
@@ -720,18 +754,75 @@ async def ask_groq(
     if conversation_history:
         resolved_query = resolve_pronouns(query, conversation_history)
 
-    # If confidence is low (<55%), combine top 2 intents in prompt
-    if confidence < 55 and alternatives:
-        alt_intent = alternatives[0][0]
-        intent_addendum = _INTENT_PROMPTS.get(intent, "") + "\n\nALTERNATIVELY: " + _INTENT_PROMPTS.get(alt_intent, "")
+    # Handle multi-intent detection
+    multi_intent = intent_result.get("multi_intent", False)
+    detected_intents = intent_result.get("intents", [intent])
+
+    if multi_intent and len(detected_intents) > 1:
+        # Combine prompts for multiple detected intents
+        intent_addendum_parts = []
+        for detected_intent in detected_intents[:3]:  # Max 3 intents
+            addendum = _INTENT_PROMPTS.get(detected_intent, "")
+            if addendum:
+                intent_addendum_parts.append(f"## INTENT: {detected_intent}\n{addendum}")
+
+        intent_addendum = "\n\n".join(intent_addendum_parts)
+        if intent_addendum:
+            intent_addendum += "\n\n⚠️ IMPORTANT: This query contains multiple intents above. Please address ALL of them in your response."
     else:
-        intent_addendum = _INTENT_PROMPTS.get(intent, "")
+        # Single intent or low confidence — use original logic
+        if confidence < 55 and alternatives:
+            alt_intent = alternatives[0][0]
+            intent_addendum = _INTENT_PROMPTS.get(intent, "") + "\n\nALTERNATIVELY: " + _INTENT_PROMPTS.get(alt_intent, "")
+        else:
+            intent_addendum = _INTENT_PROMPTS.get(intent, "")
 
     # Multi-stock flag: if >1 symbol in context, use MULTI_STOCK prompt
     all_symbols = context.get("all_symbols", []) if context else []
     if len(all_symbols) > 1:
         intent_addendum = _INTENT_PROMPTS.get("MULTI_STOCK", "")
         intent = "MULTI_STOCK"
+
+    # Sector screening: if SECTOR_SCREEN intent, run screener and inject results
+    if intent == "SECTOR_SCREEN" and context:
+        try:
+            from .stock_enricher import screen_stocks
+            # Extract sector from context or entities
+            entities = context.get("entities", {})
+            query_lower = query.lower()
+
+            # Detect sector keyword in query
+            sector_keywords = ["it", "banking", "pharma", "auto", "energy", "infra", "fmcg", "cement", "metal"]
+            detected_sector = None
+            for sector_kw in sector_keywords:
+                if sector_kw in query_lower:
+                    detected_sector = sector_kw.upper()
+                    break
+
+            screening_criteria = {}
+            if detected_sector:
+                screening_criteria["sector"] = detected_sector
+
+            # Extract P/E filter if mentioned ("P/E < 20")
+            pe_match = re.search(r'pe\s*[<>]\s*(\d+)', query_lower, re.IGNORECASE)
+            if pe_match:
+                screening_criteria["pe_max"] = int(pe_match.group(1))
+
+            # Extract dividend filter if mentioned ("dividend > 3")
+            div_match = re.search(r'dividend.*?[>]\s*(\d+)', query_lower, re.IGNORECASE)
+            if div_match:
+                screening_criteria["dividend_min"] = int(div_match.group(1))
+
+            screened_results = screen_stocks(screening_criteria) if screening_criteria else []
+            if screened_results:
+                # Build screener summary for context
+                screener_summary = f"\n\nSCREENED RESULTS ({detected_sector or 'All sectors'}):\n"
+                for i, stock in enumerate(screened_results[:5], 1):
+                    screener_summary += f"{i}. {stock.get('symbol', 'N/A')}: P/E {stock.get('pe', 'N/A')}, Div Yield {stock.get('dividendYield', 'N/A')}%\n"
+
+                context["screened_stocks_summary"] = screener_summary
+        except Exception as e:
+            logger.debug(f"Sector screening failed: {e}")
 
     # Build system prompt: base + intent-specific addendum
     system_prompt = _BASE_SYSTEM_PROMPT + intent_addendum

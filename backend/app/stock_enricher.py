@@ -631,6 +631,141 @@ def extract_entities_from_query(query: str) -> dict:
     return entities
 
 
+def extract_time_window_from_query(query: str) -> Optional[dict]:
+    """
+    Extract temporal window from query: '6 months ago' → {'period': '6m', 'lookback_days': 180}
+    Returns None if no time reference found.
+    Supported periods: 1d/5d/1mo/3mo/6mo/1y/2y/5y/10y/max
+    """
+    q_lower = query.lower()
+
+    # Map time patterns to yfinance periods and lookback days
+    time_patterns = [
+        (r'(\d+)\s+days?\s+ago', lambda m: {
+            'period': f"{int(m.group(1))}d" if int(m.group(1)) <= 60 else '3mo',
+            'lookback_days': int(m.group(1))
+        }),
+        (r'(\d+)\s+weeks?\s+ago', lambda m: {
+            'period': '1mo' if int(m.group(1)) <= 4 else '3mo' if int(m.group(1)) <= 13 else '1y',
+            'lookback_days': int(m.group(1)) * 7
+        }),
+        (r'(\d+)\s+months?\s+ago', lambda m: {
+            'period': f"{int(m.group(1))}mo" if int(m.group(1)) <= 6 else 'max',
+            'lookback_days': int(m.group(1)) * 30
+        }),
+        (r'(\d+)\s+years?\s+ago', lambda m: {
+            'period': f"{int(m.group(1))}y" if int(m.group(1)) <= 10 else 'max',
+            'lookback_days': int(m.group(1)) * 365
+        }),
+        (r'last\s+(week|month|quarter|year)', lambda m: {
+            'week': {'period': '5d', 'lookback_days': 7},
+            'month': {'period': '1mo', 'lookback_days': 30},
+            'quarter': {'period': '3mo', 'lookback_days': 90},
+            'year': {'period': '1y', 'lookback_days': 365},
+        }.get(m.group(1), {'period': '1mo', 'lookback_days': 30})),
+        (r'past\s+(week|month|quarter|year)', lambda m: {
+            'week': {'period': '5d', 'lookback_days': 7},
+            'month': {'period': '1mo', 'lookback_days': 30},
+            'quarter': {'period': '3mo', 'lookback_days': 90},
+            'year': {'period': '1y', 'lookback_days': 365},
+        }.get(m.group(1), {'period': '1mo', 'lookback_days': 30})),
+        (r'in\s+the\s+past\s+(\d+)\s+(days?|weeks?|months?|years?)', lambda m: {
+            'day': {'period': f"{int(m.group(1))}d", 'lookback_days': int(m.group(1))},
+            'days': {'period': f"{int(m.group(1))}d", 'lookback_days': int(m.group(1))},
+            'week': {'period': f"{int(m.group(1)) * 7}d", 'lookback_days': int(m.group(1)) * 7},
+            'weeks': {'period': f"{int(m.group(1)) * 7}d", 'lookback_days': int(m.group(1)) * 7},
+            'month': {'period': f"{int(m.group(1))}mo", 'lookback_days': int(m.group(1)) * 30},
+            'months': {'period': f"{int(m.group(1))}mo", 'lookback_days': int(m.group(1)) * 30},
+            'year': {'period': f"{int(m.group(1))}y", 'lookback_days': int(m.group(1)) * 365},
+            'years': {'period': f"{int(m.group(1))}y", 'lookback_days': int(m.group(1)) * 365},
+        }.get(m.group(2), {'period': '1mo', 'lookback_days': 30})),
+    ]
+
+    for pattern, handler in time_patterns:
+        match = re.search(pattern, q_lower, re.IGNORECASE)
+        if match:
+            try:
+                return handler(match)
+            except Exception as e:
+                logger.debug(f"Error parsing time window: {e}")
+                continue
+
+    return None
+
+
+def screen_stocks(criteria: Optional[Dict] = None) -> List[Dict]:
+    """
+    Screen stocks by sector and financial criteria.
+    criteria = {
+        "sector": "IT" | "Banking" | "Pharma" | etc.,
+        "pe_max": 25,          # P/E ratio upper limit
+        "dividend_min": 2,     # Minimum dividend yield %
+        "market_cap": "large" | "mid" | "small"  # Market cap category
+    }
+    Returns: List of matching stocks with quote data (top 10, sorted by P/E)
+    """
+    if not criteria:
+        criteria = {}
+
+    # Sector keywords mapping to stock symbols (common Indian stocks)
+    SECTOR_STOCKS = {
+        "IT": ["TCS", "INFY", "WIPRO", "HCLTECH", "TECHM", "MPHASIS", "KPITTECH", "LTTS"],
+        "BANKING": ["SBIN", "ICICIBANK", "HDFC BANK", "AXISBANK", "KOTAKBANK", "INDUSINDBK"],
+        "PHARMA": ["SUNPHARMA", "CIPLA", "LUPIN", "DIVI S", "BIOCON", "ALKEM"],
+        "AUTO": ["MARUTI", "HYUNDAI", "TATAMOTORS", "BAJAJFINSV", "ASIANPAINT"],
+        "ENERGY": ["RELIANCE", "NTPC", "POWERGRID", "INDIASB", "IOC"],
+        "INFRA": ["ADANIGREEN", "ADANIPORTS", "BHARTIARTL", "JIO FINANCIAL"],
+        "FMCG": ["ITC", "NESTLE", "HUL", "BRITANNIA", "BAJAJFINSV"],
+        "CEMENT": ["ULCEMIN", "SHREECEM", "DALMIACEM"],
+        "METAL": ["TATASTEEL", "HINDALCO", "NMDC", "SAILS"],
+        "CHEMICAL": ["BASF", "CHEMICALS", "SCI", "COLPAL"],
+    }
+
+    sector = criteria.get("sector", "").upper()
+    pe_max = criteria.get("pe_max")
+    dividend_min = criteria.get("dividend_min")
+
+    # Get stocks for sector
+    sector_key = None
+    for key in SECTOR_STOCKS:
+        if sector in key or key in sector:
+            sector_key = key
+            break
+
+    stocks_to_check = SECTOR_STOCKS.get(sector_key, []) if sector_key else []
+
+    if not stocks_to_check:
+        return []
+
+    # Fetch quotes for sector stocks
+    try:
+        from ..market_data import fetch_quotes
+        quotes = fetch_quotes(stocks_to_check)
+    except Exception as e:
+        logger.debug(f"Could not fetch quotes: {e}")
+        return []
+
+    # Apply filters
+    filtered = []
+    for quote in quotes:
+        if not quote:
+            continue
+
+        # P/E filter
+        if pe_max and quote.get("pe", 999) > pe_max:
+            continue
+
+        # Dividend filter
+        if dividend_min and quote.get("dividendYield", 0) < dividend_min:
+            continue
+
+        filtered.append(quote)
+
+    # Sort by P/E (ascending) and return top 10
+    filtered.sort(key=lambda x: x.get("pe", 999))
+    return filtered[:10]
+
+
 def extract_symbol_from_query(query: str) -> Optional[str]:
     q_lower = query.lower()
 
