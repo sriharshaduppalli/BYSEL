@@ -32,6 +32,9 @@ interface BYSELApiService {
     @GET("/auth/sessions")
     suspend fun getActiveSessions(): AuthSessionsResponse
 
+    @GET("/auth/me")
+    suspend fun getCurrentUserProfile(): CurrentUserProfile
+
     @DELETE("/auth/sessions/{sessionId}")
     suspend fun revokeSession(@Path("sessionId") sessionId: Int): Map<String, String>
 

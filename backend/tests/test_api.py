@@ -671,6 +671,44 @@ def test_ipo_my_applications_accessible_with_bearer_token():
     assert isinstance(response.json(), list)
 
 
+def test_newly_registered_user_wallet_starts_empty():
+    username, email, password = _unique_user("wallet_default_zero")
+    register_response = client.post(
+        "/auth/register",
+        json={"username": username, "email": email, "password": password},
+    )
+    assert register_response.status_code == 200
+    access_token = register_response.json()["access_token"]
+
+    wallet_response = client.get(
+        "/wallet",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert wallet_response.status_code == 200
+    assert wallet_response.json()["balance"] == 0.0
+
+
+def test_auth_me_returns_authenticated_profile_details():
+    username, email, password = _unique_user("auth_me_user")
+    register_response = client.post(
+        "/auth/register",
+        json={"username": username, "email": email, "password": password},
+    )
+    assert register_response.status_code == 200
+    access_token = register_response.json()["access_token"]
+
+    me_response = client.get(
+        "/auth/me",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert me_response.status_code == 200
+    payload = me_response.json()
+    assert payload["status"] == "ok"
+    assert payload["username"] == username
+    assert payload["email"] == email
+    assert payload["user_id"] > 0
+
+
 def test_logout_all_invalidates_old_access_token():
     username, email, password = _unique_user("logout_all_user")
 

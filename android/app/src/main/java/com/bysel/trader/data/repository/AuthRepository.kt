@@ -258,6 +258,15 @@ class AuthRepository(
         }
     }
 
+    suspend fun getCurrentUserProfile(): Result<com.bysel.trader.data.models.CurrentUserProfile> {
+        return try {
+            val response = apiService.getCurrentUserProfile()
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(toAuthErrorMessage(e, "Failed to load profile"))
+        }
+    }
+
     suspend fun revokeSession(sessionId: Int): Result<Unit> {
         return try {
             apiService.revokeSession(sessionId)

@@ -219,6 +219,15 @@ class FirebasePhoneAuthRequest(BaseModel):
     firebase_id_token: str
 
 
+class CurrentUserResponse(BaseModel):
+    status: str
+    user_id: int
+    username: str
+    email: str
+    mobile_number: str | None = None
+    created_at: str | None = None
+
+
 def _hash_password(password: str) -> str:
     if bcrypt_lib is not None:
         try:
@@ -989,6 +998,27 @@ def _get_user_id_from_authorization(authorization: str | None) -> int:
     try:
         user = validate_access_token_and_get_user(token, db)
         return int(user.id)
+    finally:
+        db.close()
+
+
+@router.get("/me", response_model=CurrentUserResponse)
+def current_user_profile(authorization: str | None = Header(default=None, alias="Authorization")):
+    user_id = _get_user_id_from_authorization(authorization)
+    db: Session = SessionLocal()
+    try:
+        user = db.query(UserModel).filter(UserModel.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        return CurrentUserResponse(
+            status="ok",
+            user_id=int(user.id),
+            username=str(user.username or ""),
+            email=str(user.email or ""),
+            mobile_number=str(user.mobile_number) if user.mobile_number else None,
+            created_at=user.created_at.isoformat() if getattr(user, "created_at", None) else None,
+        )
     finally:
         db.close()
 
@@ -1911,7 +1941,7 @@ def verify_otp(request: VerifyOTPRequest, req: Request = None):
                 # Create wallet for new user
                 wallet = WalletModel(
                     user_id=user.id,
-                    balance=10000.0,  # Starting balance
+                    balance=0.0,
                     updated_at=now
                 )
                 db.add(wallet)
@@ -2016,7 +2046,7 @@ def firebase_phone_auth(request: FirebasePhoneAuthRequest):
 
                 wallet = WalletModel(
                     user_id=user.id,
-                    balance=10000.0,
+                    balance=0.0,
                     updated_at=now,
                 )
                 db.add(wallet)

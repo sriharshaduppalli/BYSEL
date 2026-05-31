@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.BuildConfig
 import com.bysel.trader.data.models.AuthSessionItem
+import com.bysel.trader.data.models.CurrentUserProfile
 import com.bysel.trader.data.repository.AuthRepository
 import com.bysel.trader.data.repository.Result
 import com.bysel.trader.security.BiometricAuthManager
@@ -65,6 +66,9 @@ fun SettingsScreen(
     var sessionsLoading by remember { mutableStateOf(false) }
     var sessionsError by remember { mutableStateOf<String?>(null) }
     var activeSessions by remember { mutableStateOf<List<AuthSessionItem>>(emptyList()) }
+    var profileLoading by remember { mutableStateOf(false) }
+    var profileError by remember { mutableStateOf<String?>(null) }
+    var currentUserProfile by remember { mutableStateOf<CurrentUserProfile?>(null) }
 
     fun loadSessions() {
         scope.launch {
@@ -105,7 +109,24 @@ fun SettingsScreen(
         AboutDialog { showAboutDialog = false }
     }
     if (showProfileDialog) {
-        ProfileDialog(onDismiss = { showProfileDialog = false })
+        ProfileDialog(
+            profile = currentUserProfile,
+            loading = profileLoading,
+            error = profileError,
+            onRetry = {
+                scope.launch {
+                    profileLoading = true
+                    profileError = null
+                    when (val result = authRepository.getCurrentUserProfile()) {
+                        is Result.Success -> currentUserProfile = result.data
+                        is Result.Error -> profileError = result.message
+                        else -> Unit
+                    }
+                    profileLoading = false
+                }
+            },
+            onDismiss = { showProfileDialog = false }
+        )
     }
     if (showSecurityDialog) {
         SecurityDialog(
@@ -115,6 +136,18 @@ fun SettingsScreen(
     }
     if (showFeedbackDialog) {
         FeedbackDialog(onDismiss = { showFeedbackDialog = false })
+    }
+
+    LaunchedEffect(showProfileDialog) {
+        if (!showProfileDialog) return@LaunchedEffect
+        profileLoading = true
+        profileError = null
+        when (val result = authRepository.getCurrentUserProfile()) {
+            is Result.Success -> currentUserProfile = result.data
+            is Result.Error -> profileError = result.message
+            else -> Unit
+        }
+        profileLoading = false
     }
     if (showLogoutDialog) {
         AlertDialog(
@@ -991,12 +1024,51 @@ fun SimpleDialog(title: String, message: String, onDismiss: () -> Unit) {
 }
 
 @Composable
-fun ProfileDialog(onDismiss: () -> Unit) {
+fun ProfileDialog(
+    profile: CurrentUserProfile?,
+    loading: Boolean,
+    error: String?,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = LocalAppTheme.current.card,
         title = { Text("Profile", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = LocalAppTheme.current.text) },
-        text = { Column { Text("Name: John Doe", fontSize = 14.sp, color = LocalAppTheme.current.text); Text("Email: johndoe@email.com", fontSize = 14.sp, color = LocalAppTheme.current.text) } },
+        text = {
+            when {
+                loading -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("Loading profile...", fontSize = 14.sp, color = LocalAppTheme.current.text)
+                    }
+                }
+                error != null -> {
+                    Column {
+                        Text("Unable to load profile", fontSize = 14.sp, color = LocalAppTheme.current.text)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(error, fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
+                        Spacer(modifier = Modifier.height(10.dp))
+                        TextButton(onClick = onRetry) { Text("Retry", color = LocalAppTheme.current.primary) }
+                    }
+                }
+                profile != null -> {
+                    Column {
+                        Text("Username: ${profile.username}", fontSize = 14.sp, color = LocalAppTheme.current.text)
+                        Text("Email: ${profile.email}", fontSize = 14.sp, color = LocalAppTheme.current.text)
+                        val mobile = profile.mobile_number?.takeIf { it.isNotBlank() } ?: "Not linked"
+                        Text("Mobile: $mobile", fontSize = 14.sp, color = LocalAppTheme.current.text)
+                        profile.created_at?.takeIf { it.isNotBlank() }?.let {
+                            Text("Member since: $it", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
+                        }
+                    }
+                }
+                else -> {
+                    Text("No profile data available", fontSize = 14.sp, color = LocalAppTheme.current.text)
+                }
+            }
+        },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = LocalAppTheme.current.primary) } }
     )
 }
