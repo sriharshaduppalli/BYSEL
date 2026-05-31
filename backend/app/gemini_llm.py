@@ -27,7 +27,7 @@ def _get_client():
         return None
 
     try:
-        from google import genai
+        import google.generativeai as genai
         client = genai.Client(api_key=api_key)
         logger.info("Gemini client initialized (model=%s)", _DEFAULT_MODEL)
         _client = client
@@ -63,7 +63,8 @@ def ask_gemini(
         return {"error": "Gemini not configured"}
 
     try:
-        from google.genai import types
+        import google.generativeai as genai
+        from google.generativeai import types
 
         # Build the prompt with context
         prompt_parts = []

@@ -28,6 +28,8 @@ from ..database.db import (
 from .dependencies import get_current_user
 from ..models.schemas import (
     Quote, Holding, Order, OrderResponse, Alert, AlertCreate,
+)
+from ..stock_enricher import normalize_hinglish
     AlertResponse, HealthCheck, TradeHistory, HistoryCandle, OrderTraceLookupResponse, PortfolioSummary, PortfolioValue,
     Wallet, WalletTransaction, WalletResponse, MarketStatus,
     MarketNewsResponse,
