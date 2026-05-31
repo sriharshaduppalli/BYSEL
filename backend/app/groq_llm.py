@@ -589,6 +589,16 @@ def _format_context(context: Optional[Dict]) -> str:
         parts.append(f"  High: ₹{hist['high']:,} | Low: ₹{hist['low']:,}")
         parts.append("")
 
+    # Catalyst info block (news-to-price linkage)
+    catalyst = context.get("catalyst_info") or {}
+    if catalyst:
+        parts.append("LIKELY CATALYST (news event linked to price move):")
+        parts.append(f"  Event: {catalyst.get('event_type', '').title()}")
+        parts.append(f"  Headline: {catalyst.get('likely_catalyst', '')[:100]}")
+        parts.append(f"  Sentiment: {catalyst.get('sentiment', 'neutral').title()}")
+        parts.append(f"  Confidence: {catalyst.get('confidence', 'low').title()}")
+        parts.append("")
+
     # Extracted entities block (price targets, time horizons, etc.)
     entities = context.get("entities") or {}
     if entities:

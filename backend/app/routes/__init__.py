@@ -1735,28 +1735,42 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                     if live.get("pre_signals"):
                         ctx["pre_signals"] = live["pre_signals"]
 
-            # Add historical data if temporal query detected
-            if time_window and symbol:
-                try:
-                    from ..market_data import fetch_quote_history
-                    history = fetch_quote_history(symbol, period=time_window['period'])
-                    if history and len(history) > 0:
-                        start_price = history[0].get('close', 0)
-                        end_price = history[-1].get('close', 0)
-                        if start_price > 0:
-                            change_pct = ((end_price - start_price) / start_price) * 100
-                            ctx["historical_data"] = {
-                                'period': time_window['period'],
-                                'lookback_days': time_window['lookback_days'],
-                                'data_points': len(history),
-                                'start_price': round(start_price, 2),
-                                'end_price': round(end_price, 2),
-                                'change_percent': round(change_pct, 2),
-                                'high': round(max(h.get('high', 0) for h in history), 2),
-                                'low': round(min(h.get('low', 0) for h in history), 2),
-                            }
-                except Exception as e:
-                    logger.debug(f"Could not fetch historical data: {e}")
+                # Add historical data if temporal query detected
+                if time_window and symbol:
+                    try:
+                        from ..market_data import fetch_quote_history
+                        history = fetch_quote_history(symbol, period=time_window['period'])
+                        if history and len(history) > 0:
+                            start_price = history[0].get('close', 0)
+                            end_price = history[-1].get('close', 0)
+                            if start_price > 0:
+                                change_pct = ((end_price - start_price) / start_price) * 100
+                                ctx["historical_data"] = {
+                                    'period': time_window['period'],
+                                    'lookback_days': time_window['lookback_days'],
+                                    'data_points': len(history),
+                                    'start_price': round(start_price, 2),
+                                    'end_price': round(end_price, 2),
+                                    'change_percent': round(change_pct, 2),
+                                    'high': round(max(h.get('high', 0) for h in history), 2),
+                                    'low': round(min(h.get('low', 0) for h in history), 2),
+                                }
+                    except Exception as e:
+                        logger.debug(f"Could not fetch historical data: {e}")
+
+                # Link news to price moves (catalyst detection)
+                if symbol and "sentiment" in data:
+                    try:
+                        from ..stock_enricher import link_news_to_price_moves
+                        pct_change = rule_result.get("pct_change", 0)
+                        headlines = live.get("news_headlines", []) if live else []
+
+                        if headlines and pct_change:
+                            catalyst = link_news_to_price_moves(symbol, headlines, pct_change)
+                            if catalyst:
+                                ctx["catalyst_info"] = catalyst
+                    except Exception as e:
+                        logger.debug(f"Could not link catalyst: {e}")
 
             except Exception as exc:
                 logger.warning("Enrichment failed for %s: %s", symbol, exc)

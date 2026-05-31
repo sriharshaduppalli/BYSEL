@@ -693,6 +693,73 @@ def extract_time_window_from_query(query: str) -> Optional[dict]:
     return None
 
 
+def link_news_to_price_moves(symbol: str, headlines: Optional[List[Dict]] = None, pct_change: float = 0) -> Optional[Dict]:
+    """
+    Link recent news events to price movements.
+    Returns: {
+        "likely_catalyst": headline text,
+        "event_type": "earnings" | "dividend" | "regulation" | "acquisition" | "news",
+        "sentiment": "positive" | "negative" | "neutral",
+        "confidence": "high" | "medium" | "low"
+    }
+    """
+    if not headlines or abs(pct_change) < 1.5:  # Ignore small moves
+        return None
+
+    # Event type keywords
+    event_keywords = {
+        "earnings": ["earn", "result", "q1", "q2", "q3", "q4", "quarterly", "fy", "ebitda", "profit"],
+        "dividend": ["dividend", "bonus", "split", "rights", "distribution", "payout"],
+        "regulation": ["sebi", "rbi", "regulation", "penalty", "ban", "fine", "court", "legal"],
+        "acquisition": ["acqui", "merger", "deal", "stake", "buyout", "joint venture"],
+        "management": ["ceo", "md", "chairman", "board", "resign", "appoint", "leadership"],
+    }
+
+    best_match = None
+    best_confidence = 0
+
+    for headline_obj in headlines[:5]:  # Check first 5 headlines
+        if not headline_obj:
+            continue
+
+        title = headline_obj.get("title", "").lower()
+        source = headline_obj.get("source", "").lower()
+
+        # Keyword matching for event type
+        for event_type, keywords in event_keywords.items():
+            keyword_matches = sum(1 for kw in keywords if kw in title)
+            if keyword_matches > 0:
+                # Confidence calculation
+                base_confidence = min(100, 30 + keyword_matches * 20)
+
+                # Boost confidence if move is large (>3%)
+                if abs(pct_change) > 3:
+                    base_confidence = min(100, base_confidence + 20)
+
+                # Check sentiment from headline keywords
+                positive_words = ["bullish", "gain", "beat", "upgrade", "partnership", "growth", "record", "profit"]
+                negative_words = ["bearish", "loss", "miss", "downgrade", "warning", "decline", "fraud", "weak"]
+
+                sentiment = "neutral"
+                if any(w in title for w in positive_words):
+                    sentiment = "positive"
+                elif any(w in title for w in negative_words):
+                    sentiment = "negative"
+
+                # Return if this is the best match so far
+                if base_confidence > best_confidence:
+                    best_confidence = base_confidence
+                    best_match = {
+                        "likely_catalyst": headline_obj.get("title", ""),
+                        "event_type": event_type,
+                        "sentiment": sentiment,
+                        "confidence": "high" if base_confidence >= 70 else "medium" if base_confidence >= 50 else "low",
+                        "source": source,
+                    }
+
+    return best_match
+
+
 def screen_stocks(criteria: Optional[Dict] = None) -> List[Dict]:
     """
     Screen stocks by sector and financial criteria.
