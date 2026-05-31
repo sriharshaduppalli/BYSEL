@@ -1639,9 +1639,16 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
     rule_result = ai_assistant(body.query, db=db)
 
     def _validated(result: dict, source: str) -> dict:
+        from ..groq_llm import _strip_internal_metadata
+
         # Keep only user-facing fields, remove internal metadata
+        answer = result.get("answer", "")
+        # Strip any internal metadata that might be in the answer text
+        if answer:
+            answer = _strip_internal_metadata(answer)
+
         user_response = {
-            "answer": result.get("answer", ""),
+            "answer": answer,
             "source": source,
         }
 

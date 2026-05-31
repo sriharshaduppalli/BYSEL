@@ -87,8 +87,10 @@ Indian Market Context:
 
 IMPORTANT — USER-FACING RESPONSE ONLY:
 - Do NOT include any internal system metadata in your response
-- Do NOT mention: "Intent detected", "category", "latency mode", "model backend", "confidence score", "alternatives", or any other internal NLP/system information
+- Do NOT mention: "Intent detected", "category", "latency mode", "model backend", "confidence score", "alternatives", "data refresh", "data lineage", "stale feeds", "partial feeds", "resolved entity", or any other internal NLP/system information
+- Do NOT start your response with any metadata or system fields
 - Only provide analysis and investment advice to the user
+- Begin directly with the analysis or answer — no preamble about how you processed the query
 - Keep responses professional and user-focused
 """
 
@@ -661,6 +663,37 @@ def build_user_profile_from_history(conversation_history: Optional[List[Dict]]) 
     return profile
 
 
+def _strip_internal_metadata(text: str) -> str:
+    """Remove any internal system metadata from response text."""
+    if not text:
+        return text
+
+    lines = text.split("\n")
+    filtered_lines = []
+    metadata_patterns = [
+        "intent detected",
+        "category:",
+        "latency mode",
+        "model backend",
+        "data refresh",
+        "data lineage",
+        "stale feeds",
+        "partial feeds",
+        "resolved entity",
+        "prediction factors considered",
+    ]
+
+    for line in lines:
+        # Skip lines that start with metadata patterns
+        line_lower = line.lower().strip()
+        if any(pattern in line_lower for pattern in metadata_patterns):
+            continue
+        filtered_lines.append(line)
+
+    result = "\n".join(filtered_lines).strip()
+    return result if result else text
+
+
 # ---------------------------------------------------------------------------
 # Groq client
 # ---------------------------------------------------------------------------
@@ -1055,6 +1088,8 @@ TONE ADJUSTMENTS:
         text = text.strip()
         if not text:
             return {"error": "Empty response from Groq"}
+        # Strip any internal metadata that might have leaked through
+        text = _strip_internal_metadata(text)
         return {
             "answer": text,
         }
