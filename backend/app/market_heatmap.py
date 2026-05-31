@@ -9,9 +9,12 @@ Sector-wise market visualization showing:
   - Market mood indicator
 """
 
+import json
 import logging
+import os
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional
 from .market_data import INDIAN_STOCKS, fetch_quote, fetch_quotes
 
@@ -22,6 +25,12 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────
 _HEATMAP_CACHE = {"data": None, "timestamp": 0}
 _HEATMAP_CACHE_TTL = 30  # 30 seconds
+_HEATMAP_SNAPSHOT_PATH = Path(
+    os.getenv(
+        "HEATMAP_SNAPSHOT_PATH",
+        str(Path(__file__).resolve().parent.parent / ".cache" / "market_heatmap_snapshot.json"),
+    )
+)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -99,6 +108,13 @@ def get_market_heatmap() -> Dict:
     now = time.time()
     if _HEATMAP_CACHE["data"] and (now - _HEATMAP_CACHE["timestamp"]) < _HEATMAP_CACHE_TTL:
         return _HEATMAP_CACHE["data"]
+
+    if not _is_nse_market_open():
+        persisted = _load_persisted_heatmap_snapshot()
+        if persisted:
+            _HEATMAP_CACHE["data"] = persisted
+            _HEATMAP_CACHE["timestamp"] = now
+            return persisted
     
     # Collect ALL unique symbols across all sectors (avoid duplicate fetches)
     all_symbols = set()
@@ -182,12 +198,73 @@ def get_market_heatmap() -> Dict:
         },
         "lastUpdated": datetime.utcnow().isoformat(),
     }
-    
+
+    if _is_valid_heatmap_snapshot(result):
+        _persist_heatmap_snapshot(result)
+    else:
+        persisted = _load_persisted_heatmap_snapshot()
+        if persisted:
+            _HEATMAP_CACHE["data"] = persisted
+            _HEATMAP_CACHE["timestamp"] = now
+            return persisted
+
     # Cache result for 30 seconds
     _HEATMAP_CACHE["data"] = result
     _HEATMAP_CACHE["timestamp"] = now
     
     return result
+
+
+def _is_nse_market_open() -> bool:
+    ist = datetime.now().astimezone().astimezone()
+    try:
+        from zoneinfo import ZoneInfo
+        ist = datetime.now(ZoneInfo("Asia/Kolkata"))
+    except Exception:
+        pass
+
+    if ist.weekday() >= 5:
+        return False
+
+    current_minutes = ist.hour * 60 + ist.minute
+    return (9 * 60 + 15) <= current_minutes <= (15 * 60 + 30)
+
+
+def _is_valid_heatmap_snapshot(payload: Optional[Dict]) -> bool:
+    if not isinstance(payload, dict):
+        return False
+
+    sectors = payload.get("sectors")
+    breadth = payload.get("marketBreadth")
+    if not isinstance(sectors, list) or not sectors:
+        return False
+    if not isinstance(breadth, dict):
+        return False
+    if int(breadth.get("total", 0) or 0) <= 0:
+        return False
+    return any(isinstance(sector.get("stocks"), list) and sector.get("stocks") for sector in sectors if isinstance(sector, dict))
+
+
+def _load_persisted_heatmap_snapshot() -> Optional[Dict]:
+    try:
+        if not _HEATMAP_SNAPSHOT_PATH.exists():
+            return None
+        payload = json.loads(_HEATMAP_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+        if _is_valid_heatmap_snapshot(payload):
+            return payload
+    except Exception as exc:
+        logger.warning("heatmap.snapshot_load_failed reason=%s", exc)
+    return None
+
+
+def _persist_heatmap_snapshot(payload: Dict) -> None:
+    try:
+        _HEATMAP_SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = _HEATMAP_SNAPSHOT_PATH.with_suffix(".tmp")
+        tmp_path.write_text(json.dumps(payload), encoding="utf-8")
+        tmp_path.replace(_HEATMAP_SNAPSHOT_PATH)
+    except Exception as exc:
+        logger.warning("heatmap.snapshot_persist_failed reason=%s", exc)
 
 
 def _analyze_sector(sector_name: str, symbols: List[str], quotes_dict: Dict) -> Dict:

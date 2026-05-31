@@ -2072,8 +2072,9 @@ class TradingViewModel(
     }
 
     fun loadMarketHeatmap(force: Boolean = false) {
-        // Auto-refresh only during NSE market hours; manual force-refresh always allowed
-        if (!force && !isNseMarketOpen()) return
+        // When the market is closed, still allow an initial load so the UI can
+        // show the backend's last persisted session snapshot.
+        if (!force && !isNseMarketOpen() && _marketHeatmap.value != null) return
 
         val now = System.currentTimeMillis()
         if (!force && _marketHeatmap.value != null && (now - lastHeatmapRefreshAt) < HEATMAP_REFRESH_DEBOUNCE) {

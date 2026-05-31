@@ -58,6 +58,7 @@ import com.google.android.play.core.review.ReviewManagerFactory
 import com.bysel.trader.ui.theme.toMaterialColorScheme
 import com.bysel.trader.viewmodel.TradingViewModel
 import com.bysel.trader.viewmodel.TradingViewModelFactory
+import com.bysel.trader.ai.LlmDownloadState
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -356,6 +357,7 @@ fun BYSELApp(
     // AI & Analytics state
     val chatHistory by viewModel.chatHistory.collectAsState()
     val aiLoading by viewModel.aiLoading.collectAsState()
+    val onDeviceLlmState by viewModel.onDeviceLlmState.collectAsState()
     val portfolioHealth by viewModel.portfolioHealth.collectAsState()
     val healthLoading by viewModel.healthLoading.collectAsState()
     val marketHeatmap by viewModel.marketHeatmap.collectAsState()
@@ -674,7 +676,9 @@ fun BYSELApp(
                                             previousTab = selectedTab
                                             viewModel.fetchAndSelectQuote(symbol)
                                             selectedTab = 9
-                                        }
+                                        },
+                                        onDeviceLlmState = onDeviceLlmState,
+                                        onDownloadModel = { viewModel.downloadOnDeviceModel() },
                                     )
                                     2 -> TradingScreen(
                                         isLoading = isLoading,
@@ -714,7 +718,7 @@ fun BYSELApp(
                                         heatmap = marketHeatmap,
                                         isLoading = heatmapLoading,
                                         heatmapInterval = heatmapInterval,
-                                        onRefresh = { viewModel.loadMarketHeatmap() },
+                                        onRefresh = { viewModel.loadMarketHeatmap(force = true) },
                                         onStockClick = { symbol ->
                                             previousTab = selectedTab
                                             viewModel.fetchAndSelectQuote(symbol)
