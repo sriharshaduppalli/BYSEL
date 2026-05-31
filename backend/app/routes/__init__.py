@@ -1823,13 +1823,17 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
         from ..llm_integration import llm_available, ask_llm
         if llm_available():
             llm_result = ask_llm(body.query)
-            if llm_result and llm_result.get("answer"):
-                logger.info("DEBUG: Using Indian Stock LLM")
+            # Only use LLM if it has a confident answer (not withheld for safety)
+            if llm_result and llm_result.get("answer") and llm_result.get("confidence", 0) >= 0.4:
+                logger.info("DEBUG: Using Indian Stock LLM (confidence=%.2f)", llm_result.get("confidence", 0))
                 merged = {
                     **rule_result,
                     "answer": llm_result["answer"],
                 }
                 return _validated(merged, "indian-stock-llm")
+            else:
+                low_conf = llm_result.get("confidence", 0) if llm_result else 0
+                logger.info("DEBUG: Indian Stock LLM confidence too low (%.2f), falling back to Rule Engine", low_conf)
     except Exception as e:
         logger.error("Indian Stock LLM error: %s", e)
 

@@ -50,14 +50,7 @@ class TemplateModelBackend:
                 end = min(end, idx)
         context_block = tail[:end].strip()
         lines = [line.strip() for line in context_block.splitlines() if line.strip().startswith("- ")]
-        # Filter out domain guidance lines (domain_seed_v1 references, guardrails, interpretations)
-        filtered_lines = []
-        for line in lines:
-            # Skip if it's a domain seed reference (guideline/rule, not data)
-            if "source: domain_seed" in line.lower() or "guardrails" in line.lower() or "interpretation:" in line.lower():
-                continue
-            filtered_lines.append(line)
-        return filtered_lines if filtered_lines else []
+        return lines
 
     @classmethod
     def _compose_answer(cls, prompt: str) -> str:
@@ -66,12 +59,17 @@ class TemplateModelBackend:
         disclaimer = cls._extract_field(prompt, "Compliance disclaimer")
         context_lines = cls._extract_context_lines(prompt)
 
-        # Build user-facing answer with only analysis content, no metadata
+        # Return all grounded context (analysis + guidance)
+        # Remove ONLY system metadata headers, keep all actual content
+        answer_lines = []
+
         if context_lines:
-            # Only include the first few context lines (actual analysis, not metadata)
-            answer = "\n".join(context_lines[:2])
+            # Include all context lines (actual analysis and domain guidance)
+            answer_lines.extend(context_lines)
         else:
-            answer = "No analysis available for this query."
+            answer_lines.append("No analysis available for this query.")
+
+        answer = "\n".join(answer_lines)
 
         if disclaimer:
             answer = f"{answer}\n\n{disclaimer}"
