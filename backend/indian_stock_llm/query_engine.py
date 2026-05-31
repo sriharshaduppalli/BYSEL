@@ -347,7 +347,7 @@ class StockMarketAssistant:
 
         if context_items:
             context_text = "\n".join(
-                f"- {item.title}: {item.content} (source: {item.source})" for item in context_items
+                f"- {item.content}" for item in context_items
             )
             readiness_note = (
                 f"refreshed_at={self.data_layer.snapshot.refreshed_at}; "
