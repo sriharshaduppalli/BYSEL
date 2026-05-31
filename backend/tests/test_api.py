@@ -4,6 +4,7 @@ from sqlalchemy.exc import IntegrityError
 import sys
 from pathlib import Path
 import time
+import json
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -16,6 +17,7 @@ import app.routes.streaming as streaming_module
 from app.database.db import SessionLocal, WalletModel, OrderModel
 from app.models.schemas import MarketStatus
 from app.routes import auth as auth_routes
+from app import market_heatmap as market_heatmap_module
 
 client = TestClient(app)
 
@@ -1509,6 +1511,44 @@ def test_signal_lab_buckets_endpoint_returns_results_and_institutional(monkeypat
         assert first["companyName"]
         assert isinstance(first["confidence"], int)
         assert first["score"] >= 0
+
+
+def test_market_heatmap_returns_persisted_snapshot_when_market_closed(monkeypatch, tmp_path):
+    snapshot_payload = {
+        "sectors": [
+            {
+                "name": "Banking",
+                "avgChange": 1.25,
+                "stocks": [{"symbol": "HDFCBANK", "pctChange": 1.25}],
+            }
+        ],
+        "marketBreadth": {
+            "advances": 1,
+            "declines": 0,
+            "unchanged": 0,
+            "total": 1,
+            "advanceRatio": 1.0,
+        },
+        "mood": "BULLISH",
+        "moodEmoji": "🟢",
+        "moodDescription": "Snapshot mood",
+        "bestSector": {"name": "Banking", "change": 1.25},
+        "worstSector": {"name": "Banking", "change": 1.25},
+        "lastUpdated": "2025-02-01T09:30:00",
+    }
+
+    snapshot_path = tmp_path / "market_heatmap_snapshot.json"
+    snapshot_path.write_text(json.dumps(snapshot_payload), encoding="utf-8")
+
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_SNAPSHOT_PATH", snapshot_path)
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_CACHE", {"data": None, "timestamp": 0})
+    monkeypatch.setattr(market_heatmap_module, "_is_nse_market_open", lambda: False)
+
+    payload = market_heatmap_module.get_market_heatmap()
+
+    assert payload["sectors"][0]["name"] == "Banking"
+    assert payload["marketBreadth"]["total"] == 1
+    assert payload["mood"] == "BULLISH"
 
 
 def test_investor_portfolio_insights_endpoint_returns_changes_and_ideas(monkeypatch):

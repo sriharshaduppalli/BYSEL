@@ -714,7 +714,7 @@ fun BYSELApp(
                                         heatmap = marketHeatmap,
                                         isLoading = heatmapLoading,
                                         heatmapInterval = heatmapInterval,
-                                        onRefresh = { viewModel.loadMarketHeatmap() },
+                                        onRefresh = { viewModel.loadMarketHeatmap(force = true) },
                                         onStockClick = { symbol ->
                                             previousTab = selectedTab
                                             viewModel.fetchAndSelectQuote(symbol)

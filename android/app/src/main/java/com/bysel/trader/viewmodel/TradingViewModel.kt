@@ -2012,8 +2012,9 @@ class TradingViewModel(
 
     fun loadMarketHeatmap(force: Boolean = false) {
         val now = System.currentTimeMillis()
+        val shouldFetchInitialClosedMarketData = _marketHeatmap.value == null
         // Use 1-second cache: skip fetch if data exists and cache not expired
-        if (!force && _marketHeatmap.value != null && (now - lastHeatmapRefreshAt) < HEATMAP_REFRESH_DEBOUNCE) {
+        if (!force && !shouldFetchInitialClosedMarketData && (now - lastHeatmapRefreshAt) < HEATMAP_REFRESH_DEBOUNCE) {
             return
         }
 
