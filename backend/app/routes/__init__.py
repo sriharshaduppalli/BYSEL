@@ -1763,7 +1763,7 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                     try:
                         from ..stock_enricher import link_news_to_price_moves
                         pct_change = rule_result.get("pct_change", 0)
-                        headlines = live.get("news_headlines", []) if live else []
+                        headlines = live.get("news_headlines", []) if 'live' in locals() else []
 
                         if headlines and pct_change:
                             catalyst = link_news_to_price_moves(symbol, headlines, pct_change)
