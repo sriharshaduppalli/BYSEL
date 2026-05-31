@@ -84,6 +84,12 @@ Indian Market Context:
 - Consider FII/DII flows, RBI decisions, rupee strength
 - Account for monsoon, agricultural cycles, festive patterns
 - Reference NIFTY 50, NIFTY Next 50 comparisons
+
+IMPORTANT — USER-FACING RESPONSE ONLY:
+- Do NOT include any internal system metadata in your response
+- Do NOT mention: "Intent detected", "category", "latency mode", "model backend", "confidence score", "alternatives", or any other internal NLP/system information
+- Only provide analysis and investment advice to the user
+- Keep responses professional and user-focused
 """
 
 # ---------------------------------------------------------------------------
@@ -208,6 +214,7 @@ The user is comparing investment concepts, strategies, or asset classes (not spe
 5. VERDICT: Which concept suits different investor goals
 Be educational and practical — help user make an informed decision based on their profile.
 """,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -872,9 +879,6 @@ async def ask_groq(
             return {"error": "Empty response from Groq"}
         return {
             "answer": text,
-            "source": "groq",
-            "intent": intent,
-            "confidence": confidence,
         }
     except Exception as e:
         logger.error("Groq API error: %s", e)

@@ -1639,16 +1639,19 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
     rule_result = ai_assistant(body.query, db=db)
 
     def _validated(result: dict, source: str) -> dict:
-        result["source"] = source
-        is_valid, missing = ResponseValidator.validate_response(result)
-        if not is_valid:
-            analysis_data = result.get("data", {}) or result.get("analysis", {})
-            if analysis_data:
-                result = ResponseValidator.augment_incomplete_response(result, analysis_data)
-            result["data_quality"] = f"incomplete: {', '.join(missing[:3])}"
-        else:
-            result["data_quality"] = "complete"
-        return result
+        # Keep only user-facing fields, remove internal metadata
+        user_response = {
+            "answer": result.get("answer", ""),
+            "source": source,
+        }
+
+        # Optionally include other user-relevant fields if present
+        if "symbol" in result:
+            user_response["symbol"] = result["symbol"]
+        if "current_price" in result:
+            user_response["current_price"] = result["current_price"]
+
+        return user_response
 
     async def _build_enriched_context() -> dict:
         # Resolve symbol — prefer rule-engine detection, fallback to query extraction
@@ -1796,8 +1799,6 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                 merged = {
                     **rule_result,
                     "answer": groq_result["answer"],
-                    "intent": groq_result.get("intent"),
-                    "intent_confidence": groq_result.get("confidence"),
                 }
                 return _validated(merged, "groq")
     except Exception as e:
@@ -1812,8 +1813,6 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                 merged = {
                     **rule_result,
                     "answer": llm_result["answer"],
-                    "llm_intent": llm_result.get("intent"),
-                    "llm_confidence": llm_result.get("confidence"),
                 }
                 return _validated(merged, "indian-stock-llm")
     except Exception as e:
