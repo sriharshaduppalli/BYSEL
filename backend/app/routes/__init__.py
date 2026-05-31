@@ -1859,11 +1859,12 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                 normalized_query = normalize_hinglish(expanded_query)
                 intent_result = classify_intent(normalized_query)
                 logger.info(f"DEBUG: Calling Gemini with intent={intent_result.get('intent')}, symbol={enriched_ctx.get('symbol')}")
-                gemini_result = await ask_gemini(
+                # ask_gemini is synchronous (Gemini API doesn't support async)
+                gemini_result = ask_gemini(
                     normalized_query,
                     context=enriched_ctx,
                 )
-                if gemini_result.get("answer"):
+                if gemini_result.get("answer") and not gemini_result.get("error"):
                     logger.info("DEBUG: Gemini returned answer, using Gemini response")
                     merged = {
                         **rule_result,
@@ -1871,14 +1872,15 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                     }
                     return _validated(merged, "gemini", requested_tier)
                 else:
-                    logger.info("DEBUG: Gemini returned empty, falling back to Tier 2")
+                    error_msg = gemini_result.get("error", "Unknown error")
+                    logger.info(f"DEBUG: Gemini returned error or empty ({error_msg}), falling back to Tier 2")
             else:
                 logger.info("DEBUG: Gemini not available")
                 if requested_tier == "gemini":
                     # User explicitly requested Gemini but it's not available
                     return _validated({"answer": "Gemini LLM not available. Please use tier='auto' for fallback."}, "none", requested_tier)
         except Exception as e:
-            logger.error("Gemini LLM error: %s", e)
+            logger.error("Gemini LLM error: %s", e, exc_info=True)
             if requested_tier == "gemini":
                 # User explicitly requested Gemini but got error
                 return _validated({"answer": f"Gemini LLM error: {str(e)}"}, "none", requested_tier)

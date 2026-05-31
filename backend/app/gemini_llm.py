@@ -42,13 +42,14 @@ def gemini_available() -> bool:
     return _get_client() is not None
 
 
-async def ask_gemini(
+def ask_gemini(
     query: str,
     context: Optional[Dict] = None,
     system_prompt: str = "",
 ) -> Dict:
     """
     Send query to Gemini with optional context using Gemma 4 model.
+    Synchronous function (Gemini API doesn't support async).
 
     Returns:
     {
@@ -58,6 +59,7 @@ async def ask_gemini(
     """
     client = _get_client()
     if client is None:
+        logger.info("GEMINI DEBUG: Gemini client not initialized")
         return {"error": "Gemini not configured"}
 
     try:
@@ -67,11 +69,13 @@ async def ask_gemini(
         prompt_parts = []
 
         if context:
-            prompt_parts.append(_format_gemini_context(context))
+            context_str = _format_gemini_context(context)
+            if context_str:
+                prompt_parts.append(context_str)
 
         prompt_parts.append(f"User Query: {query}")
 
-        full_prompt = "\n".join(prompt_parts)
+        full_prompt = "\n".join(filter(None, prompt_parts))
 
         logger.info("GEMINI DEBUG: Sending query to Gemini (prompt length: %d)", len(full_prompt))
 
@@ -80,22 +84,22 @@ async def ask_gemini(
         if system_prompt:
             config.system_instruction = system_prompt
 
-        # Call Gemini API (note: Gemini doesn't support async, so we run it sync)
+        # Call Gemini API synchronously
         response = client.models.generate_content(
             model=_DEFAULT_MODEL,
             contents=full_prompt,
             config=config,
         )
 
-        if response and response.text:
+        if response and hasattr(response, 'text') and response.text and response.text.strip():
             logger.info("GEMINI DEBUG: Gemini returned answer (%d chars)", len(response.text))
-            return {"answer": response.text}
+            return {"answer": response.text.strip()}
         else:
-            logger.info("GEMINI DEBUG: Gemini returned empty")
+            logger.info("GEMINI DEBUG: Gemini returned empty or no text attribute")
             return {"error": "Gemini returned empty response"}
 
     except Exception as e:
-        logger.error("Gemini API error: %s", e)
+        logger.error("Gemini API error: %s", e, exc_info=True)
         return {"error": str(e)}
 
 
