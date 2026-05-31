@@ -141,8 +141,15 @@ data class StockSearchResult(
 
 // ==================== AI & ANALYTICS MODELS ====================
 
+data class ConversationTurn(
+    val role: String,   // "user" or "assistant"
+    val content: String
+)
+
 data class AiQuery(
-    val query: String
+    val query: String,
+    @com.google.gson.annotations.SerializedName("conversation_history")
+    val conversationHistory: List<ConversationTurn>? = null
 )
 
 data class AiAssistantResponse(

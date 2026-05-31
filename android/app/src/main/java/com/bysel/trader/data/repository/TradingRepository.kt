@@ -404,9 +404,9 @@ open class TradingRepository(private val database: BYSELDatabase) {
     }
 
     // ==================== AI STOCK ASSISTANT ====================
-    suspend fun aiAsk(query: String): Result<AiAssistantResponse> {
+    suspend fun aiAsk(query: String, chatHistory: List<ConversationTurn>? = null): Result<AiAssistantResponse> {
         return try {
-            val response = apiService.aiAsk(AiQuery(query = query))
+            val response = apiService.aiAsk(AiQuery(query = query, conversationHistory = chatHistory))
             Result.Success(response)
         } catch (e: Exception) {
             Result.Error(e.message ?: "Unknown error")

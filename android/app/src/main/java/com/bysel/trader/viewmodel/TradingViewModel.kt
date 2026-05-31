@@ -1731,7 +1731,7 @@ class TradingViewModel(
             val baseQuery = "trade_coach:symbol=$symbol,qty=$quantity,side=$side"
             val prompt = PromptBuilder.buildPrompt(baseQuery, holdingsSummary, wallet, portfolioScore, quoteResult.let { if (it is Result.Success) it.data else null }, recentHistory)
 
-            when (val r = repository.aiAsk(prompt)) {
+            when (val r = repository.aiAsk(prompt, buildConversationHistory())) {
                 is Result.Success -> _tradeCoachTip.value = r.data.answer
                 else -> _tradeCoachTip.value = "Tip: Review your trade strategy."
             }
@@ -1767,6 +1767,15 @@ class TradingViewModel(
     }
 
     fun clearError() { _error.value = null }
+
+    // Converts recent ChatMessage history to ConversationTurn list for the backend NLP context
+    private fun buildConversationHistory(limit: Int = 6): List<ConversationTurn> =
+        _chatHistory.value.takeLast(limit).map { msg ->
+            ConversationTurn(
+                role = if (msg.isUser) "user" else "assistant",
+                content = msg.text.take(600)  // truncate very long AI responses
+            )
+        }
 
     // --- AI assistant ---
     fun askAi(query: String) {
@@ -1858,7 +1867,7 @@ class TradingViewModel(
                     }
                     is Result.Error -> {
                         // Fallback to basic AI
-                        when (val fallback = repository.aiAsk(prompt)) {
+                        when (val fallback = repository.aiAsk(prompt, buildConversationHistory())) {
                             is Result.Success -> {
                                 _aiResponse.value = fallback.data
                                 _chatHistory.value = _chatHistory.value + ChatMessage(fallback.data.answer, isUser = false, suggestions = fallback.data.suggestions, source = fallback.data.source)
@@ -1870,7 +1879,7 @@ class TradingViewModel(
                 }
             } else {
                 // Use basic AI analysis
-                when (val r = repository.aiAsk(prompt)) {
+                when (val r = repository.aiAsk(prompt, buildConversationHistory())) {
                     is Result.Success -> {
                         _aiResponse.value = r.data
                         _chatHistory.value = _chatHistory.value + ChatMessage(r.data.answer, isUser = false, suggestions = r.data.suggestions, source = r.data.source)
@@ -1986,7 +1995,7 @@ class TradingViewModel(
             val recentHistory = if (_selectedQuote.value?.symbol == symbol) _quoteHistory.value else emptyList()
             val prompt = PromptBuilder.buildPrompt("analyze_stock:symbol=$symbol,wallet=$wallet", holdingsSummary, wallet, portfolio?.overallScore, _selectedQuote.value, recentHistory)
 
-            when (val r = repository.aiAsk(prompt)) {
+            when (val r = repository.aiAsk(prompt, buildConversationHistory())) {
                 is Result.Success -> {
                     // Try to map returned data to StockAnalysis if available
                     val resp = r.data
