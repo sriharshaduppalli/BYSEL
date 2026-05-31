@@ -1657,18 +1657,23 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                   or extract_symbol_from_query(body.query))
 
         # Extract all symbols for multi-stock comparisons
-        from ..stock_enricher import extract_all_symbols_from_query, extract_entities_from_query
+        from ..stock_enricher import extract_all_symbols_from_query, extract_entities_from_query, normalize_hinglish
         all_symbols = extract_all_symbols_from_query(body.query)
         entities = extract_entities_from_query(body.query)
 
         # data dict from rule-engine (contains technical/fundamental/trading_levels/sentiment)
         data = rule_result.get("data") or {}
 
+        # Detect user sentiment for tone/profile-aware responses
+        from ..groq_llm import detect_sentiment_from_query
+        user_sentiment = detect_sentiment_from_query(body.query)
+
         ctx: dict = {
             "symbol": symbol,
             "all_symbols": all_symbols,  # list of ALL detected symbols
             "entities": entities,  # extracted price targets, time horizons, etc.
             "current_price": rule_result.get("current_price"),
+            "user_sentiment": user_sentiment,  # urgency, risk_appetite, emotion, user_profile
             "technical": data.get("technical", {}),
             "fundamental": data.get("fundamental", {}),
             "trading_levels": data.get("trading_levels", {}),
@@ -1723,9 +1728,11 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
         from ..groq_llm import groq_available, ask_groq, classify_intent
         if groq_available():
             enriched_ctx = await _build_enriched_context()
-            intent_result = classify_intent(body.query)  # returns {"intent": ..., "confidence": ..., "alternatives": ...}
+            # Normalize Hinglish before intent classification
+            normalized_query = normalize_hinglish(body.query)
+            intent_result = classify_intent(normalized_query)  # returns {"intent": ..., "confidence": ..., "alternatives": ...}
             groq_result = await ask_groq(
-                body.query,
+                normalized_query,
                 context=enriched_ctx,
                 conversation_history=body.conversation_history,
                 intent_result=intent_result,

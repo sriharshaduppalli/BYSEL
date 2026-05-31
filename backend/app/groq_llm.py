@@ -298,6 +298,112 @@ def classify_intent(query: str) -> dict:
     }
 
 
+def resolve_pronouns(query: str, conversation_history: Optional[List[Dict]] = None) -> str:
+    """
+    Resolve pronouns (it, that, this, those) to actual entities from conversation history.
+    Example: "RELIANCE rallied. Why?" → "Why did RELIANCE rally?"
+    """
+    if not conversation_history or len(conversation_history) < 2:
+        return query  # Not enough context to resolve
+
+    # Extract entities from recent conversation
+    recent_symbols = []
+    for turn in conversation_history[-4:]:  # Last 4 turns
+        # Look for stock symbols (uppercase patterns)
+        symbols = re.findall(r'\b[A-Z][A-Z0-9\-]{1,9}\b', turn.get("content", ""))
+        recent_symbols.extend(symbols)
+
+    if not recent_symbols:
+        return query
+
+    # Get the most recent symbol
+    last_symbol = recent_symbols[-1] if recent_symbols else None
+    if not last_symbol:
+        return query
+
+    # Replace pronouns with last mentioned symbol
+    pronouns = {
+        r'\bit\b': last_symbol.lower(),
+        r'\bthat\b': last_symbol.lower(),
+        r'\bthis\b': last_symbol.lower(),
+        r'\bthose\b': last_symbol.lower(),
+        r'\bthem\b': last_symbol.lower(),
+        r'\bits\b': f"{last_symbol.lower()}'s",
+    }
+
+    resolved = query
+    for pronoun, replacement in pronouns.items():
+        resolved = re.sub(pronoun, replacement, resolved, flags=re.IGNORECASE)
+
+    return resolved
+
+
+def detect_sentiment_from_query(query: str) -> dict:
+    """
+    Detect sentiment: urgency, risk appetite, emotional tone.
+    Returns: {
+        "urgency": "low" | "medium" | "high",
+        "risk_appetite": "conservative" | "moderate" | "aggressive",
+        "emotion": "frustrated" | "neutral" | "excited",
+        "user_profile": "investor" | "trader" | "unknown"
+    }
+    """
+    q = query.lower()
+    sentiment = {
+        "urgency": "low",
+        "risk_appetite": "moderate",
+        "emotion": "neutral",
+        "user_profile": "unknown",
+    }
+
+    # Urgency detection — multiple !, ?, CAPS
+    exclamation_count = query.count("!") + query.count("?")
+    caps_ratio = sum(1 for c in query if c.isupper()) / max(len(query), 1)
+
+    if exclamation_count >= 2 or caps_ratio > 0.4 or "urgent" in q or "asap" in q:
+        sentiment["urgency"] = "high"
+    elif exclamation_count == 1 or caps_ratio > 0.2 or "soon" in q:
+        sentiment["urgency"] = "medium"
+
+    # Risk appetite detection
+    conservative_kws = ["safe", "conservative", "low risk", "dividend", "stable", "blue chip"]
+    aggressive_kws = ["aggressive", "leverage", "swing", "day trade", "momentum", "breakout", "leveraged"]
+
+    cons_count = sum(1 for kw in conservative_kws if kw in q)
+    agg_count = sum(1 for kw in aggressive_kws if kw in q)
+
+    if agg_count > cons_count:
+        sentiment["risk_appetite"] = "aggressive"
+    elif cons_count > agg_count:
+        sentiment["risk_appetite"] = "conservative"
+
+    # Emotion/tone detection
+    frustrated_kws = ["killing me", "frustrated", "loss", "down", "crash", "panic", "worried", "stressed"]
+    excited_kws = ["excited", "bullish", "boom", "rocket", "moon", "thrilled", "huge gain", "doubled"]
+
+    frust_count = sum(1 for kw in frustrated_kws if kw in q)
+    excit_count = sum(1 for kw in excited_kws if kw in q)
+
+    if frust_count > excit_count:
+        sentiment["emotion"] = "frustrated"
+    elif excit_count > frust_count:
+        sentiment["emotion"] = "excited"
+
+    # User profile detection
+    investor_kws = ["long term", "sip", "holding", "portfolio", "diversify", "retirement"]
+    trader_kws = ["swing", "day trade", "intraday", "scalp", "technical", "momentum", "breakout"]
+
+    inv_count = sum(1 for kw in investor_kws if kw in q)
+    trad_count = sum(1 for kw in trader_kws if kw in q)
+
+    if trad_count > inv_count:
+        sentiment["user_profile"] = "trader"
+    elif inv_count > trad_count:
+        sentiment["user_profile"] = "investor"
+
+    return sentiment
+
+
 # ---------------------------------------------------------------------------
 # Groq client
 # ---------------------------------------------------------------------------
@@ -335,6 +441,20 @@ def _format_context(context: Optional[Dict]) -> str:
         return ""
 
     parts = []
+
+    # User context block (sentiment, urgency, profile)
+    user_sentiment = context.get("user_sentiment") or {}
+    if user_sentiment:
+        parts.append("USER CONTEXT (adjust tone & recommendations accordingly):")
+        if user_sentiment.get("urgency") and user_sentiment["urgency"] != "low":
+            parts.append(f"  Urgency: {user_sentiment['urgency'].upper()}")
+        if user_sentiment.get("risk_appetite"):
+            parts.append(f"  Risk Profile: {user_sentiment['risk_appetite'].title()}")
+        if user_sentiment.get("emotion") and user_sentiment["emotion"] != "neutral":
+            parts.append(f"  Tone: {user_sentiment['emotion'].title()}")
+        if user_sentiment.get("user_profile") and user_sentiment["user_profile"] != "unknown":
+            parts.append(f"  Profile: {user_sentiment['user_profile'].title()}")
+        parts.append("")
 
     # Extracted entities block (price targets, time horizons, etc.)
     entities = context.get("entities") or {}
@@ -490,6 +610,11 @@ async def ask_groq(
     confidence = intent_result.get("confidence", 0)
     alternatives = intent_result.get("alternatives", [])
 
+    # Resolve pronouns if conversation history is provided
+    resolved_query = query
+    if conversation_history:
+        resolved_query = resolve_pronouns(query, conversation_history)
+
     # If confidence is low (<55%), combine top 2 intents in prompt
     if confidence < 55 and alternatives:
         alt_intent = alternatives[0][0]
@@ -512,7 +637,7 @@ async def ask_groq(
         formatted = _format_context(context)
         if formatted:
             user_content = f"MARKET CONTEXT:\n{formatted}\n\n"
-    user_content += f"User query: {query}"
+    user_content += f"User query: {resolved_query}"
 
     # Build messages array
     messages = [{"role": "system", "content": system_prompt}]
