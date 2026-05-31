@@ -1649,9 +1649,6 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
     from ..response_validator import ResponseValidator
     from ..stock_enricher import extract_symbol_from_query, enrich, format_news_for_prompt
 
-    # Rule-engine always runs first — detects stock, builds base signals
-    rule_result = ai_assistant(body.query, db=db)
-
     def _validated(result: dict, source: str, tier_requested: str = "auto") -> dict:
         from ..groq_llm import _strip_internal_metadata
 
@@ -1675,6 +1672,58 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
             user_response["current_price"] = result["current_price"]
 
         return user_response
+
+    # Parse tier preference
+    requested_tier = (body.tier or "auto").lower().strip()
+    valid_tiers = {"auto", "groq", "gemini", "indian-stock-llm", "rule-engine"}
+    if requested_tier not in valid_tiers:
+        requested_tier = "auto"
+
+    from ..groq_llm import (
+        classify_intent,
+        expand_acronyms_in_query,
+        get_small_talk_response,
+        infer_response_style,
+    )
+
+    expanded_query = expand_acronyms_in_query(body.query)
+    normalized_query = normalize_hinglish(expanded_query)
+    intent_result = classify_intent(normalized_query)
+    response_style = infer_response_style(normalized_query, body.conversation_history)
+
+    small_talk_reply = get_small_talk_response(normalized_query, response_style=response_style)
+    if small_talk_reply:
+        return _validated(
+            {"answer": small_talk_reply},
+            "small-talk",
+            requested_tier,
+        )
+
+    stock_intents = {
+        "PREDICT", "COMPARE", "BUY_SELL", "TECHNICAL", "FUNDAMENTAL",
+        "SECTOR_SCREEN", "PORTFOLIO", "CALCULATION", "DERIVATIVES",
+    }
+    detected_intent = intent_result.get("intent", "GENERAL")
+    intent_confidence = int(intent_result.get("confidence", 0) or 0)
+    explicit_symbol = extract_symbol_from_query(normalized_query)
+    if detected_intent in stock_intents and intent_confidence < 60 and not explicit_symbol:
+        if response_style == "concise":
+            clarifier = (
+                "I need one quick clarification: please share the stock symbol and whether you want "
+                "buy/sell, technicals, fundamentals, comparison, prediction, or calculation."
+            )
+        else:
+            clarifier = (
+                "I am not fully confident about your exact stock request yet. "
+                "Please clarify these so I can give precise analysis:\n"
+                "1. Stock symbol or company name\n"
+                "2. Analysis type: buy/sell, technicals, fundamentals, comparison, prediction, or calculation\n"
+                "3. Time horizon (intraday, swing, 1-month, long-term)"
+            )
+        return _validated({"answer": clarifier}, "clarifier", requested_tier)
+
+    # Rule-engine always runs first — detects stock, builds base signals
+    rule_result = ai_assistant(body.query, db=db)
 
     async def _build_enriched_context() -> dict:
         # Resolve symbol — prefer rule-engine detection, fallback to query extraction
@@ -1803,30 +1852,22 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
 
         return ctx
 
-    # Parse tier preference
-    requested_tier = (body.tier or "auto").lower().strip()
-    valid_tiers = {"auto", "groq", "gemini", "indian-stock-llm", "rule-engine"}
-    if requested_tier not in valid_tiers:
-        requested_tier = "auto"
-
     logger.info(f"DEBUG: Tier requested = {requested_tier}")
 
     # Tier 1: Groq — enriched with live price, fundamentals, pre-computed signals, extracted entities, and conversation history
     if requested_tier in ("auto", "groq"):
         try:
-            from ..groq_llm import groq_available, ask_groq, classify_intent, expand_acronyms_in_query
+            from ..groq_llm import groq_available, ask_groq
             logger.info(f"DEBUG: groq_available() = {groq_available()}")
             if groq_available():
                 enriched_ctx = await _build_enriched_context()
-                expanded_query = expand_acronyms_in_query(body.query)
-                normalized_query = normalize_hinglish(expanded_query)
-                intent_result = classify_intent(normalized_query)
                 logger.info(f"DEBUG: Calling Groq with intent={intent_result.get('intent')}, symbol={enriched_ctx.get('symbol')}")
                 groq_result = await ask_groq(
                     normalized_query,
                     context=enriched_ctx,
                     conversation_history=body.conversation_history,
                     intent_result=intent_result,
+                    response_style=response_style,
                 )
                 if groq_result.get("answer"):
                     logger.info("DEBUG: Groq returned answer, using Groq response")
@@ -1855,15 +1896,20 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
             logger.info(f"DEBUG: gemini_available() = {gemini_available()}")
             if gemini_available():
                 enriched_ctx = await _build_enriched_context()
-                from ..groq_llm import expand_acronyms_in_query, classify_intent
-                expanded_query = expand_acronyms_in_query(body.query)
-                normalized_query = normalize_hinglish(expanded_query)
-                intent_result = classify_intent(normalized_query)
                 logger.info(f"DEBUG: Calling Gemini with intent={intent_result.get('intent')}, symbol={enriched_ctx.get('symbol')}")
+                if response_style == "concise":
+                    gemini_style_prompt = "Response style: concise. Give direct answer first with minimal explanation."
+                else:
+                    gemini_style_prompt = "Response style: detailed. Give structured analysis with clear steps and reasoning."
+
+                if intent_result.get("intent") == "CALCULATION":
+                    gemini_style_prompt += " If this is a calculation query, show formula and step-by-step math."
+
                 # ask_gemini is synchronous (Gemini API doesn't support async)
                 gemini_result = ask_gemini(
                     normalized_query,
                     context=enriched_ctx,
+                    system_prompt=gemini_style_prompt,
                 )
                 if gemini_result.get("answer") and not gemini_result.get("error"):
                     logger.info("DEBUG: Gemini returned answer, using Gemini response")

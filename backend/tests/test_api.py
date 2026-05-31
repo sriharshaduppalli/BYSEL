@@ -88,6 +88,11 @@ def _mock_news_payload(prefix: str, sentiment: str = "mixed") -> dict:
         "headlines": headlines,
     }
 
+
+def _mock_sms_provider_config(monkeypatch) -> None:
+    # send_otp now checks provider configuration before attempting SMS delivery.
+    monkeypatch.setattr(auth_routes, "FAST2SMS_API_KEY", "test-fast2sms-key")
+
 def test_health_check():
     """Test health check endpoint"""
     response = client.get("/health")
@@ -119,7 +124,9 @@ def test_health_generates_trace_header_when_missing():
 
 def test_send_and_verify_otp_auth_flow(monkeypatch):
     # Mock SMS sending
+    _mock_sms_provider_config(monkeypatch)
     monkeypatch.setattr("app.routes.auth._send_otp_sms", lambda *a, **kw: True)
+    monkeypatch.setattr(auth_routes.secrets, "randbelow", lambda _max: 23456)
 
     # Clean up old OTPs to avoid rate-limit (max 3/hour)
     from app.database.db import SessionLocal, OTPModel
@@ -141,22 +148,10 @@ def test_send_and_verify_otp_auth_flow(monkeypatch):
     assert send_payload["otp_id"] is not None
     assert send_payload["expires_in_seconds"] == 300
 
-    # Read the actual OTP from the database
-    from app.database.db import SessionLocal, OTPModel
-    db = SessionLocal()
-    try:
-        otp_record = db.query(OTPModel).filter(
-            OTPModel.mobile_number == "+919998887777"
-        ).order_by(OTPModel.created_at.desc()).first()
-        assert otp_record is not None
-        otp_code = otp_record.otp_code
-    finally:
-        db.close()
-
     # Verify OTP with the real code
     verify_response = client.post(
         "/auth/verify-otp",
-        json={"mobile_number": "9998887777", "otp": otp_code},
+        json={"mobile_number": "9998887777", "otp": "123456"},
     )
     assert verify_response.status_code == 200
     verify_payload = verify_response.json()
@@ -249,7 +244,8 @@ def test_get_quote_history_returns_400_for_invalid_period(monkeypatch):
 
 def test_get_holdings_empty():
     """Test getting holdings when empty"""
-    response = client.get("/holdings")
+    token = _register_and_get_access_token("holdings_empty")
+    response = client.get("/holdings", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
@@ -425,8 +421,10 @@ def test_advanced_order_retries_return_same_order_id(monkeypatch):
     assert second_data["orderId"] == first_data["orderId"]
 
 
-def test_send_otp():
+def test_send_otp(monkeypatch):
     """Test sending OTP to mobile number"""
+    _mock_sms_provider_config(monkeypatch)
+    monkeypatch.setattr("app.routes.auth._send_otp_sms", lambda *a, **kw: True)
     response = client.post("/auth/send-otp", json={"mobile_number": "9876543210"})
     assert response.status_code == 200
 
@@ -460,6 +458,8 @@ def test_verify_otp_not_found():
 def test_otp_flow(monkeypatch):
     """Test complete OTP flow: send and verify"""
     # Mock SMS sending to avoid needing Twilio credentials
+    _mock_sms_provider_config(monkeypatch)
+    monkeypatch.setattr(auth_routes.secrets, "randbelow", lambda _max: 34567)
     def mock_send_sms(*args, **kwargs):
         return True
 
@@ -478,31 +478,18 @@ def test_otp_flow(monkeypatch):
     send_response = client.post("/auth/send-otp", json={"mobile_number": "9222333444"})
     assert send_response.status_code == 200
 
-    # Read the actual OTP from the database
-    db = SessionLocal()
-    try:
-        otp_record = db.query(OTPModel).filter(
-            OTPModel.mobile_number == "+919222333444"
-        ).order_by(OTPModel.created_at.desc()).first()
+    # Verify OTP
+    verify_response = client.post("/auth/verify-otp", json={
+        "mobile_number": "9222333444",
+        "otp": "134567"
+    })
+    assert verify_response.status_code == 200
 
-        assert otp_record is not None
-        otp_code = otp_record.otp_code
-
-        # Verify OTP
-        verify_response = client.post("/auth/verify-otp", json={
-            "mobile_number": "9222333444",
-            "otp": otp_code
-        })
-        assert verify_response.status_code == 200
-
-        data = verify_response.json()
-        assert data["status"] == "ok"
-        assert "user_id" in data
-        assert "access_token" in data
-        assert "refresh_token" in data
-
-    finally:
-        db.close()
+    data = verify_response.json()
+    assert data["status"] == "ok"
+    assert "user_id" in data
+    assert "access_token" in data
+    assert "refresh_token" in data
 
 
 def test_basket_execution_with_idempotency_key_is_retry_safe(monkeypatch):
@@ -1105,9 +1092,7 @@ def test_ai_undervalued_screening_query_stays_screening(monkeypatch):
 def test_ai_ask_endpoint_passes_db_context(monkeypatch):
     def fake_ai_assistant(query: str, db=None):
         return {
-            "type": "test",
-            "db_present": db is not None,
-            "query": query,
+            "answer": f"db_present={db is not None}; query={query}",
         }
 
     monkeypatch.setattr(routes_module, "ai_assistant", fake_ai_assistant)
@@ -1115,8 +1100,263 @@ def test_ai_ask_endpoint_passes_db_context(monkeypatch):
     response = client.post("/ai/ask", json={"query": "Is KAYNES overvalued?"})
     assert response.status_code == 200
     payload = response.json()
-    assert payload["type"] == "test"
-    assert payload["db_present"] is True
+    assert payload["source"] in {"rule-engine", "groq", "gemini", "indian-stock-llm"}
+    assert "db_present=true" in payload["answer"].lower()
+
+
+def test_ai_ask_greeting_short_circuits_before_stock_pipeline(monkeypatch):
+    def _should_not_run(*args, **kwargs):
+        raise AssertionError("ai_assistant should not run for pure greeting queries")
+
+    monkeypatch.setattr(routes_module, "ai_assistant", _should_not_run)
+
+    response = client.post("/ai/ask", json={"query": "Hi"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "small-talk"
+    assert payload["tier_requested"] == "auto"
+    assert payload["answer"].lower().startswith("hi")
+
+
+@pytest.mark.parametrize(
+    "query, expected_hint",
+    [
+        ("thanks", "welcome"),
+        ("bye", "bye"),
+        ("how are you", "ready to help"),
+    ],
+)
+def test_ai_ask_small_talk_responses_are_deterministic(monkeypatch, query, expected_hint):
+    def _should_not_run(*args, **kwargs):
+        raise AssertionError("ai_assistant should not run for small-talk queries")
+
+    monkeypatch.setattr(routes_module, "ai_assistant", _should_not_run)
+
+    response = client.post("/ai/ask", json={"query": query})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "small-talk"
+    assert expected_hint in payload["answer"].lower()
+
+
+def test_ai_ask_stock_query_does_not_use_greeting_short_circuit(monkeypatch):
+    monkeypatch.setattr(
+        routes_module,
+        "ai_assistant",
+        lambda query, db=None: {"answer": f"Stock flow for: {query}", "symbol": "LUPIN"},
+    )
+
+    response = client.post("/ai/ask", json={"query": "Hi LUPIN valuation", "tier": "rule-engine"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "rule-engine"
+    assert payload["tier_requested"] == "rule-engine"
+    assert payload.get("symbol") == "LUPIN"
+    assert "stock flow" in payload["answer"].lower()
+
+
+def test_ai_ask_low_confidence_stock_intent_returns_clarifier(monkeypatch):
+    def _should_not_run(*args, **kwargs):
+        raise AssertionError("ai_assistant should not run when clarifier guardrail triggers")
+
+    monkeypatch.setattr(routes_module, "ai_assistant", _should_not_run)
+
+    response = client.post("/ai/ask", json={"query": "buy"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "clarifier"
+    assert "clarification" in payload["answer"].lower() or "clarify" in payload["answer"].lower()
+
+
+def test_ai_ask_passes_concise_style_to_groq(monkeypatch):
+    captured = {}
+
+    async def _fake_ask_groq(query, context=None, conversation_history=None, intent_result=None, response_style=None):
+        captured["response_style"] = response_style
+        return {"answer": "ok"}
+
+    async def _fake_enrich(symbol):
+        return None
+
+    monkeypatch.setattr(routes_module, "ai_assistant", lambda query, db=None: {"answer": "fallback", "symbol": "TCS"})
+    monkeypatch.setattr("app.groq_llm.groq_available", lambda: True)
+    monkeypatch.setattr("app.groq_llm.ask_groq", _fake_ask_groq)
+    monkeypatch.setattr("app.stock_enricher.enrich", _fake_enrich)
+    monkeypatch.setattr(routes_module, "get_holdings", lambda db=None: [])
+
+    response = client.post("/ai/ask", json={"query": "TCS price?", "tier": "groq"})
+
+    assert response.status_code == 200
+    assert response.json()["source"] == "groq"
+    assert captured["response_style"] == "concise"
+
+
+def test_ai_ask_passes_detailed_style_to_groq(monkeypatch):
+    captured = {}
+
+    async def _fake_ask_groq(query, context=None, conversation_history=None, intent_result=None, response_style=None):
+        captured["response_style"] = response_style
+        return {"answer": "ok"}
+
+    async def _fake_enrich(symbol):
+        return {"current_price": 100.0}
+
+    monkeypatch.setattr(routes_module, "ai_assistant", lambda query, db=None: {"answer": "fallback", "symbol": "RELIANCE"})
+    monkeypatch.setattr("app.groq_llm.groq_available", lambda: True)
+    monkeypatch.setattr("app.groq_llm.ask_groq", _fake_ask_groq)
+    monkeypatch.setattr("app.stock_enricher.enrich", _fake_enrich)
+    monkeypatch.setattr(routes_module, "get_holdings", lambda db=None: [])
+
+    history = [
+        {"role": "user", "content": "Can you compare this with peers?"},
+        {"role": "assistant", "content": "Sure, share your timeframe."},
+        {"role": "user", "content": "I want a full breakdown of trend, valuation, and risks."},
+        {"role": "assistant", "content": "Got it."},
+    ]
+
+    response = client.post(
+        "/ai/ask",
+        json={
+            "query": "Please explain RELIANCE valuation with detailed calculation and risk breakdown for 3 months",
+            "conversation_history": history,
+            "tier": "groq",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["source"] == "groq"
+    assert captured["response_style"] == "detailed"
+
+
+def test_classify_intent_detects_small_talk_and_calculation_queries():
+    from app.groq_llm import classify_intent
+
+    small_talk_result = classify_intent("how are you")
+    assert small_talk_result["intent"] == "SMALL_TALK"
+    assert small_talk_result["confidence"] >= 90
+
+    calc_result = classify_intent("calculate CAGR for ₹1,00,000 to ₹1,80,000 in 3 years")
+    assert calc_result["intent"] == "CALCULATION"
+
+
+def test_expand_acronyms_supports_extended_market_terms():
+    from app.groq_llm import expand_acronyms_in_query
+
+    expanded = expand_acronyms_in_query("Check EV EBITDA and VWAP with OI and PCR")
+    assert "Enterprise Value" in expanded
+    assert "Earnings Before Interest Taxes Depreciation and Amortization" in expanded
+    assert "Volume Weighted Average Price" in expanded
+    assert "Open Interest" in expanded
+    assert "Put-Call Ratio" in expanded
+
+
+def test_classify_intent_detects_derivatives_query():
+    from app.groq_llm import classify_intent
+
+    result = classify_intent("BANKNIFTY call option strategy with IV and OI for next expiry")
+    assert result["intent"] == "DERIVATIVES"
+    assert result["confidence"] >= 60
+
+
+def test_market_term_normalization_handles_hinglish_and_trading_shorthand():
+    from app.groq_llm import normalize_market_terms_in_query
+
+    normalized = normalize_market_terms_in_query("NIFTY CE PE mein kitna OI hai aur SL kya hona chahiye")
+    normalized_lower = normalized.lower()
+    assert "call option" in normalized_lower
+    assert "put option" in normalized_lower
+    assert "open interest" in normalized_lower
+    assert "how much" in normalized_lower
+    assert "what" in normalized_lower
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Need calendar spread setup for NIFTY next expiry",
+        "Suggest butterfly strategy for BANKNIFTY",
+        "Build ratio spread with risk limits",
+        "Best covered call on RELIANCE holdings",
+        "Use protective put to hedge my long position",
+    ],
+)
+def test_classify_intent_detects_full_options_strategy_vocabulary(query):
+    from app.groq_llm import classify_intent
+
+    result = classify_intent(query)
+    assert result["intent"] == "DERIVATIVES"
+
+
+def test_market_term_normalization_expands_options_strategy_aliases():
+    from app.groq_llm import normalize_market_terms_in_query
+
+    normalized = normalize_market_terms_in_query("cal spread with bfly and prot put plus cov call")
+    normalized_lower = normalized.lower()
+    assert "calendar spread" in normalized_lower
+    assert "butterfly spread" in normalized_lower
+    assert "protective put" in normalized_lower
+    assert "covered call" in normalized_lower
+
+
+@pytest.mark.parametrize(
+    "query, expected_strategy",
+    [
+        ("Need calendar spread setup for NIFTY next expiry", "calendar_spread"),
+        ("Suggest butterfly strategy for BANKNIFTY", "butterfly_spread"),
+        ("Build ratio spread with risk limits", "ratio_spread"),
+        ("Best covered call on RELIANCE holdings", "covered_call"),
+        ("Use protective put to hedge my long position", "protective_put"),
+    ],
+)
+def test_detect_options_strategy_maps_named_strategies(query, expected_strategy):
+    from app.groq_llm import detect_options_strategy
+
+    assert detect_options_strategy(query) == expected_strategy
+
+
+@pytest.mark.parametrize(
+    "query, expected_strategy",
+    [
+        ("Need calendar spread setup for NIFTY next expiry", "calendar_spread"),
+        ("Suggest butterfly strategy for BANKNIFTY", "butterfly_spread"),
+        ("Build ratio spread with risk limits", "ratio_spread"),
+        ("Best covered call on RELIANCE holdings", "covered_call"),
+        ("Use protective put to hedge my long position", "protective_put"),
+    ],
+)
+def test_classify_intent_includes_detected_options_strategy(query, expected_strategy):
+    from app.groq_llm import classify_intent
+
+    result = classify_intent(query)
+    assert result["intent"] == "DERIVATIVES"
+    assert result.get("detected_strategy") == expected_strategy
+
+
+@pytest.mark.parametrize(
+    "strategy_name",
+    [
+        "calendar_spread",
+        "butterfly_spread",
+        "ratio_spread",
+        "covered_call",
+        "protective_put",
+    ],
+)
+def test_get_options_strategy_example_returns_style_specific_blocks(strategy_name):
+    from app.groq_llm import get_options_strategy_example
+
+    concise = get_options_strategy_example(strategy_name, "concise")
+    detailed = get_options_strategy_example(strategy_name, "detailed")
+
+    assert "CONCISE EXAMPLE" in concise
+    assert "DETAILED EXAMPLE" in detailed
+    assert len(detailed) > len(concise)
+
+
+def test_get_options_strategy_example_returns_empty_for_unknown_strategy():
+    from app.groq_llm import get_options_strategy_example
+
+    assert get_options_strategy_example("unknown_strategy", "concise") == ""
 
 
 def test_ai_buy_query_returns_decision_style_response(monkeypatch):
