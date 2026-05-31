@@ -664,24 +664,24 @@ def build_user_profile_from_history(conversation_history: Optional[List[Dict]]) 
 
 
 def _strip_internal_metadata(text: str) -> str:
-    """Remove any internal system metadata from response text."""
+    """Remove ONLY obvious internal system metadata from response text."""
     if not text:
         return text
 
     lines = text.split("\n")
     filtered_lines = []
-    metadata_patterns = [
-        "intent detected",
+
+    # ONLY strip lines that start with these EXACT metadata indicators
+    metadata_start_patterns = [
+        "intent detected:",
         "category:",
-        "latency mode",
-        "model backend",
+        "latency mode:",
+        "model backend:",
         "data refresh",
         "data lineage",
-        "stale feeds",
-        "partial feeds",
-        "resolved entity",
-        "prediction factors considered",
-        # Indian Stock LLM patterns
+        "stale feeds:",
+        "partial feeds:",
+        "resolved entity:",
         "query focus:",
         "intent-category mapping:",
         "data readiness snapshot:",
@@ -689,17 +689,17 @@ def _strip_internal_metadata(text: str) -> str:
         "deterministic checks:",
         "analysis guidance:",
         "compliance note:",
-        "relevant market context:",
     ]
 
     for line in lines:
-        # Skip lines that start with metadata patterns
-        line_lower = line.lower().strip()
-        if any(pattern in line_lower for pattern in metadata_patterns):
+        line_stripped = line.strip().lower()
+        # Only skip if line STARTS with metadata pattern (not just contains it)
+        if any(line_stripped.startswith(pattern) for pattern in metadata_start_patterns):
             continue
         filtered_lines.append(line)
 
     result = "\n".join(filtered_lines).strip()
+    # Return original if everything was stripped (safety check)
     return result if result else text
 
 
@@ -1098,8 +1098,8 @@ TONE ADJUSTMENTS:
         text = text.strip()
         if not text:
             return {"error": "Empty response from Groq"}
-        # Strip any internal metadata that might have leaked through
-        text = _strip_internal_metadata(text)
+        # Don't strip Groq responses — only strip fallback LLM responses
+        # Groq should never include metadata due to system prompt
         return {
             "answer": text,
         }

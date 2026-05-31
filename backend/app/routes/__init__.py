@@ -1643,8 +1643,9 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
 
         # Keep only user-facing fields, remove internal metadata
         answer = result.get("answer", "")
-        # Strip any internal metadata that might be in the answer text
-        if answer:
+
+        # Only strip metadata from fallback LLM responses, not Groq
+        if source != "groq" and answer:
             answer = _strip_internal_metadata(answer)
 
         user_response = {
