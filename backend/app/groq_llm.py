@@ -681,6 +681,15 @@ def _strip_internal_metadata(text: str) -> str:
         "partial feeds",
         "resolved entity",
         "prediction factors considered",
+        # Indian Stock LLM patterns
+        "query focus:",
+        "intent-category mapping:",
+        "data readiness snapshot:",
+        "grounded highlights:",
+        "deterministic checks:",
+        "analysis guidance:",
+        "compliance note:",
+        "relevant market context:",
     ]
 
     for line in lines:
