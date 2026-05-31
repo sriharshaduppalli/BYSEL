@@ -934,6 +934,7 @@ async def ask_groq(
 
     intent = intent_result.get("intent", "GENERAL")
     confidence = intent_result.get("confidence", 0)
+    alternatives = intent_result.get("alternatives", [])
 
     # DEBUG: Log what we're sending to Groq
     logger.info(f"GROQ DEBUG: intent={intent}, confidence={confidence}")

@@ -1467,7 +1467,7 @@ def compute_pre_signals(
             signals["rsi_signal"] = f"RSI {rsi_val:.0f} — Bullish momentum building, trend intact"
         else:
             signals["rsi_signal"] = f"RSI {rsi_val:.0f} — Bearish momentum, wait for stabilization"
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, IndexError):
         pass
 
     # MA trend signal
@@ -1565,7 +1565,7 @@ def compute_pre_signals(
             signals["pe_signal"] = f"P/E {pe:.1f} — Premium valuation, growth expectations already priced in"
         else:
             signals["pe_signal"] = f"P/E {pe:.1f} — Expensive, high risk if earnings disappoint"
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, IndexError):
         pass
 
     return signals
