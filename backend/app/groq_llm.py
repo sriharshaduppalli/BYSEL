@@ -522,6 +522,145 @@ def detect_sentiment_from_query(query: str) -> dict:
     return sentiment
 
 
+def build_user_profile_from_history(conversation_history: Optional[List[Dict]]) -> dict:
+    """
+    Build investor profile by accumulating signals from conversation history.
+    Accounts for investor type, risk appetite, time horizon, experience level.
+    Returns: {
+        "investor_type": "investor" | "trader" | "hybrid" | "unknown",
+        "risk_appetite": "conservative" | "moderate" | "aggressive",
+        "time_horizon": "day" | "swing" | "medium" | "long" | "unknown",
+        "experience": "beginner" | "intermediate" | "advanced" | "unknown",
+        "profile_strength": 0-100  (confidence in profile detection, based on signal count)
+    }
+    """
+    if not conversation_history or len(conversation_history) < 2:
+        return {
+            "investor_type": "unknown",
+            "risk_appetite": "moderate",
+            "time_horizon": "unknown",
+            "experience": "unknown",
+            "profile_strength": 0,
+        }
+
+    # Accumulate signals from last 10 turns (broader context)
+    recent_turns = conversation_history[-10:]
+    combined_text = " ".join([turn.get("content", "") for turn in recent_turns]).lower()
+
+    investor_signals = 0
+    trader_signals = 0
+    hybrid_signals = 0
+    conservative_signals = 0
+    aggressive_signals = 0
+    day_signals = 0
+    swing_signals = 0
+    medium_signals = 0
+    long_signals = 0
+    beginner_signals = 0
+    advanced_signals = 0
+
+    # Investor vs Trader vs Hybrid signals
+    investor_keywords = ["sip", "long term", "holding", "portfolio", "diversify", "retirement", "build wealth", "passive"]
+    trader_keywords = ["swing", "day trade", "intraday", "scalp", "technical", "momentum", "breakout", "entry zone"]
+    hybrid_keywords = ["mix", "both", "sometimes", "depends on", "flexible", "balance"]
+
+    for kw in investor_keywords:
+        investor_signals += combined_text.count(kw)
+    for kw in trader_keywords:
+        trader_signals += combined_text.count(kw)
+    for kw in hybrid_keywords:
+        hybrid_signals += combined_text.count(kw)
+
+    # Risk appetite signals
+    conservative_keywords = ["safe", "dividend", "stable", "blue chip", "large cap", "low volatility", "risk averse"]
+    aggressive_keywords = ["aggressive", "leverage", "high risk", "penny stock", "volatile", "growth", "momentum", "2x", "10x"]
+
+    for kw in conservative_keywords:
+        conservative_signals += combined_text.count(kw)
+    for kw in aggressive_keywords:
+        aggressive_signals += combined_text.count(kw)
+
+    # Time horizon signals
+    day_keywords = ["intraday", "day trading", "today", "today's", "scalp"]
+    swing_keywords = ["swing", "swing trade", "1-2 weeks", "few days", "short term"]
+    medium_keywords = ["3 months", "quarter", "medium term", "6 months", "half year"]
+    long_keywords = ["1 year", "long term", "years", "multi-year", "annual", "sip"]
+
+    for kw in day_keywords:
+        day_signals += combined_text.count(kw)
+    for kw in swing_keywords:
+        swing_signals += combined_text.count(kw)
+    for kw in medium_keywords:
+        medium_signals += combined_text.count(kw)
+    for kw in long_keywords:
+        long_signals += combined_text.count(kw)
+
+    # Experience level signals
+    beginner_keywords = ["new to", "beginner", "never traded", "first time", "how do i", "what is", "explain"]
+    advanced_keywords = ["technicals", "rsi", "macd", "bollinger", "support resistance", "derivatives", "options", "f&o", "sector rotation"]
+
+    for kw in beginner_keywords:
+        beginner_signals += combined_text.count(kw)
+    for kw in advanced_keywords:
+        advanced_signals += combined_text.count(kw)
+
+    # Determine dominant profile traits
+    profile = {
+        "investor_type": "unknown",
+        "risk_appetite": "moderate",
+        "time_horizon": "unknown",
+        "experience": "unknown",
+        "profile_strength": 0,
+    }
+
+    total_signals = (
+        investor_signals + trader_signals + hybrid_signals +
+        conservative_signals + aggressive_signals +
+        day_signals + swing_signals + medium_signals + long_signals +
+        beginner_signals + advanced_signals
+    )
+
+    if total_signals > 0:
+        # Investor type
+        if hybrid_signals > investor_signals and hybrid_signals > trader_signals:
+            profile["investor_type"] = "hybrid"
+        elif trader_signals > investor_signals:
+            profile["investor_type"] = "trader"
+        elif investor_signals > trader_signals:
+            profile["investor_type"] = "investor"
+
+        # Risk appetite
+        if aggressive_signals > conservative_signals * 1.5:
+            profile["risk_appetite"] = "aggressive"
+        elif conservative_signals > aggressive_signals * 1.5:
+            profile["risk_appetite"] = "conservative"
+        else:
+            profile["risk_appetite"] = "moderate"
+
+        # Time horizon — prioritize most frequent signal
+        time_signals = {
+            "day": day_signals,
+            "swing": swing_signals,
+            "medium": medium_signals,
+            "long": long_signals,
+        }
+        if max(time_signals.values()) > 0:
+            profile["time_horizon"] = max(time_signals, key=time_signals.get)
+
+        # Experience level
+        if advanced_signals > beginner_signals * 2:
+            profile["experience"] = "advanced"
+        elif advanced_signals > 0 and beginner_signals > 0:
+            profile["experience"] = "intermediate"
+        elif beginner_signals > 0:
+            profile["experience"] = "beginner"
+
+        # Strength: normalize signal count (0-100)
+        profile["profile_strength"] = min(100, int((total_signals / len(recent_turns)) * 10))
+
+    return profile
+
+
 # ---------------------------------------------------------------------------
 # Groq client
 # ---------------------------------------------------------------------------
@@ -843,6 +982,45 @@ async def ask_groq(
 
     # Build system prompt: base + intent-specific addendum
     system_prompt = _BASE_SYSTEM_PROMPT + intent_addendum
+
+    # Build user profile from conversation history for tone/recommendation tailoring
+    user_profile = build_user_profile_from_history(conversation_history)
+    if user_profile["profile_strength"] > 20:  # Only inject if confident (20+ signal strength)
+        profile_instruction = f"""
+INVESTOR PROFILE (detected from conversation):
+- Type: {user_profile['investor_type'].upper()}
+- Risk Appetite: {user_profile['risk_appetite'].upper()}
+- Time Horizon: {user_profile['time_horizon'].upper()}
+- Experience: {user_profile['experience'].upper()}
+
+TONE ADJUSTMENTS:
+"""
+        # Customize tone based on profile
+        if user_profile["investor_type"] == "investor":
+            profile_instruction += "- Long-term wealth building focus; emphasize fundamentals, consistency, SIPs\n"
+            profile_instruction += "- Avoid aggressive language; use 'opportunity' rather than 'trade'\n"
+        elif user_profile["investor_type"] == "trader":
+            profile_instruction += "- Short-term tactical focus; emphasize entry/exit zones, technicals, momentum\n"
+            profile_instruction += "- Use 'breakout', 'resistance', 'setup' terminology\n"
+        elif user_profile["investor_type"] == "hybrid":
+            profile_instruction += "- Balanced approach; cover both fundamentals and technicals\n"
+            profile_instruction += "- Suggest different strategies for different time horizons\n"
+
+        if user_profile["risk_appetite"] == "conservative":
+            profile_instruction += "- Emphasize stability, dividend yield, large-caps, downside protection\n"
+            profile_instruction += "- Include risk caveats; flag any speculative elements\n"
+        elif user_profile["risk_appetite"] == "aggressive":
+            profile_instruction += "- Highlight growth potential, volatility opportunities, higher-beta opportunities\n"
+            profile_instruction += "- Discuss risk management rather than avoidance\n"
+
+        if user_profile["experience"] == "beginner":
+            profile_instruction += "- Use simple language; define technical terms\n"
+            profile_instruction += "- Include 'why' explanations for recommendations\n"
+        elif user_profile["experience"] == "advanced":
+            profile_instruction += "- Use technical jargon; skip basic definitions\n"
+            profile_instruction += "- Focus on nuances and edge cases\n"
+
+        system_prompt += "\n" + profile_instruction
 
     # Build user content with market context
     user_content = ""
