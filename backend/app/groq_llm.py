@@ -183,17 +183,32 @@ Keep it clear and actionable — the goal is understanding, not showing off term
 """,
 
     "GENERAL": "",
-}
+
+    "MULTI_STOCK": """
+--- MULTI-STOCK COMPARISON ---
+The user is comparing 2+ stocks. Structure your response:
+1. SCORECARD TABLE: Stock | P/E | Market Cap | 52-week | RSI | Trend | Winner (per metric)
+2. VERDICT PER CATEGORY:
+   - Best for VALUE investors (lowest P/E, strong fundamentals)
+   - Best for GROWTH investors (revenue growth, momentum)
+   - Best for CONSERVATIVE (dividend yield, stability)
+3. FINAL RECOMMENDATION: Which stock to pick given current market conditions
+4. RISKS: Specific risk for each stock, not generic
+Be comparative and specific — don't give generic analysis for each stock separately.
+"""
 
 
 # ---------------------------------------------------------------------------
 # Intent classifier — pure Python, ~0ms, no extra LLM call
 # ---------------------------------------------------------------------------
-def classify_intent(query: str) -> str:
+def classify_intent(query: str) -> dict:
     """
     Classify user query into one of 8 intents using keyword scoring.
-    Returns: PREDICT | COMPARE | BUY_SELL | TECHNICAL | FUNDAMENTAL |
-             SECTOR_SCREEN | PORTFOLIO | EDUCATIONAL | GENERAL
+    Returns: {
+        "intent": "PREDICT|COMPARE|...|GENERAL",
+        "confidence": 85,  # 0-100 confidence score
+        "alternatives": [("TECHNICAL", 62), ("EDUCATIONAL", 45)]  # next 2 runner-ups
+    }
     """
     q = query.lower()
     scores: Dict[str, int] = {
@@ -259,8 +274,28 @@ def classify_intent(query: str) -> str:
     if re.search(r'\bwhat (is|are)\b', q):
         scores["EDUCATIONAL"] += 2
 
-    best = max(scores, key=lambda k: scores[k])
-    return best if scores[best] >= 2 else "GENERAL"
+    # Get top 3
+    sorted_intents = sorted(scores.items(), key=lambda x: -x[1])
+    best = sorted_intents[0][0]
+    best_score = sorted_intents[0][1]
+
+    # Calculate confidence (0-100)
+    if best_score == 0:
+        confidence = 0
+        best = "GENERAL"
+    else:
+        second_score = sorted_intents[1][1] if len(sorted_intents) > 1 else 0
+        # Confidence based on gap between top and runner-up
+        gap = best_score - second_score
+        confidence = min(100, 50 + gap * 5)  # 50-100 scale
+
+    alternatives = [(name, min(100, 50 + score * 5)) for name, score in sorted_intents[1:3]]
+
+    return {
+        "intent": best,
+        "confidence": confidence,
+        "alternatives": alternatives,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -301,6 +336,28 @@ def _format_context(context: Optional[Dict]) -> str:
 
     parts = []
 
+    # Extracted entities block (price targets, time horizons, etc.)
+    entities = context.get("entities") or {}
+    if entities:
+        parts.append("EXTRACTED PARAMETERS (from your query):")
+        if entities.get("price_target"):
+            parts.append(f"  Price Target: ₹{entities['price_target']:,.0f}")
+        if entities.get("price_level"):
+            parts.append(f"  Price Level: {entities['price_level']}")
+        if entities.get("duration"):
+            parts.append(f"  Time Horizon: {entities['duration']}")
+        if entities.get("next_period"):
+            parts.append(f"  Next Period: {entities['next_period']}")
+        if entities.get("percentage_target"):
+            parts.append(f"  Expected Return: {entities['percentage_target']}")
+        parts.append("")
+
+    # Multi-stock comparison flag
+    all_symbols = context.get("all_symbols") or []
+    if len(all_symbols) > 1:
+        parts.append(f"MULTI-STOCK COMPARISON: {' vs '.join(all_symbols)}")
+        parts.append("")
+
     if context.get("symbol"):
         parts.append(f"STOCK: {context['symbol']}")
         if context.get("company_name"):
@@ -311,7 +368,7 @@ def _format_context(context: Optional[Dict]) -> str:
             parts.append(f"Current Price: ₹{context['current_price']}")
         parts.append("")
 
-    # Pre-computed signals block — injected first so LLM uses conclusions, not raw numbers
+    # Pre-computed signals block
     pre = context.get("pre_signals") or {}
     if pre:
         parts.append("PRE-COMPUTED SIGNALS (use these conclusions directly):")
@@ -411,13 +468,13 @@ async def ask_groq(
     query: str,
     context: Optional[Dict] = None,
     conversation_history: Optional[List[Dict]] = None,
-    intent: Optional[str] = None,
+    intent_result: Optional[Dict] = None,  # {"intent": "X", "confidence": 85, "alternatives": [...]}
 ) -> Dict:
     """
     Send query to Groq with optional structured market context.
-    - intent: one of PREDICT|COMPARE|BUY_SELL|TECHNICAL|FUNDAMENTAL|SECTOR_SCREEN|PORTFOLIO|EDUCATIONAL|GENERAL
-    - conversation_history: list of {"role": "user"|"assistant", "content": str} — last N turns
-    Returns {"answer": str, "source": "groq", "intent": str} or {"error": str}.
+    - intent_result: from classify_intent() with confidence and alternatives
+    - conversation_history: list of {"role": "user"|"assistant", "content": str}
+    Returns {"answer": str, "source": "groq", "intent": str, "confidence": int} or {"error": str}.
     """
     client = _get_client()
     if client is None:
@@ -425,12 +482,28 @@ async def ask_groq(
 
     model = os.environ.get("GROQ_MODEL", _DEFAULT_MODEL)
 
-    # Classify intent if not provided
-    if not intent:
-        intent = classify_intent(query)
+    # Parse intent result
+    if not intent_result:
+        intent_result = classify_intent(query)
+
+    intent = intent_result.get("intent", "GENERAL")
+    confidence = intent_result.get("confidence", 0)
+    alternatives = intent_result.get("alternatives", [])
+
+    # If confidence is low (<55%), combine top 2 intents in prompt
+    if confidence < 55 and alternatives:
+        alt_intent = alternatives[0][0]
+        intent_addendum = _INTENT_PROMPTS.get(intent, "") + "\n\nALTERNATIVELY: " + _INTENT_PROMPTS.get(alt_intent, "")
+    else:
+        intent_addendum = _INTENT_PROMPTS.get(intent, "")
+
+    # Multi-stock flag: if >1 symbol in context, use MULTI_STOCK prompt
+    all_symbols = context.get("all_symbols", []) if context else []
+    if len(all_symbols) > 1:
+        intent_addendum = _INTENT_PROMPTS.get("MULTI_STOCK", "")
+        intent = "MULTI_STOCK"
 
     # Build system prompt: base + intent-specific addendum
-    intent_addendum = _INTENT_PROMPTS.get(intent, "")
     system_prompt = _BASE_SYSTEM_PROMPT + intent_addendum
 
     # Build user content with market context
@@ -441,19 +514,19 @@ async def ask_groq(
             user_content = f"MARKET CONTEXT:\n{formatted}\n\n"
     user_content += f"User query: {query}"
 
-    # Build messages array — include conversation history for follow-up awareness
+    # Build messages array
     messages = [{"role": "system", "content": system_prompt}]
     if conversation_history:
         for turn in conversation_history[-4:]:  # last 4 turns (2 exchanges)
             role = turn.get("role", "")
             content = turn.get("content", "")
             if role in ("user", "assistant") and content:
-                messages.append({"role": role, "content": str(content)[:800]})  # truncate long turns
+                messages.append({"role": role, "content": str(content)[:800]})
 
     messages.append({"role": "user", "content": user_content})
 
-    # Tune temperature per intent — predictions need slightly more creativity
-    temperature = 0.5 if intent in ("PREDICT", "SECTOR_SCREEN") else 0.35
+    # Tune temperature per intent
+    temperature = 0.5 if intent in ("PREDICT", "SECTOR_SCREEN", "MULTI_STOCK") else 0.35
 
     try:
         response = await client.chat.completions.create(
@@ -466,7 +539,12 @@ async def ask_groq(
         text = text.strip()
         if not text:
             return {"error": "Empty response from Groq"}
-        return {"answer": text, "source": "groq", "intent": intent}
+        return {
+            "answer": text,
+            "source": "groq",
+            "intent": intent,
+            "confidence": confidence,
+        }
     except Exception as e:
         logger.error("Groq API error: %s", e)
         return {"error": f"Groq error: {str(e)}"}

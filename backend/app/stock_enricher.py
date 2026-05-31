@@ -469,6 +469,105 @@ _SYMBOL_COMPANY: dict[str, str] = {
 }
 
 
+def extract_all_symbols_from_query(query: str) -> list[str]:
+    """
+    Extract ALL symbols/stock names from query (not just first one).
+    Returns list of symbols, empty list if none found.
+    Used for multi-stock comparisons: "RELIANCE vs TCS vs INFY" → ["RELIANCE", "TCS", "INFY"]
+    """
+    q_lower = query.lower()
+    symbols = []
+
+    # Step 1: Extract via name lookups (most reliable — runs on longest matches first)
+    for name, sym in sorted(_NAME_TO_SYMBOL.items(), key=lambda x: -len(x[0])):
+        if name in q_lower and sym not in symbols:
+            symbols.append(sym)
+
+    # Step 2: Extract via regex (uppercase tokens not in skip list)
+    _SKIP = {
+        "A", "AN", "BY", "TO", "OF", "ON", "AS", "IS", "IN", "AT", "OR", "AND", "THE", "FOR",
+        "HOW", "WHY", "WHAT", "WHEN", "WHERE", "WHICH", "WHO",
+        "IT", "ITS", "THIS", "THAT", "THEY", "THEM",
+        "BUY", "SELL", "GET", "CAN", "WILL", "HAS", "HIT", "ARE", "WAS", "GIVE", "SHOW", "TELL", "LIST", "FIND",
+        "UP", "DOWN", "NOW", "NEW", "TOP", "BEST", "HIGH", "LOW", "BIG", "MID", "MOST", "LESS", "MORE", "ALL", "ANY",
+        "STOCK", "STOCKS", "SHARE", "SHARES", "MARKET", "SECTOR", "SECTORS", "BANK", "BANKS", "FUND", "FUNDS",
+        "INDEX", "NIFTY", "NSE", "BSE", "SENSEX", "IPO", "FII", "DII", "NIFTY50", "NIFTY100",
+        "MOMENTUM", "SWING", "TRADING", "TRADE", "TRADER", "INTRADAY", "SCALP", "SCALPING", "BREAKOUT", "PULLBACK",
+        "RALLY", "TREND", "TRENDING", "BULLISH", "BEARISH", "NEUTRAL", "TECHNICAL", "ANALYSIS", "SCREENER",
+        "GROWTH", "INCOME", "DIVIDEND", "DIVIDENDS", "YIELD", "VALUE", "QUALITY", "RETURNS", "PROFIT", "LOSS",
+        "SUPPORT", "RESIST", "VOLATILE", "VOLATILITY", "OVERVALUE", "UNDERVALUE",
+        "SMALL", "LARGE", "MIDCAP", "LARGECAP", "SMALLCAP", "CAP", "MICRO", "NANO",
+        "GOOD", "SAFE", "RISK", "RISKY", "INDIA", "INDIAN", "OPTION", "OPTIONS", "FUTURE", "FUTURES",
+        "PORTFOLIO", "DIVERSIFY", "ANALYZE", "ANALYSE", "COMPARE", "PREDICT", "FORECAST", "ACCUMULATE", "PARK",
+        "REBALANCE", "HOLD", "WATCH", "EXIT", "ENTER", "INVEST", "RECOMMEND", "NEAR", "STRONG", "WEAK", "QUICK",
+        "FAIR", "FAIRLY", "BLUE", "CHIP", "CHIPS", "ENTRY", "SETUP", "WITH", "FROM", "ABOUT", "AFTER", "BEFORE",
+        "OUTLOOK", "IMPACT", "EFFECT", "POINT", "POINTS", "MONEY", "GAINS", "PAYING", "QUARTER", "QUARTERLY",
+        "ANNUAL", "MONTHLY", "PEERS", "YEAR", "MONTH", "WEEK", "TERM", "LONG", "SHORT", "NEXT", "LAST",
+        "TODAY", "DAILY", "WEEKLY", "MONTHLY", "VS", "VERSUS",
+    }
+    tokens = re.findall(r'\b[A-Z][A-Z0-9\-]{1,9}\b', query.upper())
+    for tok in tokens:
+        if tok not in _SKIP and len(tok) >= 3 and tok not in symbols:
+            symbols.append(tok)
+
+    return symbols
+
+
+def extract_entities_from_query(query: str) -> dict:
+    """
+    Extract financial entities: price targets, time horizons, quantities.
+    Returns dict with extracted parameters for contextualizing response.
+    """
+    entities = {}
+    q_lower = query.lower()
+
+    # Price levels (₹XXXX, reach 1500, above 2000, target 3500)
+    price_patterns = [
+        (r'₹\s*([\d,]+(?:\.\d+)?)', 'price_inr'),
+        (r'\$\s*([\d,]+(?:\.\d+)?)', 'price_usd'),
+        (r'reach\s+([\d,]+(?:\.\d+)?)', 'price_target'),
+        (r'target\s+([\d,]+(?:\.\d+)?)', 'price_target'),
+        (r'(above|below)\s+([\d,]+(?:\.\d+)?)', 'price_level'),
+        (r'at\s+([\d,]+(?:\.\d+)?)', 'price_level'),
+    ]
+    for pattern, key in price_patterns:
+        match = re.search(pattern, q_lower)
+        if match:
+            price_str = match.group(1 if 'price_target' not in pattern else 1).replace(',', '')
+            try:
+                entities[key] = float(price_str)
+                break  # Use first found price
+            except ValueError:
+                pass
+
+    # Time horizons (3 months, next quarter, 1 year, by year-end)
+    time_patterns = [
+        (r'(\d+)\s*(month|week|day|year)', 'duration'),
+        (r'next\s+(quarter|month|week|year)', 'next_period'),
+        (r'(q[1-4]|quarter\s*[1-4]|h[1-2])', 'fiscal_period'),
+        (r'year.?end', 'by_year_end'),
+    ]
+    for pattern, key in time_patterns:
+        match = re.search(pattern, q_lower)
+        if match:
+            entities[key] = match.group(0)
+            break
+
+    # Quantity/percentage (10% gain, doubled, 2x return)
+    quantity_patterns = [
+        (r'(\d+)\s*%\s*(gain|return|rise|fall|drop)', 'percentage_target'),
+        (r'(\d+)x\s*(return|gain|multiple)', 'multiple_target'),
+        (r'double[d]?', 'multiple_target'),
+    ]
+    for pattern, key in quantity_patterns:
+        match = re.search(pattern, q_lower)
+        if match:
+            entities[key] = match.group(0)
+            break
+
+    return entities
+
+
 def extract_symbol_from_query(query: str) -> Optional[str]:
     q_lower = query.lower()
 

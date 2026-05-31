@@ -1656,11 +1656,18 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                   or (rule_result.get("detected_stock") or {}).get("symbol")
                   or extract_symbol_from_query(body.query))
 
+        # Extract all symbols for multi-stock comparisons
+        from ..stock_enricher import extract_all_symbols_from_query, extract_entities_from_query
+        all_symbols = extract_all_symbols_from_query(body.query)
+        entities = extract_entities_from_query(body.query)
+
         # data dict from rule-engine (contains technical/fundamental/trading_levels/sentiment)
         data = rule_result.get("data") or {}
 
         ctx: dict = {
             "symbol": symbol,
+            "all_symbols": all_symbols,  # list of ALL detected symbols
+            "entities": entities,  # extracted price targets, time horizons, etc.
             "current_price": rule_result.get("current_price"),
             "technical": data.get("technical", {}),
             "fundamental": data.get("fundamental", {}),
@@ -1711,23 +1718,24 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
 
         return ctx
 
-    # Tier 1: Groq — enriched with live price, fundamentals, pre-computed signals, and news
+    # Tier 1: Groq — enriched with live price, fundamentals, pre-computed signals, extracted entities, and conversation history
     try:
         from ..groq_llm import groq_available, ask_groq, classify_intent
         if groq_available():
             enriched_ctx = await _build_enriched_context()
-            intent = classify_intent(body.query)
+            intent_result = classify_intent(body.query)  # returns {"intent": ..., "confidence": ..., "alternatives": ...}
             groq_result = await ask_groq(
                 body.query,
                 context=enriched_ctx,
                 conversation_history=body.conversation_history,
-                intent=intent,
+                intent_result=intent_result,
             )
             if groq_result.get("answer"):
                 merged = {
                     **rule_result,
                     "answer": groq_result["answer"],
-                    "intent": groq_result.get("intent", intent),
+                    "intent": groq_result.get("intent"),
+                    "intent_confidence": groq_result.get("confidence"),
                 }
                 return _validated(merged, "groq")
     except Exception as e:
