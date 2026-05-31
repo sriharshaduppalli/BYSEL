@@ -50,33 +50,42 @@ class TemplateModelBackend:
                 end = min(end, idx)
         context_block = tail[:end].strip()
         lines = [line.strip() for line in context_block.splitlines() if line.strip().startswith("- ")]
-        # Filter out domain guidance lines (domain_seed_v1 references, guardrails, interpretations)
-        filtered_lines = []
-        for line in lines:
-            # Skip if it's a domain seed reference (guideline/rule, not data)
-            if "source: domain_seed" in line.lower() or "guardrails" in line.lower() or "interpretation:" in line.lower():
-                continue
-            filtered_lines.append(line)
-        return filtered_lines if filtered_lines else []
+        return lines
 
     @classmethod
     def _compose_answer(cls, prompt: str) -> str:
         intent = cls._extract_field(prompt, "Intent") or "general_query"
         category = cls._extract_field(prompt, "Category") or "stocks"
+        query = cls._extract_field(prompt, "User query") or "User query not provided."
+        readiness = cls._extract_field(prompt, "Readiness") or "not available"
+        deterministic = cls._extract_field(prompt, "Deterministic checks") or "none"
         disclaimer = cls._extract_field(prompt, "Compliance disclaimer")
         context_lines = cls._extract_context_lines(prompt)
-
-        # Build user-facing answer with only analysis content, no metadata
         if context_lines:
-            # Only include the first few context lines (actual analysis, not metadata)
-            answer = "\n".join(context_lines[:2])
+            context_summary = "\n".join(context_lines[:3])
         else:
-            answer = "No analysis available for this query."
-
+            context_summary = "- No grounded context was available."
+        guidance_by_intent = {
+            "stock_analysis": "Focus on trend, momentum, volume confirmation, valuation context, and event risk.",
+            "fundamentals": "Focus on earnings quality, valuation metrics, balance-sheet strength, and sector positioning.",
+            "events_news": "Focus on regulatory impact, management commentary, and timeline of material disclosures.",
+            "prediction": "Focus on scenarios and risk factors; avoid directional certainty.",
+            "market_calculations": "Use deterministic outputs as checks and validate assumptions with live market data.",
+        }
+        guidance = guidance_by_intent.get(intent, "Prioritize grounded facts and validate with live NSE/BSE data.")
+        lines = [
+            f"Query focus: {query}",
+            f"Intent-category mapping: {intent} / {category}",
+            f"Data readiness snapshot: {readiness}",
+            "Grounded highlights:",
+            context_summary,
+        ]
+        if deterministic.lower() != "none":
+            lines.append(f"Deterministic checks: {deterministic}")
+        lines.append(f"Analysis guidance: {guidance}")
         if disclaimer:
-            answer = f"{answer}\n\n{disclaimer}"
-
-        return answer
+            lines.append(f"Compliance note: {disclaimer}")
+        return "\n".join(lines)
 
 
 @dataclass(frozen=True)

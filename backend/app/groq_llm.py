@@ -664,42 +664,36 @@ def build_user_profile_from_history(conversation_history: Optional[List[Dict]]) 
 
 
 def _strip_internal_metadata(text: str) -> str:
-    """Remove ONLY obvious internal system metadata from response text."""
+    """Remove ONLY the most obvious template/fallback LLM metadata markers."""
     if not text:
         return text
 
     lines = text.split("\n")
     filtered_lines = []
 
-    # ONLY strip lines that start with these EXACT metadata indicators
-    metadata_start_patterns = [
+    # ONLY filter these EXACT line starters (very conservative)
+    skip_prefixes = [
         "intent detected:",
         "category:",
         "latency mode:",
         "model backend:",
-        "data refresh",
-        "data lineage",
-        "stale feeds:",
-        "partial feeds:",
-        "resolved entity:",
         "query focus:",
         "intent-category mapping:",
         "data readiness snapshot:",
-        "grounded highlights:",
         "deterministic checks:",
         "analysis guidance:",
         "compliance note:",
     ]
 
     for line in lines:
-        line_stripped = line.strip().lower()
-        # Only skip if line STARTS with metadata pattern (not just contains it)
-        if any(line_stripped.startswith(pattern) for pattern in metadata_start_patterns):
-            continue
-        filtered_lines.append(line)
+        stripped = line.strip().lower()
+        # Only skip if line STARTS with these exact prefixes
+        should_skip = any(stripped.startswith(prefix) for prefix in skip_prefixes)
+        if not should_skip:
+            filtered_lines.append(line)
 
     result = "\n".join(filtered_lines).strip()
-    # Return original if everything was stripped (safety check)
+    # If everything was stripped, return original (safety)
     return result if result else text
 
 

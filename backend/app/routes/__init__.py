@@ -1794,24 +1794,27 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
         logger.info(f"DEBUG: groq_available() = {groq_available()}")
         if groq_available():
             enriched_ctx = await _build_enriched_context()
-            # Expand acronyms, then normalize Hinglish before intent classification
             expanded_query = expand_acronyms_in_query(body.query)
             normalized_query = normalize_hinglish(expanded_query)
             intent_result = classify_intent(normalized_query)
-            logger.info(f"DEBUG: Groq Tier - intent={intent_result.get('intent')}, symbol={enriched_ctx.get('symbol')}")
+            logger.info(f"DEBUG: Calling Groq with intent={intent_result.get('intent')}, symbol={enriched_ctx.get('symbol')}")
             groq_result = await ask_groq(
                 normalized_query,
                 context=enriched_ctx,
                 conversation_history=body.conversation_history,
                 intent_result=intent_result,
             )
-            logger.info(f"DEBUG: Groq result has answer? {bool(groq_result.get('answer'))}")
             if groq_result.get("answer"):
+                logger.info("DEBUG: Groq returned answer, using Groq response")
                 merged = {
                     **rule_result,
                     "answer": groq_result["answer"],
                 }
                 return _validated(merged, "groq")
+            else:
+                logger.info("DEBUG: Groq returned empty, falling back to Tier 2")
+        else:
+            logger.info("DEBUG: Groq not available, skipping to Tier 2")
     except Exception as e:
         logger.error("Groq LLM error: %s", e)
 
@@ -1821,6 +1824,7 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
         if llm_available():
             llm_result = ask_llm(body.query)
             if llm_result and llm_result.get("answer"):
+                logger.info("DEBUG: Using Indian Stock LLM")
                 merged = {
                     **rule_result,
                     "answer": llm_result["answer"],
@@ -1830,6 +1834,7 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
         logger.error("Indian Stock LLM error: %s", e)
 
     # Tier 3: rule-engine only
+    logger.info("DEBUG: Falling back to rule-engine only")
     return _validated(rule_result, "rule-engine")
 
 

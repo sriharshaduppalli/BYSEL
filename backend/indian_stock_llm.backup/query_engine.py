@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import re
-import threading
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
 from typing import Any
 
 from .acceptance import ProductionAcceptanceCriteria, SUPPORTED_QUERY_CATEGORIES
@@ -17,12 +15,9 @@ from .knowledge_base import (
     InMemoryVectorIndex,
     KnowledgeBase,
     LocalHashEmbeddingProvider,
-    MLReranker,
-    SentenceTransformerEmbeddingProvider,
 )
-from .learning_loop import ContinualLearningManager, DailyFeedbackAnalyzer
+from .learning_loop import ContinualLearningManager
 from .model_serving import HttpModelBackend, ModelOrchestrator, TemplateModelBackend
-from .prediction import PredictionEngine, PredictionSignals
 from .safety import SafetyPolicy
 
 INTENT_KEYWORDS = {
@@ -99,8 +94,6 @@ class AssistantResponse:
     safe_for_trading_advice: bool = False
     policy_reason: str = ""
     category: str = "stocks"
-    prediction_signals: dict | None = None
-    diagnostics: dict | None = None
 
 
 class StockMarketAssistant:
@@ -114,30 +107,26 @@ class StockMarketAssistant:
             max_cost_per_query=self.config.max_cost_per_query,
             groundedness_min=self.config.groundedness_min,
         )
-        if self.config.embedding_endpoint:
-            embedding_provider = HttpEmbeddingProvider(
+        embedding_provider = (
+            HttpEmbeddingProvider(
                 endpoint=self.config.embedding_endpoint,
                 api_key=self.config.embedding_api_key,
                 provider=self.config.embedding_provider,
                 model=self.config.embedding_model,
             )
-        elif self.config.embedding_local_model:
-            embedding_provider = SentenceTransformerEmbeddingProvider(self.config.embedding_local_model)
-        else:
-            embedding_provider = LocalHashEmbeddingProvider()
-
-        if self.config.reranker_endpoint:
-            reranker = HttpReranker(
+            if self.config.embedding_endpoint
+            else LocalHashEmbeddingProvider()
+        )
+        reranker = (
+            HttpReranker(
                 endpoint=self.config.reranker_endpoint,
                 api_key=self.config.reranker_api_key,
                 provider=self.config.reranker_provider,
                 model=self.config.reranker_model,
             )
-        elif self.config.reranker_local_model_path:
-            reranker = MLReranker(self.config.reranker_local_model_path)
-        else:
-            reranker = HeuristicReranker()
-
+            if self.config.reranker_endpoint
+            else HeuristicReranker()
+        )
         try:
             self.knowledge_base = KnowledgeBase.from_json(
                 self.config.knowledge_base_path,
@@ -153,9 +142,7 @@ class StockMarketAssistant:
         if self.config.background_refresh_enabled:
             self.data_layer.start_background_refresh(self.config.background_refresh_interval_seconds)
         self.learning_manager = ContinualLearningManager(self.config.feedback_log_path, async_logging=True)
-        self.feedback_analyzer = DailyFeedbackAnalyzer(self.config.feedback_log_path)
         self.safety_policy = SafetyPolicy(self.config.policy_audit_log_path)
-        self.prediction_engine = PredictionEngine()
         primary_model = (
             HttpModelBackend(
                 endpoint=self.config.model_endpoint,
@@ -172,40 +159,6 @@ class StockMarketAssistant:
             fallback=TemplateModelBackend(),
             timeout_seconds=self.config.model_timeout_seconds,
         )
-        self._nightly_refresh_stop: threading.Event | None = None
-        if self.config.nightly_refresh_enabled:
-            self._start_nightly_refresh(self.config.nightly_refresh_hour_utc)
-
-    def _start_nightly_refresh(self, hour_utc: int) -> None:
-        """Launch a daemon thread that calls trigger_index_refresh once per day at *hour_utc* UTC."""
-        stop_event = threading.Event()
-        self._nightly_refresh_stop = stop_event
-
-        def _loop() -> None:
-            while not stop_event.is_set():
-                now = datetime.now(timezone.utc)
-                next_run = now.replace(hour=hour_utc, minute=0, second=0, microsecond=0)
-                if next_run <= now:
-                    next_run = next_run + timedelta(days=1)
-                wait_secs = (next_run - now).total_seconds()
-                if stop_event.wait(wait_secs):
-                    break
-                try:
-                    self.trigger_index_refresh()
-                except Exception:
-                    pass
-
-        t = threading.Thread(target=_loop, daemon=True)
-        t.start()
-
-    def trigger_index_refresh(self) -> None:
-        """Rebuild the knowledge-base embedding index in-place.
-
-        Call this after adding new knowledge items or swapping the embedding provider.
-        It is also invoked automatically by the nightly refresh daemon when
-        ``nightly_refresh_enabled`` is ``True``.
-        """
-        self.knowledge_base.refresh_index()
 
     def classify_intent(self, query: str) -> str:
         tokens = _regex_tokens(query) | _nlp_tokens(query, self.config.nlp_backend)
@@ -376,71 +329,31 @@ class StockMarketAssistant:
                 if intent == "prediction"
                 else ""
             )
-            prediction_signals: dict | None = None
-            if intent == "prediction":
-                signals = self.prediction_engine.predict(
-                    context_items=context_items,
-                    deterministic_note=deterministic_note,
-                    resolved_entity=resolved_entity,
-                )
-                prediction_signals = {
-                    "intraday": {
-                        "direction": signals.intraday.direction,
-                        "probability": signals.intraday.probability,
-                        "rationale": signals.intraday.rationale,
-                    },
-                    "swing": {
-                        "direction": signals.swing.direction,
-                        "probability": signals.swing.probability,
-                        "rationale": signals.swing.rationale,
-                    },
-                    "medium_term": {
-                        "direction": signals.medium_term.direction,
-                        "probability": signals.medium_term.probability,
-                        "rationale": signals.medium_term.rationale,
-                    },
-                    "key_signals": list(signals.key_signals),
-                    "overall_confidence": signals.overall_confidence,
-                }
-            # Clean answer for user, diagnostic metadata stored separately
             answer = (
-                f"{generated.answer}\n\n"
-                f"{self.learning_manager.daily_learning_summary()}\n"
-                "⚠️ Disclaimer: Use this as a starting point and validate with live NSE/BSE data before decisions."
+                f"Intent detected: {intent}.\n"
+                f"Category: {category}.\n"
+                f"Latency mode: {generated.latency_mode}.\n"
+                f"Model backend: {generated.model_name}.\n"
+                f"Data refresh timestamp: {self.data_layer.snapshot.refreshed_at}.\n"
+                f"Data lineage verified: {self.data_layer.validate_snapshot()}.\n"
+                f"Stale feeds: {self.data_layer.snapshot.stale_feeds or ('none',)}.\n"
+                f"Partial feeds: {self.data_layer.snapshot.partial_feeds or ('none',)}.\n"
+                f"Resolved entity: {resolved_entity if resolved_entity else 'None'}.\n"
+                f"{prediction_note}"
+                f"{deterministic_note + chr(10) if deterministic_note else ''}"
+                f"Relevant market context:\n{generated.answer}\n\n"
+                f"{self.learning_manager.daily_learning_summary()} "
+                "Use this as a starting point and validate with live NSE/BSE data before decisions."
             )
-
-            # Store all diagnostic metadata separately (not in user-facing answer)
-            diagnostics = {
-                "intent": intent,
-                "category": category,
-                "latency_mode": generated.latency_mode,
-                "model_backend": generated.model_name,
-                "data_refresh_timestamp": str(self.data_layer.snapshot.refreshed_at),
-                "data_lineage_verified": self.data_layer.validate_snapshot(),
-                "stale_feeds": list(self.data_layer.snapshot.stale_feeds) if self.data_layer.snapshot.stale_feeds else [],
-                "partial_feeds": list(self.data_layer.snapshot.partial_feeds) if self.data_layer.snapshot.partial_feeds else [],
-                "resolved_entity": resolved_entity if resolved_entity else "None",
-                "prediction_note": prediction_note.strip() if prediction_note else None,
-                "deterministic_note": deterministic_note if deterministic_note else None,
-            }
-
             confidence = min(MAX_CONFIDENCE, BASE_CONTEXT_CONFIDENCE + CONFIDENCE_PER_CONTEXT_ITEM * len(context_items))
         else:
             answer = (
-                f"I could not find enough domain context in the local knowledge base. "
-                f"{self.learning_manager.daily_learning_summary()}\n"
+                f"Intent detected: {intent}. I could not find enough domain context in the local knowledge base. "
+                f"Latency mode: {self.config.latency_mode}. "
+                f"{self.learning_manager.daily_learning_summary()} "
                 "Please enrich data sources for better accuracy."
             )
             confidence = 0.25
-            prediction_signals = None
-            diagnostics = {
-                "intent": intent,
-                "category": category,
-                "latency_mode": self.config.latency_mode,
-                "model_backend": "fallback_no_context",
-                "resolved_entity": resolved_entity if resolved_entity else "None",
-                "error_reason": "insufficient_domain_context",
-            }
 
         if intent in factual_intents and not citations:
             answer = (
@@ -448,17 +361,12 @@ class StockMarketAssistant:
                 "Please refresh enterprise sources."
             )
             confidence = min(confidence, 0.2)
-            if diagnostics:
-                diagnostics["error_reason"] = "insufficient_citations_for_factual_intent"
-
         if confidence < self.config.min_confidence_threshold and (context_items or intent in factual_intents):
             answer = (
                 f"Low-confidence response ({confidence:.2f}) withheld for safety. "
                 "Please refine the question or refresh trusted data sources."
             )
             citations = ()
-            if diagnostics:
-                diagnostics["error_reason"] = "low_confidence_safety_threshold"
 
         return AssistantResponse(
             intent=intent,
@@ -469,8 +377,6 @@ class StockMarketAssistant:
             safe_for_trading_advice=False,
             policy_reason=policy_decision.reason,
             category=category,
-            prediction_signals=prediction_signals,
-            diagnostics=diagnostics,
         )
 
     def query(self, query: str) -> dict[str, Any]:
@@ -486,8 +392,6 @@ class StockMarketAssistant:
             "safe_for_trading_advice": response.safe_for_trading_advice,
             "policy_reason": response.policy_reason,
             "category": response.category,
-            "prediction_signals": response.prediction_signals,
-            "diagnostics": response.diagnostics,
             "acceptance": {
                 "accuracy_min": self.criteria.accuracy_min,
                 "groundedness_min": self.criteria.groundedness_min,
