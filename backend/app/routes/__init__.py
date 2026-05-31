@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException, Header
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
-from typing import Dict
+from typing import Dict, List, Optional
 import logging
 import os
 import time
@@ -97,6 +97,7 @@ from .trading import (
     is_market_open, get_wallet, add_funds, withdraw_funds,
     evaluate_pending_triggers, build_pretrade_signal, build_pretrade_estimate,
 )
+from ..stock_enricher import normalize_hinglish
 from ..market_data import (
     fetch_quote, fetch_quote_history, fetch_quotes, get_all_symbols, get_default_symbols,
     search_stocks, get_symbols_with_names, get_stock_name, INDIAN_STOCKS
@@ -1623,79 +1624,296 @@ async def health_check():
 
 class AiQuery(BaseModel):
     query: str
+    conversation_history: Optional[List[Dict]] = None  # last N turns: [{"role":"user"|"assistant","content":str}]
+    tier: Optional[str] = "auto"  # NEW: "auto" (default) | "groq" | "indian-stock-llm" | "rule-engine"
 
 @router.post("/ai/ask")
 async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
-    """Natural language AI stock assistant with structured responses.
-    Examples: 'Should I buy RELIANCE?', 'Predict TCS price', 'Compare INFY and TCS'
+    """Natural language AI stock assistant with optional tier selection.
 
-    Returns unified response format with:
-    - detected_stock: symbol, confidence, match_method
-    - analysis: technical, fundamental, trading_levels, sentiment
-    - recommendation: signal, confidence, reasoning, risks
-    - source: gemini or rule-engine
-    - data_quality: complete or incomplete
+    Auto mode (default): Groq → Gemini → Indian Stock LLM → Rule Engine (with fallback)
+    Explicit tier: Use only requested tier, no fallback
+
+    Parameters:
+    - query: User's stock market question
+    - conversation_history: (Optional) Previous turns for context
+    - tier: (Optional) "auto" (default) | "groq" | "gemini" | "indian-stock-llm" | "rule-engine"
+
+    Response fields:
+    - answer: Analysis or recommendation
+    - source: Which LLM answered (groq | gemini | indian-stock-llm | rule-engine)
+    - tier_requested: What tier was requested (useful for debugging)
+    - symbol: Detected stock symbol (if applicable)
+    - current_price: Live price (if applicable)
     """
     from ..response_validator import ResponseValidator
+    from ..stock_enricher import extract_symbol_from_query, enrich, format_news_for_prompt
 
-    # Get base analysis from rule-engine (always run for grounding)
+    # Rule-engine always runs first — detects stock, builds base signals
     rule_result = ai_assistant(body.query, db=db)
 
-    # Try Gemini first if available
-    try:
-        from ..gemini_llm import gemini_available, ask_gemini
-        if gemini_available():
-            # Build structured context dict from rule-engine data
-            symbol = None
-            if rule_result.get("detected_stocks"):
-                symbol = rule_result["detected_stocks"][0].get("symbol")
+    def _validated(result: dict, source: str, tier_requested: str = "auto") -> dict:
+        from ..groq_llm import _strip_internal_metadata
 
-            context_dict = {
-                "symbol": symbol,
-                "company_name": rule_result.get("company_name"),
-                "sector": rule_result.get("sector"),
-                "current_price": rule_result.get("current_price") or rule_result.get("analysis", {}).get("current_price"),
-                "technical": rule_result.get("analysis", {}).get("technical") or {},
-                "fundamental": rule_result.get("analysis", {}).get("fundamental") or {},
-                "trading_levels": rule_result.get("analysis", {}).get("trading_levels") or {},
-                "sentiment": rule_result.get("analysis", {}).get("sentiment") or {},
-            }
+        # Keep only user-facing fields, remove internal metadata
+        answer = result.get("answer", "")
 
-            gemini_result = await ask_gemini(body.query, context=context_dict)
-            if "answer" in gemini_result:
-                # Use Gemini's response but keep structured rule-engine data
-                merged = {
-                    **rule_result,
-                    "answer": gemini_result["answer"],
-                    "source": "gemini"
+        # Only strip metadata from fallback LLM responses, not Groq
+        if source != "groq" and answer:
+            answer = _strip_internal_metadata(answer)
+
+        user_response = {
+            "answer": answer,
+            "source": source,
+            "tier_requested": tier_requested,
+        }
+
+        # Optionally include other user-relevant fields if present
+        if "symbol" in result:
+            user_response["symbol"] = result["symbol"]
+        if "current_price" in result:
+            user_response["current_price"] = result["current_price"]
+
+        return user_response
+
+    async def _build_enriched_context() -> dict:
+        # Resolve symbol — prefer rule-engine detection, fallback to query extraction
+        symbol = (rule_result.get("symbol")
+                  or (rule_result.get("detected_stock") or {}).get("symbol")
+                  or extract_symbol_from_query(body.query))
+
+        # Extract all symbols for multi-stock comparisons
+        from ..stock_enricher import extract_all_symbols_from_query, extract_entities_from_query, normalize_hinglish, extract_time_window_from_query
+        all_symbols = extract_all_symbols_from_query(body.query)
+        entities = extract_entities_from_query(body.query)
+        time_window = extract_time_window_from_query(body.query)
+
+        # data dict from rule-engine (contains technical/fundamental/trading_levels/sentiment)
+        data = rule_result.get("data") or {}
+
+        # Detect user sentiment for tone/profile-aware responses
+        from ..groq_llm import detect_sentiment_from_query
+        user_sentiment = detect_sentiment_from_query(body.query)
+
+        # Extract user's current portfolio for personalized advice
+        portfolio_context = {"total_holdings": 0, "symbols": [], "concentrations": {}}
+        try:
+            holdings = get_holdings(db)
+            if holdings:
+                portfolio_context = {
+                    "total_holdings": len(holdings),
+                    "symbols": [h.symbol for h in holdings if h.symbol],
+                    "concentrations": {h.symbol: h.quantity for h in holdings if h.symbol},
+                    "total_value": sum(getattr(h, "last_price", 0) * (h.quantity or 0) for h in holdings if h.symbol),
                 }
+        except Exception as e:
+            logger.debug("Could not extract portfolio context: %s", e)
 
-                # Validate completeness
-                is_valid, missing = ResponseValidator.validate_response(merged)
-                merged["data_quality"] = "complete" if is_valid else f"incomplete: {', '.join(missing[:3])}"
+        ctx: dict = {
+            "symbol": symbol,
+            "all_symbols": all_symbols,  # list of ALL detected symbols
+            "entities": entities,  # extracted price targets, time horizons, etc.
+            "current_price": rule_result.get("current_price"),
+            "user_sentiment": user_sentiment,  # urgency, risk_appetite, emotion, user_profile
+            "portfolio_context": portfolio_context,  # user's current holdings
+            "technical": data.get("technical", {}),
+            "fundamental": data.get("fundamental", {}),
+            "trading_levels": data.get("trading_levels", {}),
+            "sentiment": data.get("sentiment", {}),
+        }
 
-                return merged
-    except Exception as e:
-        logger.error(f"Gemini integration error: {e}")
-        pass  # Fall through to rule-based
+        # Enrich with live yfinance data when a symbol is known
+        if symbol:
+            try:
+                live = await enrich(symbol)
+                if live:
+                    # Price
+                    if not ctx["current_price"]:
+                        ctx["current_price"] = live.get("current_price")
+                    ctx["company_name"] = live.get("company_name")
+                    ctx["sector"] = live.get("sector")
 
-    # Fallback: Use rule-engine result with validation
-    rule_result["source"] = "rule-engine"
+                    # Fundamentals: live wins, rule-engine fills gaps
+                    live_fund = live.get("fundamental", {})
+                    rule_fund = {k: v for k, v in ctx["fundamental"].items() if v}
+                    ctx["fundamental"] = {**live_fund, **rule_fund}
 
-    # Validate and augment if needed
-    is_valid, missing = ResponseValidator.validate_response(rule_result)
-    if not is_valid:
-        # Try to augment missing fields from analysis
-        analysis_data = rule_result.get("analysis", {})
-        if analysis_data:
-            rule_result = ResponseValidator.augment_incomplete_response(
-                rule_result, analysis_data
-            )
-        rule_result["data_quality"] = f"incomplete: {', '.join(missing[:3])}"
-    else:
-        rule_result["data_quality"] = "complete"
+                    # Technicals: live wins (has BB, full MAs), rule-engine fills gaps
+                    live_tech = live.get("technical", {})
+                    rule_tech = {k: v for k, v in ctx["technical"].items() if v}
+                    ctx["technical"] = {**live_tech, **rule_tech}
 
-    return rule_result
+                    # Trading levels: live always wins (rule-engine rarely has these)
+                    live_tl = live.get("trading_levels", {})
+                    rule_tl = {k: v for k, v in ctx["trading_levels"].items() if v}
+                    ctx["trading_levels"] = {**live_tl, **rule_tl}
+
+                    # Sentiment: live always wins (has news-based sentiment + sector trend)
+                    live_sent = live.get("sentiment", {})
+                    rule_sent = {k: v for k, v in ctx["sentiment"].items() if v}
+                    ctx["sentiment"] = {**live_sent, **rule_sent}
+
+                    headlines = live.get("news_headlines", [])
+                    if headlines:
+                        ctx["news_summary"] = format_news_for_prompt(headlines)
+
+                    # Pre-computed signal conclusions from enricher
+                    if live.get("pre_signals"):
+                        ctx["pre_signals"] = live["pre_signals"]
+
+                # Add historical data if temporal query detected
+                if time_window and symbol:
+                    try:
+                        from ..market_data import fetch_quote_history
+                        history = fetch_quote_history(symbol, period=time_window['period'])
+                        if history and len(history) > 0:
+                            start_price = history[0].get('close', 0)
+                            end_price = history[-1].get('close', 0)
+                            if start_price > 0:
+                                change_pct = ((end_price - start_price) / start_price) * 100
+                                ctx["historical_data"] = {
+                                    'period': time_window['period'],
+                                    'lookback_days': time_window['lookback_days'],
+                                    'data_points': len(history),
+                                    'start_price': round(start_price, 2),
+                                    'end_price': round(end_price, 2),
+                                    'change_percent': round(change_pct, 2),
+                                    'high': round(max(h.get('high', 0) for h in history), 2),
+                                    'low': round(min(h.get('low', 0) for h in history), 2),
+                                }
+                    except Exception as e:
+                        logger.debug(f"Could not fetch historical data: {e}")
+
+                # Link news to price moves (catalyst detection)
+                if symbol and "sentiment" in data:
+                    try:
+                        from ..stock_enricher import link_news_to_price_moves
+                        pct_change = rule_result.get("pct_change", 0)
+                        headlines = live.get("news_headlines", []) if 'live' in locals() else []
+
+                        if headlines and pct_change:
+                            catalyst = link_news_to_price_moves(symbol, headlines, pct_change)
+                            if catalyst:
+                                ctx["catalyst_info"] = catalyst
+                    except Exception as e:
+                        logger.debug(f"Could not link catalyst: {e}")
+
+            except Exception as exc:
+                logger.warning("Enrichment failed for %s: %s", symbol, exc)
+
+        return ctx
+
+    # Parse tier preference
+    requested_tier = (body.tier or "auto").lower().strip()
+    valid_tiers = {"auto", "groq", "gemini", "indian-stock-llm", "rule-engine"}
+    if requested_tier not in valid_tiers:
+        requested_tier = "auto"
+
+    logger.info(f"DEBUG: Tier requested = {requested_tier}")
+
+    # Tier 1: Groq — enriched with live price, fundamentals, pre-computed signals, extracted entities, and conversation history
+    if requested_tier in ("auto", "groq"):
+        try:
+            from ..groq_llm import groq_available, ask_groq, classify_intent, expand_acronyms_in_query
+            logger.info(f"DEBUG: groq_available() = {groq_available()}")
+            if groq_available():
+                enriched_ctx = await _build_enriched_context()
+                expanded_query = expand_acronyms_in_query(body.query)
+                normalized_query = normalize_hinglish(expanded_query)
+                intent_result = classify_intent(normalized_query)
+                logger.info(f"DEBUG: Calling Groq with intent={intent_result.get('intent')}, symbol={enriched_ctx.get('symbol')}")
+                groq_result = await ask_groq(
+                    normalized_query,
+                    context=enriched_ctx,
+                    conversation_history=body.conversation_history,
+                    intent_result=intent_result,
+                )
+                if groq_result.get("answer"):
+                    logger.info("DEBUG: Groq returned answer, using Groq response")
+                    merged = {
+                        **rule_result,
+                        "answer": groq_result["answer"],
+                    }
+                    return _validated(merged, "groq", requested_tier)
+                else:
+                    logger.info("DEBUG: Groq returned empty, falling back to Tier 2")
+            else:
+                logger.info("DEBUG: Groq not available")
+                if requested_tier == "groq":
+                    # User explicitly requested Groq but it's not available
+                    return _validated({"answer": "Groq LLM not available. Please use tier='auto' for fallback."}, "none", requested_tier)
+        except Exception as e:
+            logger.error("Groq LLM error: %s", e)
+            if requested_tier == "groq":
+                # User explicitly requested Groq but got error
+                return _validated({"answer": f"Groq LLM error: {str(e)}"}, "none", requested_tier)
+
+    # Tier 1.5: Gemini — same as Groq but using Google's Gemini API
+    if requested_tier in ("auto", "gemini"):
+        try:
+            from ..gemini_llm import gemini_available, ask_gemini
+            logger.info(f"DEBUG: gemini_available() = {gemini_available()}")
+            if gemini_available():
+                enriched_ctx = await _build_enriched_context()
+                from ..groq_llm import expand_acronyms_in_query, classify_intent
+                expanded_query = expand_acronyms_in_query(body.query)
+                normalized_query = normalize_hinglish(expanded_query)
+                intent_result = classify_intent(normalized_query)
+                logger.info(f"DEBUG: Calling Gemini with intent={intent_result.get('intent')}, symbol={enriched_ctx.get('symbol')}")
+                # ask_gemini is synchronous (Gemini API doesn't support async)
+                gemini_result = ask_gemini(
+                    normalized_query,
+                    context=enriched_ctx,
+                )
+                if gemini_result.get("answer") and not gemini_result.get("error"):
+                    logger.info("DEBUG: Gemini returned answer, using Gemini response")
+                    merged = {
+                        **rule_result,
+                        "answer": gemini_result["answer"],
+                    }
+                    return _validated(merged, "gemini", requested_tier)
+                else:
+                    error_msg = gemini_result.get("error", "Unknown error")
+                    logger.info(f"DEBUG: Gemini returned error or empty ({error_msg}), falling back to Tier 2")
+            else:
+                logger.info("DEBUG: Gemini not available")
+                if requested_tier == "gemini":
+                    # User explicitly requested Gemini but it's not available
+                    return _validated({"answer": "Gemini LLM not available. Please use tier='auto' for fallback."}, "none", requested_tier)
+        except Exception as e:
+            logger.error("Gemini LLM error: %s", e, exc_info=True)
+            if requested_tier == "gemini":
+                # User explicitly requested Gemini but got error
+                return _validated({"answer": f"Gemini LLM error: {str(e)}"}, "none", requested_tier)
+
+    # Tier 2: Indian Stock LLM (pure Python, no API key, bundled in repo)
+    if requested_tier in ("auto", "indian-stock-llm"):
+        try:
+            from ..llm_integration import llm_available, ask_llm
+            if llm_available():
+                llm_result = ask_llm(body.query)
+                # Only use LLM if it has a confident answer (not withheld for safety)
+                if llm_result and llm_result.get("answer") and llm_result.get("confidence", 0) >= 0.4:
+                    logger.info("DEBUG: Using Indian Stock LLM (confidence=%.2f)", llm_result.get("confidence", 0))
+                    merged = {
+                        **rule_result,
+                        "answer": llm_result["answer"],
+                    }
+                    return _validated(merged, "indian-stock-llm", requested_tier)
+                else:
+                    low_conf = llm_result.get("confidence", 0) if llm_result else 0
+                    logger.info("DEBUG: Indian Stock LLM confidence too low (%.2f), falling back to Rule Engine", low_conf)
+                    if requested_tier == "indian-stock-llm":
+                        # User explicitly requested Indian Stock LLM but confidence too low
+                        return _validated(llm_result or {"answer": "Low confidence"}, "indian-stock-llm", requested_tier)
+        except Exception as e:
+            logger.error("Indian Stock LLM error: %s", e)
+            if requested_tier == "indian-stock-llm":
+                return _validated({"answer": f"Indian Stock LLM error: {str(e)}"}, "none", requested_tier)
+
+    # Tier 3: rule-engine only
+    logger.info("DEBUG: Falling back to rule-engine only")
+    return _validated(rule_result, "rule-engine", requested_tier)
 
 
 @router.get("/ai/analyze/{symbol}")

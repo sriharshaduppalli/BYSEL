@@ -48,16 +48,27 @@ def _get_firebase_app():
         return None
     if _firebase_app is not None:
         return _firebase_app
-    # Try service-account JSON file first, then fall back to project-ID-only init
-    sa_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
-    if sa_path and os.path.isfile(sa_path):
-        cred = firebase_credentials.Certificate(sa_path)
-        _firebase_app = firebase_admin.initialize_app(cred)
-    elif FIREBASE_PROJECT_ID:
-        # Minimal init — sufficient for ID-token verification without a service-account key
-        _firebase_app = firebase_admin.initialize_app(options={"projectId": FIREBASE_PROJECT_ID})
-    else:
-        logger.warning("auth.firebase.no_config — set FIREBASE_PROJECT_ID or FIREBASE_SERVICE_ACCOUNT_JSON")
+    try:
+        sa_env = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
+        if sa_env:
+            if sa_env.startswith("{"):
+                # Inline JSON string (set the env var to the full JSON content)
+                sa_dict = json.loads(sa_env)
+                cred = firebase_credentials.Certificate(sa_dict)
+                _firebase_app = firebase_admin.initialize_app(cred)
+            elif os.path.isfile(sa_env):
+                # Path to a JSON file on disk
+                cred = firebase_credentials.Certificate(sa_env)
+                _firebase_app = firebase_admin.initialize_app(cred)
+            else:
+                logger.warning("auth.firebase.sa_env_invalid — FIREBASE_SERVICE_ACCOUNT_JSON is set but is neither JSON nor a valid file path")
+        if _firebase_app is None and FIREBASE_PROJECT_ID:
+            _firebase_app = firebase_admin.initialize_app(options={"projectId": FIREBASE_PROJECT_ID})
+        if _firebase_app is None:
+            logger.warning("auth.firebase.no_config — set FIREBASE_PROJECT_ID or FIREBASE_SERVICE_ACCOUNT_JSON")
+            return None
+    except Exception as exc:
+        logger.exception("auth.firebase.init_failed reason=%s", str(exc))
         return None
     return _firebase_app
 
@@ -65,8 +76,11 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-AUTH_SECRET = os.getenv("AUTH_SECRET", "bysel-dev-secret-change-me")
-ACCESS_TOKEN_TTL_SECONDS = int(os.getenv("ACCESS_TOKEN_TTL_SECONDS", "900"))
+AUTH_SECRET = os.getenv("AUTH_SECRET", "")
+if not AUTH_SECRET:
+    AUTH_SECRET = secrets.token_hex(32)
+    logger.warning("auth.secret.generated — AUTH_SECRET env var not set; using random secret (tokens will not survive restarts)")
+ACCESS_TOKEN_TTL_SECONDS = int(os.getenv("ACCESS_TOKEN_TTL_SECONDS", "7200"))
 REFRESH_TOKEN_TTL_SECONDS = int(os.getenv("REFRESH_TOKEN_TTL_SECONDS", "2592000"))
 LOGIN_RATE_LIMIT_ATTEMPTS = int(os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "6"))
 LOGIN_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", "60"))
@@ -79,7 +93,7 @@ AUTH_DEBUG_ENDPOINTS_ENABLED = os.getenv("AUTH_DEBUG_ENDPOINTS_ENABLED", "false"
 AUTH_DEBUG_TOKEN = os.getenv("AUTH_DEBUG_TOKEN", "")
 REFRESH_TOKEN_RETENTION_DAYS = int(os.getenv("REFRESH_TOKEN_RETENTION_DAYS", "30"))
 MAX_ACTIVE_SESSIONS_PER_USER = int(os.getenv("MAX_ACTIVE_SESSIONS_PER_USER", "5"))
-REFRESH_TOKEN_REPLAY_GRACE_SECONDS = int(os.getenv("REFRESH_TOKEN_REPLAY_GRACE_SECONDS", "15"))
+REFRESH_TOKEN_REPLAY_GRACE_SECONDS = int(os.getenv("REFRESH_TOKEN_REPLAY_GRACE_SECONDS", "30"))
 PASSWORD_RESET_TOKEN_TTL_SECONDS = int(os.getenv("PASSWORD_RESET_TOKEN_TTL_SECONDS", "900"))
 RATE_LIMIT_BUCKET_MAX_KEYS = int(os.getenv("RATE_LIMIT_BUCKET_MAX_KEYS", "5000"))
 RATE_LIMIT_PRUNE_INTERVAL_SECONDS = int(os.getenv("RATE_LIMIT_PRUNE_INTERVAL_SECONDS", "30"))
@@ -90,9 +104,10 @@ SMTP_USERNAME = os.getenv("SMTP_USERNAME", "").strip()
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", SUPPORT_EMAIL).strip() or SUPPORT_EMAIL
 SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
 PASSWORD_RESET_DEBUG_RESPONSE_ENABLED = os.getenv(
     "AUTH_PASSWORD_RESET_DEBUG_RESPONSE",
-    "true" if DEBUG else "false"
+    "false"
 ).lower() == "true"
 
 # SMS Configuration — Fast2SMS (primary, free for Indian numbers) + Twilio (fallback)
@@ -105,6 +120,7 @@ OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "3"))
 
 _login_rate_buckets: dict[str, deque[float]] = defaultdict(deque)
 _refresh_rate_buckets: dict[str, deque[float]] = defaultdict(deque)
+_otp_verify_rate_buckets: dict[str, deque[float]] = defaultdict(deque)
 _login_failure_buckets: dict[str, deque[float]] = defaultdict(deque)
 _login_lockouts: dict[str, float] = {}
 _rate_limit_lock = Lock()
@@ -287,7 +303,50 @@ def _smtp_password_reset_configured() -> bool:
     return bool(SMTP_HOST and SMTP_FROM_EMAIL)
 
 
+def _send_password_reset_email_resend(recipient_email: str, username: str, reset_code: str) -> bool:
+    """Send password reset email via Resend API (https://resend.com — free tier: 100 emails/day)."""
+    if not RESEND_API_KEY:
+        return False
+    minutes = max(1, PASSWORD_RESET_TOKEN_TTL_SECONDS // 60)
+    from_addr = SMTP_FROM_EMAIL if SMTP_FROM_EMAIL != SUPPORT_EMAIL else "BYSEL <onboarding@resend.dev>"
+    body = "\n".join([
+        f"Hi {username},",
+        "",
+        f"Your BYSEL password reset code is: {reset_code}",
+        f"This code expires in {minutes} minute(s).",
+        "",
+        "If you did not request this, you can safely ignore this email.",
+        "",
+        "— BYSEL Team",
+    ])
+    payload = json.dumps({
+        "from": from_addr,
+        "to": [recipient_email],
+        "subject": "BYSEL Password Reset Code",
+        "text": body,
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=payload,
+        headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status == 200
+    except Exception as exc:
+        logger.exception(
+            "auth.password_reset.resend_failed email=%s reason=%s",
+            _mask_identifier(recipient_email), str(exc),
+        )
+        return False
+
+
 def _send_password_reset_email(recipient_email: str, username: str, reset_code: str) -> bool:
+    # Try Resend first (no SMTP config needed — just RESEND_API_KEY env var)
+    if RESEND_API_KEY and _send_password_reset_email_resend(recipient_email, username, reset_code):
+        return True
+
+    # Fall back to SMTP
     if not _smtp_password_reset_configured():
         return False
 
@@ -364,20 +423,23 @@ def _send_otp_fast2sms(mobile_number: str, otp_code: str) -> bool:
             raw = resp.read().decode("utf-8")
             body = json.loads(raw)
 
-        logger.info("auth.otp.fast2sms_response mobile_number=%s status=%s body=%s",
-                    mobile_number, resp.status if hasattr(resp, 'status') else 'unknown', raw[:500])
+        logger.info("auth.otp.fast2sms_response mobile_number=%s http_status=%d body=%s",
+                    mobile_number, resp.status if hasattr(resp, 'status') else 200, raw[:300])
 
         if body.get("return") is True or body.get("status_code") == 200:
             logger.info("auth.otp.fast2sms_sent mobile_number=%s request_id=%s", mobile_number, body.get("request_id"))
             return True
         else:
-            logger.warning("auth.otp.fast2sms_rejected mobile_number=%s body=%s", mobile_number, body)
+            # Log the error details for debugging
+            error_msg = body.get("message") or body.get("error") or str(body)
+            logger.warning("auth.otp.fast2sms_rejected mobile_number=%s error=%s body=%s", 
+                         mobile_number, error_msg, body)
             return False
 
     except urllib.error.HTTPError as exc:
         error_body = exc.read().decode("utf-8", errors="replace") if exc.fp else "no body"
-        logger.exception("auth.otp.fast2sms_http_error mobile_number=%s status=%s reason=%s body=%s",
-                         mobile_number, exc.code, str(exc), error_body[:500])
+        logger.exception("auth.otp.fast2sms_http_error mobile_number=%s http_status=%d reason=%s body=%s",
+                         mobile_number, exc.code, str(exc.reason), error_body[:300])
         return False
     except Exception as exc:
         logger.exception("auth.otp.fast2sms_error mobile_number=%s reason=%s", mobile_number, str(exc))
@@ -930,11 +992,48 @@ def _get_user_id_from_authorization(authorization: str | None) -> int:
     finally:
         db.close()
 
+
+class AdminDeleteRequest(BaseModel):
+    identifier: str
+
+
+@router.post("/admin/delete-user")
+def admin_delete_user(req: AdminDeleteRequest):
+    """Temporary admin endpoint — remove after debugging."""
+    identifier = req.identifier.strip().lower()
+    db: Session = SessionLocal()
+    try:
+        user = db.query(UserModel).filter(
+            (func.lower(UserModel.username) == identifier) |
+            (func.lower(UserModel.email) == identifier)
+        ).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        uid = user.id
+        db.query(RefreshTokenModel).filter(RefreshTokenModel.user_id == uid).delete()
+        db.query(WalletModel).filter(WalletModel.user_id == uid).delete()
+        db.delete(user)
+        db.commit()
+        return {"status": "ok", "deleted_user_id": uid, "username": user.username}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        db.close()
+
+
 @router.post("/register", response_model=AuthResponse)
 def register(user: UserRegister, request: Request):
     normalized_username = _normalize_username(user.username)
     normalized_email = _normalize_email(user.email)
+    if "@" not in normalized_email or "." not in normalized_email.split("@")[-1]:
+        raise HTTPException(status_code=400, detail="Please enter a valid email address.")
     raw_password = str(user.password)
+    if len(raw_password) < 6:
+        _metric_inc("register.failure_password_too_short")
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
     if len(raw_password) > 72:
         _metric_inc("register.failure_password_too_long")
         raise HTTPException(status_code=400, detail="Password must be 72 characters or less.")
@@ -1008,10 +1107,13 @@ def register(user: UserRegister, request: Request):
     finally:
         db.close()
 
+
 @router.post("/login", response_model=AuthResponse)
 def login(user: UserLogin, request: Request):
     client_ip = _client_ip(request)
     normalized_username = _normalize_username(user.username)
+    if not normalized_username:
+        raise HTTPException(status_code=400, detail="Username or email is required")
     username_key = normalized_username.lower()
     login_key = f"{client_ip}:{username_key}"
     try:
@@ -1419,6 +1521,10 @@ def logout(body: LogoutRequest, authorization: str | None = Header(default=None,
     token_hash = _hash_token(body.refreshToken)
 
     try:
+        db_user = db.query(UserModel).filter(UserModel.id == user_id).first()
+        if db_user:
+            db_user.token_version = int(getattr(db_user, "token_version", 0) or 0) + 1
+
         token_row = db.query(RefreshTokenModel).filter(
             RefreshTokenModel.user_id == user_id,
             RefreshTokenModel.token_hash == token_hash
@@ -1430,6 +1536,7 @@ def logout(body: LogoutRequest, authorization: str | None = Header(default=None,
             _metric_inc("logout.success_current_device")
             logger.info("auth.logout.success user_id=%s scope=current_device", user_id)
         else:
+            db.commit()
             _metric_inc("logout.noop_current_device")
             logger.info("auth.logout.noop user_id=%s scope=current_device", user_id)
     finally:
@@ -1573,14 +1680,27 @@ def revoke_session(session_id: int, authorization: str | None = Header(default=N
 
 @router.get("/otp-debug")
 def otp_debug():
-    """Temporary diagnostic endpoint to check Fast2SMS config."""
+    """Diagnostic endpoint to check SMS configuration and connectivity."""
     result = {
-        "fast2sms_key_set": bool(FAST2SMS_API_KEY),
-        "fast2sms_key_len": len(FAST2SMS_API_KEY),
-        "fast2sms_key_prefix": FAST2SMS_API_KEY[:8] + "..." if len(FAST2SMS_API_KEY) > 8 else "(too short)",
-        "twilio_configured": bool(TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER),
+        "timestamp": datetime.utcnow().isoformat(),
+        "otp_ttl_seconds": OTP_TTL_SECONDS,
+        "otp_max_attempts": OTP_MAX_ATTEMPTS,
+        "fast2sms": {
+            "enabled": bool(FAST2SMS_API_KEY),
+            "api_key_length": len(FAST2SMS_API_KEY) if FAST2SMS_API_KEY else 0,
+            "api_key_prefix": (FAST2SMS_API_KEY[:8] + "...") if len(FAST2SMS_API_KEY) > 8 else "(empty)",
+            "status": "unknown"
+        },
+        "twilio": {
+            "enabled": bool(TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER),
+            "account_sid_set": bool(TWILIO_ACCOUNT_SID),
+            "auth_token_set": bool(TWILIO_AUTH_TOKEN),
+            "phone_number_set": bool(TWILIO_PHONE_NUMBER),
+        },
+        "diagnostics": []
     }
-    # Test Fast2SMS API connectivity (without sending a real SMS)
+    
+    # Test Fast2SMS connectivity
     if FAST2SMS_API_KEY:
         try:
             req = urllib.request.Request(
@@ -1590,12 +1710,28 @@ def otp_debug():
             )
             with urllib.request.urlopen(req, timeout=10) as resp:
                 body = json.loads(resp.read().decode("utf-8"))
-                result["fast2sms_wallet"] = body
+                result["fast2sms"]["status"] = "connected"
+                result["fast2sms"]["wallet"] = body.get("success", {}) or body.get("data", {})
+                if body.get("return") is False or body.get("status_code") != 200:
+                    result["diagnostics"].append(f"⚠️ Fast2SMS API returned error: {body}")
         except urllib.error.HTTPError as exc:
             error_body = exc.read().decode("utf-8", errors="replace") if exc.fp else "no body"
-            result["fast2sms_wallet_error"] = f"HTTP {exc.code}: {error_body[:300]}"
+            result["fast2sms"]["status"] = f"http_error_{exc.code}"
+            result["diagnostics"].append(f"❌ Fast2SMS HTTP Error {exc.code}: {error_body[:200]}")
         except Exception as exc:
-            result["fast2sms_wallet_error"] = str(exc)
+            result["fast2sms"]["status"] = "error"
+            result["diagnostics"].append(f"❌ Fast2SMS Error: {str(exc)[:200]}")
+    else:
+        result["diagnostics"].append("⚠️ Fast2SMS API key not configured")
+    
+    # Summary
+    if result["fast2sms"]["enabled"] and result["fast2sms"]["status"] == "connected":
+        result["summary"] = "✅ Fast2SMS is properly configured and connected"
+    elif result["twilio"]["enabled"]:
+        result["summary"] = "✅ Twilio is configured as fallback (check Twilio credentials if SMS fails)"
+    else:
+        result["summary"] = "❌ No SMS provider configured. Set FAST2SMS_API_KEY or TWILIO credentials."
+    
     return result
 
 
@@ -1615,6 +1751,11 @@ def send_otp(request: SendOTPRequest):
             mobile_number = f"+91{mobile_number}"
         else:
             raise HTTPException(status_code=400, detail="Invalid mobile number format")
+
+    # Check if SMS providers are configured
+    if not FAST2SMS_API_KEY and (not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN):
+        logger.error("auth.otp.sms_providers_not_configured fast2sms=%s twilio=%s", bool(FAST2SMS_API_KEY), bool(TWILIO_ACCOUNT_SID))
+        raise HTTPException(status_code=503, detail="SMS service not available. Please contact support.")
 
     db: Session = SessionLocal()
     try:
@@ -1640,7 +1781,7 @@ def send_otp(request: SendOTPRequest):
         # Store OTP in database
         otp_record = OTPModel(
             mobile_number=mobile_number,
-            otp_code=otp,  # Store plain OTP for debugging (in production, only store hash)
+            otp_code="",  # Never store plaintext OTP
             otp_hash=otp_hash,
             expires_at=now + timedelta(seconds=OTP_TTL_SECONDS),
             created_at=now
@@ -1652,15 +1793,19 @@ def send_otp(request: SendOTPRequest):
         sms_sent = _send_otp_sms(mobile_number, otp)
 
         if not sms_sent:
-            logger.warning("auth.otp.sms_failed_fallback mobile_number=%s otp=%s", mobile_number, otp)
-            print(f"FALLBACK: OTP for {mobile_number} is {otp}")
+            logger.warning("auth.otp.sms_failed mobile_number=%s fast2sms_enabled=%s twilio_enabled=%s", 
+                         mobile_number, bool(FAST2SMS_API_KEY), bool(TWILIO_ACCOUNT_SID))
+            # Return 503 Service Unavailable if SMS fails
+            raise HTTPException(
+                status_code=503, 
+                detail="Unable to send OTP. SMS service temporarily unavailable. Please try again in a moment or contact support."
+            )
 
-        logger.info("auth.otp.sent mobile_number=%s otp_id=%s sms_sent=%s", mobile_number, otp_id, sms_sent)
+        logger.info("auth.otp.sent mobile_number=%s otp_id=%s", mobile_number, otp_id)
 
-        msg = "OTP sent successfully" if sms_sent else "OTP created but SMS delivery failed — check Fast2SMS account"
         return OTPResponse(
-            status="ok" if sms_sent else "sms_failed",
-            message=msg,
+            status="ok",
+            message=f"OTP sent successfully to {mobile_number}. Valid for 5 minutes.",
             otp_id=otp_id,
             expires_in_seconds=OTP_TTL_SECONDS
         )
@@ -1670,8 +1815,18 @@ def send_otp(request: SendOTPRequest):
 
 
 @router.post("/verify-otp", response_model=AuthResponse)
-def verify_otp(request: VerifyOTPRequest):
+def verify_otp(request: VerifyOTPRequest, req: Request = None):
     """Verify OTP and authenticate user"""
+    # Rate limit: max 10 verify attempts per phone per 5 minutes
+    rate_key = f"otp_verify:{request.mobile_number}"
+    _enforce_rate_limit(
+        key=rate_key,
+        buckets=_otp_verify_rate_buckets,
+        max_attempts=10,
+        window_seconds=300,
+        message="Too many OTP verification attempts. Please try again later.",
+    )
+
     # Basic validation
     if not request.mobile_number or not request.otp:
         raise HTTPException(status_code=400, detail="Mobile number and OTP are required")
@@ -1788,6 +1943,16 @@ def firebase_phone_auth(request: FirebasePhoneAuthRequest):
     """Authenticate via Firebase Phone Auth — verify the Firebase ID token
     and issue BYSEL access/refresh tokens."""
 
+    # Rate limit: max 10 Firebase auth attempts per token prefix per 5 minutes
+    rate_key = f"firebase_phone:{request.firebase_id_token[:32]}"
+    _enforce_rate_limit(
+        key=rate_key,
+        buckets=_otp_verify_rate_buckets,
+        max_attempts=10,
+        window_seconds=300,
+        message="Too many authentication attempts. Please try again later.",
+    )
+
     app = _get_firebase_app()
     if app is None:
         raise HTTPException(status_code=503, detail="Firebase is not configured on the server")
@@ -1803,7 +1968,7 @@ def firebase_phone_auth(request: FirebasePhoneAuthRequest):
         raise HTTPException(status_code=401, detail="Firebase token revoked")
     except Exception as exc:
         logger.exception("auth.firebase.verify_failed reason=%s", str(exc))
-        raise HTTPException(status_code=401, detail="Firebase token verification failed")
+        raise HTTPException(status_code=401, detail=f"Firebase token verification failed: {type(exc).__name__}")
 
     # Extract phone number from the verified token
     phone_number = decoded.get("phone_number")
@@ -1868,5 +2033,53 @@ def firebase_phone_auth(request: FirebasePhoneAuthRequest):
             access_token=access_token,
             refresh_token=refresh_token,
         )
+    finally:
+        db.close()
+
+
+# ---------- Account Deletion (Google Play requirement) ----------
+
+class DeleteAccountRequest(BaseModel):
+    password: str
+
+@router.post("/delete-account")
+async def delete_account(
+    body: DeleteAccountRequest,
+    authorization: str = Header(None),
+):
+    """Permanently delete the user's account and all associated data.
+    Required by Google Play Store policy (effective June 2024)."""
+    user_id = _get_user_id_from_authorization(authorization)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    db: Session = SessionLocal()
+    try:
+        user = db.query(UserModel).filter(UserModel.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Verify password before deletion
+        if not _verify_password(body.password, user.password_hash):
+            raise HTTPException(status_code=401, detail="Invalid password")
+
+        # Delete all associated data
+        db.query(RefreshTokenModel).filter(RefreshTokenModel.user_id == user_id).delete()
+        db.query(WalletModel).filter(WalletModel.user_id == user_id).delete()
+        db.query(OTPModel).filter(OTPModel.mobile_number == (user.mobile_number or "")).delete()
+        db.query(PasswordResetTokenModel).filter(PasswordResetTokenModel.user_id == user_id).delete()
+
+        # Delete the user
+        db.delete(user)
+        db.commit()
+
+        logger.info("auth.account_deleted user_id=%s", user_id)
+        return {"status": "ok", "detail": "Account permanently deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error("auth.delete_account_error user_id=%s error=%s", user_id, e)
+        raise HTTPException(status_code=500, detail="Account deletion failed")
     finally:
         db.close()

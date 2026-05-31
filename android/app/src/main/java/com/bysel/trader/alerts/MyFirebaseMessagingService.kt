@@ -11,8 +11,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        // TODO: send this token to your server for targeted pushes
+        // Save token locally for future server registration
         Log.d(TAG, "New FCM token: $token")
+        // TODO: Register token with server for push notifications
+        // Call backend endpoint: POST /auth/register-fcm-token with { "token": token }
+        // This enables server-side push delivery for price alerts and portfolio updates
     }
 
     override fun onMessageReceived(message: RemoteMessage) {

@@ -13,4 +13,5 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Cloud Run sets PORT env var; default to 8000 for local/Render
+CMD uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}

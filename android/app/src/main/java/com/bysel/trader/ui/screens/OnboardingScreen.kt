@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
 fun OnboardingScreen(onFinish: () -> Unit) {
@@ -38,7 +39,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = Color(0xFFF5F5F5)
+        color = LocalAppTheme.current.surface
     ) {
         Column(
             modifier = Modifier
@@ -50,13 +51,13 @@ fun OnboardingScreen(onFinish: () -> Unit) {
             Text(
                 text = pages[page].title,
                 style = MaterialTheme.typography.headlineMedium,
-                color = Color(0xFF7C4DFF)
+                color = LocalAppTheme.current.primary
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = pages[page].description,
                 style = MaterialTheme.typography.bodyLarge,
-                color = Color.DarkGray,
+                color = LocalAppTheme.current.text,
                 fontSize = 18.sp
             )
             Spacer(modifier = Modifier.height(32.dp))
@@ -68,7 +69,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                     Box(
                         modifier = Modifier
                             .size(if (i == page) 12.dp else 8.dp)
-                            .background(if (i == page) Color(0xFF7C4DFF) else Color.LightGray, shape = MaterialTheme.shapes.small)
+                            .background(if (i == page) LocalAppTheme.current.primary else LocalAppTheme.current.textSecondary, shape = MaterialTheme.shapes.small)
                             .padding(4.dp)
                     )
                     if (i < pages.size - 1) Spacer(modifier = Modifier.width(8.dp))
@@ -79,7 +80,8 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                 onClick = {
                     if (page < pages.size - 1) page++ else onFinish()
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary)
             ) {
                 Text(if (page < pages.size - 1) "Next" else "Get Started")
             }

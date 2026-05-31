@@ -266,6 +266,62 @@ async def slo_metrics_endpoint() -> dict:
 @app.on_event("startup")
 async def startup_event():
     logger.info("BYSEL Backend starting up...")
+    try:
+        from .llm_integration import llm_available, _LLM_DATA, _LLM_PKG
+        logger.info("LLM pkg: %s (exists=%s)", _LLM_PKG, _LLM_PKG.exists())
+        logger.info("LLM data: %s (exists=%s)", _LLM_DATA, _LLM_DATA.exists())
+        logger.info("LLM available: %s", llm_available())
+    except Exception as e:
+        logger.error("LLM startup check failed: %s", e)
+
+
+@app.get("/ai/enricher-test/{symbol}")
+async def enricher_test(symbol: str):
+    import traceback, asyncio
+    error = None
+    raw = {}
+    try:
+        from .stock_enricher import _fetch_yfinance
+        loop = asyncio.get_event_loop()
+        raw = await loop.run_in_executor(None, _fetch_yfinance, symbol.upper())
+    except Exception:
+        error = traceback.format_exc()
+    return {"ok": bool(raw), "symbol": symbol.upper(), "data": raw, "error": error}
+
+@app.get("/ai/llm-status")
+def llm_status():
+    import traceback
+    from .llm_integration import _LLM_DATA
+    error = None
+    available = False
+    try:
+        from .llm_integration import llm_available
+        available = llm_available()
+    except Exception as e:
+        error = traceback.format_exc()
+    return {
+        "llm_data_path": str(_LLM_DATA),
+        "llm_data_exists": _LLM_DATA.exists(),
+        "llm_available": available,
+        "error": error,
+    }
+
+@app.get("/ai/groq-status")
+def groq_status():
+    import traceback, os
+    error = None
+    available = False
+    key_set = bool(os.environ.get("GROQ_API_KEY"))
+    try:
+        from .groq_llm import groq_available
+        available = groq_available()
+    except Exception:
+        error = traceback.format_exc()
+    return {
+        "groq_key_set": key_set,
+        "groq_available": available,
+        "error": error,
+    }
 
 @app.on_event("shutdown")
 async def shutdown_event():
