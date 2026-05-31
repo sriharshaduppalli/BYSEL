@@ -1817,37 +1817,43 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
             groq_avail = groq_available()
             logger.info(f"DEBUG: groq_available() = {groq_avail}")
             if groq_avail:
-                logger.info(f"DEBUG: Starting Groq tier for query: {body.query}")
-                enriched_ctx = await _build_enriched_context()
-                expanded_query = expand_acronyms_in_query(body.query)
-                normalized_query = normalize_hinglish(expanded_query)
-                intent_result = classify_intent(normalized_query)
-                logger.info(f"DEBUG: Calling Groq with intent={intent_result.get('intent')}, symbol={enriched_ctx.get('symbol')}")
-                groq_result = await ask_groq(
-                    normalized_query,
-                    context=enriched_ctx,
-                    conversation_history=body.conversation_history,
-                    intent_result=intent_result,
-                )
-                logger.info(f"DEBUG: Groq returned: {type(groq_result)} with keys {groq_result.keys() if isinstance(groq_result, dict) else 'N/A'}")
-                if groq_result.get("answer"):
-                    logger.info(f"DEBUG: Groq returned answer ({len(groq_result.get('answer', ''))} chars), using Groq response")
-                    merged = {
-                        **rule_result,
-                        "answer": groq_result["answer"],
-                    }
-                    return _validated(merged, "groq", requested_tier)
-                else:
-                    logger.info(f"DEBUG: Groq returned empty or error: {groq_result.get('error', 'no error field')}")
+                try:
+                    logger.info(f"DEBUG: Starting Groq tier for query: {body.query}")
+                    enriched_ctx = await _build_enriched_context()
+                    logger.info(f"DEBUG: Groq - enriched_ctx ready, keys: {list(enriched_ctx.keys())}")
+                    expanded_query = expand_acronyms_in_query(body.query)
+                    normalized_query = normalize_hinglish(expanded_query)
+                    intent_result = classify_intent(normalized_query)
+                    logger.info(f"DEBUG: Calling Groq with intent={intent_result.get('intent')}, symbol={enriched_ctx.get('symbol')}")
+                    groq_result = await ask_groq(
+                        normalized_query,
+                        context=enriched_ctx,
+                        conversation_history=body.conversation_history,
+                        intent_result=intent_result,
+                    )
+                    logger.info(f"DEBUG: Groq returned: {type(groq_result)} with keys {groq_result.keys() if isinstance(groq_result, dict) else 'N/A'}")
+                    if groq_result.get("answer"):
+                        logger.info(f"DEBUG: Groq returned answer ({len(groq_result.get('answer', ''))} chars), using Groq response")
+                        merged = {
+                            **rule_result,
+                            "answer": groq_result["answer"],
+                        }
+                        return _validated(merged, "groq", requested_tier)
+                    else:
+                        logger.info(f"DEBUG: Groq returned empty or error: {groq_result.get('error', 'no error field')}")
+                        if requested_tier == "groq":
+                            return _validated({"answer": f"Groq error: {groq_result.get('error', 'empty response')}"}, "none", requested_tier)
+                except Exception as groq_inner_e:
+                    logger.error(f"DEBUG: Exception during Groq processing: {str(groq_inner_e)}", exc_info=True)
                     if requested_tier == "groq":
-                        return _validated({"answer": f"Groq error: {groq_result.get('error', 'empty response')}"}, "none", requested_tier)
+                        return _validated({"answer": f"Groq error: {str(groq_inner_e)}"}, "none", requested_tier)
             else:
                 logger.info("DEBUG: Groq not available - skipping to next tier")
                 if requested_tier == "groq":
                     # User explicitly requested Groq but it's not available
                     return _validated({"answer": "Groq LLM not available. Please use tier='auto' for fallback."}, "none", requested_tier)
         except Exception as e:
-            logger.error(f"Groq LLM error: {str(e)}", exc_info=True)
+            logger.error(f"DEBUG: Exception in Groq tier block: {str(e)}", exc_info=True)
             if requested_tier == "groq":
                 # User explicitly requested Groq but got error
                 return _validated({"answer": f"Groq LLM error: {str(e)}"}, "none", requested_tier)
