@@ -1790,18 +1790,21 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
     # Tier 1: Groq — enriched with live price, fundamentals, pre-computed signals, extracted entities, and conversation history
     try:
         from ..groq_llm import groq_available, ask_groq, classify_intent, expand_acronyms_in_query
+        logger.info(f"DEBUG: groq_available() = {groq_available()}")
         if groq_available():
             enriched_ctx = await _build_enriched_context()
             # Expand acronyms, then normalize Hinglish before intent classification
             expanded_query = expand_acronyms_in_query(body.query)
             normalized_query = normalize_hinglish(expanded_query)
-            intent_result = classify_intent(normalized_query)  # returns {"intent": ..., "confidence": ..., "alternatives": ...}
+            intent_result = classify_intent(normalized_query)
+            logger.info(f"DEBUG: Groq Tier - intent={intent_result.get('intent')}, symbol={enriched_ctx.get('symbol')}")
             groq_result = await ask_groq(
                 normalized_query,
                 context=enriched_ctx,
                 conversation_history=body.conversation_history,
                 intent_result=intent_result,
             )
+            logger.info(f"DEBUG: Groq result has answer? {bool(groq_result.get('answer'))}")
             if groq_result.get("answer"):
                 merged = {
                     **rule_result,

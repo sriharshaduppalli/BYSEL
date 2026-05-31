@@ -925,14 +925,9 @@ async def ask_groq(
     query: str,
     context: Optional[Dict] = None,
     conversation_history: Optional[List[Dict]] = None,
-    intent_result: Optional[Dict] = None,  # {"intent": "X", "confidence": 85, "alternatives": [...]}
+    intent_result: Optional[Dict] = None,
 ) -> Dict:
-    """
-    Send query to Groq with optional structured market context.
-    - intent_result: from classify_intent() with confidence and alternatives
-    - conversation_history: list of {"role": "user"|"assistant", "content": str}
-    Returns {"answer": str, "source": "groq", "intent": str, "confidence": int} or {"error": str}.
-    """
+    """Send query to Groq with optional structured market context."""
     client = _get_client()
     if client is None:
         return {"error": "Groq not configured"}
@@ -945,7 +940,13 @@ async def ask_groq(
 
     intent = intent_result.get("intent", "GENERAL")
     confidence = intent_result.get("confidence", 0)
-    alternatives = intent_result.get("alternatives", [])
+
+    # DEBUG: Log what we're sending to Groq
+    logger.info(f"GROQ DEBUG: intent={intent}, confidence={confidence}")
+    logger.info(f"GROQ DEBUG: query={query}")
+    if context:
+        logger.info(f"GROQ DEBUG: context keys={list(context.keys())}")
+        logger.info(f"GROQ DEBUG: symbol={context.get('symbol')}, has_technical={bool(context.get('technical'))}")
 
     # Resolve pronouns if conversation history is provided
     resolved_query = query
