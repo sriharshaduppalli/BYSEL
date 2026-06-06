@@ -787,6 +787,96 @@ def test_login_username_is_case_insensitive():
     assert "access_token" in payload
 
 
+def test_get_profile_returns_authenticated_user_details():
+    username, email, password = _unique_user("profile_get_user")
+
+    register_response = client.post(
+        "/auth/register",
+        json={"username": username, "email": email, "password": password}
+    )
+    assert register_response.status_code == 200
+    access_token = register_response.json()["access_token"]
+
+    profile_response = client.get(
+        "/auth/profile",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert profile_response.status_code == 200
+
+    payload = profile_response.json()
+    assert payload["status"] == "ok"
+    assert payload["username"] == username
+    assert payload["email"] == email
+    assert payload["user_id"] > 0
+    assert "created_at" in payload
+
+
+def test_update_profile_updates_user_fields_and_returns_latest_values():
+    username, email, password = _unique_user("profile_update_user")
+
+    register_response = client.post(
+        "/auth/register",
+        json={"username": username, "email": email, "password": password}
+    )
+    assert register_response.status_code == 200
+    access_token = register_response.json()["access_token"]
+
+    updated_username = f"{username}_new"
+    updated_email = f"{updated_username}@example.com"
+    unique_mobile = f"9{str(time.time_ns())[-9:]}"
+
+    update_response = client.patch(
+        "/auth/profile",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={
+            "username": updated_username,
+            "email": updated_email,
+            "mobile_number": unique_mobile,
+        },
+    )
+    assert update_response.status_code == 200
+    updated_payload = update_response.json()
+    assert updated_payload["username"] == updated_username
+    assert updated_payload["email"] == updated_email
+    assert updated_payload["mobile_number"] == f"+91{unique_mobile}"
+
+    refreshed_profile = client.get(
+        "/auth/profile",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert refreshed_profile.status_code == 200
+    refreshed_payload = refreshed_profile.json()
+    assert refreshed_payload["username"] == updated_username
+    assert refreshed_payload["email"] == updated_email
+    assert refreshed_payload["mobile_number"] == f"+91{unique_mobile}"
+
+
+def test_update_profile_rejects_duplicate_email():
+    username_one, email_one, password = _unique_user("profile_dup_a")
+    username_two, email_two, _ = _unique_user("profile_dup_b")
+
+    first_register = client.post(
+        "/auth/register",
+        json={"username": username_one, "email": email_one, "password": password}
+    )
+    assert first_register.status_code == 200
+
+    second_register = client.post(
+        "/auth/register",
+        json={"username": username_two, "email": email_two, "password": password}
+    )
+    assert second_register.status_code == 200
+    second_access_token = second_register.json()["access_token"]
+
+    duplicate_email_response = client.patch(
+        "/auth/profile",
+        headers={"Authorization": f"Bearer {second_access_token}"},
+        json={"email": email_one},
+    )
+    assert duplicate_email_response.status_code == 400
+    assert duplicate_email_response.json()["detail"] == "Email already exists"
+
+
 def test_password_reset_can_update_password(monkeypatch):
     monkeypatch.setattr(auth_routes, "PASSWORD_RESET_DEBUG_RESPONSE_ENABLED", True)
     monkeypatch.setattr(auth_routes, "SMTP_HOST", "")

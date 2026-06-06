@@ -44,7 +44,7 @@ SettingsScreen(heatmapInterval, onHeatmapIntervalChange)
 
 #### Website Link
 - **Before**: Dialog displays URL as read-only text
-- **After**: "Open" button launches `Intent.ACTION_VIEW` to `https://bysel.com`
+- **After**: "Open" button launches `Intent.ACTION_VIEW` to `https://byseltrader.com`
 - **Browser Integration**: Native Chrome/default browser handler invoked
 
 ### 3. **Dashboard UX**
@@ -135,7 +135,7 @@ object Light {
    - [ ] Change heatmap interval in Settings
    - [ ] Close app completely
    - [ ] Reopen and navigate to Heatmap tab → verify new interval is applied
-   - [ ] Tap "Visit Website" in Settings → browser should open to https://bysel.com
+   - [ ] Tap "Visit Website" in Settings → browser should open to https://byseltrader.com
 
 ---
 

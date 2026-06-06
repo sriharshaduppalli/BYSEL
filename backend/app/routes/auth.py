@@ -185,6 +185,21 @@ class ChangePasswordRequest(BaseModel):
     newPassword: str
 
 
+class UserProfileResponse(BaseModel):
+    status: str
+    user_id: int
+    username: str
+    email: str
+    mobile_number: str | None = None
+    created_at: str
+
+
+class UserProfileUpdateRequest(BaseModel):
+    username: str | None = None
+    email: str | None = None
+    mobile_number: str | None = None
+
+
 class SessionInfo(BaseModel):
     session_id: int
     created_at: str
@@ -656,6 +671,28 @@ def _normalize_identifier(value: str) -> str:
     return normalized
 
 
+def _normalize_mobile_number(value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    normalized = value.strip()
+    if not normalized:
+        return None
+
+    if normalized.startswith("+"):
+        if len(normalized) >= 11 and normalized[1:].isdigit():
+            return normalized
+        raise HTTPException(status_code=400, detail="Invalid mobile number format")
+
+    if normalized.startswith("91") and len(normalized) == 12 and normalized.isdigit():
+        return f"+{normalized}"
+
+    if len(normalized) == 10 and normalized.isdigit():
+        return f"+91{normalized}"
+
+    raise HTTPException(status_code=400, detail="Invalid mobile number format")
+
+
 def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
@@ -993,6 +1030,18 @@ def _get_user_id_from_authorization(authorization: str | None) -> int:
         db.close()
 
 
+def _serialize_user_profile(user: UserModel) -> UserProfileResponse:
+    created_at = user.created_at.isoformat() if user.created_at else ""
+    return UserProfileResponse(
+        status="ok",
+        user_id=int(user.id),
+        username=user.username,
+        email=user.email,
+        mobile_number=user.mobile_number,
+        created_at=created_at,
+    )
+
+
 class AdminDeleteRequest(BaseModel):
     identifier: str
 
@@ -1020,6 +1069,87 @@ def admin_delete_user(req: AdminDeleteRequest):
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        db.close()
+
+
+@router.get("/profile", response_model=UserProfileResponse)
+def get_profile(authorization: str | None = Header(default=None, alias="Authorization")):
+    user_id = _get_user_id_from_authorization(authorization)
+
+    db: Session = SessionLocal()
+    try:
+        db_user = db.query(UserModel).filter(UserModel.id == user_id).first()
+        if not db_user:
+            raise HTTPException(status_code=404, detail="Account not found")
+        return _serialize_user_profile(db_user)
+    finally:
+        db.close()
+
+
+@router.patch("/profile", response_model=UserProfileResponse)
+def update_profile(
+    body: UserProfileUpdateRequest,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+):
+    user_id = _get_user_id_from_authorization(authorization)
+
+    db: Session = SessionLocal()
+    try:
+        db_user = db.query(UserModel).filter(UserModel.id == user_id).first()
+        if not db_user:
+            raise HTTPException(status_code=404, detail="Account not found")
+
+        did_update = False
+
+        if body.username is not None:
+            normalized_username = _normalize_username(body.username)
+            existing_username = db.query(UserModel).filter(
+                func.lower(UserModel.username) == normalized_username.lower(),
+                UserModel.id != user_id,
+            ).first()
+            if existing_username:
+                raise HTTPException(status_code=400, detail="Username already exists")
+
+            if db_user.username != normalized_username:
+                db_user.username = normalized_username
+                did_update = True
+
+        if body.email is not None:
+            normalized_email = _normalize_email(body.email)
+            if "@" not in normalized_email or "." not in normalized_email.split("@")[-1]:
+                raise HTTPException(status_code=400, detail="Please enter a valid email address.")
+
+            existing_email = db.query(UserModel).filter(
+                func.lower(UserModel.email) == normalized_email,
+                UserModel.id != user_id,
+            ).first()
+            if existing_email:
+                raise HTTPException(status_code=400, detail="Email already exists")
+
+            if db_user.email != normalized_email:
+                db_user.email = normalized_email
+                did_update = True
+
+        if body.mobile_number is not None:
+            normalized_mobile = _normalize_mobile_number(body.mobile_number)
+            if normalized_mobile is not None:
+                existing_mobile = db.query(UserModel).filter(
+                    UserModel.mobile_number == normalized_mobile,
+                    UserModel.id != user_id,
+                ).first()
+                if existing_mobile:
+                    raise HTTPException(status_code=400, detail="Mobile number already exists")
+
+            if db_user.mobile_number != normalized_mobile:
+                db_user.mobile_number = normalized_mobile
+                did_update = True
+
+        if did_update:
+            db.commit()
+            db.refresh(db_user)
+
+        return _serialize_user_profile(db_user)
     finally:
         db.close()
 

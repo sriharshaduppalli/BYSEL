@@ -2885,8 +2885,9 @@ async def futures_ticket_preview_endpoint(payload: FuturesTicketPreviewRequest):
 async def upsert_family_member_endpoint(
     request: FamilyMemberRequest,
     db: Session = Depends(get_db),
-    user_id: int = Header(1),
+    current_user=Depends(get_current_user),
 ):
+    user_id = int(current_user.id)
     row = FamilyMemberModel(
         user_id=user_id,
         name=request.name.strip(),
@@ -2914,7 +2915,8 @@ async def upsert_family_member_endpoint(
 
 
 @router.get("/wealth/family/dashboard", response_model=FamilyDashboardResponse)
-async def family_dashboard_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
+async def family_dashboard_endpoint(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    user_id = int(current_user.id)
     members = db.query(FamilyMemberModel).filter(FamilyMemberModel.user_id == user_id).all()
     holdings = get_holdings(db, user_id)
     holdings_value = sum((item.last * item.qty) for item in holdings)
@@ -2969,8 +2971,9 @@ async def family_dashboard_endpoint(db: Session = Depends(get_db), user_id: int 
 async def create_goal_endpoint(
     request: GoalPlanRequest,
     db: Session = Depends(get_db),
-    user_id: int = Header(1),
+    current_user=Depends(get_current_user),
 ):
+    user_id = int(current_user.id)
     if request.targetAmount <= 0:
         raise HTTPException(status_code=400, detail="targetAmount must be > 0")
     goal = GoalPlanModel(
@@ -2990,7 +2993,8 @@ async def create_goal_endpoint(
 
 
 @router.get("/wealth/goals", response_model=list[GoalPlanResponse])
-async def get_goals_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
+async def get_goals_endpoint(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    user_id = int(current_user.id)
     goals = (
         db.query(GoalPlanModel)
         .filter(GoalPlanModel.user_id == user_id)
@@ -3005,8 +3009,9 @@ async def link_goal_investments_endpoint(
     goal_id: int,
     request: GoalLinkRequest,
     db: Session = Depends(get_db),
-    user_id: int = Header(1),
+    current_user=Depends(get_current_user),
 ):
+    user_id = int(current_user.id)
     goal = db.query(GoalPlanModel).filter(GoalPlanModel.id == goal_id, GoalPlanModel.user_id == user_id).first()
     if not goal:
         raise HTTPException(status_code=404, detail=f"Goal '{goal_id}' not found")

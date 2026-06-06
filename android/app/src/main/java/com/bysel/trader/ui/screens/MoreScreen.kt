@@ -65,7 +65,6 @@ private data class MoreMenuEntry(
 @Composable
 fun MoreScreen(
     onSearchClick: () -> Unit,
-    onLiveQuotesClick: () -> Unit,
     onAlertsClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onAchievementsClick: () -> Unit,
@@ -250,7 +249,6 @@ fun MoreScreen(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                QuickInfoChip(label = "Live Quotes", onClick = onLiveQuotesClick)
                 QuickInfoChip(label = "ETF", onClick = onEtfClick)
                 QuickInfoChip(label = "F&O", onClick = onDerivativesClick)
                 QuickInfoChip(label = "SIP", onClick = onSipClick)

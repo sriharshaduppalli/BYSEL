@@ -105,7 +105,10 @@ fun SettingsScreen(
         AboutDialog { showAboutDialog = false }
     }
     if (showProfileDialog) {
-        ProfileDialog(onDismiss = { showProfileDialog = false })
+        ProfileDialog(
+            authRepository = authRepository,
+            onDismiss = { showProfileDialog = false }
+        )
     }
     if (showSecurityDialog) {
         SecurityDialog(
@@ -652,13 +655,13 @@ fun WebsiteDialog(onDismiss: () -> Unit) {
         text = {
             Column {
                 Text("Official BYSEL website:", fontSize = 14.sp, color = LocalAppTheme.current.text)
-                Text("https://bysel.com", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
+                Text("https://byseltrader.com", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
                 Text("Tap 'Open' to visit in browser.", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
             }
         },
         confirmButton = {
             TextButton(onClick = {
-                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://bysel.com"))
+                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://byseltrader.com"))
                 context.startActivity(intent)
                 onDismiss()
             }) {
@@ -942,7 +945,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
                     color = LocalAppTheme.current.primary,
                     modifier = Modifier
                         .padding(bottom = 6.dp)
-                        .clickable { uriHandler.openUri("https://bysel.com/privacy") }
+                        .clickable { uriHandler.openUri("https://byseltrader.com/privacy") }
                 )
                 Text(
                     text = "Terms of Service",
@@ -950,7 +953,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
                     color = LocalAppTheme.current.primary,
                     modifier = Modifier
                         .padding(bottom = 6.dp)
-                        .clickable { uriHandler.openUri("https://bysel.com/terms") }
+                        .clickable { uriHandler.openUri("https://byseltrader.com/terms") }
                 )
                 Text(
                     text = "Open Source Licenses",
@@ -958,7 +961,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
                     color = LocalAppTheme.current.primary,
                     modifier = Modifier
                         .padding(bottom = 6.dp)
-                        .clickable { uriHandler.openUri("https://bysel.com/licenses") }
+                        .clickable { uriHandler.openUri("https://byseltrader.com/licenses") }
                 )
                 Text(
                     text = "Contact: support@bysel.com",
@@ -991,13 +994,186 @@ fun SimpleDialog(title: String, message: String, onDismiss: () -> Unit) {
 }
 
 @Composable
-fun ProfileDialog(onDismiss: () -> Unit) {
+fun ProfileDialog(
+    authRepository: AuthRepository,
+    onDismiss: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var loading by remember { mutableStateOf(true) }
+    var saving by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var successMessage by remember { mutableStateOf<String?>(null) }
+
+    var username by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var mobileNumber by remember { mutableStateOf("") }
+    var createdAt by remember { mutableStateOf("") }
+
+    fun loadProfile() {
+        scope.launch {
+            loading = true
+            errorMessage = null
+            successMessage = null
+            when (val result = authRepository.getProfile()) {
+                is Result.Success -> {
+                    val profile = result.data
+                    username = profile.username
+                    email = profile.email
+                    mobileNumber = profile.mobileNumber.orEmpty()
+                    createdAt = profile.createdAt
+                }
+                is Result.Error -> {
+                    errorMessage = result.message
+                }
+                else -> Unit
+            }
+            loading = false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        loadProfile()
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = LocalAppTheme.current.card,
         title = { Text("Profile", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = LocalAppTheme.current.text) },
-        text = { Column { Text("Name: John Doe", fontSize = 14.sp, color = LocalAppTheme.current.text); Text("Email: johndoe@email.com", fontSize = 14.sp, color = LocalAppTheme.current.text) } },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = LocalAppTheme.current.primary) } }
+        text = {
+            if (loading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(strokeWidth = 2.dp)
+                }
+            } else {
+                Column {
+                    OutlinedTextField(
+                        value = username,
+                        onValueChange = {
+                            username = it
+                            errorMessage = null
+                            successMessage = null
+                        },
+                        label = { Text("Username") },
+                        singleLine = true,
+                        enabled = !saving,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = email,
+                        onValueChange = {
+                            email = it
+                            errorMessage = null
+                            successMessage = null
+                        },
+                        label = { Text("Email") },
+                        singleLine = true,
+                        enabled = !saving,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = mobileNumber,
+                        onValueChange = {
+                            mobileNumber = it
+                            errorMessage = null
+                            successMessage = null
+                        },
+                        label = { Text("Mobile Number") },
+                        singleLine = true,
+                        enabled = !saving,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (createdAt.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "Member since: $createdAt",
+                            fontSize = 12.sp,
+                            color = LocalAppTheme.current.textSecondary,
+                        )
+                    }
+                    if (!errorMessage.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = errorMessage ?: "",
+                            color = LocalAppTheme.current.negative,
+                            fontSize = 12.sp,
+                        )
+                    }
+                    if (!successMessage.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = successMessage ?: "",
+                            color = LocalAppTheme.current.positive,
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !loading && !saving,
+                onClick = {
+                    val trimmedUsername = username.trim()
+                    val trimmedEmail = email.trim()
+                    val trimmedMobile = mobileNumber.trim()
+
+                    if (trimmedUsername.isEmpty()) {
+                        errorMessage = "Username is required"
+                        return@TextButton
+                    }
+
+                    if (trimmedEmail.isEmpty()) {
+                        errorMessage = "Email is required"
+                        return@TextButton
+                    }
+
+                    saving = true
+                    scope.launch {
+                        when (
+                            val result = authRepository.updateProfile(
+                                username = trimmedUsername,
+                                email = trimmedEmail,
+                                mobileNumber = trimmedMobile.ifBlank { null },
+                            )
+                        ) {
+                            is Result.Success -> {
+                                val profile = result.data
+                                username = profile.username
+                                email = profile.email
+                                mobileNumber = profile.mobileNumber.orEmpty()
+                                createdAt = profile.createdAt
+                                errorMessage = null
+                                successMessage = "Profile updated"
+                            }
+                            is Result.Error -> {
+                                errorMessage = result.message
+                                successMessage = null
+                            }
+                            else -> Unit
+                        }
+                        saving = false
+                    }
+                }
+            ) {
+                if (saving) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Save", color = LocalAppTheme.current.primary)
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !saving) {
+                Text("Close", color = LocalAppTheme.current.textSecondary)
+            }
+        }
     )
 }
 

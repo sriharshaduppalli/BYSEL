@@ -47,6 +47,12 @@ interface BYSELApiService {
     @POST("/auth/delete-account")
     suspend fun deleteAccount(@Body request: DeleteAccountRequest): Map<String, String>
 
+    @GET("/auth/profile")
+    suspend fun getProfile(): UserProfile
+
+    @PATCH("/auth/profile")
+    suspend fun updateProfile(@Body request: UserProfileUpdateRequest): UserProfile
+
     // ==================== QUOTES ====================
     @GET("/quotes")
     suspend fun getQuotes(@Query("symbols") symbols: String): List<Quote>

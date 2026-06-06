@@ -227,7 +227,7 @@ fun AuthScreen(
                     message = null
                 },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Username or Email") },
+                label = { Text(if (isLoginMode) "Username or Email" else "Username") },
                 isError = !message.isNullOrBlank() && username.trim().isEmpty(),
                 enabled = !loading,
                 singleLine = true,
@@ -257,12 +257,15 @@ fun AuthScreen(
         if (isLoginMode && isOtpMode) {
             OutlinedTextField(
                 value = mobileNumber,
-                onValueChange = {
-                    mobileNumber = it
+                onValueChange = { input ->
+                    val digits = input.filter { it.isDigit() }.take(10)
+                    mobileNumber = digits
                     message = null
                 },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Mobile number") },
+                placeholder = { Text("10-digit number", color = appTheme.textSecondary) },
+                prefix = { Text("+91 ", color = appTheme.textSecondary) },
                 isError = !message.isNullOrBlank() && mobileNumber.trim().isEmpty(),
                 enabled = !sendingOtp && !verifyingOtp,
                 singleLine = true,
@@ -306,19 +309,14 @@ fun AuthScreen(
                         message = "Mobile number is required"
                         return@Button
                     }
-
-                    // Normalize to E.164 format for Firebase
-                    val phoneE164 = when {
-                        rawNumber.startsWith("+") && rawNumber.length >= 10 -> rawNumber
-                        rawNumber.startsWith("91") && rawNumber.length == 12 -> "+$rawNumber"
-                        rawNumber.length == 10 && rawNumber.all { it.isDigit() } -> "+91$rawNumber"
-                        else -> {
-                            sendingOtp = false
-                            messageIsError = true
-                            message = "Invalid phone format. Use 10 digits or +91XXXXXXXXXX"
-                            return@Button
-                        }
+                    if (rawNumber.length != 10) {
+                        messageIsError = true
+                        message = "Enter a valid 10-digit mobile number"
+                        return@Button
                     }
+
+                    // Always prefix +91 — field only accepts 10-digit Indian numbers
+                    val phoneE164 = "+91$rawNumber"
 
                     sendingOtp = true
                     message = null

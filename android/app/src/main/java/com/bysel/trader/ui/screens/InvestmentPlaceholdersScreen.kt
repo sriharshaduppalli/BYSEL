@@ -529,8 +529,18 @@ fun IpoListingsScreen(viewModel: TradingViewModel) {
     val loading by viewModel.productsLoading.collectAsState()
     var selected by remember { mutableStateOf<IPOListing?>(null) }
     var applyTarget by remember { mutableStateOf<IPOListing?>(null) }
+    var selectedTab by remember { mutableStateOf(IpoListingTab.OPEN) }
 
     LaunchedEffect(Unit) { viewModel.loadIpoListings() }
+
+    val openIpos = remember(ipos) { ipos.filter { classifyIpoTab(it) == IpoListingTab.OPEN } }
+    val closedIpos = remember(ipos) { ipos.filter { classifyIpoTab(it) == IpoListingTab.CLOSED } }
+    val upcomingIpos = remember(ipos) { ipos.filter { classifyIpoTab(it) == IpoListingTab.UPCOMING } }
+    val filteredIpos = when (selectedTab) {
+        IpoListingTab.OPEN -> openIpos
+        IpoListingTab.CLOSED -> closedIpos
+        IpoListingTab.UPCOMING -> upcomingIpos
+    }
 
     if (selected != null) {
         IpoDetailScreen(
@@ -552,7 +562,38 @@ fun IpoListingsScreen(viewModel: TradingViewModel) {
                     Button(onClick = { viewModel.loadIpoListings() }) { Text("Refresh IPOs") }
                 }
             }
-            items(ipos) { ipo ->
+
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(
+                        IpoListingTab.OPEN to "Open (${openIpos.size})",
+                        IpoListingTab.CLOSED to "Closed (${closedIpos.size})",
+                        IpoListingTab.UPCOMING to "Upcoming (${upcomingIpos.size})"
+                    ).forEach { (tab, label) ->
+                        TextButton(onClick = { selectedTab = tab }) {
+                            val title = if (selectedTab == tab) "● $label" else label
+                            Text(title)
+                        }
+                    }
+                }
+            }
+
+            if (filteredIpos.isEmpty()) {
+                item {
+                    Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                        Text(
+                            "No ${selectedTab.label.lowercase()} IPOs right now.",
+                            color = LocalAppTheme.current.textSecondary,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                }
+            }
+
+            items(filteredIpos) { ipo ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
                     modifier = Modifier.fillMaxWidth().clickable { selected = ipo }
@@ -560,6 +601,23 @@ fun IpoListingsScreen(viewModel: TradingViewModel) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(ipo.companyName, color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
                         Text("${ipo.status} • ${ipo.issueOpenDate} to ${ipo.issueCloseDate}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        when (classifyIpoTab(ipo)) {
+                            IpoListingTab.OPEN -> Text(
+                                "Closes on: ${ipo.issueCloseDate}",
+                                color = LocalAppTheme.current.textSecondary,
+                                fontSize = 12.sp
+                            )
+                            IpoListingTab.CLOSED -> Text(
+                                "Closed on: ${ipo.issueCloseDate} • Listing: ${ipo.listingDate ?: "TBA"}",
+                                color = LocalAppTheme.current.textSecondary,
+                                fontSize = 12.sp
+                            )
+                            IpoListingTab.UPCOMING -> Text(
+                                "Expected window: ${ipo.issueOpenDate} to ${ipo.issueCloseDate}",
+                                color = LocalAppTheme.current.textSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
                         Text("Price band: ₹${ipo.priceBandMin ?: 0.0} - ₹${ipo.priceBandMax ?: 0.0} • Lot: ${ipo.lotSize ?: 0}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                     }
                 }
@@ -576,6 +634,22 @@ fun IpoListingsScreen(viewModel: TradingViewModel) {
                 applyTarget = null
             }
         )
+    }
+}
+
+private enum class IpoListingTab(val label: String) {
+    OPEN("Open"),
+    CLOSED("Closed"),
+    UPCOMING("Upcoming")
+}
+
+private fun classifyIpoTab(ipo: IPOListing): IpoListingTab {
+    val status = ipo.status.trim().uppercase()
+    return when {
+        status.contains("CLOSE") || status.contains("LISTED") || status.contains("ALLOTT") || status.contains("COMPLETE") -> IpoListingTab.CLOSED
+        status.contains("UPCOMING") || status.contains("COMING") || status.contains("ANNOUNCED") || status.contains("YET") -> IpoListingTab.UPCOMING
+        status.contains("OPEN") || status.contains("LIVE") -> IpoListingTab.OPEN
+        else -> IpoListingTab.OPEN
     }
 }
 

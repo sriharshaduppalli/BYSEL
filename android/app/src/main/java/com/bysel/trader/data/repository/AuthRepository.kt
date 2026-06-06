@@ -19,6 +19,8 @@ import com.bysel.trader.data.models.OTPResponse
 import com.bysel.trader.data.models.LogoutRequest
 import com.bysel.trader.data.models.RefreshTokenRequest
 import com.bysel.trader.data.models.RegisterRequest
+import com.bysel.trader.data.models.UserProfile
+import com.bysel.trader.data.models.UserProfileUpdateRequest
 import org.json.JSONObject
 import retrofit2.HttpException
 
@@ -264,6 +266,38 @@ class AuthRepository(
             Result.Success(Unit)
         } catch (e: Exception) {
             Result.Error(toAuthErrorMessage(e, "Failed to revoke session"))
+        }
+    }
+
+    suspend fun getProfile(): Result<UserProfile> {
+        return try {
+            val response = apiService.getProfile()
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(toAuthErrorMessage(e, "Failed to load profile"))
+        }
+    }
+
+    suspend fun updateProfile(
+        username: String,
+        email: String,
+        mobileNumber: String?
+    ): Result<UserProfile> {
+        val normalizedUsername = username.trim()
+        val normalizedEmail = email.trim()
+        val normalizedMobile = mobileNumber?.trim()?.takeIf { it.isNotEmpty() }
+
+        return try {
+            val response = apiService.updateProfile(
+                UserProfileUpdateRequest(
+                    username = normalizedUsername,
+                    email = normalizedEmail,
+                    mobileNumber = normalizedMobile,
+                )
+            )
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(toAuthErrorMessage(e, "Failed to update profile"))
         }
     }
 }

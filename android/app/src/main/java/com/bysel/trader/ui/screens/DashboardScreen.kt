@@ -51,6 +51,18 @@ private data class DashboardMetric(
     val accent: Color,
 )
 
+private data class HomeAction(
+    val title: String,
+    val subtitle: String,
+    val colors: List<Color>,
+    val onClick: () -> Unit,
+)
+
+private enum class HomeLayoutVariant(val title: String, val subtitle: String) {
+    FOCUS("Focus", "Action-first cockpit"),
+    FLOW("Flow", "Narrative market feed"),
+}
+
 @Composable
 fun DashboardScreen(
     holdings: List<Holding>,
@@ -149,6 +161,11 @@ fun DashboardContent(
     onAiClick: (() -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
+    var layoutVariant by rememberSaveable { mutableStateOf(HomeLayoutVariant.FOCUS.name) }
+    val selectedVariant = remember(layoutVariant) {
+        runCatching { HomeLayoutVariant.valueOf(layoutVariant) }
+            .getOrDefault(HomeLayoutVariant.FOCUS)
+    }
     val pinnedList = remember(quotes, pinnedStocks) {
         quotes.filter { pinnedStocks.contains(it.symbol) }
     }
@@ -224,6 +241,39 @@ fun DashboardContent(
             ),
         )
     }
+    val homeActions = remember(focusQuotes, onAiClick, onRefresh, onShowGuide, theme) {
+        listOfNotNull(
+            HomeAction(
+                title = "Fast Refresh",
+                subtitle = "Sync quotes + news",
+                colors = listOf(theme.primary.copy(alpha = 0.3f), theme.card),
+                onClick = {
+                    onRefresh()
+                    dashboardViewModel.refreshMarketNews()
+                },
+            ),
+            HomeAction(
+                title = "Market Leader",
+                subtitle = focusQuotes.firstOrNull()?.let { "Open ${it.symbol}" } ?: "Waiting for setup",
+                colors = listOf(theme.positive.copy(alpha = 0.25f), theme.card),
+                onClick = { focusQuotes.firstOrNull()?.let { onTradeClick(it.symbol) } },
+            ),
+            HomeAction(
+                title = "Home Guide",
+                subtitle = "Pin + reorder widgets",
+                colors = listOf(theme.textSecondary.copy(alpha = 0.2f), theme.card),
+                onClick = onShowGuide,
+            ),
+            onAiClick?.let {
+                HomeAction(
+                    title = "AI Quick Brief",
+                    subtitle = "Ask Copilot now",
+                    colors = listOf(theme.primary.copy(alpha = 0.2f), theme.surface),
+                    onClick = it,
+                )
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -281,61 +331,141 @@ fun DashboardContent(
         }
 
         item {
-            DashboardMetricsRow(metrics = dashboardMetrics)
-        }
-
-        // AI Daily Brief Card
-        item {
-            AiDailyBriefCard(
-                holdings = holdings,
-                positiveCount = positiveCount,
-                negativeCount = negativeCount,
-                averageMove = averageMove,
-                newsCount = marketNews.size,
-                topMover = focusQuotes.firstOrNull(),
-                onAskAi = onAiClick
+            HomeVariantSwitcher(
+                selectedVariant = selectedVariant,
+                onVariantSelected = { layoutVariant = it.name },
             )
         }
 
-        if (focusQuotes.isNotEmpty()) {
-            item {
-                SectionHeader(
-                    title = "Quick Board",
-                    subtitle = "Open the strongest symbols and storylines from Home without digging through tabs.",
-                )
-            }
-            item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(focusQuotes.take(4), key = { it.symbol }) { quote ->
-                        HomeQuoteBoardCard(
-                            quote = quote,
-                            onOpen = { onTradeClick(quote.symbol) },
-                            isPinned = pinnedStocks.contains(quote.symbol),
-                            onPinClick = { dashboardViewModel.togglePin(quote.symbol) },
-                        )
-                    }
-                }
-            }
-        }
+                when (selectedVariant) {
+                    HomeLayoutVariant.FOCUS -> {
+                        item {
+                            DashboardMetricsRow(metrics = dashboardMetrics)
+                        }
 
-        if (signalBuckets.isNotEmpty()) {
-            item {
-                SectionHeader(
-                    title = "Signal Playbooks",
-                    subtitle = "Home now surfaces breakout, volume, dividend, and upside pockets without leaving the cockpit.",
-                )
-            }
-            item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(signalBuckets, key = { it.title }) { bucket ->
-                        HomeSignalCard(
-                            bucket = bucket,
-                            onOpen = { bucket.quotes.firstOrNull()?.let { quote -> onTradeClick(quote.symbol) } },
-                        )
+                        if (homeActions.isNotEmpty()) {
+                            item {
+                                HomeActionRail(actions = homeActions)
+                            }
+                        }
+
+                        item {
+                            AiDailyBriefCard(
+                                holdings = holdings,
+                                positiveCount = positiveCount,
+                                negativeCount = negativeCount,
+                                averageMove = averageMove,
+                                newsCount = marketNews.size,
+                                topMover = focusQuotes.firstOrNull(),
+                                onAskAi = onAiClick
+                            )
+                        }
+
+                        if (focusQuotes.isNotEmpty()) {
+                            item {
+                                SectionHeader(
+                                    title = "Quick Board",
+                                    subtitle = "Tap straight into strongest movers and fast contexts.",
+                                )
+                            }
+                            item {
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    items(focusQuotes.take(4), key = { it.symbol }) { quote ->
+                                        HomeQuoteBoardCard(
+                                            quote = quote,
+                                            onOpen = { onTradeClick(quote.symbol) },
+                                            isPinned = pinnedStocks.contains(quote.symbol),
+                                            onPinClick = { dashboardViewModel.togglePin(quote.symbol) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (signalBuckets.isNotEmpty()) {
+                            item {
+                                SectionHeader(
+                                    title = "Signal Playbooks",
+                                    subtitle = "Breakout, volume and dividend setups, ranked for immediate action.",
+                                )
+                            }
+                            item {
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    items(signalBuckets, key = { it.title }) { bucket ->
+                                        HomeSignalCard(
+                                            bucket = bucket,
+                                            onOpen = { bucket.quotes.firstOrNull()?.let { quote -> onTradeClick(quote.symbol) } },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    HomeLayoutVariant.FLOW -> {
+                        if (homeActions.isNotEmpty()) {
+                            item {
+                                HomeActionRail(actions = homeActions)
+                            }
+                        }
+
+                        item {
+                            AiDailyBriefCard(
+                                holdings = holdings,
+                                positiveCount = positiveCount,
+                                negativeCount = negativeCount,
+                                averageMove = averageMove,
+                                newsCount = marketNews.size,
+                                topMover = focusQuotes.firstOrNull(),
+                                onAskAi = onAiClick
+                            )
+                        }
+
+                        item {
+                            DashboardMetricsRow(metrics = dashboardMetrics)
+                        }
+
+                        if (signalBuckets.isNotEmpty()) {
+                            item {
+                                SectionHeader(
+                                    title = "Signal Playbooks",
+                                    subtitle = "Start from thesis-first buckets, then drill into symbols.",
+                                )
+                            }
+                            item {
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    items(signalBuckets, key = { it.title }) { bucket ->
+                                        HomeSignalCard(
+                                            bucket = bucket,
+                                            onOpen = { bucket.quotes.firstOrNull()?.let { quote -> onTradeClick(quote.symbol) } },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (focusQuotes.isNotEmpty()) {
+                            item {
+                                SectionHeader(
+                                    title = "Quick Board",
+                                    subtitle = "Context cards for the most relevant symbols this session.",
+                                )
+                            }
+                            item {
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    items(focusQuotes.take(4), key = { it.symbol }) { quote ->
+                                        HomeQuoteBoardCard(
+                                            quote = quote,
+                                            onOpen = { onTradeClick(quote.symbol) },
+                                            isPinned = pinnedStocks.contains(quote.symbol),
+                                            onPinClick = { dashboardViewModel.togglePin(quote.symbol) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-            }
-        }
 
         item {
             SectionHeader(
@@ -707,6 +837,89 @@ private fun DashboardMetricsRow(metrics: List<DashboardMetric>) {
                     Text(metric.title, color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                     Text(metric.value, color = metric.accent, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Text(metric.caption, color = LocalAppTheme.current.text, fontSize = 12.sp, lineHeight = 17.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeActionRail(actions: List<HomeAction>) {
+    LazyRow(
+        modifier = Modifier.padding(top = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        items(actions, key = { it.title }) { action ->
+            Card(
+                modifier = Modifier
+                    .width(220.dp)
+                    .clickable { action.onClick() },
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Brush.linearGradient(action.colors))
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        text = action.title,
+                        color = LocalAppTheme.current.text,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                    )
+                    Text(
+                        text = action.subtitle,
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 12.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeVariantSwitcher(
+    selectedVariant: HomeLayoutVariant,
+    onVariantSelected: (HomeLayoutVariant) -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp),
+        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+        shape = RoundedCornerShape(14.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "Home Layout",
+                color = LocalAppTheme.current.text,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp,
+            )
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(HomeLayoutVariant.entries, key = { it.name }) { variant ->
+                    AssistChip(
+                        onClick = { onVariantSelected(variant) },
+                        label = {
+                            Text(
+                                if (selectedVariant == variant) {
+                                    "● ${variant.title}: ${variant.subtitle}"
+                                } else {
+                                    "${variant.title}: ${variant.subtitle}"
+                                }
+                            )
+                        },
+                    )
                 }
             }
         }

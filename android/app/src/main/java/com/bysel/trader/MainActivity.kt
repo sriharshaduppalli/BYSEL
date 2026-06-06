@@ -732,10 +732,6 @@ fun BYSELApp(
                             when (selectedTab) {
                                 5 -> MoreScreen(
                                     onSearchClick = { selectedTab = 6 },
-                                    onLiveQuotesClick = {
-                                        selectedTab = 2
-                                        viewModel.refreshQuotes(force = true)
-                                    },
                                     onAlertsClick = { selectedTab = 7 },
                                     onSettingsClick = { selectedTab = 8 },
                                     onAchievementsClick = { selectedTab = 10 },

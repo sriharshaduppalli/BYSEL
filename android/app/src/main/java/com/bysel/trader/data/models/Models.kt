@@ -799,6 +799,21 @@ data class AuthResponse(
     val refresh_token: String
 )
 
+data class UserProfile(
+    val status: String,
+    val user_id: Int,
+    val username: String,
+    val email: String,
+    @SerializedName("mobile_number") val mobileNumber: String? = null,
+    @SerializedName("created_at") val createdAt: String,
+)
+
+data class UserProfileUpdateRequest(
+    val username: String,
+    val email: String,
+    @SerializedName("mobile_number") val mobileNumber: String? = null,
+)
+
 data class PasswordResetRequestResponse(
     val status: String,
     val message: String,
