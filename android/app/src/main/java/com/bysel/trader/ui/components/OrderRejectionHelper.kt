@@ -60,7 +60,6 @@ private val REJECTION_RULES: List<Pair<Regex, RejectionResolution>> = listOf(
         title = "Market Closed",
         explanation = "Orders cannot be placed outside trading hours. NSE/BSE hours are 9:15 AM – 3:30 PM on weekdays.",
         primaryCta = "Set GTT Alert",
-        secondaryCta = "View Market Hours",
         category = RejectionCategory.MARKET_CLOSED,
         icon = Icons.Filled.Schedule,
         accentColor = Color(0xFFFF8F00),
@@ -90,7 +89,6 @@ private val REJECTION_RULES: List<Pair<Regex, RejectionResolution>> = listOf(
         title = "Risk Check Failed",
         explanation = "Your broker's risk management system has blocked this order. This may be due to exposure limits or margin shortfall.",
         primaryCta = "Contact Support",
-        secondaryCta = "View Risk Limits",
         category = RejectionCategory.RISK,
         icon = Icons.Filled.Shield,
         accentColor = Color(0xFFE53935),
@@ -127,7 +125,6 @@ private val REJECTION_RULES: List<Pair<Regex, RejectionResolution>> = listOf(
         title = "Connection Error",
         explanation = "There was a temporary network or server issue. Your order was NOT placed.",
         primaryCta = "Retry Order",
-        secondaryCta = "Check Status",
         category = RejectionCategory.TECHNICAL,
         icon = Icons.Filled.WifiOff,
         accentColor = Color(0xFFFF8F00),
@@ -149,6 +146,7 @@ fun OrderRejectionBanner(
     rawMessage: String,
     onPrimaryCta: (RejectionResolution) -> Unit,
     modifier: Modifier = Modifier,
+    onSecondaryCta: ((RejectionResolution) -> Unit)? = null,
 ) {
     val resolution = resolveRejection(rawMessage) ?: RejectionResolution(
         title = "Order Rejected",
@@ -201,9 +199,11 @@ fun OrderRejectionBanner(
                 ) {
                     Text(resolution.primaryCta, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
-                resolution.secondaryCta?.let { label ->
+                // Only offered when the caller supplies a handler, so the button is never inert.
+                val secondaryLabel = resolution.secondaryCta
+                if (secondaryLabel != null && onSecondaryCta != null) {
                     OutlinedButton(
-                        onClick = { /* Secondary CTA handled by caller if needed */ },
+                        onClick = { onSecondaryCta(resolution) },
                         modifier = Modifier.height(32.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = resolution.accentColor),
@@ -211,7 +211,7 @@ fun OrderRejectionBanner(
                             width = 1.dp
                         )
                     ) {
-                        Text(label, fontSize = 11.sp)
+                        Text(secondaryLabel, fontSize = 11.sp)
                     }
                 }
             }

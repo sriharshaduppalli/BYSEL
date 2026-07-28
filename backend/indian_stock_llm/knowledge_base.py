@@ -39,12 +39,16 @@ _STOPWORDS = {
 }
 EMBEDDING_DIM = 64
 INTENT_TAG_PRIORS = {
-    "fundamentals": {"fundamentals", "valuation", "pe"},
-    "events_news": {"sebi", "regulation", "guidance", "earnings"},
-    "market_calculations": {"calculation", "cagr", "return", "volatility", "rsi", "sma", "ema", "macd", "bollinger"},
+    "fundamentals": {"fundamentals", "valuation", "pe", "roe", "eps", "pb"},
+    "events_news": {"sebi", "regulation", "guidance", "earnings", "events"},
+    "market_calculations": {
+        "calculation", "cagr", "return", "volatility", "rsi", "sma", "ema",
+        "macd", "bollinger", "equation", "indicator", "atr", "vwap", "sharpe",
+    },
     "prediction": {"prediction", "forecast", "uncertainty", "risk"},
-    "stock_analysis": {"analysis", "technical", "fundamental", "earnings"},
-    "portfolio": {"portfolio", "risk", "diversification"},
+    "stock_analysis": {"analysis", "technical", "fundamental", "earnings", "checklist"},
+    "portfolio": {"portfolio", "risk", "diversification", "sip"},
+    "general_query": {"stocks", "symbols", "nse", "bse", "terms"},
 }
 
 
@@ -494,9 +498,16 @@ class KnowledgeBase:
         embedding_provider: EmbeddingProvider | None = None,
         vector_index: VectorIndex | None = None,
         reranker: Reranker | None = None,
+        extra_items: Iterable[KnowledgeItem] | None = None,
     ) -> KnowledgeBase:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        items = [KnowledgeItem(**item) for item in data]
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+        items = [KnowledgeItem(**item) for item in data if isinstance(item, dict)]
+        if extra_items:
+            seen = {item.id for item in items}
+            for item in extra_items:
+                if item.id not in seen:
+                    items.append(item)
+                    seen.add(item.id)
         return cls(items, embedding_provider=embedding_provider, vector_index=vector_index, reranker=reranker)
 
     def _semantic_score(self, query_tokens: set[str], item_tokens: set[str]) -> float:

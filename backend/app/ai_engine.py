@@ -24,11 +24,21 @@ from .market_data import _yf_ticker, INDIAN_STOCKS, fetch_quote, search_stocks
 
 logger = logging.getLogger(__name__)
 
-_NEWS_CACHE_TTL = timedelta(minutes=45)  # Increased from 15 to 45 minutes for better performance
+_NEWS_CACHE_TTL = timedelta(minutes=20)
 _NEWS_CACHE_MAX_SYMBOLS = max(20, int(os.getenv("NEWS_CACHE_MAX_SYMBOLS", "200")))  # Increased from 120 to 200
 _news_cache: Dict[str, Tuple[datetime, List[Dict]]] = {}
 _news_cache_lock = Lock()
 
+# Broader liquid NSE set so home Market News is not stuck on 5 megacaps.
+_MARKET_NEWS_DEFAULT_SYMBOLS = [
+    "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK",
+    "SBIN", "BHARTIARTL", "ITC", "LT", "TATAMOTORS",
+    "AXISBANK", "KOTAKBANK", "SUNPHARMA", "WIPRO", "NTPC",
+    "HAL", "BEL", "MARUTI", "ONGC", "POWERGRID",
+]
+_MARKET_NEWS_MAX_SYMBOLS = 12
+_MARKET_NEWS_MAX_AGE_HOURS = 72
+_MARKET_NEWS_MAX_PER_SYMBOL = 2
 # AI Analysis & Prediction Response Cache (60 min TTL)
 _ANALYSIS_CACHE_TTL = timedelta(minutes=60)
 _ANALYSIS_CACHE: Dict[str, Tuple[datetime, Dict]] = {}
@@ -80,8 +90,6 @@ _RELATIVE_STRENGTH_CACHE_LOCK = Lock()
 _TRADE_LEVELS_CACHE: Dict[str, Tuple[datetime, Dict]] = {}
 _TRADE_LEVELS_CACHE_TTL = timedelta(minutes=15)
 _TRADE_LEVELS_CACHE_LOCK = Lock()
-
-_MARKET_NEWS_DEFAULT_SYMBOLS = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK"]
 
 _POSITIVE_HEADLINE_KEYWORDS = (
     "beat",
@@ -391,10 +399,26 @@ def _parse_news_timestamp(raw_value) -> Optional[datetime]:
     if isinstance(raw_value, (int, float)):
         return datetime.fromtimestamp(float(raw_value), tz=timezone.utc).replace(tzinfo=None)
 
+    if isinstance(raw_value, datetime):
+        parsed = raw_value
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        return parsed
+
     if isinstance(raw_value, str):
         candidate = raw_value.strip()
         if not candidate:
             return None
+
+        # Google News RSS uses RFC 2822 (e.g. "Tue, 28 Jul 2026 08:12:00 GMT").
+        try:
+            from email.utils import parsedate_to_datetime
+            parsed = parsedate_to_datetime(candidate)
+            if parsed.tzinfo is not None:
+                parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            return parsed
+        except Exception:
+            pass
 
         normalized = candidate.replace("Z", "+00:00")
         try:
@@ -405,6 +429,8 @@ def _parse_news_timestamp(raw_value) -> Optional[datetime]:
                 "%Y-%m-%d %H:%M:%S",
                 "%Y-%m-%dT%H:%M:%S%z",
                 "%Y-%m-%dT%H:%M:%S",
+                "%a, %d %b %Y %H:%M:%S %z",
+                "%a, %d %b %Y %H:%M:%S %Z",
             ):
                 try:
                     parsed = datetime.strptime(candidate, fmt)
@@ -491,6 +517,214 @@ def _normalize_news_item(symbol: str, raw_item: Dict) -> Optional[Dict]:
     }
 
 
+def _company_name_tokens(symbol: str, company: str) -> List[str]:
+    """Tokens used to keep Google News results on-topic for the symbol."""
+    stop = {
+        "ltd", "limited", "the", "and", "of", "india", "indian", "company",
+        "industries", "corporation", "corp", "bank", "banks", "services",
+        "finance", "financial", "power", "energy", "motors", "motor",
+    }
+    tokens = [symbol.lower()]
+    for part in re.split(r"[^a-z0-9]+", (company or "").lower()):
+        if len(part) >= 3 and part not in stop:
+            tokens.append(part)
+    # Keep first distinctive company word for matching (e.g. reliance, infosys).
+    return list(dict.fromkeys(tokens))[:6]
+
+
+def _headline_matches_symbol(title: str, symbol: str, company: str) -> bool:
+    title_l = (title or "").lower()
+    if not title_l:
+        return False
+    symbol_l = symbol.lower()
+    if re.search(r"\b" + re.escape(symbol_l) + r"\b", title_l):
+        return True
+    for token in _company_name_tokens(symbol, company)[1:]:
+        if len(token) >= 4 and re.search(r"\b" + re.escape(token) + r"\b", title_l):
+            return True
+    return False
+
+
+def _fetch_google_news_items(symbol: str, limit: int = 8) -> List[Dict]:
+    """Fetch recent India-focused headlines from Google News RSS for an NSE symbol."""
+    try:
+        import requests
+        from urllib.parse import quote_plus
+        from xml.etree import ElementTree as ET
+
+        company = ""
+        try:
+            company = str(INDIAN_STOCKS.get(symbol.upper(), (None, ""))[1] or "")
+        except Exception:
+            company = ""
+
+        # Prefer company name; keep query India-market scoped and recent.
+        subject = f"\"{company}\"" if company else symbol
+        query = quote_plus(f"{subject} ({symbol}) (stock OR shares OR NSE) when:3d")
+        url = (
+            f"https://news.google.com/rss/search"
+            f"?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
+        )
+        resp = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0 (compatible; BYSEL/1.0)"})
+        if resp.status_code != 200:
+            return []
+
+        root = ET.fromstring(resp.content)
+        items: List[Dict] = []
+        seen: set[str] = set()
+        for node in root.findall(".//item")[: max(limit * 3, 15)]:
+            raw_title = (node.findtext("title") or "").strip()
+            if not raw_title:
+                continue
+            source = ""
+            if " - " in raw_title:
+                title, source = raw_title.rsplit(" - ", 1)
+                title = title.strip()
+                source = source.strip()
+            else:
+                title = raw_title
+
+            if not _headline_matches_symbol(title, symbol, company):
+                continue
+
+            title_key = title.lower()
+            if title_key in seen:
+                continue
+            seen.add(title_key)
+
+            published_at = _parse_news_timestamp(node.findtext("pubDate"))
+            link = (node.findtext("link") or "").strip()
+            items.append({
+                "symbol": symbol.upper(),
+                "title": title,
+                "source": source or "Google News",
+                "publishedAt": published_at.isoformat() if published_at else "",
+                "publishedLabel": _format_headline_age(published_at),
+                "link": link,
+            })
+            if len(items) >= limit:
+                break
+        return items
+    except Exception as exc:
+        logger.warning("Google News RSS failed for %s: %s", symbol, exc)
+        return []
+
+
+def _fetch_market_overview_headlines(limit: int = 6) -> List[Dict]:
+    """Broad NSE/Nifty/Sensex headlines so the home feed is never a single stock."""
+    try:
+        import requests
+        from urllib.parse import quote_plus
+        from xml.etree import ElementTree as ET
+
+        query = quote_plus("Nifty OR Sensex OR NSE stock market India when:2d")
+        url = (
+            f"https://news.google.com/rss/search"
+            f"?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
+        )
+        resp = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0 (compatible; BYSEL/1.0)"})
+        if resp.status_code != 200:
+            return []
+
+        root = ET.fromstring(resp.content)
+        items: List[Dict] = []
+        seen: set[str] = set()
+        for node in root.findall(".//item")[:12]:
+            raw_title = (node.findtext("title") or "").strip()
+            if not raw_title:
+                continue
+            source = ""
+            if " - " in raw_title:
+                title, source = raw_title.rsplit(" - ", 1)
+                title = title.strip()
+                source = source.strip()
+            else:
+                title = raw_title
+            title_l = title.lower()
+            if not any(k in title_l for k in ("nifty", "sensex", "nse", "bse", "market", "stocks", "share")):
+                continue
+            title_key = title_l
+            if title_key in seen:
+                continue
+            seen.add(title_key)
+            published_at = _parse_news_timestamp(node.findtext("pubDate"))
+            items.append({
+                "symbol": "MARKET",
+                "title": title,
+                "source": source or "Google News",
+                "publishedAt": published_at.isoformat() if published_at else "",
+                "publishedLabel": _format_headline_age(published_at),
+                "link": (node.findtext("link") or "").strip(),
+            })
+            if len(items) >= limit:
+                break
+        return items
+    except Exception as exc:
+        logger.warning("Market overview news fetch failed: %s", exc)
+        return []
+
+
+def _headline_age_hours(item: Dict) -> Optional[float]:
+    published_at = _parse_news_timestamp(item.get("publishedAt"))
+    if not published_at:
+        return None
+    if published_at.tzinfo is not None:
+        published_at = published_at.astimezone(timezone.utc).replace(tzinfo=None)
+    return max((_utc_now_naive() - published_at).total_seconds(), 0) / 3600.0
+
+
+def _select_diversified_headlines(
+    aggregated: List[Dict],
+    limit: int,
+    max_per_symbol: int = _MARKET_NEWS_MAX_PER_SYMBOL,
+    max_age_hours: int = _MARKET_NEWS_MAX_AGE_HOURS,
+) -> List[Dict]:
+    """Prefer fresh headlines and avoid filling the feed with one megacap."""
+    if not aggregated:
+        return []
+
+    sorted_items = sorted(
+        aggregated,
+        key=lambda item: item.get("publishedAt") or "",
+        reverse=True,
+    )
+
+    fresh: List[Dict] = []
+    older: List[Dict] = []
+    for item in sorted_items:
+        age_h = _headline_age_hours(item)
+        if age_h is None or age_h <= max_age_hours:
+            fresh.append(item)
+        else:
+            older.append(item)
+
+    pool = fresh if fresh else older
+    selected: List[Dict] = []
+    counts: Dict[str, int] = {}
+
+    for item in pool:
+        symbol = str(item.get("symbol") or "").upper()
+        if counts.get(symbol, 0) >= max_per_symbol:
+            continue
+        counts[symbol] = counts.get(symbol, 0) + 1
+        selected.append(item)
+        if len(selected) >= limit:
+            return selected
+
+    # Top up if diversification left the list short.
+    selected_keys = {str(item.get("title", "")).strip().lower() for item in selected}
+    for item in pool:
+        title_key = str(item.get("title", "")).strip().lower()
+        if title_key in selected_keys:
+            continue
+        selected.append(item)
+        selected_keys.add(title_key)
+        if len(selected) >= limit:
+            break
+
+    return selected
+
+
 def _fetch_recent_headlines(symbol: str, limit: int = 5, ticker=None) -> List[Dict]:
     symbol_upper = symbol.upper()
     now = _utc_now_naive()
@@ -530,6 +764,15 @@ def _fetch_recent_headlines(symbol: str, limit: int = 5, ticker=None) -> List[Di
 
         seen_titles.add(title_key)
         normalized.append(normalized_item)
+
+    # Prefer Google News for Indian equities — Yahoo is often sparse/stale for .NS.
+    # Always merge; sort keeps the freshest first.
+    for item in _fetch_google_news_items(symbol_upper, limit=max(limit, 6)):
+        title_key = str(item.get("title", "")).lower()
+        if not title_key or title_key in seen_titles:
+            continue
+        seen_titles.add(title_key)
+        normalized.append(item)
 
     normalized.sort(key=lambda item: item.get("publishedAt") or "", reverse=True)
 
@@ -587,18 +830,13 @@ def _classify_headline_flow(headlines: List[Dict]) -> str:
 def _summarize_headline_flow(headlines: List[Dict]) -> str:
     """Create a concise summary from a list of news headlines."""
     if not headlines:
-        return "No recent headlines available."
+        return "Recent headline context is unavailable right now."
 
-    # Use a simple heuristic: take up to three keyword-rich headlines.
-    titles = [str(item.get("title", "")).strip() for item in headlines if item.get("title")]
-    if not titles:
-        return "No headline text found."
-
-    selected = titles[:3]
-    if len(selected) == 1:
-        return f"Latest news: {selected[0]}"
-
-    return "Latest news: " + " | ".join(selected)
+    flow = _classify_headline_flow(headlines)
+    flow_label = flow.capitalize()
+    latest_age = headlines[0].get("publishedLabel")
+    freshness = f" Most recent item: {latest_age}." if latest_age else ""
+    return f"{flow_label} flow across the latest {len(headlines[:5])} headlines.{freshness}"
 
 
 def _get_cached_analysis(symbol: str) -> Optional[Dict]:
@@ -667,10 +905,6 @@ def _cache_stock_detail(symbol: str, data: Dict) -> None:
             _STOCK_DETAIL_CACHE.pop(oldest[0], None)
 
 
-# ──────────────────────────────────────────────────────────────
-# FULL STOCK ANALYSIS
-# ──────────────────────────────────────────────────────────────
-
 def get_stock_detail_fast(symbol: str) -> Dict:
     """
     Ultra-fast stock detail loading with 20-second cache.
@@ -680,35 +914,23 @@ def get_stock_detail_fast(symbol: str) -> Dict:
     cached = _get_cached_stock_detail(symbol)
     if cached:
         return cached
-    
+
     # Fetch and cache
     result = analyze_stock(symbol)
     _cache_stock_detail(symbol, result)
     return result
 
 
-def analyze_stock(symbol: str) -> Dict:
-    """
-    Comprehensive stock analysis combining:
-      - Live price data
-      - Technical indicators (RSI, MACD, Bollinger, MAs)
-      - Fundamental data (P/E, market cap, dividends)
-      - AI price predictions
-      - Overall score (0-100)
-      - Plain-English summary
-      - Uses caching to improve response time for repeated queries
-"""
-    if not headlines:
-        return "Recent headline context is unavailable right now."
-
-    flow = _classify_headline_flow(headlines)
-    flow_label = flow.capitalize()
-    latest_age = headlines[0].get("publishedLabel")
-    freshness = f" Most recent item: {latest_age}." if latest_age else ""
-    return f"{flow_label} flow across the latest {len(headlines[:5])} headlines.{freshness}"
-
-
 def get_market_headlines(symbols: Optional[List[str]] = None, limit: int = 5) -> Dict:
+    """Aggregate diversified market headlines with a hard time budget.
+
+    Must stay under the Android client callTimeout (~25s) so Home never shows a
+    raw timeout next to the Home Layout controls.
+    """
+    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_COMPLETED
+
+    deadline = time.monotonic() + float(os.getenv("MARKET_NEWS_BUDGET_SECONDS", "12"))
     requested_symbols = symbols or _MARKET_NEWS_DEFAULT_SYMBOLS
 
     normalized_symbols: List[str] = []
@@ -719,25 +941,64 @@ def get_market_headlines(symbols: Optional[List[str]] = None, limit: int = 5) ->
             continue
         seen_symbols.add(symbol)
         normalized_symbols.append(symbol)
-        if len(normalized_symbols) >= 5:
+        if len(normalized_symbols) >= _MARKET_NEWS_MAX_SYMBOLS:
             break
 
     aggregated: List[Dict] = []
     seen_titles: set[str] = set()
-    headline_limit = max(limit, 5)
+    per_symbol_limit = max(3, min(5, limit))
 
-    for symbol in normalized_symbols:
-        for headline in _fetch_recent_headlines(symbol, limit=headline_limit):
+    # Always seed with broad market headlines so the feed is never one megacap.
+    if time.monotonic() < deadline:
+        for headline in _fetch_market_overview_headlines(limit=4):
             title_key = str(headline.get("title", "")).strip().lower()
             if not title_key or title_key in seen_titles:
                 continue
             seen_titles.add(title_key)
             aggregated.append(headline)
 
-    aggregated.sort(key=lambda item: item.get("publishedAt") or "", reverse=True)
+    def _safe_fetch(sym: str) -> List[Dict]:
+        try:
+            return _fetch_recent_headlines(sym, limit=per_symbol_limit)
+        except Exception as exc:
+            logger.warning("Market news fetch failed for %s: %s", sym, exc)
+            return []
+
+    remaining = max(0.5, deadline - time.monotonic())
+    with ThreadPoolExecutor(max_workers=min(8, max(2, len(normalized_symbols)))) as pool:
+        futures = {pool.submit(_safe_fetch, sym): sym for sym in normalized_symbols}
+        pending = set(futures.keys())
+        while pending and time.monotonic() < deadline:
+            done, pending = wait(
+                pending,
+                timeout=max(0.1, deadline - time.monotonic()),
+                return_when=FIRST_COMPLETED,
+            )
+            if not done:
+                break
+            for future in done:
+                try:
+                    headlines = future.result() or []
+                except Exception:
+                    headlines = []
+                for headline in headlines:
+                    title_key = str(headline.get("title", "")).strip().lower()
+                    if not title_key or title_key in seen_titles:
+                        continue
+                    seen_titles.add(title_key)
+                    aggregated.append(headline)
+        for future in pending:
+            future.cancel()
+
+    selected = _select_diversified_headlines(
+        aggregated,
+        limit=limit,
+        max_per_symbol=_MARKET_NEWS_MAX_PER_SYMBOL,
+        max_age_hours=_MARKET_NEWS_MAX_AGE_HOURS,
+    )
 
     return {
-        "headlines": aggregated[:limit],
+        "headlines": selected,
         "symbolsConsidered": normalized_symbols,
         "generatedAt": _utc_now_naive().isoformat(),
     }
@@ -1665,9 +1926,38 @@ def _extract_context_symbol(raw_query: str) -> Optional[str]:
 
 
 def _resolve_symbols_from_search(query_text: str, limit: int = 3) -> List[str]:
-    """Resolve best-match symbols from catalog/Yahoo-backed search."""
+    """Resolve best-match symbols from catalog/Yahoo-backed search.
+
+    Skips ultra-short / greeting queries so "hi" does not become HINDUNILVR.
+    """
+    q = (query_text or "").strip()
+    if len(q) < 3:
+        return []
+
     try:
-        results = search_stocks(query_text, limit=limit)
+        from .groq_llm import get_small_talk_response
+        if get_small_talk_response(q):
+            return []
+    except Exception:
+        pass
+
+    q_lower = q.lower()
+    # Theme / sector phrases must not resolve to ETF tickers like Yahoo "DEFENCE".
+    _theme_tokens = {
+        "defence", "defense", "pharma", "banking", "fmcg", "infra", "realty",
+        "psu", "railway", "cement", "metal", "energy", "stocks", "stock",
+        "sector", "screener", "best", "top",
+    }
+    if any(re.search(r"\b" + re.escape(tok) + r"\b", q_lower) for tok in _theme_tokens):
+        return []
+
+    # Single very short token that is not an exact ticker — refuse prefix guessing.
+    tokens = re.findall(r"[A-Za-z0-9&.\-]+", q)
+    if len(tokens) == 1 and len(tokens[0]) < 3:
+        return []
+
+    try:
+        results = search_stocks(q, limit=limit)
     except Exception:
         return []
 
@@ -1678,6 +1968,13 @@ def _resolve_symbols_from_search(query_text: str, limit: int = 3) -> List[str]:
             continue
         symbol = str(item.get("symbol", "")).strip().upper()
         if not symbol or symbol in seen:
+            continue
+        match_type = str(item.get("matchType", "")).lower()
+        # Prefix matches on short queries are almost always wrong (hi → HINDUNILVR).
+        if match_type == "symbol" and len(q.replace(" ", "")) < 4 and q.upper() != symbol:
+            continue
+        # Prefer catalog NSE symbols; skip Yahoo-only ETF noise.
+        if match_type == "yahoo" and symbol not in INDIAN_STOCKS:
             continue
         seen.add(symbol)
         symbols.append(symbol)
@@ -1957,12 +2254,30 @@ def ai_assistant(query: str, db=None) -> Dict:
     symbols_direct = bool(symbols)  # True if _extract_symbols found a specific stock
 
     if not symbols:
-        context_symbol = _extract_context_symbol(query)
-        if context_symbol:
-            symbols = [context_symbol]
-            symbols_direct = True
+        # Sector / theme questions must not inherit the currently selected quote.
+        _theme_markers = (
+            "stocks", "stock", "sector", "defence", "defense", "pharma", "bank",
+            "auto", "fmcg", "infra", "psu", "realty", "metal", "energy", "it ",
+            "best", "top", "screen", "list", "recommend",
+        )
+        is_theme_query = any(m in query_lower for m in _theme_markers)
+        try:
+            from .groq_llm import get_small_talk_response
+            is_small_talk = bool(get_small_talk_response(user_query))
+        except Exception:
+            is_small_talk = False
+
+        if is_small_talk or len(user_query.strip()) < 3:
+            symbols = []
+        elif is_theme_query:
+            symbols = []
         else:
-            symbols = _resolve_symbols_from_search(user_query)
+            context_symbol = _extract_context_symbol(query)
+            if context_symbol:
+                symbols = [context_symbol]
+                symbols_direct = True
+            else:
+                symbols = _resolve_symbols_from_search(user_query)
 
     # ── Hinglish / Hindi keyword normalization ──
     _hinglish_map = {
@@ -2761,51 +3076,44 @@ def _handle_52_week_query(query_lower: str, symbols: List[str]) -> Dict:
 
 
 def _handle_most_active_query(query_lower: str) -> Dict:
-    """Handle top gainers/losers/most active queries."""
-    nifty_stocks = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "SBIN",
-                    "BHARTIARTL", "TATAMOTORS", "LT", "SUNPHARMA", "KOTAKBANK",
-                    "AXISBANK", "ITC", "WIPRO", "HCLTECH", "NTPC", "ADANIENT",
-                    "BAJFINANCE", "MARUTI", "ONGC"]
-    results = []
-    for sym in nifty_stocks:
-        try:
-            q = fetch_quote(sym)
-            results.append({
-                "symbol": sym,
-                "name": INDIAN_STOCKS.get(sym, (None, sym))[1],
-                "price": q.get("last", 0),
-                "pctChange": q.get("pctChange", 0),
-                "volume": q.get("volume", 0),
-            })
-        except Exception:
-            pass
+    """Handle top gainers/losers/most active queries using market-wide movers."""
+    from .market_data import fetch_market_movers
 
+    movers = fetch_market_movers(limit=10)
     is_loser = any(w in query_lower for w in ["loser", "fall", "drop", "crash"])
     is_volume = any(w in query_lower for w in ["active", "volume"])
 
     if is_volume:
-        results.sort(key=lambda x: x.get("volume", 0), reverse=True)
+        results = movers.get("mostActive") or []
         title = "Most Active Stocks (by Volume)"
     elif is_loser:
-        results.sort(key=lambda x: x["pctChange"])
+        results = movers.get("losers") or []
         title = "Top Losers Today"
     else:
-        results.sort(key=lambda x: x["pctChange"], reverse=True)
+        results = movers.get("gainers") or []
         title = "Top Gainers Today"
 
-    parts = [f"📈 **{title}**\n"]
-    for i, r in enumerate(results[:10], 1):
-        arrow = "🟢" if r["pctChange"] > 0 else "🔴"
-        vol_str = f" | Vol: {r.get('volume', 0):,.0f}" if is_volume else ""
-        parts.append(f"{i}. {arrow} **{r['symbol']}** — ₹{r['price']:.2f} ({r['pctChange']:+.2f}%){vol_str}")
+    if not results:
+        return {
+            "type": "screening",
+            "answer": "Could not load market movers right now. Please try again shortly.",
+            "stocks": [],
+            "suggestions": ["Top gainers today", "Top losers today", "Most active stocks"],
+        }
+
+    parts = [f"**{title}** (from {movers.get('universeSize', len(results))} liquid names):", ""]
+    for i, r in enumerate(results[:8], 1):
+        parts.append(
+            f"{i}. **{r['symbol']}** ({r.get('name', r['symbol'])}) — "
+            f"₹{r.get('last', 0):.2f} ({r.get('pctChange', 0):+.2f}%)"
+            + (f", vol {r.get('volume', 0):,}" if r.get("volume") else "")
+        )
 
     return {
         "type": "screening",
         "answer": "\n".join(parts),
-        "stocks": results[:10],
-        "suggestions": [f"Analyze {results[0]['symbol']}" if results else "Analyze RELIANCE",
-                        "Top losers today" if not is_loser else "Top gainers today",
-                        "Best bank stocks", "Predict TCS price"],
+        "stocks": results[:8],
+        "suggestions": [f"Analyze {r['symbol']}" for r in results[:3]] + ["Market outlook today"],
     }
 
 
@@ -2896,15 +3204,15 @@ def _handle_screening_query(query_lower: str, symbols: List[str]) -> Dict:
         "fmcg": ["HINDUNILVR", "ITC", "NESTLEIND", "BRITANNIA", "DABUR", "MARICO", "COLPAL", "GODREJCP"],
         "real": ["DLF", "GODREJPROP", "OBEROIRLTY", "PRESTIGE", "BRIGADE", "LODHA", "SOBHA"],
         "realty": ["DLF", "GODREJPROP", "OBEROIRLTY", "PRESTIGE", "BRIGADE", "LODHA", "SOBHA"],
-        "defence": ["HAL", "BEL", "BDL", "MAZAGON", "COCHINSHIP", "GRSE", "DATAPATTNS"],
-        "defense": ["HAL", "BEL", "BDL", "MAZAGON", "COCHINSHIP", "GRSE", "DATAPATTNS"],
+        "defence": ["HAL", "BEL", "BDL", "MAZDOCK", "COCHINSHIP", "GRSE", "DATAPATTNS"],
+        "defense": ["HAL", "BEL", "BDL", "MAZDOCK", "COCHINSHIP", "GRSE", "DATAPATTNS"],
         "infra": ["LT", "ADANIENT", "ADANIPORTS", "IRCON", "RVNL", "NBCC", "NCC", "KEC"],
         "insurance": ["HDFCLIFE", "SBILIFE", "ICICIGI", "ICICIPRULI", "STARHEALTH", "LICI", "GICRE", "NIACL"],
         "railway": ["IRCTC", "IRFC", "RVNL", "IRCON", "RAILTEL", "TITAGARH"],
         "rail": ["IRCTC", "IRFC", "RVNL", "IRCON", "RAILTEL", "TITAGARH"],
         "psu": ["SBIN", "NTPC", "ONGC", "BPCL", "IOC", "COALINDIA", "NHPC", "BEL", "HAL", "IRCTC"],
-        "shipping": ["COCHINSHIP", "MAZAGON", "GRSE", "SCI"],
-        "shipyard": ["COCHINSHIP", "MAZAGON", "GRSE"],
+        "shipping": ["COCHINSHIP", "MAZDOCK", "GRSE", "SCI"],
+        "shipyard": ["COCHINSHIP", "MAZDOCK", "GRSE"],
         "textile": ["TRENT", "RAYMOND", "ABFRL", "PAGEIND", "ARVIND"],
         "cement": ["ULTRACEMCO", "AMBUJACEM", "SHREECEM", "ACC", "DALMIACEM", "RAMCOCEM", "JKCEMENT"],
         "chemical": ["PIDILITIND", "SRF", "AARTI", "DEEPAKNTR", "CLEAN", "NAVINFLUOR", "FLUOROCHEM"],
@@ -2925,16 +3233,29 @@ def _handle_screening_query(query_lower: str, symbols: List[str]) -> Dict:
 
     target_sector = None
     target_stocks = None
-    for keyword, stocks in sector_keywords.items():
-        if keyword in query_lower:
+    # Prefer longer sector keys first so "railway" wins over "rail", etc.
+    for keyword, stocks in sorted(sector_keywords.items(), key=lambda kv: -len(kv[0])):
+        if re.search(r"\b" + re.escape(keyword) + r"\b", query_lower):
             target_sector = keyword
             target_stocks = stocks
             break
 
     if not target_stocks:
-        # Default: analyze top NIFTY stocks
-        target_sector = "popular"
-        target_stocks = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK"]
+        # Ask for clarification instead of inventing unrelated Nifty names.
+        return {
+            "type": "screening",
+            "answer": (
+                "Which sector should I screen? Try: defence, pharma, banking, IT, auto, "
+                "FMCG, energy, metal, infra, PSU, realty, or railway."
+            ),
+            "suggestions": [
+                "defence stocks",
+                "best pharma stocks",
+                "banking stocks",
+                "IT stocks",
+            ],
+            "stocks": [],
+        }
 
     # Analyze top stocks in sector
     results = []

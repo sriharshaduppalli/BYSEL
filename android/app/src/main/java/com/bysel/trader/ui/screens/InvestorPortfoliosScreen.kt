@@ -48,6 +48,7 @@ import com.bysel.trader.data.models.InvestorHoldingDeltaFeed
 import com.bysel.trader.data.models.InvestorPortfolioChangeFeed
 import com.bysel.trader.data.models.InvestorPortfolio
 import com.bysel.trader.data.models.SmartMoneyIdeaFeedCard
+import com.bysel.trader.ui.components.InfoChip
 import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
@@ -216,17 +217,17 @@ private fun SmartMoneyHeroCard(
                 color = theme.text,
             )
             Text(
-                text = "Track India's legendary market participants — their disclosed holdings and investment styles.",
+                text = "Curated legendary-investor holdings for discovery — not a live bulk-deal or SEBI filings feed. Quarter-over-quarter changes may be illustrative until filing diffs are wired.",
                 fontSize = 12.sp,
                 color = theme.textSecondary,
                 lineHeight = 18.sp,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip(onClick = {}, label = { Text("$portfolioCount investors") })
-                AssistChip(onClick = {}, label = { Text("$ideaCount ideas") })
+                InfoChip(label = { Text("$portfolioCount investors") })
+                InfoChip(label = { Text("$ideaCount ideas") })
             }
             if (!quarterLabel.isNullOrBlank()) {
-                AssistChip(onClick = {}, label = { Text(quarterLabel) })
+                InfoChip(label = { Text(quarterLabel) })
             }
             FilledTonalButton(onClick = onRefresh, enabled = !isLoading) {
                 if (isLoading) {
@@ -291,8 +292,7 @@ private fun InvestorPortfolioCard(
                         )
                     }
                 }
-                AssistChip(
-                    onClick = {},
+                InfoChip(
                     label = { Text("AUM ${portfolio.aum}") },
                 )
             }
@@ -341,8 +341,7 @@ private fun InvestorPortfolioCard(
                 )
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(portfolio.holdings.take(4), key = { it.symbol }) { holding ->
-                        AssistChip(
-                            onClick = {},
+                        InfoChip(
                             label = {
                                 Text(
                                     text = "${holding.symbol} · ${String.format("%.1f", holding.holdingPct)}%",
@@ -416,8 +415,8 @@ private fun InvestorPortfolioDetailView(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        AssistChip(onClick = {}, label = { Text(portfolio.style) })
-                        AssistChip(onClick = {}, label = { Text("AUM ${portfolio.aum}") })
+                        InfoChip(label = { Text(portfolio.style) })
+                        InfoChip(label = { Text("AUM ${portfolio.aum}") })
                     }
                     Text(
                         text = portfolio.bio,
@@ -635,7 +634,7 @@ private fun SmartMoneyIdeaCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                AssistChip(onClick = {}, label = { Text("${idea.confidence}%") })
+                InfoChip(label = { Text("${idea.confidence}%") })
             }
 
             Text(
@@ -659,14 +658,14 @@ private fun SmartMoneyIdeaCard(
             if (idea.backingInvestors.isNotEmpty()) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(idea.backingInvestors, key = { it }) { investor ->
-                        AssistChip(onClick = {}, label = { Text(investor, maxLines = 1) })
+                        InfoChip(label = { Text(investor, maxLines = 1) })
                     }
                 }
             }
             if (idea.tags.isNotEmpty()) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(idea.tags, key = { it }) { tag ->
-                        AssistChip(onClick = {}, label = { Text(tag.replace('_', ' ')) })
+                        InfoChip(label = { Text(tag.replace('_', ' ')) })
                     }
                 }
             }

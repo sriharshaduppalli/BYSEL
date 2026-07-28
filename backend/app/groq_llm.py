@@ -24,6 +24,12 @@ _client = None
 # ---------------------------------------------------------------------------
 _BASE_SYSTEM_PROMPT = """You are BYSEL AI, an expert Indian stock market analyst assistant.
 
+STEP 0 — UNDERSTAND THE QUERY:
+- Greetings / chitchat ("hi", "hello", "thanks") → reply briefly as BYSEL AI. Do NOT invent a stock analysis.
+- Sector / theme queries ("defence stocks", "best pharma stocks") → answer with that sector's names.
+  Prefer SCREENED RESULTS in context when present. Do NOT analyze a random unrelated ticker from wallet/context.
+- Only run a single-stock technical/fundamental template when the user clearly asked about one company/symbol.
+
 STEP 1 — DIRECT ANSWER (always first):
 Read the user's question carefully. Before any analysis, answer it directly:
 - "Should I buy X?" → State BUY / SELL / HOLD with one-sentence reason
@@ -167,6 +173,12 @@ The user wants stock recommendations from a sector. Provide:
    - Best for SWING TRADERS (technical breakout setup)
 3. AVOID (with specific reason — not just "risky")
 4. SECTOR CATALYST to watch in next 30–60 days
+
+CRITICAL:
+- If SCREENED RESULTS are present in context, use those symbols first.
+- For Defence/Aerospace in India prefer HAL, BEL, BDL, MAZDOCK, COCHINSHIP, GRSE, DATAPATTNS.
+- Do NOT invent unrelated Nifty names (like Reliance/TCS) for a defence query.
+- Do NOT run a single-stock RSI/MACD template unless the user named one company.
 """,
 
     "PORTFOLIO": """
@@ -181,13 +193,43 @@ The user is asking about portfolio strategy. Cover:
 
     "EDUCATIONAL": """
 --- EDUCATIONAL FOCUS ---
-The user wants to LEARN or UNDERSTAND a concept. Structure as:
-1. SIMPLE EXPLANATION (1-2 sentences, no jargon)
-2. TECHNICAL DEFINITION (precise, complete)
-3. INDIAN MARKET EXAMPLE: Use a real NSE-listed stock to illustrate the concept
-4. HOW TO USE IT: Practical application in daily trading/investing decisions
-5. COMMON MISTAKES: What beginners get wrong about this concept
-Keep it clear and actionable — the goal is understanding, not showing off terminology.
+The user wants to LEARN a stock-market concept, term, or equation. Structure as:
+1. SIMPLE EXPLANATION (1-2 sentences, plain English)
+2. DEFINITION / EQUATION: If the concept has a formula, show it clearly, e.g.
+   - RSI = 100 - (100 / (1 + RS)) where RS = Avg Gain / Avg Loss
+   - P/E = Price / EPS
+   - CAGR = (Ending / Beginning)^(1/years) - 1
+   Define every variable.
+3. WORKED EXAMPLE with a real NSE name (e.g. RELIANCE, TCS) or sample numbers
+4. HOW TO USE IT in trading/investing decisions
+5. COMMON MISTAKES beginners make
+Never invent a stock recommendation when the user only asked for a definition or formula.
+""",
+
+    "CALCULATION": """
+--- CALCULATION FOCUS ---
+The user is asking for a market calculation or formula-driven output.
+1. Show the exact formula first (e.g., CAGR, P/E, stop-loss %, risk/reward, returns)
+2. Define each variable with the user's values
+3. Show step-by-step math clearly
+4. Provide the final numeric result with units (% / ₹)
+5. If any required input is missing, ask specifically for that input instead of guessing
+If they only ask "what is the formula for X" without numbers, teach the equation (educational style) instead of refusing.
+""",
+
+    "SMALL_TALK": """
+--- SMALL TALK FOCUS ---
+Keep response short, warm, and direct. No stock analysis unless user asks for one.
+""",
+
+    "DERIVATIVES": """
+--- DERIVATIVES FOCUS ---
+The user is asking about futures/options or derivatives positioning.
+1. Identify instrument type clearly (futures/call/put/spread)
+2. Explain key drivers: IV, OI build-up, PCR, max pain, Greeks where relevant
+3. Include risk framing: leverage risk, theta decay, stop-loss discipline
+4. If strategy is requested, provide entry zone, invalidation, and target logic
+5. If required inputs are missing (expiry/strike/premium), ask for them explicitly
 """,
 
     "GENERAL": "",
@@ -249,7 +291,228 @@ _ACRONYMS = {
     "SMA": "Simple Moving Average",
     "EMA": "Exponential Moving Average",
     "MNC": "Multi-National Corporation",
+    "EV": "Enterprise Value",
+    "EBITDA": "Earnings Before Interest Taxes Depreciation and Amortization",
+    "PAT": "Profit After Tax",
+    "PBT": "Profit Before Tax",
+    "TTM": "Trailing Twelve Months",
+    "YoY": "Year-over-Year",
+    "QoQ": "Quarter-over-Quarter",
+    "OI": "Open Interest",
+    "PCR": "Put-Call Ratio",
+    "IV": "Implied Volatility",
+    "ATR": "Average True Range",
+    "VWAP": "Volume Weighted Average Price",
+    "CMP": "Current Market Price",
+    "SL": "Stop Loss",
+    "TP": "Take Profit",
+    "CE": "Call Option",
+    "PE2": "Put Option",
+    "MTM": "Mark to Market",
+    "MIS": "Margin Intraday Square-off",
+    "CNC": "Cash and Carry delivery",
+    "NRML": "Normal margin product",
+    "GTT": "Good Till Triggered",
 }
+
+
+_MARKET_TERM_NORMALIZATION = {
+    "ce": "call option",
+    "pe": "put option",
+    "oi": "open interest",
+    "iv": "implied volatility",
+    "atm": "at the money",
+    "otm": "out of the money",
+    "itm": "in the money",
+    "sl": "stop loss",
+    "tp": "take profit",
+    "cmp": "current market price",
+    "rr": "risk reward",
+    "btst": "buy today sell tomorrow",
+    "stbt": "sell today buy tomorrow",
+    "fno": "futures and options",
+    "fo": "futures and options",
+    "cal spread": "calendar spread",
+    "cal-spread": "calendar spread",
+    "time spread": "calendar spread",
+    "bfly": "butterfly spread",
+    "butterfly": "butterfly spread",
+    "ratio sprd": "ratio spread",
+    "ratio-spread": "ratio spread",
+    "cov call": "covered call",
+    "prot put": "protective put",
+    "hedge put": "protective put",
+    "kitna": "how much",
+    "kaisa": "how",
+    "kaise": "how",
+    "kya": "what",
+    "matlab": "meaning",
+}
+
+
+_OPTIONS_STRATEGY_PATTERNS = {
+    "calendar_spread": ["calendar spread", "time spread", "cal spread", "cal-spread"],
+    "butterfly_spread": ["butterfly spread", "bfly", "butterfly"],
+    "ratio_spread": ["ratio spread", "ratio sprd", "ratio-spread"],
+    "covered_call": ["covered call", "cov call"],
+    "protective_put": ["protective put", "prot put", "hedge put"],
+}
+
+
+_OPTIONS_STRATEGY_PROMPTS = {
+    "calendar_spread": """
+OPTIONS STRATEGY TEMPLATE — CALENDAR SPREAD:
+1. MARKET VIEW: neutral to mildly directional with expected IV/range behavior
+2. STRUCTURE: near-expiry short option + farther-expiry long option at/near same strike
+3. ENTRY CHECKLIST: ATM/near-ATM strike choice, event risk, liquidity, spread cost
+4. RISK PLAN: max loss limited to net debit; specify invalidation condition
+5. MANAGEMENT: adjustments if price moves sharply before front expiry
+6. EXIT FRAMEWORK: profit-taking zone and time-based exit before major decay risk
+""",
+    "butterfly_spread": """
+OPTIONS STRATEGY TEMPLATE — BUTTERFLY SPREAD:
+1. MARKET VIEW: range-bound around target strike into expiry
+2. STRUCTURE: long wing + short 2 middle strikes + long opposite wing
+3. ENTRY CHECKLIST: center strike selection, cost vs max reward, breakeven bands
+4. RISK PLAN: capped risk and capped reward; highlight pin risk near expiry
+5. MANAGEMENT: what to do if spot trends away from center strike
+6. EXIT FRAMEWORK: take profit when reward-to-remaining-risk deteriorates
+""",
+    "ratio_spread": """
+OPTIONS STRATEGY TEMPLATE — RATIO SPREAD:
+1. MARKET VIEW: directional bias with controlled premium objective
+2. STRUCTURE: unequal long/short option quantities (e.g., 1x2) with defined strikes
+3. ENTRY CHECKLIST: margin impact, assignment risk, tail-risk scenario
+4. RISK PLAN: specify worst-case zone and hard adjustment trigger
+5. MANAGEMENT: delta control and hedge action if move accelerates
+6. EXIT FRAMEWORK: profit target, risk cut, and expiry management
+""",
+    "covered_call": """
+OPTIONS STRATEGY TEMPLATE — COVERED CALL:
+1. MARKET VIEW: mildly bullish to neutral on owned stock
+2. STRUCTURE: long stock + short OTM call
+3. ENTRY CHECKLIST: strike above desired sell price, annualized yield from premium
+4. RISK PLAN: downside remains stock risk; premium only partially buffers losses
+5. MANAGEMENT: roll-up/roll-out criteria if stock rallies
+6. EXIT FRAMEWORK: assignment decision, buyback threshold, dividend/event handling
+""",
+    "protective_put": """
+OPTIONS STRATEGY TEMPLATE — PROTECTIVE PUT:
+1. MARKET VIEW: bullish long stock but near-term downside protection needed
+2. STRUCTURE: long stock + long put (insurance)
+3. ENTRY CHECKLIST: hedge horizon, strike distance, premium budget
+4. RISK PLAN: effective floor price after premium cost
+5. MANAGEMENT: roll put when time/value decays or volatility regime shifts
+6. EXIT FRAMEWORK: unwind criteria when risk event passes
+""",
+}
+
+
+_OPTIONS_STRATEGY_EXAMPLES = {
+    "calendar_spread": {
+        "concise": (
+            "CONCISE EXAMPLE:\n"
+            "View: Neutral to mildly bullish into front expiry.\n"
+            "Setup: Sell near-expiry ATM call, buy next-expiry same strike call.\n"
+            "Risk: Max loss = net debit paid; manage if spot breaks range strongly."
+        ),
+        "detailed": (
+            "DETAILED EXAMPLE:\n"
+            "Market View: Spot likely to stay near strike this week, IV can stay supported near event.\n"
+            "Structure: +1 next-expiry ATM call, -1 near-expiry ATM call (same strike).\n"
+            "Entry Logic: Prefer liquid strike, avoid wide bid-ask, enter when debit is acceptable vs expected front-theta decay.\n"
+            "Risk Management: Hard invalidation if spot trends sharply away; cap loss at planned debit threshold.\n"
+            "Management: If front option decays well and spot remains near strike, consider rolling short leg.\n"
+            "Exit: Partial/Full book when spread reaches target return or before event volatility crush risk."
+        ),
+    },
+    "butterfly_spread": {
+        "concise": (
+            "CONCISE EXAMPLE:\n"
+            "View: Range-bound near target strike.\n"
+            "Setup: Buy lower strike, sell 2 middle strikes, buy upper strike (same expiry).\n"
+            "Risk: Limited loss and limited reward; avoid over-holding near expiry pin risk."
+        ),
+        "detailed": (
+            "DETAILED EXAMPLE:\n"
+            "Market View: Expect price to gravitate near center strike into expiry.\n"
+            "Structure: +1 lower strike call, -2 center strike calls, +1 upper strike call.\n"
+            "Entry Logic: Choose wing width by expected move; ensure payoff peak aligns with likely settlement zone.\n"
+            "Risk Management: Max loss is net debit; monitor if price escapes breakeven band early.\n"
+            "Management: If trend starts, cut/adjust before theta decay works against center pin thesis.\n"
+            "Exit: Book profits once reward-to-risk compresses near the peak zone."
+        ),
+    },
+    "ratio_spread": {
+        "concise": (
+            "CONCISE EXAMPLE:\n"
+            "View: Directional but controlled premium objective.\n"
+            "Setup: Example 1x2 ratio spread with defined strikes.\n"
+            "Risk: Watch tail-risk zone and margin expansion closely."
+        ),
+        "detailed": (
+            "DETAILED EXAMPLE:\n"
+            "Market View: Moderate directional move expected, not extreme runaway.\n"
+            "Structure: Long 1 option, short 2 farther strike options (same expiry) with clear ratio.\n"
+            "Entry Logic: Select strikes where expected move stays in profit zone while premium collected is meaningful.\n"
+            "Risk Management: Define worst-case move threshold; pre-plan hedge if spot accelerates beyond comfort.\n"
+            "Management: Control net delta and adjust hedge as gamma risk rises near expiry.\n"
+            "Exit: Close on target payoff zone or if tail-risk probability rises materially."
+        ),
+    },
+    "covered_call": {
+        "concise": (
+            "CONCISE EXAMPLE:\n"
+            "View: Mildly bullish/neutral on existing holdings.\n"
+            "Setup: Hold stock and sell OTM call above desired exit price.\n"
+            "Risk: Downside still follows stock; premium is only partial cushion."
+        ),
+        "detailed": (
+            "DETAILED EXAMPLE:\n"
+            "Market View: Hold stock, monetize sideways-to-moderate upside via premium income.\n"
+            "Structure: Long underlying + short OTM call at a strike where assignment is acceptable.\n"
+            "Entry Logic: Choose strike by target exit level and annualized premium yield.\n"
+            "Risk Management: If stock drops, treat premium as limited buffer; if stock rallies, prepare assignment decision.\n"
+            "Management: Roll up/out when trend strengthens and you want to continue holding shares.\n"
+            "Exit: Let assignment happen at planned level or buy back call at predefined profit threshold."
+        ),
+    },
+    "protective_put": {
+        "concise": (
+            "CONCISE EXAMPLE:\n"
+            "View: Bullish long stock but want downside insurance.\n"
+            "Setup: Hold stock and buy put near risk floor.\n"
+            "Risk: Protection costs premium; choose hedge horizon carefully."
+        ),
+        "detailed": (
+            "DETAILED EXAMPLE:\n"
+            "Market View: Keep upside ownership while capping downside through a put hedge.\n"
+            "Structure: Long stock + long put at chosen strike and expiry.\n"
+            "Entry Logic: Select put strike by maximum acceptable drawdown and event horizon.\n"
+            "Risk Management: Effective floor = put strike minus premium impact; monitor hedge decay over time.\n"
+            "Management: Roll put if protection window is still needed and time value decays.\n"
+            "Exit: Unwind hedge after risk event or when downside probability normalizes."
+        ),
+    },
+}
+
+
+def detect_options_strategy(query: str) -> Optional[str]:
+    """Detect named options strategy from user query."""
+    q = normalize_market_terms_in_query((query or "").lower())
+    for strategy_name, aliases in _OPTIONS_STRATEGY_PATTERNS.items():
+        for alias in aliases:
+            if re.search(r"\b" + re.escape(alias) + r"\b", q):
+                return strategy_name
+    return None
+
+
+def get_options_strategy_example(strategy_name: str, response_style: str = "concise") -> str:
+    """Get a concise/detailed example block for a detected options strategy."""
+    if strategy_name not in _OPTIONS_STRATEGY_EXAMPLES:
+        return ""
+    style_key = "concise" if response_style == "concise" else "detailed"
+    return _OPTIONS_STRATEGY_EXAMPLES[strategy_name].get(style_key, "")
 
 
 def expand_acronyms_in_query(query: str) -> str:
@@ -258,9 +521,23 @@ def expand_acronyms_in_query(query: str) -> str:
     for acronym, expansion in _ACRONYMS.items():
         # Replace acronym with parenthetical expansion (preserve original)
         import re
-        pattern = r'\b' + re.escape(acronym) + r'\b'
-        expanded = re.sub(pattern, f"{acronym} ({expansion})", expanded, flags=re.IGNORECASE)
-    return expanded
+        pattern_acronym = acronym
+        display_acronym = acronym
+        if acronym == "PE2":
+            pattern_acronym = "PE"
+            display_acronym = "PE"
+        pattern = r'\b' + re.escape(pattern_acronym) + r'\b'
+        expanded = re.sub(pattern, f"{display_acronym} ({expansion})", expanded, flags=re.IGNORECASE)
+    return normalize_market_terms_in_query(expanded)
+
+
+def normalize_market_terms_in_query(query: str) -> str:
+    """Normalize common market shorthand/Hinglish terms for better intent detection."""
+    normalized = query or ""
+    for short_term, long_term in _MARKET_TERM_NORMALIZATION.items():
+        pattern = r'\b' + re.escape(short_term) + r'\b'
+        normalized = re.sub(pattern, long_term, normalized, flags=re.IGNORECASE)
+    return normalized
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +553,20 @@ def classify_intent(query: str) -> dict:
         "reasoning": "Detected intent based on..."  # explanation
     }
     """
-    q = query.lower()
+    q = normalize_market_terms_in_query((query or "").lower())
+    detected_strategy = detect_options_strategy(q)
+
+    small_talk_type = _detect_small_talk_type(q)
+    if small_talk_type:
+        return {
+            "intent": "SMALL_TALK",
+            "confidence": 98,
+            "alternatives": [("GENERAL", 35)],
+            "reasoning": f"Detected small-talk intent: {small_talk_type}",
+            "multi_intent": False,
+            "intents": ["SMALL_TALK"],
+            "small_talk_type": small_talk_type,
+        }
 
     # Check for concept comparisons first (non-stock comparisons)
     _CONCEPT_PAIRS = {
@@ -304,6 +594,7 @@ def classify_intent(query: str) -> dict:
     scores: Dict[str, int] = {
         "PREDICT": 0, "COMPARE": 0, "BUY_SELL": 0, "TECHNICAL": 0,
         "FUNDAMENTAL": 0, "SECTOR_SCREEN": 0, "PORTFOLIO": 0, "EDUCATIONAL": 0,
+        "CALCULATION": 0, "DERIVATIVES": 0,
     }
 
     # PREDICT
@@ -335,19 +626,33 @@ def classify_intent(query: str) -> dict:
     for kw in ["rsi", "macd", "bollinger", "moving average", "sma", "ema",
                "support level", "resistance level", "chart", "technical analysis",
                "oversold", "overbought", "candlestick", "breakout setup", "golden cross",
-               "death cross", "trend reversal", "price action"]:
+             "death cross", "trend reversal", "price action", "vwap", "atr", "adx",
+             "supertrend", "stochastic", "ichimoku", "volume profile"]:
         if kw in q: scores["TECHNICAL"] += 2
 
     # FUNDAMENTAL
     for kw in ["pe ratio", "p/e", "earnings", " eps", "revenue", "quarterly results",
                "fundamentals", "valuation", "roe", "roce", "debt", "balance sheet",
-               "promoter", "pledging", "dividend yield", "payout"]:
+             "promoter", "pledging", "dividend yield", "payout", "ev to ebitda", "ev/ebitda",
+             "price to book", "pb ratio", "cash flow", "free cash flow", "ebitda margin", "book value"]:
         if kw in q: scores["FUNDAMENTAL"] += 2
 
     # SECTOR_SCREEN
-    for kw in ["sector", "banking stocks", "pharma stocks", "it stocks", "fmcg stocks",
-               "auto stocks", "defence stocks", "energy stocks", "nse listed", "screener"]:
-        if kw in q: scores["SECTOR_SCREEN"] += 2
+    for kw in [
+        "sector", "banking stocks", "pharma stocks", "it stocks", "fmcg stocks",
+        "auto stocks", "defence stocks", "defense stocks", "energy stocks",
+        "nse listed", "screener", "psu stocks", "realty stocks", "metal stocks",
+        "infra stocks", "railway stocks", "cement stocks",
+    ]:
+        if kw in q:
+            scores["SECTOR_SCREEN"] += 2
+    # Bare sector themes ("defence", "psu", "pharma") without requiring "stocks"
+    for kw in [
+        "defence", "defense", "psu", "realty", "pharma", "fmcg", "infra",
+        "railway", "shipyard", "fintech", "nbfc", "cement", "telecom",
+    ]:
+        if re.search(r"\b" + re.escape(kw) + r"\b", q):
+            scores["SECTOR_SCREEN"] += 3
     if re.search(r'\b(top|best|good)\b.{0,20}\bstocks?\b', q):
         scores["SECTOR_SCREEN"] += 3
 
@@ -356,13 +661,58 @@ def classify_intent(query: str) -> dict:
                "rebalance", "asset allocation", "my stocks", "long term investment"]:
         if kw in q: scores["PORTFOLIO"] += 3
 
-    # EDUCATIONAL
-    for kw in ["what is", "what are", "explain", "how does", "what does",
-               "meaning of", "define", "understand", "how to calculate", "why is",
-               "difference between rsi", "what is macd", "what is pe"]:
-        if kw in q: scores["EDUCATIONAL"] += 2
+    # EDUCATIONAL — definitions, meanings, equations (boost strongly so
+    # "what is RSI" does not fall into TECHNICAL clarifier asking for a symbol).
+    for kw in [
+        "what is", "what are", "explain", "how does", "what does",
+        "meaning of", "define", "definition", "understand", "how to calculate",
+        "why is", "formula", "equation", "difference between",
+        "what is rsi", "what is macd", "what is pe", "what is p/e",
+        "rsi formula", "macd formula", "cagr formula", "pe formula",
+    ]:
+        if kw in q:
+            scores["EDUCATIONAL"] += 3
     if re.search(r'\bwhat (is|are)\b', q):
-        scores["EDUCATIONAL"] += 2
+        scores["EDUCATIONAL"] += 3
+    if re.search(r'\b(formula|equation|definition|meaning)\b', q):
+        scores["EDUCATIONAL"] += 4
+    if re.search(
+        r'\b(rsi|macd|bollinger|cagr|roe|roce|eps|vwap|atr|pe ratio|p/e|peg|sharpe|drawdown)\b',
+        q,
+    ) and re.search(r'\b(what|explain|define|formula|equation|mean|meaning)\b', q):
+        scores["EDUCATIONAL"] += 5
+
+    # CALCULATION
+    for kw in [
+        "calculate", "calculation", "formula", "compute", "how much return", "returns in",
+        "cagr", "risk reward", "risk/reward", "position size", "stop loss percent",
+        "target price from", "intrinsic value", "fair value", "valuation model", "discounted cash flow",
+        "dcf", "pe based target", "peg ratio", "drawdown", "compounded return",
+        "margin required", "break even", "breakeven", "lot size", "position sizing",
+        "theta decay", "premium decay", "roi", "risk per trade",
+    ]:
+        if kw in q:
+            scores["CALCULATION"] += 2
+    if re.search(r'\b(calculate|compute|formula)\b', q):
+        scores["CALCULATION"] += 3
+    if re.search(r'\b\d+(\.\d+)?\s*(%|percent|x|times|days|months|years|yrs|₹|rs)\b', q):
+        scores["CALCULATION"] += 1
+    if re.search(r'\b(cagr|pe|p/e|roe|roce|eps|stop\s*loss|risk\s*/?\s*reward)\b', q):
+        scores["CALCULATION"] += 1
+
+    # DERIVATIVES
+    for kw in [
+        "futures", "options", "call option", "put option", "straddle", "strangle", "spread",
+        "calendar spread", "butterfly spread", "ratio spread", "covered call", "protective put",
+        "iron condor", "expiry", "strike", "premium", "open interest", "implied volatility",
+        "pcr", "max pain", "greeks", "delta", "gamma", "theta", "vega", "mtm", "hedge",
+    ]:
+        if kw in q:
+            scores["DERIVATIVES"] += 2
+    if re.search(r'\b(call option|put option|futures?)\b', q):
+        scores["DERIVATIVES"] += 2
+    if detected_strategy:
+        scores["DERIVATIVES"] += 4
 
     # Get top 3
     sorted_intents = sorted(scores.items(), key=lambda x: -x[1])
@@ -408,7 +758,7 @@ def classify_intent(query: str) -> dict:
                 if score > 0 and name not in detected_intents:
                     detected_intents.append(name)
 
-    return {
+    result = {
         "intent": best,
         "confidence": confidence,
         "alternatives": alternatives,
@@ -416,6 +766,105 @@ def classify_intent(query: str) -> dict:
         "multi_intent": multi_intent,
         "intents": detected_intents,  # List of detected intents to process
     }
+    if detected_strategy:
+        result["detected_strategy"] = detected_strategy
+    return result
+
+
+def _detect_small_talk_type(query_lower: str) -> Optional[str]:
+    """Detect light conversational small-talk categories."""
+    q = (query_lower or "").strip()
+    if not q:
+        return None
+
+    # Normalize punctuation to spaces for safer token checks.
+    q_norm = re.sub(r"[^a-z0-9\s]", " ", q)
+    q_norm = re.sub(r"\s+", " ", q_norm).strip()
+
+    def _contains_phrase(phrase: str) -> bool:
+        return re.search(r"\b" + re.escape(phrase) + r"\b", q_norm) is not None
+
+    thanks_patterns = ["thanks", "thank you", "thx", "ty", "appreciate it", "great thanks"]
+    bye_patterns = ["bye", "goodbye", "see you", "cya", "talk later", "good night", "gn"]
+    how_are_you_patterns = ["how are you", "how r u", "howre you", "how you doing", "kaise ho", "kya haal"]
+    greeting_patterns = ["hi", "hello", "hey", "namaste", "namaskar", "good morning", "good afternoon", "good evening"]
+
+    if any(_contains_phrase(pat) for pat in how_are_you_patterns):
+        return "how_are_you"
+    if any(_contains_phrase(pat) for pat in thanks_patterns):
+        return "thanks"
+    if any(_contains_phrase(pat) for pat in bye_patterns):
+        return "bye"
+
+    # Restrict greeting to short greeting-like utterances.
+    greeting_tokens = {
+        "hi", "hii", "hiii", "hello", "hey", "namaste", "namaskar", "gm",
+        "good", "morning", "afternoon", "evening",
+    }
+    allowed_context_tokens = {"there", "team", "bot", "ai", "assistant", "bysel"}
+    tokens = q_norm.split()
+    if (
+        len(tokens) <= 5
+        and any(_contains_phrase(pat) for pat in greeting_patterns)
+        and all(token in greeting_tokens or token in allowed_context_tokens for token in tokens)
+    ):
+        return "greeting"
+
+    return None
+
+
+def get_small_talk_response(query: str, response_style: str = "concise") -> Optional[str]:
+    """Return deterministic responses for small-talk queries, else None."""
+    small_talk_type = _detect_small_talk_type((query or "").lower())
+    if not small_talk_type:
+        return None
+
+    concise_map = {
+        "greeting": "Hi! I am BYSEL AI. Ask me about stock prices, buy/sell signals, comparisons, or valuation.",
+        "thanks": "You are welcome. I am here whenever you need market help.",
+        "bye": "Bye! See you soon. Happy investing.",
+        "how_are_you": "I am doing great and ready to help with markets. What stock question do you have?",
+    }
+
+    detailed_map = {
+        "greeting": (
+            "Hi! I am BYSEL AI. I can help with live stock context, technical/fundamental analysis, "
+            "comparisons, and risk-aware buy/sell planning."
+        ),
+        "thanks": "You are welcome. If you want, I can also help with your next stock query right away.",
+        "bye": "Bye! Have a great day. Reach out anytime for stock analysis or market calculations.",
+        "how_are_you": (
+            "I am doing great and fully ready to help. Tell me a symbol and objective "
+            "(buy/sell, technicals, fundamentals, comparison, or valuation)."
+        ),
+    }
+
+    if response_style == "detailed":
+        return detailed_map[small_talk_type]
+    return concise_map[small_talk_type]
+
+
+def infer_response_style(query: str, conversation_history: Optional[List[Dict]] = None) -> str:
+    """Infer concise vs detailed response style from query length and conversation depth."""
+    q = (query or "").lower()
+    words = re.findall(r"\w+", q)
+    word_count = len(words)
+    history_turns = len([turn for turn in (conversation_history or []) if turn.get("content")])
+
+    concise_cues = ["quick", "brief", "short", "tldr", "one line", "one-liner", "concise"]
+    detailed_cues = ["detailed", "in detail", "deep dive", "explain", "breakdown", "step by step", "why"]
+
+    if any(cue in q for cue in concise_cues):
+        return "concise"
+    if any(cue in q for cue in detailed_cues):
+        return "detailed"
+
+    if word_count <= 8 and history_turns < 2:
+        return "concise"
+    if word_count >= 18 or history_turns >= 4:
+        return "detailed"
+
+    return "detailed"
 
 
 def resolve_pronouns(query: str, conversation_history: Optional[List[Dict]] = None) -> str:
@@ -920,6 +1369,7 @@ async def ask_groq(
     context: Optional[Dict] = None,
     conversation_history: Optional[List[Dict]] = None,
     intent_result: Optional[Dict] = None,
+    response_style: Optional[str] = None,
 ) -> Dict:
     """Send query to Groq with optional structured market context."""
     client = _get_client()
@@ -947,6 +1397,8 @@ async def ask_groq(
     resolved_query = query
     if conversation_history:
         resolved_query = resolve_pronouns(query, conversation_history)
+
+    effective_style = response_style or infer_response_style(query, conversation_history)
 
     # Handle multi-intent detection
     multi_intent = intent_result.get("multi_intent", False)
@@ -977,6 +1429,14 @@ async def ask_groq(
         intent_addendum = _INTENT_PROMPTS.get("MULTI_STOCK", "")
         intent = "MULTI_STOCK"
 
+    if intent == "DERIVATIVES":
+        strategy_name = intent_result.get("detected_strategy") or detect_options_strategy(query)
+        if strategy_name and strategy_name in _OPTIONS_STRATEGY_PROMPTS:
+            intent_addendum += "\n\n" + _OPTIONS_STRATEGY_PROMPTS[strategy_name]
+            strategy_example = get_options_strategy_example(strategy_name, effective_style)
+            if strategy_example:
+                intent_addendum += "\n\n" + strategy_example
+
     # Sector screening: if SECTOR_SCREEN intent, run screener and inject results
     if intent == "SECTOR_SCREEN" and context:
         try:
@@ -985,12 +1445,16 @@ async def ask_groq(
             entities = context.get("entities", {})
             query_lower = query.lower()
 
-            # Detect sector keyword in query
-            sector_keywords = ["it", "banking", "pharma", "auto", "energy", "infra", "fmcg", "cement", "metal"]
+            # Detect sector with word boundaries; prefer longest matches first so
+            # "it" does not match inside "circuit" / "liquidity".
+            sector_keywords = [
+                "defence", "defense", "banking", "pharma", "energy", "infra",
+                "fmcg", "cement", "metal", "realty", "psu", "railway", "auto", "it",
+            ]
             detected_sector = None
             for sector_kw in sector_keywords:
-                if sector_kw in query_lower:
-                    detected_sector = sector_kw.upper()
+                if re.search(r"\b" + re.escape(sector_kw) + r"\b", query_lower):
+                    detected_sector = "DEFENCE" if sector_kw in ("defence", "defense") else sector_kw.upper()
                     break
 
             screening_criteria = {}
@@ -1020,6 +1484,11 @@ async def ask_groq(
 
     # Build system prompt: base + intent-specific addendum
     system_prompt = _BASE_SYSTEM_PROMPT + intent_addendum
+
+    if effective_style == "concise":
+        system_prompt += "\n\nRESPONSE STYLE: concise. Keep it to the key answer and essential rationale only."
+    else:
+        system_prompt += "\n\nRESPONSE STYLE: detailed. Include structured reasoning and calculation steps where relevant."
 
     # Build user profile from conversation history for tone/recommendation tailoring
     user_profile = build_user_profile_from_history(conversation_history)

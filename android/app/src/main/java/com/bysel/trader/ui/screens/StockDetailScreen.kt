@@ -56,6 +56,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bysel.trader.ui.format.formatInr
+import com.bysel.trader.ui.format.formatInrCompact
+import com.bysel.trader.ui.format.formatSignedPct
+import com.bysel.trader.ui.format.formatVolumeCompact
 import com.bysel.trader.data.models.AdvancedOrderRequest
 import com.bysel.trader.data.models.Alert
 import com.bysel.trader.data.models.CopilotSignal
@@ -65,6 +69,7 @@ import com.bysel.trader.data.models.PreTradeEstimateResponse
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.ui.components.appOutlinedTextFieldColors
 import com.bysel.trader.ui.components.PriceHistoryChart
+import com.bysel.trader.ui.components.InfoChip
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.viewmodel.TradingViewModel
 import java.text.SimpleDateFormat
@@ -503,8 +508,7 @@ private fun StockDetailHeroCard(
                         color = theme.textSecondary,
                     )
                 }
-                AssistChip(
-                    onClick = {},
+                InfoChip(
                     label = {
                         Text(
                             when (marketOpen) {
@@ -540,13 +544,13 @@ private fun StockDetailHeroCard(
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 targetGapPct?.let {
-                    AssistChip(onClick = {}, label = { Text("Target ${formatSignedPercent(it)}") })
+                    InfoChip(label = { Text("Target ${formatSignedPercent(it)}") })
                 }
                 yearPositionPct?.let {
-                    AssistChip(onClick = {}, label = { Text("52W ${String.format("%.0f", it)}%") })
+                    InfoChip(label = { Text("52W ${String.format("%.0f", it)}%") })
                 }
                 quote.volume?.let {
-                    AssistChip(onClick = {}, label = { Text("Vol ${formatCompactVolume(it)}") })
+                    InfoChip(label = { Text("Vol ${formatCompactVolume(it)}") })
                 }
             }
         }
@@ -744,8 +748,7 @@ private fun DetailTrustToolsCard(
                     fontWeight = FontWeight.SemiBold,
                     color = theme.text,
                 )
-                AssistChip(
-                    onClick = {},
+                InfoChip(
                     label = { Text(if (estimate != null) "Charge engine live" else "Quote context live") },
                 )
             }
@@ -866,7 +869,7 @@ private fun PriceStoryCard(
                     fontWeight = FontWeight.SemiBold,
                     color = theme.text,
                 )
-                AssistChip(onClick = {}, label = { Text("Range ${formatSignedPercent(intradayRangePct)}") })
+                InfoChip(label = { Text("Range ${formatSignedPercent(intradayRangePct)}") })
             }
 
             if (history.isEmpty()) {
@@ -1307,31 +1310,13 @@ private fun TextButtonLike(text: String, onClick: () -> Unit) {
     }
 }
 
-private fun formatCurrency(value: Double): String = "₹${String.format("%.2f", value)}"
+private fun formatCurrency(value: Double): String = formatInr(value)
 
-private fun formatSignedPercent(value: Double): String = buildString {
-    if (value > 0.0) append("+")
-    append(String.format("%.2f", value))
-    append("%")
-}
+private fun formatSignedPercent(value: Double): String = formatSignedPct(value)
 
-private fun formatCompactVolume(value: Long): String {
-    return when {
-        value >= 10_000_000L -> String.format("%.2fCr", value / 10_000_000.0)
-        value >= 100_000L -> String.format("%.2fL", value / 100_000.0)
-        value >= 1_000L -> String.format("%.1fK", value / 1_000.0)
-        else -> value.toString()
-    }
-}
+private fun formatCompactVolume(value: Long): String = formatVolumeCompact(value)
 
-private fun formatCompactNumber(value: Double): String {
-    val absValue = abs(value)
-    return when {
-        absValue >= 10_000_000 -> "₹${String.format("%.2f", value / 10_000_000)}Cr"
-        absValue >= 100_000 -> "₹${String.format("%.2f", value / 100_000)}L"
-        else -> "₹${String.format("%,.0f", value)}"
-    }
-}
+private fun formatCompactNumber(value: Double): String = formatInrCompact(value)
 
 @Composable
 private fun AiQuickActionsRow(

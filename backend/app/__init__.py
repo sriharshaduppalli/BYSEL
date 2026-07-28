@@ -214,6 +214,33 @@ app.include_router(streaming_router)
 app.include_router(ai_v2_router)  # Enhanced AI analysis endpoints
 app.include_router(journal_router)  # AI Trade Journal
 
+# Public legal pages for Play Console / in-app "About" links.
+# Files live in backend/static/legal/{privacy,terms,licenses}.html
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+_LEGAL_DIR = _STATIC_DIR / "legal"
+
+
+@app.get("/legal/{doc_name}")
+async def legal_document(doc_name: str):
+    allowed = {"privacy": "privacy.html", "terms": "terms.html", "licenses": "licenses.html"}
+    filename = allowed.get(doc_name.lower().strip())
+    if not filename:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Not found")
+    path = _LEGAL_DIR / filename
+    if not path.is_file():
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Legal document missing on server")
+    return FileResponse(path, media_type="text/html; charset=utf-8")
+
+
+if _STATIC_DIR.is_dir():
+    app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
 
 @app.get("/metrics/slo")
 async def slo_metrics_endpoint() -> dict:

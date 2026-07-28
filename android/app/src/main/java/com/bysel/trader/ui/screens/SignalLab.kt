@@ -1,5 +1,6 @@
 package com.bysel.trader.ui.screens
 
+import com.bysel.trader.ui.format.formatSignedPct
 import com.bysel.trader.data.models.Quote
 import kotlin.math.abs
 
@@ -206,8 +207,4 @@ private fun formatPercent(value: Double): String = String.format("%.1f%%", value
 
 private fun formatMultiple(value: Double): String = String.format("%.1fx", value)
 
-private fun formatSignedPercent(value: Double): String = buildString {
-    if (value > 0) append("+")
-    append(String.format("%.2f", value))
-    append("%")
-}
+private fun formatSignedPercent(value: Double): String = formatSignedPct(value)

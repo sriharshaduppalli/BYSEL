@@ -20,6 +20,7 @@ import com.bysel.trader.data.api.PortfolioRiskResponse
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.viewmodel.TradingViewModel
 import kotlinx.coroutines.launch
+import kotlin.math.max
 
 @Composable
 fun RiskLabScreen(
@@ -36,8 +37,14 @@ fun RiskLabScreen(
         scope.launch {
             isLoading = true
             errorMsg = null
-            riskData = viewModel.fetchPortfolioRisk()
-            if (riskData == null) errorMsg = "Could not load risk data. Check your holdings."
+            riskData = try {
+                viewModel.fetchPortfolioRisk()
+            } catch (_: Exception) {
+                null
+            }
+            if (riskData == null) {
+                errorMsg = "Could not load risk data. Check your holdings."
+            }
             isLoading = false
         }
     }
@@ -85,16 +92,27 @@ fun RiskLabScreen(
 
         val data = riskData ?: return@Column
 
+        val metrics = data.metrics
+        val var95Pct = safePercent(metrics.var95)
+        val var99Pct = safePercent(metrics.var99)
+        val annualizedReturnPct = safePercent(metrics.annualizedReturn)
+        val annualizedVolPct = safePercent(metrics.annualizedVolatility)
+        val maxDrawdownPct = safePercent(metrics.maxDrawdown)
+        val sharpeRatio = safeNumber(metrics.sharpeRatio, 2)
+        val monteCarloP95Pct = safePercent(data.monteCarloP95 - 1.0)
+        val monteCarloMedianPct = safePercent(data.monteCarloMedian - 1.0)
+        val monteCarloP5Pct = safePercent(data.monteCarloP5 - 1.0)
+
         LazyColumn(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
                 RiskSectionCard(title = "Value at Risk (1-Day)", appTheme = appTheme) {
-                    RiskRow("VaR 95%", "-${String.format("%.2f", data.metrics.var95 * 100)}%", Color(0xFFFF7043))
-                    RiskRow("VaR 99%", "-${String.format("%.2f", data.metrics.var99 * 100)}%", Color(0xFFE53935))
+                    RiskRow("VaR 95%", "-$var95Pct%", Color(0xFFFF7043))
+                    RiskRow("VaR 99%", "-$var99Pct%", Color(0xFFE53935))
                     Text(
-                        "With 95% confidence, daily loss won't exceed ${String.format("%.2f", data.metrics.var95 * 100)}%",
+                        "With 95% confidence, daily loss won't exceed $var95Pct%",
                         fontSize = 11.sp, color = appTheme.textSecondary, modifier = Modifier.padding(top = 4.dp)
                     )
                 }
@@ -102,21 +120,21 @@ fun RiskLabScreen(
 
             item {
                 RiskSectionCard(title = "Portfolio Performance", appTheme = appTheme) {
-                    RiskRow("Annualised Return", "${String.format("%.1f", data.metrics.annualizedReturn * 100)}%",
-                        if (data.metrics.annualizedReturn >= 0) Color(0xFF4CAF50) else Color(0xFFE53935))
-                    RiskRow("Annualised Volatility", "${String.format("%.1f", data.metrics.annualizedVolatility * 100)}%", Color(0xFFFF9800))
-                    RiskRow("Sharpe Ratio", String.format("%.2f", data.metrics.sharpeRatio),
-                        if (data.metrics.sharpeRatio >= 1) Color(0xFF4CAF50) else Color(0xFFFF9800))
-                    RiskRow("Max Drawdown", "-${String.format("%.1f", data.metrics.maxDrawdown * 100)}%", Color(0xFFE53935))
+                    RiskRow("Annualised Return", "$annualizedReturnPct%",
+                        if (metrics.annualizedReturn >= 0) Color(0xFF4CAF50) else Color(0xFFE53935))
+                    RiskRow("Annualised Volatility", "$annualizedVolPct%", Color(0xFFFF9800))
+                    RiskRow("Sharpe Ratio", sharpeRatio,
+                        if (metrics.sharpeRatio >= 1) Color(0xFF4CAF50) else Color(0xFFFF9800))
+                    RiskRow("Max Drawdown", "-$maxDrawdownPct%", Color(0xFFE53935))
                 }
             }
 
             item {
                 RiskSectionCard(title = "Monte Carlo (500 simulations, 30-day)", appTheme = appTheme) {
-                    RiskRow("Best Case (P95)", "+${String.format("%.1f", (data.monteCarloP95 - 1) * 100)}%", Color(0xFF4CAF50))
-                    RiskRow("Median Outcome", "${String.format("%.1f", (data.monteCarloMedian - 1) * 100)}%",
+                    RiskRow("Best Case (P95)", "+$monteCarloP95Pct%", Color(0xFF4CAF50))
+                    RiskRow("Median Outcome", "$monteCarloMedianPct%",
                         if (data.monteCarloMedian >= 1) Color(0xFF4CAF50) else Color(0xFFE53935))
-                    RiskRow("Worst Case (P5)", "${String.format("%.1f", (data.monteCarloP5 - 1) * 100)}%", Color(0xFFE53935))
+                    RiskRow("Worst Case (P5)", "$monteCarloP5Pct%", Color(0xFFE53935))
 
                     Spacer(modifier = Modifier.height(8.dp))
                     MonteCarloBar(
@@ -199,9 +217,13 @@ private fun MonteCarloBar(
     p95: Float,
     appTheme: com.bysel.trader.ui.theme.AppTheme
 ) {
-    val min = minOf(p5, 0.9f)
-    val max = maxOf(p95, 1.1f)
-    val range = max - min
+    val safeP5 = p5.takeIf { it.isFinite() } ?: 0.95f
+    val safeMedian = median.takeIf { it.isFinite() } ?: 1.0f
+    val safeP95 = p95.takeIf { it.isFinite() } ?: 1.05f
+
+    val min = minOf(safeP5, 0.9f)
+    val max = maxOf(safeP95, 1.1f)
+    val range = max(max - min, 0.0001f)
 
     fun toFraction(v: Float) = ((v - min) / range).coerceIn(0f, 1f)
 
@@ -215,8 +237,8 @@ private fun MonteCarloBar(
         val totalWidth = maxWidth
 
         // Green zone: median to p95
-        val greenStart = toFraction(median)
-        val greenEnd = toFraction(p95)
+        val greenStart = toFraction(safeMedian)
+        val greenEnd = toFraction(safeP95)
         Box(
             modifier = Modifier
                 .offset(x = totalWidth * greenStart)
@@ -228,7 +250,7 @@ private fun MonteCarloBar(
         // Median marker
         Box(
             modifier = Modifier
-                .offset(x = totalWidth * toFraction(median) - 1.dp)
+                .offset(x = totalWidth * toFraction(safeMedian) - 1.dp)
                 .width(2.dp)
                 .fillMaxHeight()
                 .background(Color(0xFF4CAF50))
@@ -277,6 +299,7 @@ private fun CorrelationMatrixView(
                 )
                 row.forEach { corr ->
                     val bg = when {
+                        !corr.isFinite() -> appTheme.card
                         corr >= 0.7 -> Color(0xFFE53935).copy(alpha = 0.5f)
                         corr >= 0.3 -> Color(0xFFFF9800).copy(alpha = 0.4f)
                         corr <= -0.3 -> Color(0xFF4CAF50).copy(alpha = 0.4f)
@@ -292,7 +315,7 @@ private fun CorrelationMatrixView(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            String.format("%.2f", corr),
+                            safeNumber(corr, 2),
                             fontSize = 9.sp,
                             color = appTheme.text,
                             fontWeight = FontWeight.SemiBold
@@ -302,4 +325,14 @@ private fun CorrelationMatrixView(
             }
         }
     }
+}
+
+private fun safeNumber(value: Double, decimals: Int): String {
+    if (!value.isFinite()) return "--"
+    return String.format("%.${decimals}f", value)
+}
+
+private fun safePercent(value: Double): String {
+    if (!value.isFinite()) return "--"
+    return String.format("%.1f", value * 100)
 }

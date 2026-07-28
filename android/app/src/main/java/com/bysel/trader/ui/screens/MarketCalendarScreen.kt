@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.MarketHoliday
 import com.bysel.trader.data.models.MarketHolidayCalendar
+import com.bysel.trader.ui.components.InfoChip
 import com.bysel.trader.ui.theme.LocalAppTheme
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -300,33 +301,27 @@ fun HolidayCard(holiday: MarketHoliday, isToday: Boolean) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    AssistChip(
-                        onClick = {},
+                    InfoChip(
                         label = {
                             Text(
                                 text = holiday.date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()),
                                 fontSize = 10.sp
                             )
                         },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = LocalAppTheme.current.primary.copy(alpha = 0.2f),
-                            labelColor = LocalAppTheme.current.primary
-                        )
+                        containerColor = LocalAppTheme.current.primary.copy(alpha = 0.2f),
+                        contentColor = LocalAppTheme.current.primary
                     )
                     
                     holiday.exchanges.forEach { exchange ->
-                        AssistChip(
-                            onClick = {},
+                        InfoChip(
                             label = {
                                 Text(
                                     text = exchange,
                                     fontSize = 10.sp
                                 )
                             },
-                            colors = AssistChipDefaults.assistChipColors(
-                                containerColor = LocalAppTheme.current.textSecondary.copy(alpha = 0.2f),
-                                labelColor = LocalAppTheme.current.textSecondary
-                            )
+                            containerColor = LocalAppTheme.current.textSecondary.copy(alpha = 0.2f),
+                            contentColor = LocalAppTheme.current.textSecondary
                         )
                     }
                 }

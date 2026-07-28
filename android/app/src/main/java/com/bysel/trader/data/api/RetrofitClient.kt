@@ -54,6 +54,7 @@ object RetrofitClient {
             .addInterceptor(HttpLoggingInterceptor().apply {
                 level = loggingLevel
             })
+            // Market/trading calls should fail fast; AI uses [aiHttpClient] instead.
             .callTimeout(25, TimeUnit.SECONDS)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
@@ -67,6 +68,22 @@ object RetrofitClient {
         builder.build()
     }
 
+    /**
+     * Dedicated client for AI endpoints.
+     *
+     * Render free-tier cold starts often exceed 30–60s. The shared [httpClient] uses a 25s
+     * callTimeout, which is why the first AI chat message used to fail with a generic
+     * "couldn't process that" error.
+     */
+    val aiHttpClient: OkHttpClient by lazy {
+        httpClient.newBuilder()
+            .callTimeout(90, TimeUnit.SECONDS)
+            .connectTimeout(45, TimeUnit.SECONDS)
+            .readTimeout(90, TimeUnit.SECONDS)
+            .writeTimeout(45, TimeUnit.SECONDS)
+            .build()
+    }
+
     private val retrofit: Retrofit by lazy {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
@@ -75,7 +92,19 @@ object RetrofitClient {
             .build()
     }
 
+    private val aiRetrofit: Retrofit by lazy {
+        Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(aiHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
     val apiService: BYSELApiService by lazy {
         retrofit.create(BYSELApiService::class.java)
+    }
+
+    val aiApiService: BYSELApiService by lazy {
+        aiRetrofit.create(BYSELApiService::class.java)
     }
 }

@@ -49,10 +49,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bysel.trader.ui.format.formatInr
+import com.bysel.trader.ui.format.formatSignedPct
+import com.bysel.trader.ui.format.formatVolumeCompact
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.SignalLabBucketFeed
 import com.bysel.trader.data.models.StockSearchResult
 import com.bysel.trader.ui.components.appOutlinedTextFieldColors
+import com.bysel.trader.ui.components.InfoChip
 import com.bysel.trader.ui.theme.LocalAppTheme
 import kotlinx.coroutines.delay
 import kotlin.math.abs
@@ -587,9 +591,9 @@ private fun SearchHeroCard(
                 lineHeight = 19.sp,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip(onClick = {}, label = { Text("$quoteCount live quotes") })
-                AssistChip(onClick = {}, label = { Text("$watchlistCount watchlist") })
-                AssistChip(onClick = {}, label = { Text("$upCount up / $downCount down") })
+                InfoChip(label = { Text("$quoteCount live quotes") })
+                InfoChip(label = { Text("$watchlistCount watchlist") })
+                InfoChip(label = { Text("$upCount up / $downCount down") })
             }
         }
     }
@@ -637,8 +641,7 @@ private fun SignalLabCard(
                 color = LocalAppTheme.current.textSecondary,
                 lineHeight = 18.sp,
             )
-            AssistChip(
-                onClick = {},
+            InfoChip(
                 label = {
                     Text("${bucket.quotes.size} live setup${if (bucket.quotes.size == 1) "" else "s"}")
                 },
@@ -711,14 +714,13 @@ private fun BackendSignalLabCard(
                 lineHeight = 18.sp,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip(
-                    onClick = {},
+                InfoChip(
                     label = {
                         Text("${bucket.candidates.size} setup${if (bucket.candidates.size == 1) "" else "s"}")
                     },
                 )
                 if (bucket.proxy) {
-                    AssistChip(onClick = {}, label = { Text("Proxy") })
+                    InfoChip(label = { Text("Proxy") })
                 }
             }
 
@@ -980,19 +982,8 @@ private fun loadRecentSymbols(prefs: android.content.SharedPreferences): List<St
         .take(8)
 }
 
-private fun formatCurrency(value: Double): String = "₹${String.format("%.2f", value)}"
+private fun formatCurrency(value: Double): String = formatInr(value)
 
-private fun formatSignedPercent(value: Double): String = buildString {
-    if (value > 0) append("+")
-    append(String.format("%.2f", value))
-    append("%")
-}
+private fun formatSignedPercent(value: Double): String = formatSignedPct(value)
 
-private fun formatCompactVolume(value: Long): String {
-    return when {
-        value >= 10_000_000L -> String.format("%.2fCr", value / 10_000_000.0)
-        value >= 100_000L -> String.format("%.2fL", value / 100_000.0)
-        value >= 1_000L -> String.format("%.1fK", value / 1_000.0)
-        else -> value.toString()
-    }
-}
+private fun formatCompactVolume(value: Long): String = formatVolumeCompact(value)

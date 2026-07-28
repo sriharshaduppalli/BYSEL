@@ -25,8 +25,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.BusinessCenter
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Notifications
@@ -65,7 +67,6 @@ private data class MoreMenuEntry(
 @Composable
 fun MoreScreen(
     onSearchClick: () -> Unit,
-    onLiveQuotesClick: () -> Unit,
     onAlertsClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onAchievementsClick: () -> Unit,
@@ -83,6 +84,8 @@ fun MoreScreen(
     onRiskLabClick: () -> Unit,
     onEarningsCalendarClick: () -> Unit,
     onTradeJournalClick: () -> Unit,
+    onWatchlistClick: () -> Unit,
+    onMarketCalendarClick: () -> Unit,
 ) {
     val utilityEntries = listOf(
         MoreMenuEntry(
@@ -112,6 +115,20 @@ fun MoreScreen(
             subtitle = "Your milestones and streaks",
             gradientColors = listOf(Color(0xFF2E7D32), Color(0xFF81C784)),
             onClick = onAchievementsClick,
+        ),
+        MoreMenuEntry(
+            icon = Icons.Filled.Bookmarks,
+            title = "My Watchlist",
+            subtitle = "Every tracked symbol on one screen",
+            gradientColors = listOf(Color(0xFF00695C), Color(0xFF4DB6AC)),
+            onClick = onWatchlistClick,
+        ),
+        MoreMenuEntry(
+            icon = Icons.Filled.EventAvailable,
+            title = "Market Holidays",
+            subtitle = "NSE/BSE trading holidays and next session",
+            gradientColors = listOf(Color(0xFF4A148C), Color(0xFF9575CD)),
+            onClick = onMarketCalendarClick,
         ),
     )
 
@@ -250,7 +267,6 @@ fun MoreScreen(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                QuickInfoChip(label = "Live Quotes", onClick = onLiveQuotesClick)
                 QuickInfoChip(label = "ETF", onClick = onEtfClick)
                 QuickInfoChip(label = "F&O", onClick = onDerivativesClick)
                 QuickInfoChip(label = "SIP", onClick = onSipClick)

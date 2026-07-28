@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.MarketHeatmap
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.SignalLabBucketFeed
+import com.bysel.trader.ui.components.InfoChip
 import com.bysel.trader.ui.theme.LocalAppTheme
 
 private enum class SignalLabTimeframe(val title: String, val summary: String) {
@@ -208,6 +209,13 @@ fun SignalLabScreen(
                         fontWeight = FontWeight.SemiBold,
                         color = theme.text,
                     )
+                    Text(
+                        text = "Server buckets from live quotes (Results Week / Institutional proxy). Not a brokerage research feed.",
+                        fontSize = 11.sp,
+                        color = theme.textSecondary,
+                        lineHeight = 16.sp,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+                    )
                 }
 
                 items(scopedBackendBuckets, key = { it.bucketId }) { bucket ->
@@ -264,9 +272,9 @@ private fun BackendSignalBucketCard(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (bucket.proxy) {
-                        AssistChip(onClick = {}, label = { Text("Proxy") })
+                        InfoChip(label = { Text("Proxy") })
                     }
-                    AssistChip(onClick = {}, label = { Text("${bucket.candidates.size}") })
+                    InfoChip(label = { Text("${bucket.candidates.size}") })
                 }
             }
 
@@ -373,10 +381,16 @@ private fun SignalLabHeroCard(
                 color = theme.textSecondary,
                 lineHeight = 18.sp,
             )
+            Text(
+                text = "Live quote heuristics + Phase-2 discovery buckets. Institutional Conviction is a proxy blend — not FII/DII filings. Refresh for the latest tape.",
+                fontSize = 11.sp,
+                color = theme.textSecondary,
+                lineHeight = 16.sp,
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip(onClick = {}, label = { Text("$quoteCount scoped quotes") })
-                AssistChip(onClick = {}, label = { Text("$bucketCount live buckets") })
-                AssistChip(onClick = {}, label = { Text(selectedSector) })
+                InfoChip(label = { Text("$quoteCount scoped quotes") })
+                InfoChip(label = { Text("$bucketCount live buckets") })
+                InfoChip(label = { Text(selectedSector) })
             }
             FilledTonalButton(onClick = onRefresh) {
                 Text("Refresh Signals")
@@ -489,8 +503,7 @@ private fun SignalBucketDetailCard(
                         lineHeight = 18.sp,
                     )
                 }
-                AssistChip(
-                    onClick = {},
+                InfoChip(
                     label = { Text("${bucket.quotes.size}") },
                 )
             }

@@ -133,6 +133,34 @@ data class MarketNewsResponse(
     val generatedAt: String = ""
 )
 
+data class MarketMoverQuote(
+    @SerializedName("symbol")
+    val symbol: String = "",
+    @SerializedName("name")
+    val name: String = "",
+    @SerializedName("last")
+    val last: Double = 0.0,
+    @SerializedName("pctChange")
+    val pctChange: Double = 0.0,
+    @SerializedName("volume")
+    val volume: Long = 0L,
+)
+
+data class MarketMoversResponse(
+    @SerializedName("gainers")
+    val gainers: List<MarketMoverQuote> = emptyList(),
+    @SerializedName("losers")
+    val losers: List<MarketMoverQuote> = emptyList(),
+    @SerializedName("mostActive")
+    val mostActive: List<MarketMoverQuote> = emptyList(),
+    @SerializedName("universeSize")
+    val universeSize: Int = 0,
+    @SerializedName("generatedAt")
+    val generatedAt: String = "",
+    @SerializedName("cached")
+    val cached: Boolean = false,
+)
+
 data class StockSearchResult(
     val symbol: String,
     val name: String,
@@ -141,8 +169,15 @@ data class StockSearchResult(
 
 // ==================== AI & ANALYTICS MODELS ====================
 
+data class ConversationTurn(
+    val role: String,   // "user" or "assistant"
+    val content: String
+)
+
 data class AiQuery(
-    val query: String
+    val query: String,
+    @com.google.gson.annotations.SerializedName("conversation_history")
+    val conversationHistory: List<ConversationTurn>? = null
 )
 
 data class AiAssistantResponse(
@@ -301,7 +336,10 @@ data class MarketHeatmap(
     val moodDescription: String = "",
     val bestSector: SectorSummary = SectorSummary(),
     val worstSector: SectorSummary = SectorSummary(),
-    val lastUpdated: String = ""
+    val lastUpdated: String = "",
+    val marketOpen: Boolean? = null,
+    val isStale: Boolean = false,
+    val staleReason: String? = null,
 )
 
 data class SectorSummary(
@@ -790,6 +828,21 @@ data class AuthResponse(
     val user_id: Int,
     val access_token: String,
     val refresh_token: String
+)
+
+data class UserProfile(
+    val status: String,
+    val user_id: Int,
+    val username: String,
+    val email: String,
+    @SerializedName("mobile_number") val mobileNumber: String? = null,
+    @SerializedName("created_at") val createdAt: String? = null,
+)
+
+data class UserProfileUpdateRequest(
+    val username: String,
+    val email: String,
+    @SerializedName("mobile_number") val mobileNumber: String? = null,
 )
 
 data class PasswordResetRequestResponse(

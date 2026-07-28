@@ -248,6 +248,9 @@ dependencies {
     // SMS Retriever / User Consent API (no SMS permission required)
     implementation("com.google.android.gms:play-services-auth:21.3.0")
     implementation("com.google.android.gms:play-services-auth-api-phone:17.5.0")
+    // On-device LLM inference via MediaPipe (runs Gemma on device — no server cost)
+    implementation("com.google.mediapipe:tasks-genai:0.10.14")
+
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.11")
     testImplementation("androidx.work:work-testing:2.8.1")

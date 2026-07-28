@@ -28,6 +28,16 @@ import com.bysel.trader.data.models.HeatmapStock
 import com.bysel.trader.data.models.MarketHeatmap
 import com.bysel.trader.ui.components.PullToRefreshBox
 import com.bysel.trader.ui.theme.LocalAppTheme
+import java.util.Calendar
+import java.util.TimeZone
+
+private fun isNseMarketOpen(): Boolean {
+    val ist = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata"))
+    val dow = ist.get(Calendar.DAY_OF_WEEK)
+    if (dow == Calendar.SATURDAY || dow == Calendar.SUNDAY) return false
+    val timeInMin = ist.get(Calendar.HOUR_OF_DAY) * 60 + ist.get(Calendar.MINUTE)
+    return timeInMin in (9 * 60 + 15)..(15 * 60 + 30)
+}
 
 @Composable
 fun HeatmapScreen(
@@ -35,18 +45,29 @@ fun HeatmapScreen(
     isLoading: Boolean,
     onRefresh: () -> Unit,
     onStockClick: (String) -> Unit,
-    heatmapInterval: Int = 1000  // Reduced from 2000ms to 1000ms for sub-1s market updates
+    heatmapInterval: Int = 1000,
+    isActive: Boolean = true
 ) {
-    // Initial load
+    var marketOpen by remember { mutableStateOf(isNseMarketOpen()) }
+
+    // Initial load (always, to show last available data)
     LaunchedEffect(Unit) {
         if (heatmap == null) onRefresh()
     }
 
-    // Periodic refresh using user interval (1 second for real-time market data)
-    LaunchedEffect(heatmapInterval) {
+    // Periodic refresh — only during NSE market hours, only while this tab is visible.
+    // Floor at 5s: backend heatmap cache is ~30s, so sub-second polling wastes work.
+    LaunchedEffect(heatmapInterval, isActive) {
+        if (!isActive) return@LaunchedEffect
+        val pollMs = heatmapInterval.toLong().coerceAtLeast(5_000L)
         while (true) {
-            onRefresh()
-            kotlinx.coroutines.delay(heatmapInterval.toLong())
+            marketOpen = isNseMarketOpen()
+            if (marketOpen) {
+                onRefresh()
+                kotlinx.coroutines.delay(pollMs)
+            } else {
+                kotlinx.coroutines.delay(60_000L)
+            }
         }
     }
 
@@ -57,6 +78,12 @@ fun HeatmapScreen(
     ) {
         // Header with market mood
         HeatmapHeader(heatmap)
+
+        // Market status banner
+        MarketStatusBanner(
+            marketOpen = marketOpen,
+            staleReason = heatmap?.staleReason ?: heatmap?.moodDescription?.takeIf { heatmap.isStale },
+        )
 
         if (isLoading && heatmap == null) {
             Box(
@@ -69,7 +96,7 @@ fun HeatmapScreen(
                     Text("Loading market data...", color = LocalAppTheme.current.textSecondary, fontSize = 14.sp)
                 }
             }
-        } else if (heatmap != null) {
+        } else if (heatmap != null && heatmap.sectors.isNotEmpty()) {
             PullToRefreshBox(
                 isRefreshing = isLoading,
                 onRefresh = onRefresh,
@@ -86,12 +113,64 @@ fun HeatmapScreen(
                 }
 
                 // Sector cards
-                items(heatmap.sectors) { sector ->
+                items(heatmap.sectors, key = { it.name }) { sector ->
                     SectorHeatmapCard(sector, onStockClick)
                 }
             }
             }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = heatmap?.staleReason
+                            ?: heatmap?.moodDescription?.takeIf { it.isNotBlank() }
+                            ?: "No heatmap snapshot yet. Pull to refresh when the market is open, or retry now.",
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 14.sp,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(onClick = onRefresh) { Text("Retry heatmap") }
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun MarketStatusBanner(marketOpen: Boolean, staleReason: String? = null) {
+    val ist = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata"))
+    val dow = ist.get(Calendar.DAY_OF_WEEK)
+    val isWeekend = dow == Calendar.SATURDAY || dow == Calendar.SUNDAY
+
+    val (bgColor, icon, message) = when {
+        marketOpen -> Triple(Color(0xFF1B5E20), Icons.Filled.TrendingUp, "Market Open  •  Live quotes (server refreshes ~30s)")
+        isWeekend -> Triple(
+            Color(0xFF1A1A2E),
+            Icons.Filled.Weekend,
+            staleReason ?: "Weekend  •  Market closed  •  Showing last session data",
+        )
+        else -> Triple(
+            Color(0xFF4A1010),
+            Icons.Filled.Schedule,
+            staleReason ?: "Market Closed  •  NSE opens Mon–Fri 9:15 AM IST  •  Showing last session data",
+        )
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(bgColor)
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(14.dp))
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(message, color = Color.White.copy(alpha = 0.9f), fontSize = 11.sp)
     }
 }
 

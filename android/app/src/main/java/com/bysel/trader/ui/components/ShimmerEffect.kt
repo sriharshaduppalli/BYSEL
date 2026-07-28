@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
 fun ShimmerBox(
@@ -35,12 +36,12 @@ fun ShimmerBox(
         ),
         label = "shimmer"
     )
+    // Derived from the active theme so skeletons stay visible in light themes too.
+    val theme = LocalAppTheme.current
+    val base = theme.textSecondary.copy(alpha = 0.18f)
+    val highlight = theme.textSecondary.copy(alpha = 0.32f)
     val shimmerBrush = Brush.linearGradient(
-        colors = listOf(
-            Color(0xFF2A2A2A),
-            Color(0xFF3A3A3A),
-            Color(0xFF2A2A2A),
-        ),
+        colors = listOf(base, highlight, base),
         start = Offset(translateAnim - 200f, 0f),
         end = Offset(translateAnim, 0f),
     )

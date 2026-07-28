@@ -166,6 +166,23 @@ class MarketNewsResponse(BaseModel):
     generatedAt: str
 
 
+class MarketMoverQuote(BaseModel):
+    symbol: str
+    name: str = ""
+    last: float = 0.0
+    pctChange: float = 0.0
+    volume: int = 0
+
+
+class MarketMoversResponse(BaseModel):
+    gainers: List[MarketMoverQuote] = []
+    losers: List[MarketMoverQuote] = []
+    mostActive: List[MarketMoverQuote] = []
+    universeSize: int = 0
+    generatedAt: str = ""
+    cached: bool = False
+
+
 class MutualFund(BaseModel):
     schemeCode: str
     schemeName: str

@@ -67,6 +67,11 @@ def _load_nse_equity_map() -> None:
         finally:
             _NSE_EQUITY_LOADED = True  # don't retry even on failure
 
+
+def get_nse_equity_map() -> dict[str, str]:
+    """Public accessor for the NSE EQUITY_L symbol→name map (~2000+ equities)."""
+    _load_nse_equity_map()
+    return dict(_NSE_EQUITY_MAP)
 _NAME_TO_SYMBOL: dict[str, str] = {
     "reliance": "RELIANCE", "ril": "RELIANCE",
     "tcs": "TCS", "tata consultancy": "TCS",
@@ -776,16 +781,20 @@ def screen_stocks(criteria: Optional[Dict] = None) -> List[Dict]:
 
     # Sector keywords mapping to stock symbols (common Indian stocks)
     SECTOR_STOCKS = {
-        "IT": ["TCS", "INFY", "WIPRO", "HCLTECH", "TECHM", "MPHASIS", "KPITTECH", "LTTS"],
-        "BANKING": ["SBIN", "ICICIBANK", "HDFC BANK", "AXISBANK", "KOTAKBANK", "INDUSINDBK"],
-        "PHARMA": ["SUNPHARMA", "CIPLA", "LUPIN", "DIVI S", "BIOCON", "ALKEM"],
-        "AUTO": ["MARUTI", "HYUNDAI", "TATAMOTORS", "BAJAJFINSV", "ASIANPAINT"],
-        "ENERGY": ["RELIANCE", "NTPC", "POWERGRID", "INDIASB", "IOC"],
-        "INFRA": ["ADANIGREEN", "ADANIPORTS", "BHARTIARTL", "JIO FINANCIAL"],
-        "FMCG": ["ITC", "NESTLE", "HUL", "BRITANNIA", "BAJAJFINSV"],
-        "CEMENT": ["ULCEMIN", "SHREECEM", "DALMIACEM"],
-        "METAL": ["TATASTEEL", "HINDALCO", "NMDC", "SAILS"],
-        "CHEMICAL": ["BASF", "CHEMICALS", "SCI", "COLPAL"],
+        "IT": ["TCS", "INFY", "WIPRO", "HCLTECH", "TECHM", "MPHASIS", "LTTS"],
+        "BANKING": ["SBIN", "ICICIBANK", "HDFCBANK", "AXISBANK", "KOTAKBANK", "INDUSINDBK"],
+        "PHARMA": ["SUNPHARMA", "CIPLA", "LUPIN", "DIVISLAB", "BIOCON", "DRREDDY"],
+        "AUTO": ["MARUTI", "TATAMOTORS", "M&M", "BAJAJ-AUTO", "HEROMOTOCO", "EICHERMOT"],
+        "ENERGY": ["RELIANCE", "NTPC", "POWERGRID", "ONGC", "IOC", "BPCL"],
+        "INFRA": ["LT", "ADANIPORTS", "ADANIENT", "IRCON", "RVNL"],
+        "FMCG": ["ITC", "HINDUNILVR", "NESTLEIND", "BRITANNIA", "DABUR", "MARICO"],
+        "CEMENT": ["ULTRACEMCO", "SHREECEM", "AMBUJACEM", "ACC", "DALMIACEM"],
+        "METAL": ["TATASTEEL", "HINDALCO", "JSWSTEEL", "VEDL", "SAIL"],
+        "DEFENCE": ["HAL", "BEL", "BDL", "MAZDOCK", "COCHINSHIP", "GRSE", "DATAPATTNS"],
+        "DEFENSE": ["HAL", "BEL", "BDL", "MAZDOCK", "COCHINSHIP", "GRSE", "DATAPATTNS"],
+        "PSU": ["SBIN", "NTPC", "ONGC", "BPCL", "IOC", "COALINDIA", "BEL", "HAL"],
+        "REALTY": ["DLF", "GODREJPROP", "OBEROIRLTY", "PRESTIGE", "LODHA"],
+        "RAILWAY": ["IRCTC", "IRFC", "RVNL", "IRCON", "RAILTEL"],
     }
 
     sector = criteria.get("sector", "").upper()
@@ -834,6 +843,13 @@ def screen_stocks(criteria: Optional[Dict] = None) -> List[Dict]:
 
 
 def extract_symbol_from_query(query: str) -> Optional[str]:
+    # Strip Android prompt wrapper first so tokens like CONTEXT / WALLET aren't tickers.
+    raw = (query or "").strip()
+    if raw.lower().startswith("user_query:"):
+        raw = raw.split(":", 1)[1].strip()
+    if " | context:" in raw:
+        raw = raw.split(" | context:", 1)[0].strip()
+    query = raw
     q_lower = query.lower()
 
     # Step 1: reject general market / list queries — no specific stock being asked
@@ -856,7 +872,8 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
         r'\bwhich\b.{0,30}\bholdings?\b',
         r'\bbest\b.{0,20}\bentry\b',
         r'\bentry\s+(point|price|level)s?\b',
-        r'\b(bank|pharma|auto|energy|fmcg|defence|infra|it)\s+stocks?\b',
+        r'\b(bank|pharma|auto|energy|fmcg|defence|defense|infra|it|psu|realty|railway)\s+stocks?\b',
+        r'\b(defence|defense|psu|realty)\b',
         r'\baccumulate\b',
         r'\bbreakout\b.{0,20}\bstocks?\b',
         r'\bstocks?\b.{0,20}\bbreakout\b',
@@ -926,9 +943,14 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
         "OUTLOOK", "IMPACT", "EFFECT", "POINT", "POINTS",
         "MONEY", "GAINS", "PAYING", "QUARTER", "QUARTERLY",
         "ANNUAL", "MONTHLY", "PEERS", "SECTOR",
+        # Android prompt-wrapper tokens
+        "CONTEXT", "WALLET", "HOLDINGS", "HISTORY", "SYMBOL", "USER",
+        "QUERY", "PORTFOLIOSCORE", "PCTCHANGE", "MARKETCAP",
         # time
         "YEAR", "MONTH", "WEEK", "TERM", "LONG", "SHORT",
         "NEXT", "LAST", "TODAY", "DAILY", "WEEKLY", "MONTHLY",
+        # sector themes that look like tickers
+        "DEFENCE", "DEFENSE", "PHARMA", "FMCG", "INFRA", "REALTY",
     }
     q_upper = query.upper().strip()
     tokens = re.findall(r'\b[A-Z][A-Z0-9\-]{1,9}\b', q_upper)

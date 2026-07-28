@@ -15,6 +15,9 @@ object AuthSessionManager {
     private const val KEY_ACCESS_TOKEN = "access_token"
     private const val KEY_REFRESH_TOKEN = "refresh_token"
     private const val KEY_USER_ID = "user_id"
+    private const val KEY_ACCESS_TOKEN_EXPIRY = "access_token_expiry_ms"
+    // Proactively refresh when less than 5 minutes remain
+    private const val EXPIRY_BUFFER_MS = 5 * 60 * 1000L
 
     @Volatile
     private var prefs: SharedPreferences? = null
@@ -60,12 +63,14 @@ object AuthSessionManager {
         }
     }
 
-    fun saveSession(accessToken: String?, refreshToken: String?, userId: Int?) {
+    fun saveSession(accessToken: String?, refreshToken: String?, userId: Int?, accessTokenTtlSeconds: Int = 7200) {
         val sharedPrefs = prefs ?: return
+        val expiryMs = if (!accessToken.isNullOrBlank()) System.currentTimeMillis() + (accessTokenTtlSeconds * 1000L) else 0L
         with(sharedPrefs.edit()) {
             if (accessToken.isNullOrBlank()) remove(KEY_ACCESS_TOKEN) else putString(KEY_ACCESS_TOKEN, accessToken)
             if (refreshToken.isNullOrBlank()) remove(KEY_REFRESH_TOKEN) else putString(KEY_REFRESH_TOKEN, refreshToken)
             if (userId == null) remove(KEY_USER_ID) else putInt(KEY_USER_ID, userId)
+            if (expiryMs > 0L) putLong(KEY_ACCESS_TOKEN_EXPIRY, expiryMs) else remove(KEY_ACCESS_TOKEN_EXPIRY)
             apply()
         }
         _sessionState.value = hasSession()
@@ -80,6 +85,12 @@ object AuthSessionManager {
     fun getAccessToken(): String? = prefs?.getString(KEY_ACCESS_TOKEN, null)
 
     fun getRefreshToken(): String? = prefs?.getString(KEY_REFRESH_TOKEN, null)
+
+    fun isAccessTokenExpiringSoon(): Boolean {
+        val expiryMs = prefs?.getLong(KEY_ACCESS_TOKEN_EXPIRY, 0L) ?: return false
+        if (expiryMs == 0L) return false
+        return System.currentTimeMillis() >= expiryMs - EXPIRY_BUFFER_MS
+    }
 
     fun getUserId(): Int? {
         val sharedPrefs = prefs ?: return null

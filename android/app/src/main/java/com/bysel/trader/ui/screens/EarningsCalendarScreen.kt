@@ -38,7 +38,11 @@ fun EarningsCalendarScreen(
         scope.launch {
             isLoading = true
             errorMsg = null
-            data = viewModel.fetchEarningsCalendar()
+            data = try {
+                viewModel.fetchEarningsCalendar()
+            } catch (_: Exception) {
+                null
+            }
             if (data == null) errorMsg = "Could not load earnings data."
             isLoading = false
         }

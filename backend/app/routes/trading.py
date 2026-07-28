@@ -502,18 +502,39 @@ def withdraw_funds(db: Session, user_id: int, amount: float) -> WalletResponse:
 
 
 def get_holdings(db: Session, user_id: int = 1) -> list[Holding]:
-    """Get all holdings with live prices for a specific user."""
+    """Get all holdings with live prices for a specific user.
+
+    Uses one batched quote fetch. Never falls back to N serial Yahoo calls
+    (that path caused portfolio HTTP 500 / gateway timeouts under load).
+    """
     holdings_db = db.query(HoldingModel).filter(HoldingModel.user_id == user_id).all()
+    if not holdings_db:
+        return []
+
+    symbols = [h.symbol for h in holdings_db if h.symbol]
+    live_by_symbol: dict[str, float] = {}
+    try:
+        from ..market_data import fetch_quotes, _safe_number
+        for quote in fetch_quotes(symbols) or []:
+            sym = str(quote.get("symbol") or "").upper()
+            last = _safe_number(quote.get("last"), 0.0)
+            if sym and last > 0:
+                live_by_symbol[sym] = last
+    except Exception as exc:
+        logger.warning("get_holdings quote batch failed user_id=%s reason=%s", user_id, exc)
+        live_by_symbol = {}
+
     holdings = []
     for h in holdings_db:
-        # Fetch live price for each holding
-        live_quote = fetch_quote(h.symbol)
-        live_price = live_quote["last"] if live_quote["last"] > 0 else h.last_price
+        live_price = live_by_symbol.get(h.symbol.upper()) or (
+            h.last_price if h.last_price and h.last_price > 0 else 0.0
+        )
+        # Prefer last known DB price over another network hop when batch missed a symbol.
+        if live_price <= 0:
+            live_price = h.last_price or 0.0
 
-        # Update stored price
         h.last_price = live_price
         h.pnl = round((live_price - h.avg_price) * h.quantity, 2)
-        db.commit()
 
         holdings.append(Holding(
             symbol=h.symbol,
@@ -522,6 +543,10 @@ def get_holdings(db: Session, user_id: int = 1) -> list[Holding]:
             last=round(live_price, 2),
             pnl=round(h.pnl, 2)
         ))
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
     return holdings
 
 

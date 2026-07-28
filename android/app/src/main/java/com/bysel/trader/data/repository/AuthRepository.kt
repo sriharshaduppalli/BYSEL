@@ -19,8 +19,14 @@ import com.bysel.trader.data.models.OTPResponse
 import com.bysel.trader.data.models.LogoutRequest
 import com.bysel.trader.data.models.RefreshTokenRequest
 import com.bysel.trader.data.models.RegisterRequest
+import com.bysel.trader.data.models.UserProfile
+import com.bysel.trader.data.models.UserProfileUpdateRequest
+import android.util.Log
+import com.google.firebase.auth.FirebaseAuth
 import org.json.JSONObject
 import retrofit2.HttpException
+
+private const val TAG = "AuthRepository"
 
 class AuthRepository(
     private val apiService: BYSELApiService = RetrofitClient.apiService
@@ -165,27 +171,46 @@ class AuthRepository(
         }
     }
 
+    /**
+     * Clears the device session. The local session and the Firebase phone-auth session are
+     * always cleared, even when the server call fails, so the user is never stuck signed in.
+     * A failed server revoke is still reported so the UI can say the session may remain
+     * active elsewhere.
+     */
     suspend fun logout(): Result<Unit> {
-        return try {
+        var serverError: String? = null
+        try {
             AuthSessionManager.getRefreshToken()?.let {
                 apiService.logout(LogoutRequest(refreshToken = it))
             }
-            AuthSessionManager.clearSession()
-            Result.Success(Unit)
-        } catch (_: Exception) {
-            AuthSessionManager.clearSession()
-            Result.Success(Unit)
+        } catch (e: Exception) {
+            serverError = toAuthErrorMessage(e, "Sign-out could not be confirmed with the server")
         }
+        clearLocalIdentity()
+        return serverError?.let { Result.Error(it) } ?: Result.Success(Unit)
     }
 
     suspend fun logoutAllDevices(): Result<Unit> {
-        return try {
+        var serverError: String? = null
+        try {
             apiService.logoutAllDevices()
-            AuthSessionManager.clearSession()
-            Result.Success(Unit)
-        } catch (_: Exception) {
-            AuthSessionManager.clearSession()
-            Result.Success(Unit)
+        } catch (e: Exception) {
+            serverError = toAuthErrorMessage(e, "Could not sign out other devices")
+        }
+        clearLocalIdentity()
+        return serverError?.let { Result.Error(it) } ?: Result.Success(Unit)
+    }
+
+    /**
+     * Firebase keeps its own signed-in user after phone auth. Leaving it behind means the next
+     * OTP sign-in can silently reuse the previous number.
+     */
+    private fun clearLocalIdentity() {
+        AuthSessionManager.clearSession()
+        try {
+            FirebaseAuth.getInstance().signOut()
+        } catch (e: Exception) {
+            Log.w(TAG, "Firebase sign-out failed", e)
         }
     }
 
@@ -273,6 +298,52 @@ class AuthRepository(
             Result.Success(Unit)
         } catch (e: Exception) {
             Result.Error(toAuthErrorMessage(e, "Failed to revoke session"))
+        }
+    }
+
+    suspend fun getProfile(): Result<UserProfile> {
+        return try {
+            Result.Success(apiService.getProfile())
+        } catch (primary: Exception) {
+            // Older local backends only expose /auth/profile.
+            if (primary is HttpException && primary.code() == 404) {
+                try {
+                    Result.Success(apiService.getProfileLegacy())
+                } catch (e: Exception) {
+                    Result.Error(toAuthErrorMessage(e, "Failed to load profile"))
+                }
+            } else {
+                Result.Error(toAuthErrorMessage(primary, "Failed to load profile"))
+            }
+        }
+    }
+
+    suspend fun updateProfile(
+        username: String,
+        email: String,
+        mobileNumber: String?
+    ): Result<UserProfile> {
+        val normalizedUsername = username.trim()
+        val normalizedEmail = email.trim()
+        val normalizedMobile = mobileNumber?.trim()?.takeIf { it.isNotEmpty() }
+        val body = UserProfileUpdateRequest(
+            username = normalizedUsername,
+            email = normalizedEmail,
+            mobileNumber = normalizedMobile,
+        )
+
+        return try {
+            Result.Success(apiService.updateProfile(body))
+        } catch (primary: Exception) {
+            if (primary is HttpException && primary.code() == 404) {
+                try {
+                    Result.Success(apiService.updateProfileLegacy(body))
+                } catch (e: Exception) {
+                    Result.Error(toAuthErrorMessage(e, "Failed to update profile"))
+                }
+            } else {
+                Result.Error(toAuthErrorMessage(primary, "Failed to update profile"))
+            }
         }
     }
 }

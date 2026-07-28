@@ -139,7 +139,10 @@ fun CandlestickChart(
                 }
         ) {
             item { Spacer(modifier = Modifier.width(8.dp)) }
-            itemsIndexed(history) { idx: Int, candle: HistoryCandle ->
+            itemsIndexed(
+                items = history,
+                key = { idx, candle -> if (candle.timestamp != 0L) candle.timestamp else idx.toLong() }
+            ) { idx: Int, candle: HistoryCandle ->
                 val isUp = candle.close >= candle.open
                 val candleColor = if (isUp) Color(0xFF00C853) else Color(0xFFE53935)
                 val h = ((candle.high - minPrice) / priceRange).toFloat()

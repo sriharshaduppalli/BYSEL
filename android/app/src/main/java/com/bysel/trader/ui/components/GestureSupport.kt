@@ -8,6 +8,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
@@ -136,6 +137,10 @@ data class TabItem(
 /**
  * Swipe-to-Dismiss wrapper for dismissible list items
  * Implements Material3 swipe patterns
+ *
+ * When [requireConfirmation] is true the row snaps back instead of dismissing, and
+ * [onDismiss] is treated as a request rather than a completed action. Use this for
+ * anything irreversible — the caller is responsible for confirming before acting.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -145,6 +150,9 @@ fun <T> SwipeToDismissItem(
     modifier: Modifier = Modifier,
     dismissDirection: SwipeToDismissBoxValue = SwipeToDismissBoxValue.EndToStart,
     enabled: Boolean = true,
+    requireConfirmation: Boolean = false,
+    dismissIcon: ImageVector = Icons.Filled.Delete,
+    dismissLabel: String = "Delete",
     content: @Composable RowScope.() -> Unit
 ) {
     val allowStartToEnd = dismissDirection == SwipeToDismissBoxValue.StartToEnd ||
@@ -160,7 +168,7 @@ fun <T> SwipeToDismissItem(
 
             if (shouldDismiss) {
                 onDismiss(item)
-                true
+                !requireConfirmation
             } else {
                 false
             }
@@ -184,8 +192,8 @@ fun <T> SwipeToDismissItem(
                 }
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = "Delete",
+                    imageVector = dismissIcon,
+                    contentDescription = dismissLabel,
                     tint = Color.White,
                     modifier = Modifier.size(24.dp)
                 )

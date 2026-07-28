@@ -19,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -403,7 +404,7 @@ fun MutualFundsScreen(viewModel: TradingViewModel) {
                 }
             }
 
-            items(filteredFunds) { fund ->
+            items(filteredFunds, key = { it.schemeCode }) { fund ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
                     modifier = Modifier.fillMaxWidth().clickable { selected = fund }
@@ -529,8 +530,18 @@ fun IpoListingsScreen(viewModel: TradingViewModel) {
     val loading by viewModel.productsLoading.collectAsState()
     var selected by remember { mutableStateOf<IPOListing?>(null) }
     var applyTarget by remember { mutableStateOf<IPOListing?>(null) }
+    var selectedTab by remember { mutableStateOf(IpoListingTab.OPEN) }
 
     LaunchedEffect(Unit) { viewModel.loadIpoListings() }
+
+    val openIpos = remember(ipos) { ipos.filter { classifyIpoTab(it) == IpoListingTab.OPEN } }
+    val closedIpos = remember(ipos) { ipos.filter { classifyIpoTab(it) == IpoListingTab.CLOSED } }
+    val upcomingIpos = remember(ipos) { ipos.filter { classifyIpoTab(it) == IpoListingTab.UPCOMING } }
+    val filteredIpos = when (selectedTab) {
+        IpoListingTab.OPEN -> openIpos
+        IpoListingTab.CLOSED -> closedIpos
+        IpoListingTab.UPCOMING -> upcomingIpos
+    }
 
     if (selected != null) {
         IpoDetailScreen(
@@ -552,7 +563,38 @@ fun IpoListingsScreen(viewModel: TradingViewModel) {
                     Button(onClick = { viewModel.loadIpoListings() }) { Text("Refresh IPOs") }
                 }
             }
-            items(ipos) { ipo ->
+
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(
+                        IpoListingTab.OPEN to "Open (${openIpos.size})",
+                        IpoListingTab.CLOSED to "Closed (${closedIpos.size})",
+                        IpoListingTab.UPCOMING to "Upcoming (${upcomingIpos.size})"
+                    ).forEach { (tab, label) ->
+                        TextButton(onClick = { selectedTab = tab }) {
+                            val title = if (selectedTab == tab) "● $label" else label
+                            Text(title)
+                        }
+                    }
+                }
+            }
+
+            if (filteredIpos.isEmpty()) {
+                item {
+                    Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                        Text(
+                            "No ${selectedTab.label.lowercase()} IPOs right now.",
+                            color = LocalAppTheme.current.textSecondary,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                }
+            }
+
+            items(filteredIpos, key = { it.ipoId }) { ipo ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
                     modifier = Modifier.fillMaxWidth().clickable { selected = ipo }
@@ -560,6 +602,23 @@ fun IpoListingsScreen(viewModel: TradingViewModel) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(ipo.companyName, color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
                         Text("${ipo.status} • ${ipo.issueOpenDate} to ${ipo.issueCloseDate}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        when (classifyIpoTab(ipo)) {
+                            IpoListingTab.OPEN -> Text(
+                                "Closes on: ${ipo.issueCloseDate}",
+                                color = LocalAppTheme.current.textSecondary,
+                                fontSize = 12.sp
+                            )
+                            IpoListingTab.CLOSED -> Text(
+                                "Closed on: ${ipo.issueCloseDate} • Listing: ${ipo.listingDate ?: "TBA"}",
+                                color = LocalAppTheme.current.textSecondary,
+                                fontSize = 12.sp
+                            )
+                            IpoListingTab.UPCOMING -> Text(
+                                "Expected window: ${ipo.issueOpenDate} to ${ipo.issueCloseDate}",
+                                color = LocalAppTheme.current.textSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
                         Text("Price band: ₹${ipo.priceBandMin ?: 0.0} - ₹${ipo.priceBandMax ?: 0.0} • Lot: ${ipo.lotSize ?: 0}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                     }
                 }
@@ -576,6 +635,22 @@ fun IpoListingsScreen(viewModel: TradingViewModel) {
                 applyTarget = null
             }
         )
+    }
+}
+
+private enum class IpoListingTab(val label: String) {
+    OPEN("Open"),
+    CLOSED("Closed"),
+    UPCOMING("Upcoming")
+}
+
+private fun classifyIpoTab(ipo: IPOListing): IpoListingTab {
+    val status = ipo.status.trim().uppercase()
+    return when {
+        status.contains("CLOSE") || status.contains("LISTED") || status.contains("ALLOTT") || status.contains("COMPLETE") -> IpoListingTab.CLOSED
+        status.contains("UPCOMING") || status.contains("COMING") || status.contains("ANNOUNCED") || status.contains("YET") -> IpoListingTab.UPCOMING
+        status.contains("OPEN") || status.contains("LIVE") -> IpoListingTab.OPEN
+        else -> IpoListingTab.OPEN
     }
 }
 
@@ -627,7 +702,7 @@ fun EtfScreen(viewModel: TradingViewModel) {
                     Button(onClick = { viewModel.loadEtfs() }) { Text("Refresh ETFs") }
                 }
             }
-            items(etfs) { etf ->
+            items(etfs, key = { it.symbol }) { etf ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
                     modifier = Modifier.fillMaxWidth().clickable { selected = etf }
@@ -683,7 +758,7 @@ fun SipPlansScreen(viewModel: TradingViewModel) {
     ) {
         item { Text("My SIPs", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold, fontSize = 24.sp) }
         item { ActionBanner(viewModel) }
-        items(plans) { plan ->
+        items(plans, key = { it.id }) { plan ->
             Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card), modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(plan.schemeName, color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
@@ -751,7 +826,7 @@ fun MyIpoApplicationsScreen(viewModel: TradingViewModel) {
                 }
             }
         }
-        items(filtered) { app ->
+        items(filtered, key = { it.applicationId }) { app ->
             Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card), modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(app.companyName, color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
@@ -880,6 +955,7 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
     var limitPriceInput by remember { mutableStateOf("") }
     var triggerPriceInput by remember { mutableStateOf("") }
     var tag by remember { mutableStateOf("manual") }
+    var confirmAdvancedOrder by remember { mutableStateOf(false) }
 
     var basketName by remember { mutableStateOf("Momentum Basket") }
     var basketLegsInput by remember { mutableStateOf("RELIANCE:1:BUY\nTCS:1:BUY") }
@@ -899,6 +975,65 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
     val triggerPrice = triggerPriceInput.toDoubleOrNull()
     val effectiveSignal = preTradeEstimate?.signal ?: preTradeSignal
     val copilotBlocksTrade = effectiveSignal?.verdict?.equals("BLOCK", ignoreCase = true) == true
+
+    if (confirmAdvancedOrder) {
+        AlertDialog(
+            onDismissRequest = { confirmAdvancedOrder = false },
+            title = { Text("Place $side order?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("$quantity x $symbol", fontWeight = FontWeight.Bold)
+                    Text("$orderType order, $validity validity")
+                    limitPrice?.let { Text("Limit price: ₹${String.format("%.2f", it)}") }
+                    triggerPrice?.let { Text("Trigger price: ₹${String.format("%.2f", it)}") }
+                    if (orderType == "MARKET") {
+                        Text(
+                            text = "A market order fills at the best available price, which may differ from the last traded price.",
+                            fontSize = 12.sp,
+                            color = LocalAppTheme.current.textSecondary
+                        )
+                    }
+                    effectiveSignal?.verdict?.let { verdict ->
+                        Text(
+                            text = "Pre-trade check: $verdict",
+                            fontSize = 12.sp,
+                            color = if (verdict.equals("PROCEED", ignoreCase = true)) {
+                                LocalAppTheme.current.positive
+                            } else {
+                                LocalAppTheme.current.negative
+                            }
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.placeAdvancedOrder(
+                            symbol = symbol,
+                            quantity = quantity,
+                            side = side,
+                            orderType = orderType,
+                            validity = validity,
+                            limitPrice = limitPrice,
+                            triggerPrice = triggerPrice,
+                            tag = tag,
+                        )
+                        confirmAdvancedOrder = false
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (side == "BUY") LocalAppTheme.current.positive else LocalAppTheme.current.negative
+                    )
+                ) {
+                    Text("Confirm")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmAdvancedOrder = false }) { Text("Cancel") }
+            },
+            containerColor = LocalAppTheme.current.card
+        )
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -1021,18 +1156,7 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
                             Text("Estimate + Check")
                         }
                         Button(
-                            onClick = {
-                                viewModel.placeAdvancedOrder(
-                                    symbol = symbol,
-                                    quantity = quantity,
-                                    side = side,
-                                    orderType = orderType,
-                                    validity = validity,
-                                    limitPrice = limitPrice,
-                                    triggerPrice = triggerPrice,
-                                    tag = tag,
-                                )
-                            },
+                            onClick = { confirmAdvancedOrder = true },
                             enabled = quantity > 0 && symbol.isNotBlank() && !copilotBlocksTrade,
                         ) {
                             Text("Place")
@@ -1775,7 +1899,15 @@ fun CopilotCenterScreen(viewModel: TradingViewModel) {
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            Text("Copilot Center", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold, fontSize = 24.sp)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Copilot Center", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold, fontSize = 24.sp)
+                Text(
+                    "Rule-based risk checks on live prices, wallet, and orders — not a generative LLM research desk.",
+                    color = LocalAppTheme.current.textSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                )
+            }
         }
         item { ActionBanner(viewModel) }
 

@@ -3,8 +3,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
+import asyncio
 import logging
 import os
+import re
 import time
 import hashlib
 from math import erf, exp, log, sqrt
@@ -31,6 +33,7 @@ from ..models.schemas import (
     AlertResponse, HealthCheck, TradeHistory, HistoryCandle, OrderTraceLookupResponse, PortfolioSummary, PortfolioValue,
     Wallet, WalletTransaction, WalletResponse, MarketStatus,
     MarketNewsResponse,
+    MarketMoversResponse,
     MutualFund, MutualFundCompareResponse, MutualFundRecommendationItem, MutualFundRecommendationResponse,
     SipPlanRequest, SipPlan, IPOListing,
     SipPlanUpdateRequest, IPOApplicationRequest, IPOApplicationResponse, IPOApplication, ETFInstrument,
@@ -100,7 +103,8 @@ from .trading import (
 from ..stock_enricher import normalize_hinglish
 from ..market_data import (
     fetch_quote, fetch_quote_history, fetch_quotes, get_all_symbols, get_default_symbols,
-    search_stocks, get_symbols_with_names, get_stock_name, INDIAN_STOCKS
+    search_stocks, get_symbols_with_names, get_stock_name, INDIAN_STOCKS,
+    fetch_market_movers, get_stock_catalog,
 )
 from ..ai_engine import (
     analyze_stock, predict_price, ai_assistant, get_market_headlines,
@@ -1132,6 +1136,12 @@ def _goal_to_response(goal: GoalPlanModel) -> GoalPlanResponse:
 
 # ==================== QUOTES (LIVE DATA) ====================
 
+# The market-data helpers below are synchronous and network-bound (yfinance). Calling them
+# directly from an async handler blocks the event loop, which stalls every other in-flight
+# request — costly under the deployment's --limit-concurrency ceiling. Run them in the
+# default thread pool instead.
+
+
 @router.get("/quotes", response_model=list[Quote])
 async def get_quotes_endpoint(
     symbols: str = Query(""),
@@ -1143,22 +1153,45 @@ async def get_quotes_endpoint(
     else:
         sym_list = get_default_symbols()
 
-    raw_quotes = fetch_quotes(sym_list)
     try:
-        evaluate_pending_triggers(db=db, user_id=None, symbols=sym_list)
+        raw_quotes = await asyncio.to_thread(fetch_quotes, sym_list)
+    except Exception as exc:
+        logger.error("quotes_fetch_failed reason=%s", exc)
+        raise HTTPException(status_code=503, detail="Quote provider temporarily unavailable") from exc
+
+    # Trigger evaluation must not use the request Session across threads.
+    try:
+        from ..database.db import SessionLocal
+
+        def _run_triggers():
+            session = SessionLocal()
+            try:
+                return evaluate_pending_triggers(db=session, user_id=None, symbols=sym_list)
+            finally:
+                session.close()
+
+        await asyncio.to_thread(_run_triggers)
     except Exception as exc:
         logger.warning("trigger_evaluation_failed reason=%s", str(exc))
-    return [Quote(
-        symbol=q["symbol"],
-        last=q["last"],
-        pctChange=q["pctChange"],
-    ) for q in raw_quotes]
+
+    from ..market_data import _safe_number
+    safe = []
+    for q in raw_quotes or []:
+        try:
+            safe.append(Quote(
+                symbol=str(q.get("symbol") or ""),
+                last=round(_safe_number(q.get("last"), 0.0), 2),
+                pctChange=round(_safe_number(q.get("pctChange"), 0.0), 2),
+            ))
+        except Exception:
+            continue
+    return safe
 
 
 @router.get("/quotes/all", response_model=list[Quote])
 async def get_all_quotes_endpoint():
     """Get live quotes for ALL supported NSE symbols."""
-    raw_quotes = fetch_quotes(get_all_symbols())
+    raw_quotes = await asyncio.to_thread(fetch_quotes, get_all_symbols())
     return [Quote(
         symbol=q["symbol"],
         last=q["last"],
@@ -1169,7 +1202,7 @@ async def get_all_quotes_endpoint():
 @router.get("/quotes/{symbol}", response_model=Quote)
 async def get_single_quote_endpoint(symbol: str):
     """Get a live quote for a single stock symbol."""
-    q = fetch_quote(symbol.upper())
+    q = await asyncio.to_thread(fetch_quote, symbol.upper())
     if q["last"] == 0:
         raise HTTPException(status_code=404, detail=f"Quote not found for {symbol}")
     return Quote(
@@ -1187,7 +1220,9 @@ async def get_quote_history_endpoint(
 ):
     """Get OHLCV candles for a symbol and timeframe."""
     try:
-        candles = fetch_quote_history(symbol.upper(), period=period, interval=interval)
+        candles = await asyncio.to_thread(
+            fetch_quote_history, symbol.upper(), period=period, interval=interval
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return [HistoryCandle(**candle) for candle in candles]
@@ -1195,16 +1230,40 @@ async def get_quote_history_endpoint(
 
 # ==================== HOLDINGS ====================
 
+def _holdings_in_thread(user_id: int) -> list[Holding]:
+    """Run holdings load on a fresh Session — request Session is not thread-safe."""
+    from ..database.db import SessionLocal
+
+    session = SessionLocal()
+    try:
+        return get_holdings(session, user_id)
+    finally:
+        session.close()
+
+
 @router.get("/holdings", response_model=list[Holding])
-async def get_holdings_endpoint(db: Session = Depends(get_db), user=Depends(get_current_user)):
+async def get_holdings_endpoint(user=Depends(get_current_user)):
     """Get holdings for the authenticated user."""
-    return get_holdings(db, user.id)
+    try:
+        return await asyncio.to_thread(_holdings_in_thread, user.id)
+    except Exception as exc:
+        logger.error("holdings_endpoint_failed user_id=%s reason=%s", user.id, exc)
+        raise HTTPException(status_code=503, detail="Holdings temporarily unavailable") from exc
 
 
 @router.get("/holdings/{symbol}", response_model=Holding)
-async def get_holding_endpoint(symbol: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+async def get_holding_endpoint(symbol: str, user=Depends(get_current_user)):
     """Get a single holding by symbol for the authenticated user."""
-    holding = get_holding(db, symbol.upper(), user.id)
+    from ..database.db import SessionLocal
+
+    def _one():
+        session = SessionLocal()
+        try:
+            return get_holding(session, symbol.upper(), user.id)
+        finally:
+            session.close()
+
+    holding = await asyncio.to_thread(_one)
     if not holding:
         raise HTTPException(status_code=404, detail=f"No holding found for {symbol}")
     return holding
@@ -1386,9 +1445,13 @@ async def get_order_by_trace_endpoint(
 # ==================== PORTFOLIO ====================
 
 @router.get("/portfolio", response_model=PortfolioSummary)
-async def get_portfolio_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
+async def get_portfolio_endpoint(user_id: int = Header(1)):
     """Get portfolio summary with live values."""
-    holdings = get_holdings(db, user_id)
+    try:
+        holdings = await asyncio.to_thread(_holdings_in_thread, user_id)
+    except Exception as exc:
+        logger.error("portfolio_endpoint_failed user_id=%s reason=%s", user_id, exc)
+        raise HTTPException(status_code=503, detail="Portfolio temporarily unavailable") from exc
 
     total_value = sum(h.last * h.qty for h in holdings)
     total_invested = sum(h.avgPrice * h.qty for h in holdings)
@@ -1405,9 +1468,13 @@ async def get_portfolio_endpoint(db: Session = Depends(get_db), user_id: int = H
 
 
 @router.get("/portfolio/value", response_model=PortfolioValue)
-async def get_portfolio_value_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
+async def get_portfolio_value_endpoint(user_id: int = Header(1)):
     """Get portfolio current value with live prices."""
-    holdings = get_holdings(db, user_id)
+    try:
+        holdings = await asyncio.to_thread(_holdings_in_thread, user_id)
+    except Exception as exc:
+        logger.error("portfolio_value_endpoint_failed user_id=%s reason=%s", user_id, exc)
+        raise HTTPException(status_code=503, detail="Portfolio temporarily unavailable") from exc
 
     total_value = sum(h.last * h.qty for h in holdings)
     total_invested = sum(h.avgPrice * h.qty for h in holdings)
@@ -1493,11 +1560,20 @@ async def market_status_endpoint():
 @router.get("/market/news", response_model=MarketNewsResponse)
 async def market_news_endpoint(
     symbols: str = Query("", description="Optional comma-separated stock symbols"),
-    limit: int = Query(5, ge=1, le=10),
+    limit: int = Query(10, ge=1, le=20),
 ):
-    """Get the latest market headlines using the same normalized Yahoo feed used by the AI engine."""
+    """Get the latest market headlines across liquid NSE names (Yahoo + Google News)."""
     requested_symbols = [value.strip().upper() for value in symbols.split(",") if value.strip()]
     return get_market_headlines(symbols=requested_symbols or None, limit=limit)
+
+
+@router.get("/market/movers", response_model=MarketMoversResponse)
+async def market_movers_endpoint(
+    limit: int = Query(10, ge=1, le=25, description="Top N gainers / losers / most-active"),
+):
+    """Market-wide day gainers, losers, and most-active from the curated NSE universe."""
+    payload = await asyncio.to_thread(fetch_market_movers, limit)
+    return MarketMoversResponse(**payload)
 
 
 # ==================== ALERTS ====================
@@ -1593,24 +1669,27 @@ async def search_stocks_endpoint(
     q: str = Query("", description="Search query (symbol or company name)"),
     limit: int = Query(50, description="Max results"),
 ):
-    """Search for Indian stocks by symbol or company name.
-    Covers NIFTY 500+ stocks. Unknown symbols are tried on Yahoo Finance."""
+    """Search Indian stocks by symbol or company name (curated catalog + NSE equity master)."""
     results = search_stocks(q, limit=limit)
     return results
 
 
 @router.get("/symbols")
 async def get_symbols_endpoint():
-    """Get all available stock symbols with company names.
-    Returns 500+ Indian stocks (NSE & BSE)."""
+    """Get searchable stock symbols with company names (curated + NSE equity master)."""
     return get_symbols_with_names()
 
 
 @router.get("/symbols/count")
 async def get_symbols_count():
     """Get count of available symbols."""
-    return {"count": len(INDIAN_STOCKS), "exchange": "NSE/BSE"}
-
+    catalog = get_stock_catalog()
+    return {
+        "count": len(catalog),
+        "curatedCount": len(INDIAN_STOCKS),
+        "exchange": "NSE/BSE",
+        "source": "curated+nse_equity_master",
+    }
 
 # ==================== HEALTH ====================
 
@@ -1649,9 +1728,6 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
     from ..response_validator import ResponseValidator
     from ..stock_enricher import extract_symbol_from_query, enrich, format_news_for_prompt
 
-    # Rule-engine always runs first — detects stock, builds base signals
-    rule_result = ai_assistant(body.query, db=db)
-
     def _validated(result: dict, source: str, tier_requested: str = "auto") -> dict:
         from ..groq_llm import _strip_internal_metadata
 
@@ -1669,12 +1745,121 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
         }
 
         # Optionally include other user-relevant fields if present
-        if "symbol" in result:
+        if "symbol" in result and result.get("symbol"):
             user_response["symbol"] = result["symbol"]
         if "current_price" in result:
             user_response["current_price"] = result["current_price"]
 
+        # Keep follow-up chips linked to the answered stock / query.
+        # Never invent stock chips for greetings / education / clarifiers.
+        suggestions = result.get("suggestions") or []
+        if source not in {"small-talk", "clarifier", "education"} and not suggestions:
+            try:
+                from ..ai_engine import _build_stock_suggestions
+                symbol = str(result.get("symbol") or "").strip().upper()
+                if not symbol:
+                    symbol = str(extract_symbol_from_query(normalized_query) or "").strip().upper()
+                if symbol:
+                    intent = (intent_result or {}).get("intent", "")
+                    exclude = {
+                        "PREDICT": "prediction",
+                        "BUY_SELL": "buy_sell",
+                        "TECHNICAL": "analysis",
+                        "FUNDAMENTAL": "analysis",
+                    }.get(intent, "")
+                    suggestions = _build_stock_suggestions(symbol, exclude=exclude)
+            except Exception:
+                suggestions = []
+        if suggestions:
+            user_response["suggestions"] = list(suggestions)[:8]
+
         return user_response
+
+    # Parse tier preference
+    requested_tier = (body.tier or "auto").lower().strip()
+    valid_tiers = {"auto", "groq", "gemini", "indian-stock-llm", "rule-engine"}
+    if requested_tier not in valid_tiers:
+        requested_tier = "auto"
+
+    from ..groq_llm import (
+        classify_intent,
+        expand_acronyms_in_query,
+        get_small_talk_response,
+        infer_response_style,
+    )
+    from ..ai_engine import _extract_user_query
+
+    # App may wrap as "user_query:… | context:…". Intent / greetings must see only
+    # the user's words — otherwise "hi" never short-circuits and becomes a stock.
+    user_text = _extract_user_query(body.query)
+    expanded_query = expand_acronyms_in_query(user_text)
+    normalized_query = normalize_hinglish(expanded_query)
+    intent_result = classify_intent(normalized_query)
+    response_style = infer_response_style(normalized_query, body.conversation_history)
+
+    small_talk_reply = get_small_talk_response(normalized_query, response_style=response_style)
+    if small_talk_reply:
+        return _validated(
+            {"answer": small_talk_reply},
+            "small-talk",
+            requested_tier,
+        )
+
+    # Extra belt-and-suspenders: never let ultra-short greetings reach stock search.
+    if re.fullmatch(r"\s*(hi|hii|hiii|hello|hey|yo|namaste|thanks|thank you|bye)\s*[!.?]*\s*", normalized_query, flags=re.I):
+        return _validated(
+            {"answer": "Hi! I am BYSEL AI. Ask me about stock prices, buy/sell signals, comparisons, or valuation."},
+            "small-talk",
+            requested_tier,
+        )
+
+    stock_intents = {
+        "PREDICT", "COMPARE", "BUY_SELL", "TECHNICAL", "FUNDAMENTAL",
+        "SECTOR_SCREEN", "PORTFOLIO", "CALCULATION", "DERIVATIVES",
+    }
+    detected_intent = intent_result.get("intent", "GENERAL")
+    intent_confidence = int(intent_result.get("confidence", 0) or 0)
+    explicit_symbol = extract_symbol_from_query(normalized_query)
+    educational_like = (
+        detected_intent in {"EDUCATIONAL", "CALCULATION", "COMPARE_CONCEPTS"}
+        or bool(re.search(
+            r"\b(what is|what are|explain|define|definition|meaning of|formula|equation)\b",
+            normalized_query,
+            flags=re.IGNORECASE,
+        ))
+    )
+    if (
+        detected_intent in stock_intents
+        and intent_confidence < 60
+        and not explicit_symbol
+        and not educational_like
+    ):
+        if response_style == "concise":
+            clarifier = (
+                "I need one quick clarification: please share the stock symbol and whether you want "
+                "buy/sell, technicals, fundamentals, comparison, prediction, or calculation."
+            )
+        else:
+            clarifier = (
+                "I am not fully confident about your exact stock request yet. "
+                "Please clarify these so I can give precise analysis:\n"
+                "1. Stock symbol or company name\n"
+                "2. Analysis type: buy/sell, technicals, fundamentals, comparison, prediction, or calculation\n"
+                "3. Time horizon (intraday, swing, 1-month, long-term)"
+            )
+        return _validated({"answer": clarifier}, "clarifier", requested_tier)
+
+    # Instant glossary / equation answers for common market terms (no LLM needed).
+    from ..market_education import get_education_answer
+    education_answer = get_education_answer(normalized_query)
+    if education_answer:
+        return _validated({"answer": education_answer}, "education", requested_tier)
+
+    # For sector/theme screens, run rule engine on the bare user text so selected-quote
+    # context cannot hijack the answer toward an unrelated stock.
+    rule_query = normalized_query if detected_intent == "SECTOR_SCREEN" else body.query
+    # Offload Yahoo/rule work; do not share the request Session across threads.
+    rule_result = await asyncio.to_thread(ai_assistant, rule_query, None)
 
     async def _build_enriched_context() -> dict:
         # Resolve symbol — prefer rule-engine detection, fallback to query extraction
@@ -1695,19 +1880,21 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
         from ..groq_llm import detect_sentiment_from_query
         user_sentiment = detect_sentiment_from_query(body.query)
 
-        # Extract user's current portfolio for personalized advice
+        # Extract user's current portfolio for personalized advice (symbols only —
+        # skip live quote refresh so chat latency stays low).
         portfolio_context = {"total_holdings": 0, "symbols": [], "concentrations": {}}
-        try:
-            holdings = get_holdings(db)
-            if holdings:
-                portfolio_context = {
-                    "total_holdings": len(holdings),
-                    "symbols": [h.symbol for h in holdings if h.symbol],
-                    "concentrations": {h.symbol: h.quantity for h in holdings if h.symbol},
-                    "total_value": sum(getattr(h, "last_price", 0) * (h.quantity or 0) for h in holdings if h.symbol),
-                }
-        except Exception as e:
-            logger.debug("Could not extract portfolio context: %s", e)
+        if detected_intent == "PORTFOLIO":
+            try:
+                holdings = await asyncio.to_thread(_holdings_in_thread, 1)
+                if holdings:
+                    portfolio_context = {
+                        "total_holdings": len(holdings),
+                        "symbols": [h.symbol for h in holdings if h.symbol],
+                        "concentrations": {h.symbol: h.qty for h in holdings if h.symbol},
+                        "total_value": sum((h.last or 0) * (h.qty or 0) for h in holdings if h.symbol),
+                    }
+            except Exception as e:
+                logger.debug("Could not extract portfolio context: %s", e)
 
         ctx: dict = {
             "symbol": symbol,
@@ -1765,7 +1952,9 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                 if time_window and symbol:
                     try:
                         from ..market_data import fetch_quote_history
-                        history = fetch_quote_history(symbol, period=time_window['period'])
+                        history = await asyncio.to_thread(
+                            fetch_quote_history, symbol, time_window['period']
+                        )
                         if history and len(history) > 0:
                             start_price = history[0].get('close', 0)
                             end_price = history[-1].get('close', 0)
@@ -1803,30 +1992,39 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
 
         return ctx
 
-    # Parse tier preference
-    requested_tier = (body.tier or "auto").lower().strip()
-    valid_tiers = {"auto", "groq", "gemini", "indian-stock-llm", "rule-engine"}
-    if requested_tier not in valid_tiers:
-        requested_tier = "auto"
-
     logger.info(f"DEBUG: Tier requested = {requested_tier}")
+
+    # Sector themes (defence / pharma / …) are more reliable from the curated
+    # rule screener than free-form LLM answers that invent unrelated tickers.
+    if detected_intent == "SECTOR_SCREEN" and requested_tier in ("auto", "rule-engine"):
+        rule_answer = (rule_result.get("answer") or "").strip()
+        rule_stocks = rule_result.get("stocks") or []
+        answer_l = rule_answer.lower()
+        looks_like_sector = bool(rule_stocks) or any(
+            marker in answer_l
+            for marker in (
+                "top defence", "top defense", "top pharma", "top bank", "top it",
+                "top auto", "top fmcg", "top energy", "top metal", "top infra",
+                "top psu", "top realty", "top railway", "top cement", "top ",
+            )
+        )
+        if rule_answer and looks_like_sector and "popular stocks" not in answer_l:
+            return _validated(rule_result, "rule-engine", requested_tier)
 
     # Tier 1: Groq — enriched with live price, fundamentals, pre-computed signals, extracted entities, and conversation history
     if requested_tier in ("auto", "groq"):
         try:
-            from ..groq_llm import groq_available, ask_groq, classify_intent, expand_acronyms_in_query
+            from ..groq_llm import groq_available, ask_groq
             logger.info(f"DEBUG: groq_available() = {groq_available()}")
             if groq_available():
                 enriched_ctx = await _build_enriched_context()
-                expanded_query = expand_acronyms_in_query(body.query)
-                normalized_query = normalize_hinglish(expanded_query)
-                intent_result = classify_intent(normalized_query)
                 logger.info(f"DEBUG: Calling Groq with intent={intent_result.get('intent')}, symbol={enriched_ctx.get('symbol')}")
                 groq_result = await ask_groq(
                     normalized_query,
                     context=enriched_ctx,
                     conversation_history=body.conversation_history,
                     intent_result=intent_result,
+                    response_style=response_style,
                 )
                 if groq_result.get("answer"):
                     logger.info("DEBUG: Groq returned answer, using Groq response")
@@ -1834,6 +2032,32 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                         **rule_result,
                         "answer": groq_result["answer"],
                     }
+                    # Never leak a bogus ticker from greeting/search misfires onto chat UI.
+                    try:
+                        from ..groq_llm import get_small_talk_response as _gst
+                        if _gst(normalized_query) or len(normalized_query.strip()) < 3:
+                            merged.pop("symbol", None)
+                            merged.pop("suggestions", None)
+                    except Exception:
+                        pass
+                    # Keep follow-ups on the stock that was actually answered.
+                    if not merged.get("symbol") and enriched_ctx.get("symbol"):
+                        merged["symbol"] = enriched_ctx["symbol"]
+                    if not merged.get("suggestions") and merged.get("symbol"):
+                        try:
+                            from ..ai_engine import _build_stock_suggestions
+                            intent = (intent_result or {}).get("intent", "")
+                            exclude = {
+                                "PREDICT": "prediction",
+                                "BUY_SELL": "buy_sell",
+                                "TECHNICAL": "analysis",
+                                "FUNDAMENTAL": "analysis",
+                            }.get(intent, "")
+                            merged["suggestions"] = _build_stock_suggestions(
+                                str(merged["symbol"]).upper(), exclude=exclude
+                            )
+                        except Exception:
+                            pass
                     return _validated(merged, "groq", requested_tier)
                 else:
                     logger.info("DEBUG: Groq returned empty, falling back to Tier 2")
@@ -1855,15 +2079,20 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
             logger.info(f"DEBUG: gemini_available() = {gemini_available()}")
             if gemini_available():
                 enriched_ctx = await _build_enriched_context()
-                from ..groq_llm import expand_acronyms_in_query, classify_intent
-                expanded_query = expand_acronyms_in_query(body.query)
-                normalized_query = normalize_hinglish(expanded_query)
-                intent_result = classify_intent(normalized_query)
                 logger.info(f"DEBUG: Calling Gemini with intent={intent_result.get('intent')}, symbol={enriched_ctx.get('symbol')}")
+                if response_style == "concise":
+                    gemini_style_prompt = "Response style: concise. Give direct answer first with minimal explanation."
+                else:
+                    gemini_style_prompt = "Response style: detailed. Give structured analysis with clear steps and reasoning."
+
+                if intent_result.get("intent") == "CALCULATION":
+                    gemini_style_prompt += " If this is a calculation query, show formula and step-by-step math."
+
                 # ask_gemini is synchronous (Gemini API doesn't support async)
                 gemini_result = ask_gemini(
                     normalized_query,
                     context=enriched_ctx,
+                    system_prompt=gemini_style_prompt,
                 )
                 if gemini_result.get("answer") and not gemini_result.get("error"):
                     logger.info("DEBUG: Gemini returned answer, using Gemini response")
@@ -1871,6 +2100,23 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                         **rule_result,
                         "answer": gemini_result["answer"],
                     }
+                    if not merged.get("symbol") and enriched_ctx.get("symbol"):
+                        merged["symbol"] = enriched_ctx["symbol"]
+                    if not merged.get("suggestions") and merged.get("symbol"):
+                        try:
+                            from ..ai_engine import _build_stock_suggestions
+                            intent = (intent_result or {}).get("intent", "")
+                            exclude = {
+                                "PREDICT": "prediction",
+                                "BUY_SELL": "buy_sell",
+                                "TECHNICAL": "analysis",
+                                "FUNDAMENTAL": "analysis",
+                            }.get(intent, "")
+                            merged["suggestions"] = _build_stock_suggestions(
+                                str(merged["symbol"]).upper(), exclude=exclude
+                            )
+                        except Exception:
+                            pass
                     return _validated(merged, "gemini", requested_tier)
                 else:
                     error_msg = gemini_result.get("error", "Unknown error")
@@ -1886,19 +2132,34 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
                 # User explicitly requested Gemini but got error
                 return _validated({"answer": f"Gemini LLM error: {str(e)}"}, "none", requested_tier)
 
-    # Tier 2: Indian Stock LLM (pure Python, no API key, bundled in repo)
+    # Tier 2: Indian Stock LLM (grounded knowledge pack — equations/terms/sectors/symbols)
     if requested_tier in ("auto", "indian-stock-llm"):
         try:
             from ..llm_integration import llm_available, ask_llm
             if llm_available():
-                llm_result = ask_llm(body.query)
+                llm_context = {}
+                try:
+                    enriched_ctx = await _build_enriched_context()
+                    if enriched_ctx.get("symbol"):
+                        llm_context["symbol"] = enriched_ctx.get("symbol")
+                    if enriched_ctx.get("current_price") is not None:
+                        llm_context["current_price"] = enriched_ctx.get("current_price")
+                except Exception:
+                    llm_context = {}
+                llm_result = ask_llm(normalized_query, context=llm_context or None)
                 # Only use LLM if it has a confident answer (not withheld for safety)
-                if llm_result and llm_result.get("answer") and llm_result.get("confidence", 0) >= 0.4:
+                if llm_result and llm_result.get("answer") and llm_result.get("confidence", 0) >= 0.35:
                     logger.info("DEBUG: Using Indian Stock LLM (confidence=%.2f)", llm_result.get("confidence", 0))
                     merged = {
                         **rule_result,
                         "answer": llm_result["answer"],
                     }
+                    if not merged.get("suggestions") and merged.get("symbol"):
+                        try:
+                            from ..ai_engine import _build_stock_suggestions
+                            merged["suggestions"] = _build_stock_suggestions(str(merged["symbol"]).upper())
+                        except Exception:
+                            pass
                     return _validated(merged, "indian-stock-llm", requested_tier)
                 else:
                     low_conf = llm_result.get("confidence", 0) if llm_result else 0
@@ -2079,14 +2340,19 @@ async def portfolio_health_endpoint(db: Session = Depends(get_db)):
 async def market_heatmap_endpoint():
     """Get real-time market heatmap with sector-wise performance,
     market breadth, mood indicator, and individual stock data."""
-    result = get_market_heatmap()
-    return result
+    try:
+        result = await asyncio.to_thread(get_market_heatmap)
+        return result
+    except Exception as exc:
+        logger.error("market_heatmap_endpoint_failed reason=%s", exc)
+        from ..market_heatmap import _empty_heatmap_payload
+        return _empty_heatmap_payload(mood_desc="Heatmap temporarily unavailable. Please retry.")
 
 
 @router.get("/market/sector/{sector_name}")
 async def sector_detail_endpoint(sector_name: str):
     """Get detailed data for a specific sector."""
-    result = get_sector_detail(sector_name)
+    result = await asyncio.to_thread(get_sector_detail, sector_name)
     if not result:
         raise HTTPException(status_code=404, detail=f"Sector '{sector_name}' not found")
     return result
@@ -2839,8 +3105,9 @@ async def futures_ticket_preview_endpoint(payload: FuturesTicketPreviewRequest):
 async def upsert_family_member_endpoint(
     request: FamilyMemberRequest,
     db: Session = Depends(get_db),
-    user_id: int = Header(1),
+    current_user=Depends(get_current_user),
 ):
+    user_id = int(current_user.id)
     row = FamilyMemberModel(
         user_id=user_id,
         name=request.name.strip(),
@@ -2868,7 +3135,8 @@ async def upsert_family_member_endpoint(
 
 
 @router.get("/wealth/family/dashboard", response_model=FamilyDashboardResponse)
-async def family_dashboard_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
+async def family_dashboard_endpoint(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    user_id = int(current_user.id)
     members = db.query(FamilyMemberModel).filter(FamilyMemberModel.user_id == user_id).all()
     holdings = get_holdings(db, user_id)
     holdings_value = sum((item.last * item.qty) for item in holdings)
@@ -2923,8 +3191,9 @@ async def family_dashboard_endpoint(db: Session = Depends(get_db), user_id: int 
 async def create_goal_endpoint(
     request: GoalPlanRequest,
     db: Session = Depends(get_db),
-    user_id: int = Header(1),
+    current_user=Depends(get_current_user),
 ):
+    user_id = int(current_user.id)
     if request.targetAmount <= 0:
         raise HTTPException(status_code=400, detail="targetAmount must be > 0")
     goal = GoalPlanModel(
@@ -2944,7 +3213,8 @@ async def create_goal_endpoint(
 
 
 @router.get("/wealth/goals", response_model=list[GoalPlanResponse])
-async def get_goals_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
+async def get_goals_endpoint(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    user_id = int(current_user.id)
     goals = (
         db.query(GoalPlanModel)
         .filter(GoalPlanModel.user_id == user_id)
@@ -2959,8 +3229,9 @@ async def link_goal_investments_endpoint(
     goal_id: int,
     request: GoalLinkRequest,
     db: Session = Depends(get_db),
-    user_id: int = Header(1),
+    current_user=Depends(get_current_user),
 ):
+    user_id = int(current_user.id)
     goal = db.query(GoalPlanModel).filter(GoalPlanModel.id == goal_id, GoalPlanModel.user_id == user_id).first()
     if not goal:
         raise HTTPException(status_code=404, detail=f"Goal '{goal_id}' not found")
