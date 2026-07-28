@@ -872,6 +872,15 @@ data class AuthSessionsResponse(
     val sessions: List<AuthSessionItem>
 )
 
+data class CurrentUserProfile(
+    val status: String,
+    val user_id: Int,
+    val username: String,
+    val email: String,
+    val mobile_number: String? = null,
+    val created_at: String? = null,
+)
+
 // ==================== INVESTOR PORTFOLIOS (SMART MONEY TRACKER) ====================
 
 data class InvestorHolding(

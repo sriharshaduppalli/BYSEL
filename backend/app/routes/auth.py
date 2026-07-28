@@ -239,6 +239,7 @@ class FirebasePhoneAuthRequest(BaseModel):
     firebase_id_token: str
 
 
+
 def _hash_password(password: str) -> str:
     if bcrypt_lib is not None:
         try:
@@ -2078,7 +2079,7 @@ def verify_otp(request: VerifyOTPRequest, req: Request = None):
                 # Create wallet for new user
                 wallet = WalletModel(
                     user_id=user.id,
-                    balance=10000.0,  # Starting balance
+                    balance=0.0,
                     updated_at=now
                 )
                 db.add(wallet)
@@ -2193,7 +2194,7 @@ def firebase_phone_auth(request: FirebasePhoneAuthRequest, req: Request = None):
 
                 wallet = WalletModel(
                     user_id=user.id,
-                    balance=10000.0,
+                    balance=0.0,
                     updated_at=now,
                 )
                 db.add(wallet)

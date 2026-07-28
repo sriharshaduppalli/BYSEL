@@ -277,8 +277,9 @@ def _empty_heatmap_payload(mood_desc: str = "No heatmap data available.") -> Dic
         "isStale": True,
     }
 
+
 def _is_nse_market_open() -> bool:
-    ist = datetime.now().astimezone().astimezone()
+    ist = datetime.now().astimezone()
     try:
         from zoneinfo import ZoneInfo
         ist = datetime.now(ZoneInfo("Asia/Kolkata"))
@@ -304,7 +305,11 @@ def _is_valid_heatmap_snapshot(payload: Optional[Dict]) -> bool:
         return False
     if int(breadth.get("total", 0) or 0) <= 0:
         return False
-    return any(isinstance(sector.get("stocks"), list) and sector.get("stocks") for sector in sectors if isinstance(sector, dict))
+    return any(
+        isinstance(sector.get("stocks"), list) and sector.get("stocks")
+        for sector in sectors
+        if isinstance(sector, dict)
+    )
 
 
 def _load_persisted_heatmap_snapshot() -> Optional[Dict]:
