@@ -1926,6 +1926,45 @@ def test_market_heatmap_returns_persisted_snapshot_when_market_closed(monkeypatc
     assert result["lastUpdated"] == snapshot["lastUpdated"]
     assert result["marketBreadth"]["total"] == 1
     assert result["sectors"][0]["stocks"][0]["symbol"] == "LUPIN"
+    assert result["isStale"] is True
+    assert result["marketOpen"] is False
+
+
+def test_market_heatmap_rebuilds_last_session_when_closed_without_snapshot(monkeypatch, tmp_path):
+    snapshot_path = tmp_path / "market_heatmap_snapshot.json"
+
+    def _fake_fetch_quotes(symbols):
+        return [
+            {
+                "symbol": symbol,
+                "last": 100.0 + i,
+                "pctChange": 1.5 if i % 2 == 0 else -0.8,
+                "change": 1.0,
+            }
+            for i, symbol in enumerate(symbols)
+        ]
+
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_SNAPSHOT_PATH", snapshot_path)
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_CACHE", {"data": None, "timestamp": 0})
+    monkeypatch.setattr(market_heatmap_module, "_is_nse_market_open", lambda: False)
+    monkeypatch.setattr(market_heatmap_module, "fetch_quotes", _fake_fetch_quotes)
+
+    result = market_heatmap_module.get_market_heatmap()
+
+    assert result["marketBreadth"]["total"] > 0
+    assert any(sector.get("stocks") for sector in result["sectors"])
+    assert result["isStale"] is True
+    assert result["marketOpen"] is False
+    assert snapshot_path.exists()
+    # Second call should hit the persisted snapshot without needing quotes.
+    monkeypatch.setattr(
+        market_heatmap_module,
+        "fetch_quotes",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("should use snapshot")),
+    )
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_CACHE", {"data": None, "timestamp": 0})
+    again = market_heatmap_module.get_market_heatmap()
+    assert again["marketBreadth"]["total"] == result["marketBreadth"]["total"]
 
 
 def test_investor_portfolio_insights_endpoint_returns_changes_and_ideas(monkeypatch):
