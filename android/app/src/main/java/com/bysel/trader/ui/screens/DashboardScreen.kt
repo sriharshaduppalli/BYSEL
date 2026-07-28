@@ -1,5 +1,9 @@
 package com.bysel.trader.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -18,12 +22,15 @@ import androidx.compose.material.icons.automirrored.filled.TrendingDown
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.SwapVert
@@ -33,6 +40,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -46,6 +54,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bysel.trader.data.models.Holding
 import com.bysel.trader.data.models.MarketMoverQuote
 import com.bysel.trader.data.models.MarketNewsHeadline
+import com.bysel.trader.data.models.MarketStatus
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.ui.components.DashboardSkeletonLoader
 import com.bysel.trader.ui.components.InfoChip
@@ -61,7 +70,8 @@ import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.viewmodel.DashboardViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
+import java.util.Calendar
+import java.util.TimeZone
 private data class DashboardMetric(
     val title: String,
     val value: String,
@@ -279,7 +289,11 @@ fun DashboardScreen(
     onRefresh: () -> Unit,
     onTradeClick: (String) -> Unit,
     onErrorDismiss: () -> Unit,
-    onAiClick: (() -> Unit)? = null
+    onAiClick: (() -> Unit)? = null,
+    marketStatus: MarketStatus? = null,
+    onQuickTradeClick: ((String) -> Unit)? = null,
+    onSignalLabClick: (() -> Unit)? = null,
+    onSmartMoneyClick: (() -> Unit)? = null,
 ) {
     val dashboardViewModel: DashboardViewModel = viewModel()
     val pinnedStocks by dashboardViewModel.pinnedStocks.collectAsState()
@@ -342,6 +356,10 @@ fun DashboardScreen(
             marketLosers = marketLosers,
             moversUniverseSize = moversUniverseSize,
             onAiClick = onAiClick,
+            marketStatus = marketStatus,
+            onQuickTradeClick = onQuickTradeClick,
+            onSignalLabClick = onSignalLabClick,
+            onSmartMoneyClick = onSmartMoneyClick,
         )
     }
 }
@@ -375,6 +393,10 @@ fun DashboardContent(
     marketLosers: List<MarketMoverQuote> = emptyList(),
     moversUniverseSize: Int = 0,
     onAiClick: (() -> Unit)? = null,
+    marketStatus: MarketStatus? = null,
+    onQuickTradeClick: ((String) -> Unit)? = null,
+    onSignalLabClick: (() -> Unit)? = null,
+    onSmartMoneyClick: (() -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
     val scope = rememberCoroutineScope()
@@ -583,7 +605,25 @@ fun DashboardContent(
         }
 
         item {
-            IndexTickerStrip(quotes = quotes)
+            MarketPulseHero(
+                quotes = quotes,
+                marketStatus = marketStatus,
+                positiveCount = positiveCount,
+                negativeCount = negativeCount,
+                moodTitle = marketMoodTitle,
+            )
+        }
+
+        item {
+            IdeasRail(
+                topMover = focusQuotes.firstOrNull(),
+                signalTitle = signalBuckets.firstOrNull()?.title,
+                newsCount = marketNews.size,
+                onAiBrief = onAiClick,
+                onSignalLab = onSignalLabClick,
+                onSmartMoney = onSmartMoneyClick,
+                onOpenMover = focusQuotes.firstOrNull()?.let { q -> { onTradeClick(q.symbol) } },
+            )
         }
 
         item {
@@ -831,6 +871,7 @@ fun DashboardContent(
                                     quotes = focusQuotes,
                                     onPinClick = { dashboardViewModel.toggleWatchlistPin() },
                                     onQuoteClick = { onTradeClick(it.symbol) },
+                                    onTradeClick = onQuickTradeClick?.let { handler -> { handler(it.symbol) } },
                                 )
                                 Column {
                                     IconButton(onClick = { dashboardViewModel.moveWidgetUp("watchlist") }, enabled = idx > 0) {
@@ -872,6 +913,7 @@ fun DashboardContent(
                     quotes = focusQuotes,
                     onPinClick = { dashboardViewModel.toggleWatchlistPin() },
                     onQuoteClick = { onTradeClick(it.symbol) },
+                    onTradeClick = onQuickTradeClick?.let { handler -> { handler(it.symbol) } },
                 )
                 Spacer(modifier = Modifier.height(20.dp))
             }
@@ -1422,58 +1464,284 @@ private fun HomeSignalCard(
 }
 
 @Composable
-private fun IndexTickerStrip(quotes: List<Quote>) {
+private fun MarketPulseHero(
+    quotes: List<Quote>,
+    marketStatus: MarketStatus?,
+    positiveCount: Int,
+    negativeCount: Int,
+    moodTitle: String,
+) {
     val theme = LocalAppTheme.current
     val indices = remember(quotes) {
         listOf("NIFTY50", "SENSEX", "BANKNIFTY").mapNotNull { symbol ->
             quotes.firstOrNull { it.symbol.equals(symbol, ignoreCase = true) }
         }
     }
-    if (indices.isEmpty()) return
+    val sessionOpen = marketStatus?.isOpen ?: run {
+        val ist = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata"))
+        val dow = ist.get(Calendar.DAY_OF_WEEK)
+        if (dow == Calendar.SATURDAY || dow == Calendar.SUNDAY) false
+        else {
+            val mins = ist.get(Calendar.HOUR_OF_DAY) * 60 + ist.get(Calendar.MINUTE)
+            mins in (9 * 60 + 15)..(15 * 60 + 30)
+        }
+    }
+    val sessionLabel = marketStatus?.message
+        ?: if (sessionOpen) "NSE session live" else "Market closed · last session levels"
+    val breadthTotal = (positiveCount + negativeCount).coerceAtLeast(1)
+    val advanceShare = positiveCount.toFloat() / breadthTotal.toFloat()
 
-    LazyRow(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    AnimatedVisibility(
+        visible = true,
+        enter = fadeIn(animationSpec = androidx.compose.animation.core.tween(420)) +
+            slideInVertically(initialOffsetY = { it / 8 }),
+        exit = fadeOut(),
     ) {
-        items(indices, key = { it.symbol }) { quote ->
-            val accent = if (quote.pctChange >= 0) theme.positive else theme.negative
-            Card(
-                colors = CardDefaults.cardColors(containerColor = theme.card),
-                shape = RoundedCornerShape(12.dp),
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Text(
-                        text = when (quote.symbol.uppercase()) {
-                            "NIFTY50" -> "NIFTY 50"
-                            "BANKNIFTY" -> "BANK NIFTY"
-                            else -> quote.symbol.uppercase()
-                        },
-                        fontSize = 11.sp,
-                        color = theme.textSecondary,
-                        fontWeight = FontWeight.SemiBold,
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            theme.primary.copy(alpha = 0.16f),
+                            theme.card,
+                        )
                     )
+                )
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = formatInr(quote.last, decimals = 2),
-                        fontSize = 14.sp,
+                        text = "BYSEL Market Pulse",
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = theme.text,
                     )
                     Text(
-                        text = formatSignedPercent(quote.pctChange),
+                        text = moodTitle,
+                        fontSize = 12.sp,
+                        color = theme.textSecondary,
+                    )
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(
+                            if (sessionOpen) theme.positive.copy(alpha = 0.16f)
+                            else theme.negative.copy(alpha = 0.14f)
+                        )
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.Schedule,
+                        contentDescription = null,
+                        tint = if (sessionOpen) theme.positive else theme.negative,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Text(
+                        text = if (sessionOpen) "Open" else "Closed",
                         fontSize = 11.sp,
-                        color = accent,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (sessionOpen) theme.positive else theme.negative,
+                    )
+                }
+            }
+
+            Text(
+                text = sessionLabel,
+                fontSize = 11.sp,
+                color = theme.textSecondary,
+            )
+
+            if (indices.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    indices.take(3).forEach { quote ->
+                        val accent = if (quote.pctChange >= 0) theme.positive else theme.negative
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(theme.surface.copy(alpha = 0.55f))
+                                .padding(10.dp),
+                        ) {
+                            Text(
+                                text = when (quote.symbol.uppercase()) {
+                                    "NIFTY50" -> "NIFTY 50"
+                                    "BANKNIFTY" -> "BANK NIFTY"
+                                    else -> quote.symbol.uppercase()
+                                },
+                                fontSize = 10.sp,
+                                color = theme.textSecondary,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = formatInr(quote.last, decimals = 2),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = theme.text,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = formatSignedPercent(quote.pctChange),
+                                fontSize = 11.sp,
+                                color = accent,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                    }
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text("Session breadth", fontSize = 11.sp, color = theme.textSecondary)
+                    Text(
+                        text = "$positiveCount up · $negativeCount down",
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
+                        color = theme.text,
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(theme.negative.copy(alpha = 0.35f)),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(advanceShare.coerceIn(0.05f, 1f))
+                            .background(theme.positive.copy(alpha = 0.85f)),
                     )
                 }
             }
         }
     }
 }
+
+@Composable
+private fun IdeasRail(
+    topMover: Quote?,
+    signalTitle: String?,
+    newsCount: Int,
+    onAiBrief: (() -> Unit)?,
+    onSignalLab: (() -> Unit)?,
+    onSmartMoney: (() -> Unit)?,
+    onOpenMover: (() -> Unit)?,
+) {
+    val theme = LocalAppTheme.current
+    val ideas = listOfNotNull(
+        onAiBrief?.let {
+            IdeaChip(
+                title = "AI Brief",
+                subtitle = if (newsCount > 0) "$newsCount stories in play" else "Ask Copilot now",
+                icon = Icons.Filled.Psychology,
+                onClick = it,
+            )
+        },
+        onSignalLab?.let {
+            IdeaChip(
+                title = "Signal Lab",
+                subtitle = signalTitle ?: "Phase setups",
+                icon = Icons.Filled.AutoAwesome,
+                onClick = it,
+            )
+        },
+        onSmartMoney?.let {
+            IdeaChip(
+                title = "Smart Money",
+                subtitle = "Investor portfolios",
+                icon = Icons.AutoMirrored.Filled.TrendingUp,
+                onClick = it,
+            )
+        },
+        if (topMover != null && onOpenMover != null) {
+            IdeaChip(
+                title = topMover.symbol,
+                subtitle = formatSignedPercent(topMover.pctChange),
+                icon = if (topMover.pctChange >= 0) Icons.AutoMirrored.Filled.TrendingUp else Icons.AutoMirrored.Filled.TrendingDown,
+                onClick = onOpenMover,
+            )
+        } else null,
+    )
+    if (ideas.isEmpty()) return
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = "Ideas",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = theme.text,
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(ideas, key = { it.title }) { idea ->
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(theme.card)
+                        .clickable(onClick = idea.onClick)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        idea.icon,
+                        contentDescription = null,
+                        tint = theme.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Column {
+                        Text(
+                            text = idea.title,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = theme.text,
+                        )
+                        Text(
+                            text = idea.subtitle,
+                            fontSize = 10.sp,
+                            color = theme.textSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private data class IdeaChip(
+    val title: String,
+    val subtitle: String,
+    val icon: ImageVector,
+    val onClick: () -> Unit,
+)
 
 private fun formatCompactCurrency(value: Double): String = formatInrCompact(value)
 
