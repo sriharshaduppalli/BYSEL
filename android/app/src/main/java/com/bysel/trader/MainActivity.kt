@@ -743,7 +743,17 @@ fun BYSELApp(
                                             selectedTab = 9
                                         },
                                         onErrorDismiss = { viewModel.clearError() },
-                                        onAiClick = { selectedTab = 1 }
+                                        onAiClick = { selectedTab = 1 },
+                                        marketStatus = marketStatus,
+                                        onQuickTradeClick = { symbol ->
+                                            viewModel.fetchAndSelectQuote(symbol)
+                                            selectedTab = 2
+                                        },
+                                        onSignalLabClick = { selectedTab = 20 },
+                                        onSmartMoneyClick = {
+                                            previousTab = selectedTab
+                                            selectedTab = 21
+                                        },
                                     )
                                     1 -> AiAssistantScreen(
                                         chatHistory = chatHistory,
