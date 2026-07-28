@@ -315,7 +315,7 @@ fun DashboardScreen(
             onErrorDismiss = onErrorDismiss,
             onRefresh = {
                 onRefresh()
-                dashboardViewModel.refreshMarketMovers()
+                dashboardViewModel.refreshMarketMovers(staggerMs = 400L)
             },
             showHomeGuide = showHomeGuide,
             homeGuideStep = homeGuideStep,
@@ -328,7 +328,7 @@ fun DashboardScreen(
                 showHomeGuide = false
                 homeGuideStep = 0
             },
-            isRefreshing = isLoading || newsLoading || moversLoading,
+            isRefreshing = isLoading || newsLoading,
             portfolioPinned = portfolioPinned,
             newsPinned = newsPinned,
             watchlistPinned = watchlistPinned,
@@ -508,7 +508,7 @@ fun DashboardContent(
                 onClick = {
                     onRefresh()
                     dashboardViewModel.refreshMarketNews()
-                    dashboardViewModel.refreshMarketMovers()
+                    dashboardViewModel.refreshMarketMovers(staggerMs = 400L)
                 },
             ),
             HomeAction(
@@ -547,7 +547,7 @@ fun DashboardContent(
             onRefresh = {
                 onRefresh()
                 dashboardViewModel.refreshMarketNews()
-                dashboardViewModel.refreshMarketMovers()
+                dashboardViewModel.refreshMarketMovers(staggerMs = 400L)
             },
             enabled = true
         ) {
@@ -573,7 +573,7 @@ fun DashboardContent(
                 onRefresh = {
                     onRefresh()
                     dashboardViewModel.refreshMarketNews()
-                    dashboardViewModel.refreshMarketMovers()
+                    dashboardViewModel.refreshMarketMovers(staggerMs = 400L)
                 },
                 onShowGuide = onShowGuide,
                 onTogglePortfolioPin = { dashboardViewModel.togglePortfolioPin() },

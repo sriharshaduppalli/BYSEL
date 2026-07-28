@@ -13,7 +13,7 @@ import difflib
 import urllib.request
 import json as _json
 from datetime import datetime
-from threading import Lock
+from threading import Lock, Thread
 from typing import Dict, Optional, List
 
 logger = logging.getLogger(__name__)
@@ -971,9 +971,11 @@ _SEARCH_CATALOG_LOCK = Lock()
 _INDEX_SYMBOLS = {
     "NIFTY50", "SENSEX", "BANKNIFTY", "NIFTYIT", "NIFTYBANK",
 }
-_MOVERS_CACHE: Dict[str, object] = {"fetched_at": 0.0, "payload": None}
-_MOVERS_CACHE_TTL_SECONDS = 45
+_MOVERS_CACHE: Dict[str, object] = {"fetched_at": 0.0, "payload": None, "refreshing": False}
+_MOVERS_CACHE_TTL_SECONDS = 60
+_MOVERS_STALE_TTL_SECONDS = 15 * 60
 _MOVERS_CACHE_LOCK = Lock()
+_MOVERS_REFRESH_LOCK = Lock()
 
 
 def get_stock_catalog() -> Dict[str, tuple]:
@@ -1007,71 +1009,36 @@ def get_stock_catalog() -> Dict[str, tuple]:
         return catalog
 
 
-def fetch_market_movers(limit: int = 10) -> Dict[str, object]:
-    """
-    Rank a liquid Indian stock universe by day % change / volume.
-    Uses a capped liquid set (not the full catalog) so Home refresh stays fast
-    and does not starve other endpoints on free-tier hosts.
-    """
-    limit = max(1, min(int(limit or 10), 25))
-    now = time.time()
-    with _MOVERS_CACHE_LOCK:
-        cached = _MOVERS_CACHE.get("payload")
-        fetched_at = float(_MOVERS_CACHE.get("fetched_at") or 0.0)
-        if cached and (now - fetched_at) < _MOVERS_CACHE_TTL_SECONDS:
-            return {
-                "gainers": list(cached.get("gainers") or [])[:limit],
-                "losers": list(cached.get("losers") or [])[:limit],
-                "mostActive": list(cached.get("mostActive") or [])[:limit],
-                "universeSize": cached.get("universeSize", 0),
-                "generatedAt": cached.get("generatedAt", ""),
-                "cached": True,
-            }
+def _movers_slice(payload: Dict[str, object], limit: int, *, cached: bool) -> Dict[str, object]:
+    return {
+        "gainers": list(payload.get("gainers") or [])[:limit],
+        "losers": list(payload.get("losers") or [])[:limit],
+        "mostActive": list(payload.get("mostActive") or [])[:limit],
+        "universeSize": payload.get("universeSize", 0),
+        "generatedAt": payload.get("generatedAt", ""),
+        "cached": cached,
+    }
 
-    # Liquid universe only — full INDIAN_STOCKS (~400+) causes Yahoo timeouts / 500s.
+
+def _compute_market_movers_payload() -> Dict[str, object]:
+    """Heavy Yahoo path — keep the universe small for Home cold starts."""
+    # Cap tightly: Home refresh competes with /quotes on Render free-tier.
     liquid = list(dict.fromkeys(
         list(DEFAULT_SYMBOLS)
         + [
-            "ADANIENT", "ADANIPORTS", "TATAMOTORS", "TATASTEEL", "JSWSTEEL",
-            "HINDALCO", "ONGC", "COALINDIA", "BPCL", "IOC",
-            "SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB",
-            "TECHM", "BAJAJFINSV", "INDUSINDBK",
-            "NESTLEIND", "TITAN", "ASIANPAINT", "ULTRACEMCO",
-            "HEROMOTOCO", "EICHERMOT", "APOLLOHOSP",
-            "ZOMATO", "IRCTC", "HAL", "BEL",
+            "ADANIENT", "ADANIPORTS", "JSWSTEEL", "ONGC", "COALINDIA",
+            "BPCL", "DRREDDY", "CIPLA", "TECHM", "BAJAJFINSV",
+            "ASIANPAINT", "ZOMATO", "HAL", "BEL", "NTPC",
         ]
     ))
     universe = [
         sym for sym in liquid
         if sym in INDIAN_STOCKS and sym not in _INDEX_SYMBOLS and not str(sym).startswith("^")
-    ][:80]
+    ][:36]
 
-    try:
-        quotes = fetch_quotes(universe)
-    except Exception as exc:
-        logger.error("fetch_market_movers quote fetch failed: %s", exc)
-        with _MOVERS_CACHE_LOCK:
-            stale = _MOVERS_CACHE.get("payload")
-        if stale:
-            return {
-                "gainers": list(stale.get("gainers") or [])[:limit],
-                "losers": list(stale.get("losers") or [])[:limit],
-                "mostActive": list(stale.get("mostActive") or [])[:limit],
-                "universeSize": stale.get("universeSize", 0),
-                "generatedAt": stale.get("generatedAt", ""),
-                "cached": True,
-            }
-        return {
-            "gainers": [],
-            "losers": [],
-            "mostActive": [],
-            "universeSize": 0,
-            "generatedAt": datetime.utcnow().isoformat() + "Z",
-            "cached": False,
-        }
-
+    quotes = fetch_quotes(universe)
     usable = []
-    for q in quotes:
+    for q in quotes or []:
         try:
             last = _safe_number(q.get("last"), 0.0)
             pct = _safe_number(q.get("pctChange"), 0.0)
@@ -1094,7 +1061,7 @@ def fetch_market_movers(limit: int = 10) -> Dict[str, object]:
     losers = sorted(usable, key=lambda x: x["pctChange"])
     most_active = sorted(usable, key=lambda x: x.get("volume", 0), reverse=True)
     generated_at = datetime.utcnow().isoformat() + "Z"
-    full_payload = {
+    return {
         "gainers": gainers[:25],
         "losers": losers[:25],
         "mostActive": most_active[:25],
@@ -1102,18 +1069,78 @@ def fetch_market_movers(limit: int = 10) -> Dict[str, object]:
         "generatedAt": generated_at,
         "cached": False,
     }
-    with _MOVERS_CACHE_LOCK:
-        _MOVERS_CACHE["fetched_at"] = now
-        _MOVERS_CACHE["payload"] = full_payload
 
-    return {
-        "gainers": full_payload["gainers"][:limit],
-        "losers": full_payload["losers"][:limit],
-        "mostActive": full_payload["mostActive"][:limit],
-        "universeSize": full_payload["universeSize"],
-        "generatedAt": generated_at,
-        "cached": False,
-    }
+
+def _refresh_movers_cache_async() -> None:
+    """Background refresh so Home can keep serving a stale snapshot."""
+    if not _MOVERS_REFRESH_LOCK.acquire(blocking=False):
+        return
+    try:
+        with _MOVERS_CACHE_LOCK:
+            if _MOVERS_CACHE.get("refreshing"):
+                return
+            _MOVERS_CACHE["refreshing"] = True
+        try:
+            payload = _compute_market_movers_payload()
+            with _MOVERS_CACHE_LOCK:
+                _MOVERS_CACHE["fetched_at"] = time.time()
+                _MOVERS_CACHE["payload"] = payload
+        except Exception as exc:
+            logger.warning("movers_background_refresh_failed reason=%s", exc)
+        finally:
+            with _MOVERS_CACHE_LOCK:
+                _MOVERS_CACHE["refreshing"] = False
+    finally:
+        _MOVERS_REFRESH_LOCK.release()
+
+
+def fetch_market_movers(limit: int = 10) -> Dict[str, object]:
+    """
+    Rank a liquid Indian stock universe by day % change / volume.
+
+    Stale-while-revalidate:
+      - fresh cache (<60s): return immediately
+      - stale but usable (<15m): return stale + kick background refresh
+      - no cache: compute synchronously (smaller universe)
+    """
+    limit = max(1, min(int(limit or 10), 25))
+    now = time.time()
+    with _MOVERS_CACHE_LOCK:
+        cached = _MOVERS_CACHE.get("payload")
+        fetched_at = float(_MOVERS_CACHE.get("fetched_at") or 0.0)
+        age = now - fetched_at if fetched_at else 1e9
+        refreshing = bool(_MOVERS_CACHE.get("refreshing"))
+
+    if cached and age < _MOVERS_CACHE_TTL_SECONDS:
+        return _movers_slice(cached, limit, cached=True)
+
+    if cached and age < _MOVERS_STALE_TTL_SECONDS:
+        if not refreshing:
+            Thread(target=_refresh_movers_cache_async, name="movers-refresh", daemon=True).start()
+        return _movers_slice(cached, limit, cached=True)
+
+    try:
+        full_payload = _compute_market_movers_payload()
+    except Exception as exc:
+        logger.error("fetch_market_movers quote fetch failed: %s", exc)
+        if cached:
+            return _movers_slice(cached, limit, cached=True)
+        return {
+            "gainers": [],
+            "losers": [],
+            "mostActive": [],
+            "universeSize": 0,
+            "generatedAt": datetime.utcnow().isoformat() + "Z",
+            "cached": False,
+        }
+
+    with _MOVERS_CACHE_LOCK:
+        _MOVERS_CACHE["fetched_at"] = time.time()
+        _MOVERS_CACHE["payload"] = full_payload
+        _MOVERS_CACHE["refreshing"] = False
+
+    return _movers_slice(full_payload, limit, cached=False)
+
 
 _SEARCH_NOISE_WORDS = {
     "a",

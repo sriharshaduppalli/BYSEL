@@ -115,8 +115,11 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun refreshMarketMovers() {
+    fun refreshMarketMovers(staggerMs: Long = 0L) {
         viewModelScope.launch {
+            if (staggerMs > 0L) {
+                kotlinx.coroutines.delay(staggerMs)
+            }
             _moversLoading.value = true
             when (val response = repository.getMarketMovers(limit = 8)) {
                 is Result.Success -> {
