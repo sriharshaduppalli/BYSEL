@@ -96,7 +96,13 @@ fun HeatmapScreen(
                     Text("Loading market data...", color = LocalAppTheme.current.textSecondary, fontSize = 14.sp)
                 }
             }
-        } else if (heatmap != null && heatmap.sectors.isNotEmpty()) {
+        } else if (
+            heatmap != null &&
+            (
+                heatmap.marketBreadth.total > 0 ||
+                heatmap.sectors.any { it.stocks.isNotEmpty() }
+            )
+        ) {
             PullToRefreshBox(
                 isRefreshing = isLoading,
                 onRefresh = onRefresh,
