@@ -2,66 +2,68 @@ import Link from "next/link";
 import Image from "next/image";
 import LiveHeatmap from "../components/LiveHeatmap";
 
+const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.bysel.trader";
+
 const FEATURE_CARDS = [
   {
-    kicker: "AI Execution Coach",
-    title: "Trade plans before button taps",
-    copy: "Generate entry, risk, and exit templates instantly, then learn from post-trade breakdowns built for discipline.",
+    kicker: "AI Stock Assistant",
+    title: "Ask, analyze, then act",
+    copy: "Chat about NSE stocks with grounded answers. Buy and Set Alert actions sit right on AI replies so you can paper-trade without leaving the conversation.",
   },
   {
-    kicker: "India-First Simulation",
-    title: "NSE/BSE market behavior emulation",
-    copy: "Practice under realistic volatility, liquidity shifts, and sentiment cycles so your routine survives live sessions.",
+    kicker: "Home Market Pulse",
+    title: "Indices, ideas, and watchlist",
+    copy: "NIFTY / SENSEX / BANK NIFTY strip, idea rails, movers, and a denser watchlist with sort chips and quick Trade CTAs.",
   },
   {
-    kicker: "Portfolio Intelligence",
-    title: "Allocation guidance that explains itself",
-    copy: "Spot concentration risk, rebalance ideas, and track decisions with context instead of raw numbers only.",
+    kicker: "Live Heatmap",
+    title: "Sector heat in 1–2 seconds",
+    copy: "While the market is open, the sentiment heatmap refreshes about every 1–2 seconds so breadth and sector leadership stay current.",
   },
   {
-    kicker: "Trade Journal",
-    title: "Review every move with structure",
-    copy: "Capture bias, setup quality, and adherence to plan so each week compounds into better behavior.",
+    kicker: "Paper Trading",
+    title: "Practice with a virtual wallet",
+    copy: "Place simulated BUY/SELL orders, track holdings and PnL, and review portfolio health without risking real capital.",
   },
   {
-    kicker: "Market Radar",
-    title: "Heatmap, momentum, and sentiment",
-    copy: "See where participation is expanding or fading and build watchlists from sectors with real follow-through.",
+    kicker: "Signal Lab & Smart Money",
+    title: "Momentum, pressure, and investor flows",
+    copy: "Surface high-participation names, track smart-money style portfolio changes, and route straight into stock detail or trade.",
   },
   {
-    kicker: "Learning Mode",
-    title: "From beginner to process-driven",
-    copy: "Turn strategy videos into executable checklists with quizzes and scenario-based simulation blocks.",
+    kicker: "Discipline Tools",
+    title: "Alerts, journal, risk & SIP labs",
+    copy: "Price alerts, trade journal, risk lab, earnings calendar, mutual funds / SIP / IPO explorers — built for Indian-market learning.",
   },
 ];
 
 const EXECUTION_LOOP = [
   {
-    title: "Build your scenario",
-    copy: "Choose symbols, define risk per trade, and set the market context before your session opens.",
+    title: "Scan the tape",
+    copy: "Use Home pulse, heatmap, and Signal Lab to shortlist symbols with real participation — not random tips.",
   },
   {
-    title: "Run simulated execution",
-    copy: "Take entries in live conditions and adapt to changing breadth, trend quality, and sentiment readings.",
+    title: "Ask AI, then confirm",
+    copy: "Get a trade decision with levels. Tap Buy or Set Alert in chat, confirm the order, and keep risk explicit.",
   },
   {
     title: "Review and improve",
-    copy: "AI feedback highlights process mistakes, not just PnL, so your next playbook is cleaner.",
+    copy: "Journal, portfolio health, and post-trade coaching help you tighten process week over week.",
   },
 ];
 
 const MARKET_SIGNALS = [
   {
-    title: "Sector Rotation",
-    copy: "Banking, IT, and energy flow snapshots update every few seconds to surface trend transfer.",
+    title: "Sector Heatmap",
+    copy: "Banking, IT, Pharma, Auto, and more — with advances/declines and mood when the session is live.",
   },
   {
-    title: "Breadth Tracking",
-    copy: "See participation depth behind index moves and avoid entering when leadership is too narrow.",
+    title: "Movers & Momentum",
+    copy: "Gainers, losers, and most-active names with stale-while-revalidate so Home stays fast on cold starts.",
   },
   {
-    title: "Risk Events",
-    copy: "Macro and earnings windows are flagged early so you can tune position size and exposure.",
+    title: "Price Alerts",
+    copy: "Create ABOVE/BELOW alerts from AI cards or the Alerts screen and get notified as levels approach.",
   },
 ];
 
@@ -71,66 +73,67 @@ export default function Home() {
       <section className="hero-wrap">
         <div className="site-container hero-grid">
           <div data-animate>
-            <span className="eyebrow">Built for serious practice</span>
-            <h1 className="page-title">Train your trading process before risking real capital.</h1>
+            <span className="eyebrow">Android app for Indian markets</span>
+            <h1 className="page-title">Paper-trade NSE stocks with AI coaching and live market context.</h1>
             <p className="lead">
-              BYSEL Trader combines live market context, AI coaching, and structured simulation to help you build a repeatable trading routine.
+              BYSEL Trader is a simulation-first Android app: live quotes, sector heatmap, AI assistant,
+              paper portfolio, and structured practice tools — built for India, not generic US-market demos.
             </p>
 
             <div className="btn-row">
-              <Link href="https://play.google.com/store" className="btn-primary" target="_blank" rel="noreferrer">
-                Download Android App
+              <Link href={PLAY_STORE_URL} className="btn-primary" target="_blank" rel="noreferrer">
+                Get on Google Play
               </Link>
               <Link href="/features" className="btn-secondary">
-                Explore Product
+                Explore Features
               </Link>
               <Link href="/markets" className="btn-neutral">
-                See Live Market View
+                Live Market View
               </Link>
             </div>
 
             <div className="stat-grid">
               <div className="stat-item">
-                <span className="stat-value">5s</span>
-                <span className="stat-label">Market pulse refresh</span>
+                <span className="stat-value">1–2s</span>
+                <span className="stat-label">Heatmap refresh (market open)</span>
               </div>
               <div className="stat-item">
-                <span className="stat-value">3-step</span>
-                <span className="stat-label">Execution review loop</span>
+                <span className="stat-value">AI+</span>
+                <span className="stat-label">Chat with Buy / Alert actions</span>
               </div>
               <div className="stat-item">
                 <span className="stat-value">100%</span>
-                <span className="stat-label">Simulation-first learning</span>
+                <span className="stat-label">Paper trading / educational</span>
               </div>
             </div>
           </div>
 
           <aside className="glass-card hero-panel" data-animate data-delay="1">
             <div className="panel-head">
-              <h2 className="panel-title">Session Dashboard</h2>
-              <span className="status-chip live">Open</span>
+              <h2 className="panel-title">Inside the app</h2>
+              <span className="status-chip live">Android</span>
             </div>
-            <p className="mini-muted">Setup your plan, then execute with context that changes as fast as the market does.</p>
+            <p className="mini-muted">What users open every session — Home, AI, Trade, Portfolio, Heatmap.</p>
 
             <div className="stack-grid" style={{ marginTop: "0.7rem" }}>
               <div className="info-row">
-                <p className="info-title">Watchlist Focus</p>
-                <p className="info-copy">NIFTY, BANKNIFTY, and high-participation large caps with trend confirmation.</p>
+                <p className="info-title">Home</p>
+                <p className="info-copy">Index strip, ideas, movers, watchlist, and quick trade entry.</p>
               </div>
               <div className="info-row">
-                <p className="info-title">Risk Discipline</p>
-                <p className="info-copy">Predefined loss threshold and position sizing for every simulated setup.</p>
+                <p className="info-title">AI Assistant</p>
+                <p className="info-copy">Stock Q&amp;A, trade decisions with Entry / Target / Stop-Loss, confirmable orders.</p>
               </div>
               <div className="info-row">
-                <p className="info-title">Review Trigger</p>
-                <p className="info-copy">Auto-analysis starts when plan adherence drops, not only after losses.</p>
+                <p className="info-title">Auth that works offline SMS</p>
+                <p className="info-copy">Register with username + email + password, or use phone OTP when SMS delivery is available.</p>
               </div>
             </div>
 
             <div className="pill-row">
-              <span className="tag-pill">AI Mentor</span>
-              <span className="tag-pill">Paper Portfolio</span>
-              <span className="tag-pill">Behavior Analytics</span>
+              <span className="tag-pill">NSE / BSE context</span>
+              <span className="tag-pill">Paper wallet</span>
+              <span className="tag-pill">Not a SEBI broker</span>
             </div>
           </aside>
         </div>
@@ -140,9 +143,9 @@ export default function Home() {
         <div className="site-container">
           <div className="section-head">
             <div>
-              <h2 className="section-title">Everything you need to practice like a pro</h2>
+              <h2 className="section-title">What ships in the latest BYSEL Android app</h2>
               <p className="section-copy">
-                The platform is designed around process quality: setup selection, risk framing, execution timing, and review rigor.
+                Product surfaces that match the live app — not a generic financial-planning brochure.
               </p>
             </div>
           </div>
@@ -193,8 +196,8 @@ export default function Home() {
         <div className="site-container">
           <div className="section-head">
             <div>
-              <h2 className="section-title">The BYSEL execution loop</h2>
-              <p className="section-copy">Designed to make confidence come from repeatable process quality, not one lucky day.</p>
+              <h2 className="section-title">The BYSEL practice loop</h2>
+              <p className="section-copy">Scan → decide with AI → paper-execute → review. Built for habit, not hype.</p>
             </div>
           </div>
 
@@ -217,15 +220,16 @@ export default function Home() {
           <div className="split-grid">
             <div>
               <h2 className="section-title" style={{ marginBottom: "0.5rem" }}>
-                Ready to build a disciplined trading habit?
+                Ready to practice Indian markets on Android?
               </h2>
               <p className="section-copy">
-                Start with the simulator, run your process, and carry a verified routine into real markets when you are ready.
+                Install BYSEL Trader, create a username/password account (recommended while OTP SMS is being stabilized),
+                and start with paper capital. Educational use only — not investment advice and not a SEBI-registered broker.
               </p>
             </div>
 
             <div className="btn-row" style={{ marginTop: 0, alignSelf: "center", justifyContent: "flex-start" }}>
-              <Link href="https://play.google.com/store" className="btn-primary" target="_blank" rel="noreferrer">
+              <Link href={PLAY_STORE_URL} className="btn-primary" target="_blank" rel="noreferrer">
                 Install on Android
               </Link>
               <Link href="/pricing" className="btn-neutral">
@@ -243,7 +247,7 @@ export default function Home() {
         <div className="site-container" style={{ textAlign: "center" }}>
           <Image src="/ic_launcher.png" alt="BYSEL app icon" width={72} height={72} priority />
           <p className="mini-muted" style={{ marginTop: "0.7rem" }}>
-            BYSEL Trader. Simulation-first learning for smarter participation in Indian markets.
+            BYSEL Trader · Simulation-first learning for smarter participation in Indian markets.
           </p>
         </div>
       </section>

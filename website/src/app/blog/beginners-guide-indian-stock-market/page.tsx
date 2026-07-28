@@ -147,7 +147,7 @@ export default function BlogPost() {
             </ol>
 
             <div className="btn-row" style={{ marginTop: "1.5rem" }}>
-              <Link href="https://play.google.com/store" className="btn-primary" target="_blank" rel="noreferrer">
+              <Link href="https://play.google.com/store/apps/details?id=com.bysel.trader" className="btn-primary" target="_blank" rel="noreferrer">
                 Start Paper Trading Free
               </Link>
               <Link href="/blog/why-ai-trading-assistant" className="btn-neutral">

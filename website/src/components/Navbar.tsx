@@ -53,7 +53,7 @@ export default function Navbar() {
           </div>
 
           <Link
-            href="https://play.google.com/store"
+            href="https://play.google.com/store/apps/details?id=com.bysel.trader"
             className="nav-pill"
             target="_blank"
             rel="noreferrer"
@@ -86,7 +86,7 @@ export default function Navbar() {
             ))}
 
             <Link
-              href="https://play.google.com/store"
+              href="https://play.google.com/store/apps/details?id=com.bysel.trader"
               className="btn-primary"
               target="_blank"
               rel="noreferrer"

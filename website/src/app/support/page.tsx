@@ -20,20 +20,21 @@ const SUPPORT_CHANNELS = [
 
 const FAQ = [
   {
-    question: "How quickly does support respond?",
-    answer: "Most requests receive a first response within one business day. Pro and Desk plans receive priority handling.",
+    question: "OTP SMS is not arriving. What should I do?",
+    answer:
+      "Use Register with username, email, and password. That path is fully working. Phone OTP depends on Firebase SMS delivery and may be rate-limited.",
   },
   {
-    question: "Can I recover my simulation history?",
-    answer: "Yes. If you changed devices or accounts, contact support and include your registered email address.",
+    question: "How quickly does support respond?",
+    answer: "Most requests receive a first response within one business day.",
   },
   {
     question: "Do you provide strategy advice?",
-    answer: "We provide educational guidance and process feedback. BYSEL does not offer personalized investment advice.",
+    answer: "We provide educational guidance and process feedback. BYSEL does not offer personalized investment advice and is not a SEBI-registered broker.",
   },
   {
     question: "Where can I report bugs?",
-    answer: "Use the in-app feedback option or email support with screenshots and the app version number.",
+    answer: "Use in-app feedback or email support@byseltrader.com with screenshots and the app version number.",
   },
 ];
 
@@ -91,7 +92,7 @@ export default function Support() {
             </ul>
 
             <div className="btn-row" style={{ marginTop: "1rem" }}>
-              <Link href="https://play.google.com/store" className="btn-primary" target="_blank" rel="noreferrer">
+              <Link href="https://play.google.com/store/apps/details?id=com.bysel.trader" className="btn-primary" target="_blank" rel="noreferrer">
                 Install Latest Build
               </Link>
               <Link href="/legal/terms" className="btn-neutral">

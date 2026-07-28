@@ -43,11 +43,12 @@ Then upload the fresh `out/` content.
 
 Check these routes return `200` and show new text:
 
-- `/` -> `Train your trading process before risking real capital.`
-- `/features/` -> `Features built for process quality, not hype.`
-- `/markets/` -> `Real-time context for better simulated decisions.`
-- `/pricing/` -> `Plans for every stage of your trading journey.`
+- `/` -> `Paper-trade NSE stocks with AI coaching and live market context.`
+- `/features/` -> `Features that match the live Android app.`
+- `/markets/` -> `Live NSE context for better paper-trading decisions.`
+- `/pricing/` -> `Start free while we grow with testers.`
 - `/support/` -> `Need help? We are here to keep your learning flow smooth.`
+- `/about/` -> `Building confident traders through structured practice.`
 
 ## 5. Cache Refresh
 

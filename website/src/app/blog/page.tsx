@@ -130,7 +130,7 @@ export default function Blog() {
             </p>
             <div className="btn-row" style={{ marginTop: "0.8rem" }}>
               <Link
-                href="https://play.google.com/store"
+                href="https://play.google.com/store/apps/details?id=com.bysel.trader"
                 className="btn-primary"
                 target="_blank"
                 rel="noreferrer"

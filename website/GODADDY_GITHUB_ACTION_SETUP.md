@@ -41,7 +41,7 @@ After workflow success, validate:
 
 Expected homepage marker:
 
-- `Train your trading process before risking real capital.`
+- `Paper-trade NSE stocks with AI coaching and live market context.`
 
 ## 5. SSL Setup In cPanel (Required)
 

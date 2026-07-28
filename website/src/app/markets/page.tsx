@@ -29,10 +29,10 @@ export default function Markets() {
         <div className="site-container">
           <span className="eyebrow">Market Center</span>
           <h1 className="page-title" style={{ fontSize: "clamp(2rem, 5vw, 3.15rem)" }}>
-            Real-time context for better simulated decisions.
+            Live NSE context for better paper-trading decisions.
           </h1>
           <p className="lead">
-            BYSEL surfaces market structure, sector participation, and event risk in one view so you can practice with intent.
+            Heatmap, breadth, and movers update from the BYSEL market APIs so practice stays tied to real Indian-session behavior.
           </p>
 
           <div className="pill-row">
