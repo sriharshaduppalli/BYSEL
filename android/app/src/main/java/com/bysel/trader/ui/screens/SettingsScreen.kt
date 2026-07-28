@@ -4,7 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -19,6 +21,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.DialogProperties
 import com.bysel.trader.BuildConfig
 import com.bysel.trader.data.models.AuthSessionItem
 import com.bysel.trader.data.repository.AuthRepository
@@ -48,6 +51,7 @@ fun SettingsScreen(
     var enableNotifications by remember { mutableStateOf(true) }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
+    var legalDocument by remember { mutableStateOf<com.bysel.trader.ui.components.LegalDocument?>(null) }
     var selectedTheme by remember { mutableStateOf(currentTheme) }
     var showProfileDialog by remember { mutableStateOf(false) }
     var showSecurityDialog by remember { mutableStateOf(false) }
@@ -102,7 +106,19 @@ fun SettingsScreen(
         )
     }
     if (showAboutDialog) {
-        AboutDialog { showAboutDialog = false }
+        AboutDialog(
+            onDismiss = { showAboutDialog = false },
+            onOpenLegal = { doc ->
+                showAboutDialog = false
+                legalDocument = doc
+            }
+        )
+    }
+    legalDocument?.let { doc ->
+        com.bysel.trader.ui.components.LegalDocumentDialog(
+            document = doc,
+            onDismiss = { legalDocument = null }
+        )
     }
     if (showProfileDialog) {
         ProfileDialog(
@@ -450,6 +466,30 @@ fun SettingsScreen(
         }
         item {
             SettingClickItem(
+                icon = Icons.Filled.PrivacyTip,
+                title = "Privacy Policy",
+                subtitle = "How we handle your data",
+                onClick = { legalDocument = com.bysel.trader.ui.components.LegalDocument.Privacy }
+            )
+        }
+        item {
+            SettingClickItem(
+                icon = Icons.Filled.Gavel,
+                title = "Terms of Service",
+                subtitle = "Rules for using BYSEL",
+                onClick = { legalDocument = com.bysel.trader.ui.components.LegalDocument.Terms }
+            )
+        }
+        item {
+            SettingClickItem(
+                icon = Icons.Filled.Description,
+                title = "Open Source Licenses",
+                subtitle = "Third-party attributions",
+                onClick = { legalDocument = com.bysel.trader.ui.components.LegalDocument.Licenses }
+            )
+        }
+        item {
+            SettingClickItem(
                 icon = Icons.Filled.Public,
                 title = "Visit Website",
                 subtitle = "Open official website",
@@ -604,7 +644,7 @@ fun ManageSessionsDialog(
 
 @Composable
 fun IntervalSelectionDialog(selectedInterval: Int, onIntervalSelected: (Int) -> Unit, onDismiss: () -> Unit) {
-    val intervals = listOf(1000, 2000, 5000, 10000)
+    val intervals = listOf(5_000, 10_000, 30_000, 60_000)
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = LocalAppTheme.current.card,
@@ -655,13 +695,13 @@ fun WebsiteDialog(onDismiss: () -> Unit) {
         text = {
             Column {
                 Text("Official BYSEL website:", fontSize = 14.sp, color = LocalAppTheme.current.text)
-                Text("https://byseltrader.com", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
+                Text("https://www.byseltrader.com", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
                 Text("Tap 'Open' to visit in browser.", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
             }
         },
         confirmButton = {
             TextButton(onClick = {
-                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://byseltrader.com"))
+                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.byseltrader.com"))
                 context.startActivity(intent)
                 onDismiss()
             }) {
@@ -891,94 +931,113 @@ fun SettingClickItem(
 }
 
 @Composable
-fun AboutDialog(onDismiss: () -> Unit) {
+fun AboutDialog(
+    onDismiss: () -> Unit,
+    onOpenLegal: (com.bysel.trader.ui.components.LegalDocument) -> Unit,
+) {
+    val theme = LocalAppTheme.current
     val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    val scroll = rememberScrollState()
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = LocalAppTheme.current.card,
+        properties = DialogProperties(usePlatformDefaultWidth = true),
+        containerColor = theme.card,
         title = {
             Text(
                 text = "About BYSEL",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                color = LocalAppTheme.current.text
+                color = theme.text
             )
         },
         text = {
-            Column {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 460.dp)
+                    .verticalScroll(scroll)
+            ) {
                 Text(
                     text = "BYSEL - Stock Trading Simulator",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = LocalAppTheme.current.text,
-                    modifier = Modifier.padding(bottom = 12.dp)
+                    color = theme.text,
+                    modifier = Modifier.padding(bottom = 8.dp)
                 )
                 Text(
                     text = "Version ${BuildConfig.VERSION_NAME}",
                     fontSize = 12.sp,
-                    color = LocalAppTheme.current.textSecondary,
-                    modifier = Modifier.padding(bottom = 12.dp)
+                    color = theme.textSecondary,
+                    modifier = Modifier.padding(bottom = 8.dp)
                 )
                 Text(
                     text = "BYSEL is a modern stock trading simulator that helps you learn and practice stock trading with real market data. No real money is involved.",
                     fontSize = 12.sp,
-                    color = LocalAppTheme.current.textSecondary,
-                    modifier = Modifier.padding(bottom = 12.dp)
+                    color = theme.textSecondary,
+                    modifier = Modifier.padding(bottom = 8.dp)
                 )
                 Text(
-                    text = "© 2026 BYSEL. All rights reserved.",
+                    text = "© 2026 BYSEL Services. All rights reserved.",
                     fontSize = 11.sp,
-                    color = LocalAppTheme.current.textSecondary,
-                    modifier = Modifier.padding(bottom = 12.dp)
+                    color = theme.textSecondary,
+                    modifier = Modifier.padding(bottom = 16.dp)
                 )
-                Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Legal & Info:",
+                    text = "Legal & Info",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
-                    color = LocalAppTheme.current.primary,
-                    modifier = Modifier.padding(bottom = 4.dp)
+                    color = theme.primary,
+                    modifier = Modifier.padding(bottom = 8.dp)
                 )
-                Text(
-                    text = "Privacy Policy",
-                    fontSize = 12.sp,
-                    color = LocalAppTheme.current.primary,
-                    modifier = Modifier
-                        .padding(bottom = 6.dp)
-                        .clickable { uriHandler.openUri("https://byseltrader.com/privacy") }
+                AboutLegalRow(
+                    label = "Privacy Policy",
+                    onClick = { onOpenLegal(com.bysel.trader.ui.components.LegalDocument.Privacy) }
                 )
-                Text(
-                    text = "Terms of Service",
-                    fontSize = 12.sp,
-                    color = LocalAppTheme.current.primary,
-                    modifier = Modifier
-                        .padding(bottom = 6.dp)
-                        .clickable { uriHandler.openUri("https://byseltrader.com/terms") }
+                AboutLegalRow(
+                    label = "Terms of Service",
+                    onClick = { onOpenLegal(com.bysel.trader.ui.components.LegalDocument.Terms) }
                 )
-                Text(
-                    text = "Open Source Licenses",
-                    fontSize = 12.sp,
-                    color = LocalAppTheme.current.primary,
-                    modifier = Modifier
-                        .padding(bottom = 6.dp)
-                        .clickable { uriHandler.openUri("https://byseltrader.com/licenses") }
+                AboutLegalRow(
+                    label = "Open Source Licenses",
+                    onClick = { onOpenLegal(com.bysel.trader.ui.components.LegalDocument.Licenses) }
                 )
-                Text(
-                    text = "Contact: support@bysel.com",
-                    fontSize = 12.sp,
-                    color = LocalAppTheme.current.primary,
-                    modifier = Modifier
-                        .padding(bottom = 2.dp)
-                        .clickable { uriHandler.openUri("mailto:support@bysel.com") }
+                AboutLegalRow(
+                    label = "Contact: support@byseltrader.com",
+                    onClick = { uriHandler.openUri("mailto:support@byseltrader.com") }
                 )
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Close", color = LocalAppTheme.current.primary)
+                Text("Close", color = theme.primary)
             }
         }
     )
+}
+
+@Composable
+private fun AboutLegalRow(label: String, onClick: () -> Unit) {
+    val theme = LocalAppTheme.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            fontSize = 13.sp,
+            color = theme.primary,
+            modifier = Modifier.weight(1f)
+        )
+        Icon(
+            imageVector = Icons.Filled.ChevronRight,
+            contentDescription = null,
+            tint = theme.primary,
+            modifier = Modifier.size(18.dp)
+        )
+    }
 }
 
 @Composable
@@ -1020,7 +1079,7 @@ fun ProfileDialog(
                     username = profile.username
                     email = profile.email
                     mobileNumber = profile.mobileNumber.orEmpty()
-                    createdAt = profile.createdAt
+                    createdAt = profile.createdAt.orEmpty()
                 }
                 is Result.Error -> {
                     errorMessage = result.message
@@ -1050,7 +1109,24 @@ fun ProfileDialog(
                     CircularProgressIndicator(strokeWidth = 2.dp)
                 }
             } else {
-                Column {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    if (!errorMessage.isNullOrBlank() && username.isBlank() && email.isBlank()) {
+                        Text(
+                            text = errorMessage ?: "",
+                            color = LocalAppTheme.current.negative,
+                            fontSize = 12.sp,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        TextButton(onClick = { loadProfile() }) {
+                            Text("Retry", color = LocalAppTheme.current.primary)
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                     OutlinedTextField(
                         value = username,
                         onValueChange = {
@@ -1089,6 +1165,14 @@ fun ProfileDialog(
                         enabled = !saving,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    if (mobileNumber.isNotBlank() && email.contains("@bysel.com", ignoreCase = true)) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Signed in with mobile OTP. You can set a display username and email here.",
+                            fontSize = 11.sp,
+                            color = LocalAppTheme.current.textSecondary,
+                        )
+                    }
                     if (createdAt.isNotBlank()) {
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
@@ -1097,7 +1181,7 @@ fun ProfileDialog(
                             color = LocalAppTheme.current.textSecondary,
                         )
                     }
-                    if (!errorMessage.isNullOrBlank()) {
+                    if (!errorMessage.isNullOrBlank() && username.isNotBlank()) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = errorMessage ?: "",
@@ -1148,7 +1232,7 @@ fun ProfileDialog(
                                 username = profile.username
                                 email = profile.email
                                 mobileNumber = profile.mobileNumber.orEmpty()
-                                createdAt = profile.createdAt
+                                createdAt = profile.createdAt.orEmpty()
                                 errorMessage = null
                                 successMessage = "Profile updated"
                             }
@@ -1394,7 +1478,7 @@ fun FeedbackDialog(onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         containerColor = LocalAppTheme.current.card,
         title = { Text("Feedback", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = LocalAppTheme.current.text) },
-        text = { Column { Text("We value your feedback!", fontSize = 14.sp, color = LocalAppTheme.current.text); Text("Please email us at support@bysel.com", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary) } },
+        text = { Column { Text("We value your feedback!", fontSize = 14.sp, color = LocalAppTheme.current.text); Text("Please email us at support@byseltrader.com", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary) } },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = LocalAppTheme.current.primary) } }
     )
 }

@@ -24,6 +24,12 @@ _client = None
 # ---------------------------------------------------------------------------
 _BASE_SYSTEM_PROMPT = """You are BYSEL AI, an expert Indian stock market analyst assistant.
 
+STEP 0 — UNDERSTAND THE QUERY:
+- Greetings / chitchat ("hi", "hello", "thanks") → reply briefly as BYSEL AI. Do NOT invent a stock analysis.
+- Sector / theme queries ("defence stocks", "best pharma stocks") → answer with that sector's names.
+  Prefer SCREENED RESULTS in context when present. Do NOT analyze a random unrelated ticker from wallet/context.
+- Only run a single-stock technical/fundamental template when the user clearly asked about one company/symbol.
+
 STEP 1 — DIRECT ANSWER (always first):
 Read the user's question carefully. Before any analysis, answer it directly:
 - "Should I buy X?" → State BUY / SELL / HOLD with one-sentence reason
@@ -167,6 +173,12 @@ The user wants stock recommendations from a sector. Provide:
    - Best for SWING TRADERS (technical breakout setup)
 3. AVOID (with specific reason — not just "risky")
 4. SECTOR CATALYST to watch in next 30–60 days
+
+CRITICAL:
+- If SCREENED RESULTS are present in context, use those symbols first.
+- For Defence/Aerospace in India prefer HAL, BEL, BDL, MAZDOCK, COCHINSHIP, GRSE, DATAPATTNS.
+- Do NOT invent unrelated Nifty names (like Reliance/TCS) for a defence query.
+- Do NOT run a single-stock RSI/MACD template unless the user named one company.
 """,
 
     "PORTFOLIO": """
@@ -181,13 +193,17 @@ The user is asking about portfolio strategy. Cover:
 
     "EDUCATIONAL": """
 --- EDUCATIONAL FOCUS ---
-The user wants to LEARN or UNDERSTAND a concept. Structure as:
-1. SIMPLE EXPLANATION (1-2 sentences, no jargon)
-2. TECHNICAL DEFINITION (precise, complete)
-3. INDIAN MARKET EXAMPLE: Use a real NSE-listed stock to illustrate the concept
-4. HOW TO USE IT: Practical application in daily trading/investing decisions
-5. COMMON MISTAKES: What beginners get wrong about this concept
-Keep it clear and actionable — the goal is understanding, not showing off terminology.
+The user wants to LEARN a stock-market concept, term, or equation. Structure as:
+1. SIMPLE EXPLANATION (1-2 sentences, plain English)
+2. DEFINITION / EQUATION: If the concept has a formula, show it clearly, e.g.
+   - RSI = 100 - (100 / (1 + RS)) where RS = Avg Gain / Avg Loss
+   - P/E = Price / EPS
+   - CAGR = (Ending / Beginning)^(1/years) - 1
+   Define every variable.
+3. WORKED EXAMPLE with a real NSE name (e.g. RELIANCE, TCS) or sample numbers
+4. HOW TO USE IT in trading/investing decisions
+5. COMMON MISTAKES beginners make
+Never invent a stock recommendation when the user only asked for a definition or formula.
 """,
 
     "CALCULATION": """
@@ -198,6 +214,7 @@ The user is asking for a market calculation or formula-driven output.
 3. Show step-by-step math clearly
 4. Provide the final numeric result with units (% / ₹)
 5. If any required input is missing, ask specifically for that input instead of guessing
+If they only ask "what is the formula for X" without numbers, teach the equation (educational style) instead of refusing.
 """,
 
     "SMALL_TALK": """
@@ -621,9 +638,21 @@ def classify_intent(query: str) -> dict:
         if kw in q: scores["FUNDAMENTAL"] += 2
 
     # SECTOR_SCREEN
-    for kw in ["sector", "banking stocks", "pharma stocks", "it stocks", "fmcg stocks",
-               "auto stocks", "defence stocks", "energy stocks", "nse listed", "screener"]:
-        if kw in q: scores["SECTOR_SCREEN"] += 2
+    for kw in [
+        "sector", "banking stocks", "pharma stocks", "it stocks", "fmcg stocks",
+        "auto stocks", "defence stocks", "defense stocks", "energy stocks",
+        "nse listed", "screener", "psu stocks", "realty stocks", "metal stocks",
+        "infra stocks", "railway stocks", "cement stocks",
+    ]:
+        if kw in q:
+            scores["SECTOR_SCREEN"] += 2
+    # Bare sector themes ("defence", "psu", "pharma") without requiring "stocks"
+    for kw in [
+        "defence", "defense", "psu", "realty", "pharma", "fmcg", "infra",
+        "railway", "shipyard", "fintech", "nbfc", "cement", "telecom",
+    ]:
+        if re.search(r"\b" + re.escape(kw) + r"\b", q):
+            scores["SECTOR_SCREEN"] += 3
     if re.search(r'\b(top|best|good)\b.{0,20}\bstocks?\b', q):
         scores["SECTOR_SCREEN"] += 3
 
@@ -632,13 +661,26 @@ def classify_intent(query: str) -> dict:
                "rebalance", "asset allocation", "my stocks", "long term investment"]:
         if kw in q: scores["PORTFOLIO"] += 3
 
-    # EDUCATIONAL
-    for kw in ["what is", "what are", "explain", "how does", "what does",
-               "meaning of", "define", "understand", "how to calculate", "why is",
-               "difference between rsi", "what is macd", "what is pe"]:
-        if kw in q: scores["EDUCATIONAL"] += 2
+    # EDUCATIONAL — definitions, meanings, equations (boost strongly so
+    # "what is RSI" does not fall into TECHNICAL clarifier asking for a symbol).
+    for kw in [
+        "what is", "what are", "explain", "how does", "what does",
+        "meaning of", "define", "definition", "understand", "how to calculate",
+        "why is", "formula", "equation", "difference between",
+        "what is rsi", "what is macd", "what is pe", "what is p/e",
+        "rsi formula", "macd formula", "cagr formula", "pe formula",
+    ]:
+        if kw in q:
+            scores["EDUCATIONAL"] += 3
     if re.search(r'\bwhat (is|are)\b', q):
-        scores["EDUCATIONAL"] += 2
+        scores["EDUCATIONAL"] += 3
+    if re.search(r'\b(formula|equation|definition|meaning)\b', q):
+        scores["EDUCATIONAL"] += 4
+    if re.search(
+        r'\b(rsi|macd|bollinger|cagr|roe|roce|eps|vwap|atr|pe ratio|p/e|peg|sharpe|drawdown)\b',
+        q,
+    ) and re.search(r'\b(what|explain|define|formula|equation|mean|meaning)\b', q):
+        scores["EDUCATIONAL"] += 5
 
     # CALCULATION
     for kw in [
@@ -1403,12 +1445,16 @@ async def ask_groq(
             entities = context.get("entities", {})
             query_lower = query.lower()
 
-            # Detect sector keyword in query
-            sector_keywords = ["it", "banking", "pharma", "auto", "energy", "infra", "fmcg", "cement", "metal"]
+            # Detect sector with word boundaries; prefer longest matches first so
+            # "it" does not match inside "circuit" / "liquidity".
+            sector_keywords = [
+                "defence", "defense", "banking", "pharma", "energy", "infra",
+                "fmcg", "cement", "metal", "realty", "psu", "railway", "auto", "it",
+            ]
             detected_sector = None
             for sector_kw in sector_keywords:
-                if sector_kw in query_lower:
-                    detected_sector = sector_kw.upper()
+                if re.search(r"\b" + re.escape(sector_kw) + r"\b", query_lower):
+                    detected_sector = "DEFENCE" if sector_kw in ("defence", "defense") else sector_kw.upper()
                     break
 
             screening_criteria = {}

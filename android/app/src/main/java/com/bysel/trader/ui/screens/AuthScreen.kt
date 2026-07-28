@@ -56,6 +56,7 @@ import com.google.android.gms.common.api.Status
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.google.firebase.FirebaseException
+import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.PhoneAuthCredential
 import com.google.firebase.auth.PhoneAuthOptions
@@ -72,7 +73,6 @@ fun AuthScreen(
     val authRepository = remember { AuthRepository() }
     val scope = rememberCoroutineScope()
     val appTheme = LocalAppTheme.current
-    val context = LocalContext.current
 
     var isLoginMode by remember { mutableStateOf(true) }
     var isOtpMode by remember { mutableStateOf(false) }
@@ -94,6 +94,7 @@ fun AuthScreen(
     val firebaseAuth = remember { FirebaseAuth.getInstance() }
     var firebaseVerificationId by remember { mutableStateOf<String?>(null) }
     var firebaseResendToken by remember { mutableStateOf<PhoneAuthProvider.ForceResendingToken?>(null) }
+
     var otpCountdown by remember { mutableStateOf(0) }
 
     // Activity (needed to launch User Consent intent)
@@ -315,7 +316,6 @@ fun AuthScreen(
                         return@Button
                     }
 
-                    // Always prefix +91 — field only accepts 10-digit Indian numbers
                     val phoneE164 = "+91$rawNumber"
 
                     sendingOtp = true
@@ -323,7 +323,6 @@ fun AuthScreen(
 
                     val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
                         override fun onVerificationCompleted(credential: PhoneAuthCredential) {
-                            // Auto-verification (instant verification or auto-retrieval)
                             Log.d("AuthScreen", "Firebase auto-verified phone")
                             scope.launch {
                                 verifyingOtp = true
@@ -358,7 +357,7 @@ fun AuthScreen(
                         override fun onVerificationFailed(e: FirebaseException) {
                             sendingOtp = false
                             messageIsError = true
-                            message = e.localizedMessage ?: "Phone verification failed"
+                            message = firebaseOtpErrorMessage(e)
                             Log.e("AuthScreen", "Firebase verification failed", e)
                         }
 
@@ -385,7 +384,6 @@ fun AuthScreen(
                         optionsBuilder.setActivity(activity)
                     }
 
-                    // Use resend token if available (for resend)
                     firebaseResendToken?.let { optionsBuilder.setForceResendingToken(it) }
 
                     try {
@@ -439,6 +437,13 @@ fun AuthScreen(
                             message = "OTP must be exactly 6 digits"
                             return@Button
                         }
+                        val rawNumber = mobileNumber.trim()
+                        if (rawNumber.length != 10) {
+                            messageIsError = true
+                            message = "Enter a valid 10-digit mobile number"
+                            return@Button
+                        }
+
                         val vId = firebaseVerificationId
                         if (vId == null) {
                             messageIsError = true
@@ -449,8 +454,8 @@ fun AuthScreen(
                         verifyingOtp = true
                         message = null
 
-                        val credential = PhoneAuthProvider.getCredential(vId, otpCode.trim())
                         scope.launch {
+                            val credential = PhoneAuthProvider.getCredential(vId, otpCode.trim())
                             try {
                                 val authResult = firebaseAuth.signInWithCredential(credential).await()
                                 val idToken = authResult.user?.getIdToken(false)?.await()?.token
@@ -608,6 +613,9 @@ fun AuthScreen(
                     otpCode = ""
                     mobileNumber = ""
                     password = ""
+                    firebaseVerificationId = null
+                    firebaseResendToken = null
+                    otpCountdown = 0
                 },
                 enabled = !loading,
                 modifier = Modifier.align(Alignment.End)
@@ -649,25 +657,43 @@ fun AuthScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Guest mode — skip login for feature testing
-        TextButton(
-            onClick = {
-                if (loading) return@TextButton
-                // Create a guest session so the app lets us through
-                AuthSessionManager.saveSession(
-                    accessToken = "guest-token",
-                    refreshToken = "guest-refresh",
-                    userId = 0
-                )
-                onAuthenticated()
-            },
-            enabled = !loading
-        ) {
-            Text("Skip Login (Guest Mode)", color = appTheme.textSecondary)
+        // Guest mode is debug-only: the placeholder tokens it stores are rejected by every
+        // authenticated endpoint, so in a release build it looks like a broken login.
+        if (com.bysel.trader.BuildConfig.DEBUG) {
+            Spacer(modifier = Modifier.height(8.dp))
+            TextButton(
+                onClick = {
+                    if (loading) return@TextButton
+                    AuthSessionManager.saveSession(
+                        accessToken = "guest-token",
+                        refreshToken = "guest-refresh",
+                        userId = 0
+                    )
+                    onAuthenticated()
+                },
+                enabled = !loading
+            ) {
+                Text("Skip Login (Guest Mode)", color = appTheme.textSecondary)
+            }
         }
     }
+}
+
+private fun firebaseOtpErrorMessage(exception: Exception): String {
+    if (exception is FirebaseAuthException) {
+        return when (exception.errorCode) {
+            "ERROR_INVALID_PHONE_NUMBER" -> "Enter a valid phone number."
+            "ERROR_TOO_MANY_REQUESTS" -> "Firebase rate limit reached. Please try again later."
+            "ERROR_QUOTA_EXCEEDED" -> "Firebase SMS quota exceeded for today. Try again later or upgrade Firebase billing."
+            "ERROR_SESSION_EXPIRED" -> "OTP session expired. Request a new OTP."
+            "ERROR_INVALID_VERIFICATION_CODE" -> "Invalid OTP code. Please check the SMS and try again."
+            "ERROR_INVALID_VERIFICATION_ID" -> "Verification session expired. Request a new OTP."
+            "ERROR_APP_NOT_AUTHORIZED" -> "Firebase is not authorized for this app. Check SHA-1/SHA-256 in Firebase Console."
+            else -> exception.localizedMessage ?: "Phone verification failed"
+        }
+    }
+
+    return exception.localizedMessage ?: "Phone verification failed"
 }
 
 @Composable

@@ -27,14 +27,18 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bysel.trader.ui.format.formatInr
+import com.bysel.trader.ui.format.formatSignedPct
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.MarketStatus
 import com.bysel.trader.ui.components.appOutlinedTextFieldColors
+import com.bysel.trader.ui.components.InfoChip
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.components.PriceHistoryChart
 import com.bysel.trader.ui.components.PullToRefreshBox
 import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
 import com.bysel.trader.ui.components.OrderRejectionBanner
+import com.bysel.trader.ui.components.RejectionCategory
 import com.bysel.trader.ui.components.resolveRejection
 import com.bysel.trader.viewmodel.TradingViewModel
 import androidx.compose.material3.AssistChip
@@ -52,13 +56,7 @@ private fun formatVolume(v: Long?): String {
     }
 }
 
-private fun formatSignedPct(value: Double): String {
-    return "${if (value >= 0) "+" else ""}${String.format("%.2f", value)}%"
-}
-
-private fun formatCurrency(value: Double): String {
-    return "₹${String.format("%,.2f", value)}"
-}
+private fun formatCurrency(value: Double): String = formatInr(value)
 
 private data class WatchlistInsight(
     val quote: Quote,
@@ -193,9 +191,12 @@ fun TradingScreen(
     onTraceSupportLookup: ((String) -> Unit)? = null,
     viewModel: com.bysel.trader.viewmodel.TradingViewModel
 ) {
-    // Start fast-refresh while this screen is visible; stop on dispose
+    // Start fast-refresh while this screen is visible; stop on dispose.
+    // The full symbol universe is only needed for browsing here, so it is fetched on
+    // first visit rather than during app startup.
     DisposableEffect(viewModel) {
         viewModel.startFastRefresh()
+        viewModel.loadAllQuotes()
         onDispose { viewModel.stopFastRefresh() }
     }
     val liveQuotes by viewModel.quotes.collectAsState()
@@ -473,7 +474,7 @@ private fun SpotTradingWorkspace(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(activeWatchlistSymbols) { symbol ->
+                items(activeWatchlistSymbols, key = { it }) { symbol ->
                     AssistChip(
                         onClick = {
                             liveQuoteMap[symbol.uppercase()]?.let(onSelectQuote) ?: onOpenSymbol(symbol)
@@ -970,10 +971,10 @@ private fun FuturesRadarScreen(
                             )
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            AssistChip(onClick = {}, label = { Text("Lot ${contract.lotSize}") })
-                            AssistChip(onClick = {}, label = { Text("OI ${contract.oi}") })
-                            AssistChip(onClick = {}, label = { Text("Basis ${formatCurrency(contract.basis)}") })
-                            AssistChip(onClick = {}, label = { Text("Mgn/Lot ${formatCurrency(contract.marginPerLot)}") })
+                            InfoChip(label = { Text("Lot ${contract.lotSize}") })
+                            InfoChip(label = { Text("OI ${contract.oi}") })
+                            InfoChip(label = { Text("Basis ${formatCurrency(contract.basis)}") })
+                            InfoChip(label = { Text("Mgn/Lot ${formatCurrency(contract.marginPerLot)}") })
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
@@ -1701,7 +1702,16 @@ private fun TradeBottomSheetContent(
                 OrderRejectionBanner(
                     rawMessage = errMsg,
                     onPrimaryCta = { viewModel.clearError() },
-                    modifier = Modifier.padding(bottom = 10.dp)
+                    modifier = Modifier.padding(bottom = 10.dp),
+                    onSecondaryCta = { resolution ->
+                        when (resolution.category) {
+                            RejectionCategory.FUNDS, RejectionCategory.QUANTITY ->
+                                quantity = ((qty / 2).coerceAtLeast(1)).toString()
+                            RejectionCategory.PRICE -> orderType = "MARKET"
+                            else -> Unit
+                        }
+                        viewModel.clearError()
+                    }
                 )
             }
 
@@ -1933,8 +1943,7 @@ private fun TicketTrustToolsCard(
                     fontWeight = FontWeight.SemiBold,
                     color = LocalAppTheme.current.text,
                 )
-                AssistChip(
-                    onClick = {},
+                InfoChip(
                     label = { Text(if (hasEstimate) "Estimate synced" else "Live quote synced") },
                 )
             }

@@ -876,19 +876,24 @@ def _fetch_batch_quotes(batch_symbols: List[str]) -> dict:
                     ticker_data = data[yf_sym] if yf_sym in data.columns.get_level_values(0) else None
 
                 if ticker_data is not None and not ticker_data.empty:
-                    last_price = float(ticker_data['Close'].iloc[-1])
-                    prev_close = float(ticker_data['Close'].iloc[-2]) if len(ticker_data) > 1 else last_price
+                    last_price = _safe_number(ticker_data['Close'].iloc[-1], 0.0)
+                    prev_close = _safe_number(
+                        ticker_data['Close'].iloc[-2] if len(ticker_data) > 1 else last_price,
+                        last_price,
+                    )
+                    if last_price <= 0:
+                        continue
                     pct_change = round(((last_price - prev_close) / prev_close) * 100, 2) if prev_close > 0 else 0.0
 
                     quote = {
                         "symbol": symbol,
                         "last": round(last_price, 2),
                         "pctChange": pct_change,
-                        "open": round(float(ticker_data['Open'].iloc[-1]), 2),
-                        "high": round(float(ticker_data['High'].iloc[-1]), 2),
-                        "low": round(float(ticker_data['Low'].iloc[-1]), 2),
+                        "open": round(_safe_number(ticker_data['Open'].iloc[-1], last_price), 2),
+                        "high": round(_safe_number(ticker_data['High'].iloc[-1], last_price), 2),
+                        "low": round(_safe_number(ticker_data['Low'].iloc[-1], last_price), 2),
                         "previousClose": round(prev_close, 2),
-                        "volume": int(ticker_data['Volume'].iloc[-1]),
+                        "volume": int(_safe_number(ticker_data['Volume'].iloc[-1], 0.0)),
                         "avgVolume": 0,
                         "marketCap": 0,
                         "pe": 0,
@@ -937,7 +942,7 @@ def _empty_quote(symbol: str) -> dict:
 
 
 def get_all_symbols() -> List[str]:
-    """Return all supported symbols."""
+    """Return curated quote-universe symbols (used by /quotes/all)."""
     return list(INDIAN_STOCKS.keys())
 
 
@@ -949,17 +954,166 @@ def get_default_symbols() -> List[str]:
 def get_stock_name(symbol: str) -> str:
     """Return company name for a symbol, or the symbol itself if unknown."""
     normalized = _strip_exchange_suffix(symbol or "")
-    entry = INDIAN_STOCKS.get(normalized)
+    entry = get_stock_catalog().get(normalized) or INDIAN_STOCKS.get(normalized)
     return entry[1] if entry else (symbol or normalized)
 
 
 def get_symbols_with_names() -> List[dict]:
-    """Return all symbols with their company names (for /symbols endpoint)."""
+    """Return searchable symbols with company names (curated + NSE equity master)."""
     return [
         {"symbol": sym, "name": info[1]}
-        for sym, info in INDIAN_STOCKS.items()
+        for sym, info in get_stock_catalog().items()
     ]
 
+
+_SEARCH_CATALOG: Optional[Dict[str, tuple]] = None
+_SEARCH_CATALOG_LOCK = Lock()
+_INDEX_SYMBOLS = {
+    "NIFTY50", "SENSEX", "BANKNIFTY", "NIFTYIT", "NIFTYBANK",
+}
+_MOVERS_CACHE: Dict[str, object] = {"fetched_at": 0.0, "payload": None}
+_MOVERS_CACHE_TTL_SECONDS = 45
+_MOVERS_CACHE_LOCK = Lock()
+
+
+def get_stock_catalog() -> Dict[str, tuple]:
+    """
+    Search/browse catalog = curated INDIAN_STOCKS (ticker overrides win)
+    plus NSE EQUITY_L equities mapped as SYMBOL.NS.
+    """
+    global _SEARCH_CATALOG
+    with _SEARCH_CATALOG_LOCK:
+        if _SEARCH_CATALOG is not None:
+            return _SEARCH_CATALOG
+
+        catalog: Dict[str, tuple] = dict(INDIAN_STOCKS)
+        try:
+            from .stock_enricher import get_nse_equity_map
+
+            for sym, name in get_nse_equity_map().items():
+                key = (sym or "").strip().upper()
+                if not key or key in catalog:
+                    continue
+                catalog[key] = (f"{key}.NS", name)
+        except Exception as exc:
+            logger.warning("NSE equity master merge skipped: %s", exc)
+
+        _SEARCH_CATALOG = catalog
+        logger.info(
+            "Stock catalog ready: %d symbols (curated=%d)",
+            len(catalog),
+            len(INDIAN_STOCKS),
+        )
+        return catalog
+
+
+def fetch_market_movers(limit: int = 10) -> Dict[str, object]:
+    """
+    Rank a liquid Indian stock universe by day % change / volume.
+    Uses a capped liquid set (not the full catalog) so Home refresh stays fast
+    and does not starve other endpoints on free-tier hosts.
+    """
+    limit = max(1, min(int(limit or 10), 25))
+    now = time.time()
+    with _MOVERS_CACHE_LOCK:
+        cached = _MOVERS_CACHE.get("payload")
+        fetched_at = float(_MOVERS_CACHE.get("fetched_at") or 0.0)
+        if cached and (now - fetched_at) < _MOVERS_CACHE_TTL_SECONDS:
+            return {
+                "gainers": list(cached.get("gainers") or [])[:limit],
+                "losers": list(cached.get("losers") or [])[:limit],
+                "mostActive": list(cached.get("mostActive") or [])[:limit],
+                "universeSize": cached.get("universeSize", 0),
+                "generatedAt": cached.get("generatedAt", ""),
+                "cached": True,
+            }
+
+    # Liquid universe only — full INDIAN_STOCKS (~400+) causes Yahoo timeouts / 500s.
+    liquid = list(dict.fromkeys(
+        list(DEFAULT_SYMBOLS)
+        + [
+            "ADANIENT", "ADANIPORTS", "TATAMOTORS", "TATASTEEL", "JSWSTEEL",
+            "HINDALCO", "ONGC", "COALINDIA", "BPCL", "IOC",
+            "SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB",
+            "TECHM", "BAJAJFINSV", "INDUSINDBK",
+            "NESTLEIND", "TITAN", "ASIANPAINT", "ULTRACEMCO",
+            "HEROMOTOCO", "EICHERMOT", "APOLLOHOSP",
+            "ZOMATO", "IRCTC", "HAL", "BEL",
+        ]
+    ))
+    universe = [
+        sym for sym in liquid
+        if sym in INDIAN_STOCKS and sym not in _INDEX_SYMBOLS and not str(sym).startswith("^")
+    ][:80]
+
+    try:
+        quotes = fetch_quotes(universe)
+    except Exception as exc:
+        logger.error("fetch_market_movers quote fetch failed: %s", exc)
+        with _MOVERS_CACHE_LOCK:
+            stale = _MOVERS_CACHE.get("payload")
+        if stale:
+            return {
+                "gainers": list(stale.get("gainers") or [])[:limit],
+                "losers": list(stale.get("losers") or [])[:limit],
+                "mostActive": list(stale.get("mostActive") or [])[:limit],
+                "universeSize": stale.get("universeSize", 0),
+                "generatedAt": stale.get("generatedAt", ""),
+                "cached": True,
+            }
+        return {
+            "gainers": [],
+            "losers": [],
+            "mostActive": [],
+            "universeSize": 0,
+            "generatedAt": datetime.utcnow().isoformat() + "Z",
+            "cached": False,
+        }
+
+    usable = []
+    for q in quotes:
+        try:
+            last = _safe_number(q.get("last"), 0.0)
+            pct = _safe_number(q.get("pctChange"), 0.0)
+            vol = int(_safe_number(q.get("volume"), 0.0))
+            sym = str(q.get("symbol") or "").upper()
+            if not sym or last <= 0:
+                continue
+            name = INDIAN_STOCKS.get(sym, (None, sym))[1]
+            usable.append({
+                "symbol": sym,
+                "name": name,
+                "last": round(last, 2),
+                "pctChange": round(pct, 2),
+                "volume": vol,
+            })
+        except Exception:
+            continue
+
+    gainers = sorted(usable, key=lambda x: x["pctChange"], reverse=True)
+    losers = sorted(usable, key=lambda x: x["pctChange"])
+    most_active = sorted(usable, key=lambda x: x.get("volume", 0), reverse=True)
+    generated_at = datetime.utcnow().isoformat() + "Z"
+    full_payload = {
+        "gainers": gainers[:25],
+        "losers": losers[:25],
+        "mostActive": most_active[:25],
+        "universeSize": len(usable),
+        "generatedAt": generated_at,
+        "cached": False,
+    }
+    with _MOVERS_CACHE_LOCK:
+        _MOVERS_CACHE["fetched_at"] = now
+        _MOVERS_CACHE["payload"] = full_payload
+
+    return {
+        "gainers": full_payload["gainers"][:limit],
+        "losers": full_payload["losers"][:limit],
+        "mostActive": full_payload["mostActive"][:limit],
+        "universeSize": full_payload["universeSize"],
+        "generatedAt": generated_at,
+        "cached": False,
+    }
 
 _SEARCH_NOISE_WORDS = {
     "a",
@@ -1025,49 +1179,65 @@ def search_stocks(query: str, limit: int = 50) -> List[dict]:
     """
     Search stocks by symbol or company name.
     Pipeline: exact → prefix → contains → name phrase → fuzzy → Yahoo search API.
+    Catalog = curated INDIAN_STOCKS + NSE EQUITY_L master.
     """
+    catalog = get_stock_catalog()
     terms = _build_search_terms(query)
     if not terms:
+        return []
+
+    # Never map greetings / chitchat into tickers (hi → HINDUNILVR).
+    blocked = {
+        "hi", "hii", "hiii", "hello", "hey", "yo", "sup", "thanks", "thank",
+        "ty", "thx", "bye", "ok", "okay", "gm", "gn", "namaste", "namaskar",
+    }
+    if all(term.lower() in blocked for term in terms) and len(terms) <= 3:
         return []
 
     phrase = " ".join(terms)
     search_units = _dedupe_keep_order([phrase] + terms)
     search_units_lower = [unit.lower() for unit in search_units]
     search_units_upper = [_strip_exchange_suffix(unit) for unit in search_units]
+    # Drop blocked tokens from fuzzy units so "hi there" still won't invent HINDUNILVR.
+    search_units_lower = [u for u in search_units_lower if u not in blocked]
+    search_units_upper = [u for u in search_units_upper if u.lower() not in blocked]
+    if not search_units_lower and not search_units_upper:
+        return []
 
     results = []
     seen = set()
 
     # 1) Exact symbol match from any meaningful unit.
     for query_upper in search_units_upper:
-        if query_upper in INDIAN_STOCKS and query_upper not in seen:
+        if query_upper in catalog and query_upper not in seen:
             results.append({
                 "symbol": query_upper,
-                "name": INDIAN_STOCKS[query_upper][1],
+                "name": catalog[query_upper][1],
                 "matchType": "exact"
             })
             seen.add(query_upper)
 
     # 2) Symbol prefix matches (highest priority after exact)
-    for sym, (ticker, name) in INDIAN_STOCKS.items():
+    # Require >= 3 chars so "hi" / "it" do not invent HINDUNILVR / ITC.
+    for sym, (ticker, name) in catalog.items():
         if sym in seen:
             continue
         symbol_lower = sym.lower()
-        if any(symbol_lower.startswith(unit) for unit in search_units_lower if len(unit) >= 2):
+        if any(symbol_lower.startswith(unit) for unit in search_units_lower if len(unit) >= 3):
             results.append({"symbol": sym, "name": name, "matchType": "symbol"})
             seen.add(sym)
 
-    # 3) Symbol contains matches
-    for sym, (ticker, name) in INDIAN_STOCKS.items():
+    # 3) Symbol contains matches — require >= 3 chars (was 2 → "hi" ⊂ HINDUNILVR).
+    for sym, (ticker, name) in catalog.items():
         if sym in seen:
             continue
         symbol_lower = sym.lower()
-        if any(unit in symbol_lower for unit in search_units_lower if len(unit) >= 2):
+        if any(unit in symbol_lower for unit in search_units_lower if len(unit) >= 3):
             results.append({"symbol": sym, "name": name, "matchType": "symbol"})
             seen.add(sym)
 
     # 4) Company name matches — phrase match or all-tokens match
-    for sym, (ticker, name) in INDIAN_STOCKS.items():
+    for sym, (ticker, name) in catalog.items():
         if sym in seen:
             continue
         name_lower = name.lower()
@@ -1079,7 +1249,7 @@ def search_stocks(query: str, limit: int = 50) -> List[dict]:
 
     # 4b) Partial token match — any search term appears in name (relaxed)
     if not results:
-        for sym, (ticker, name) in INDIAN_STOCKS.items():
+        for sym, (ticker, name) in catalog.items():
             if sym in seen:
                 continue
             name_lower = name.lower()
@@ -1090,7 +1260,7 @@ def search_stocks(query: str, limit: int = 50) -> List[dict]:
 
     # 5) Fuzzy matching on company names (handles typos, "india" vs "indian")
     if not results and len(phrase) >= 3:
-        _all_names = {sym: name.lower() for sym, (_, name) in INDIAN_STOCKS.items()}
+        _all_names = {sym: name.lower() for sym, (_, name) in catalog.items()}
         close_matches = difflib.get_close_matches(
             phrase, list(_all_names.values()), n=5, cutoff=0.45
         )
@@ -1099,7 +1269,7 @@ def search_stocks(query: str, limit: int = 50) -> List[dict]:
                 if name_lower == matched_name and sym not in seen:
                     results.append({
                         "symbol": sym,
-                        "name": INDIAN_STOCKS[sym][1],
+                        "name": catalog[sym][1],
                         "matchType": "fuzzy"
                     })
                     seen.add(sym)

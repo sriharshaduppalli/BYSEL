@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.TrendingDown
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.HealthAndSafety
+import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
@@ -210,12 +211,57 @@ fun PortfolioScreen(
     onRefreshHealth: () -> Unit,
     onBuy: (String, Int) -> Unit,
     onSell: (String, Int) -> Unit,
-    onErrorDismiss: () -> Unit
+    onErrorDismiss: () -> Unit,
+    onNavigateToTrade: () -> Unit
 ) {
     LaunchedEffect(holdings) {
         if (holdings.isNotEmpty() && portfolioHealth == null) {
             onRefreshHealth()
         }
+    }
+
+    var pendingSell by remember { mutableStateOf<Holding?>(null) }
+
+    pendingSell?.let { holding ->
+        val proceeds = holding.last * holding.qty
+        val invested = holding.avgPrice * holding.qty
+        val pnl = proceeds - invested
+        AlertDialog(
+            onDismissRequest = { pendingSell = null },
+            title = { Text("Sell entire ${holding.symbol} holding?") },
+            text = {
+                Column {
+                    Text("${holding.qty} share(s) at ₹${String.format("%.2f", holding.last)}")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Estimated proceeds: ₹${String.format("%.2f", proceeds)}")
+                    Text(
+                        text = "Realised P&L: ${if (pnl >= 0) "+" else ""}₹${String.format("%.2f", pnl)}",
+                        color = if (pnl >= 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "This closes the whole position and cannot be undone.",
+                        fontSize = 12.sp,
+                        color = LocalAppTheme.current.textSecondary
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onSell(holding.symbol, holding.qty)
+                        pendingSell = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.negative)
+                ) {
+                    Text("Sell all")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingSell = null }) { Text("Cancel") }
+            },
+            containerColor = LocalAppTheme.current.card
+        )
     }
 
     // `quotes` parameter intentionally kept for future use (API stability)
@@ -290,7 +336,11 @@ fun PortfolioScreen(
                 )
             }
 
-            if (holdings.isEmpty()) {
+            if (holdings.isEmpty() && isLoading) {
+                // Without this the first load flashes "No holdings yet" at users who do
+                // in fact hold stock, because holdings are empty until the call returns.
+                PortfolioSkeletonLoader(modifier = Modifier.fillMaxSize())
+            } else if (holdings.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -320,7 +370,7 @@ fun PortfolioScreen(
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(
-                            onClick = { /* navigate to trading */ },
+                            onClick = onNavigateToTrade,
                             colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
                             shape = RoundedCornerShape(12.dp)
                         ) {
@@ -353,8 +403,11 @@ fun PortfolioScreen(
                     items(items = holdings, key = { it.symbol }) { holding ->
                         SwipeToDismissItem(
                             item = holding,
-                            onDismiss = { onSell(it.symbol, it.qty) },
-                            enabled = true
+                            onDismiss = { pendingSell = it },
+                            enabled = true,
+                            requireConfirmation = true,
+                            dismissIcon = Icons.Filled.Sell,
+                            dismissLabel = "Sell entire holding"
                         ) {
                             UpgradedPortfolioHoldingItem(
                                 holding = holding,

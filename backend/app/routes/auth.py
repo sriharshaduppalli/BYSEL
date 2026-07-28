@@ -91,6 +91,7 @@ LOGIN_LOCKOUT_WINDOW_SECONDS = int(os.getenv("LOGIN_LOCKOUT_WINDOW_SECONDS", "30
 LOGIN_LOCKOUT_DURATION_SECONDS = int(os.getenv("LOGIN_LOCKOUT_DURATION_SECONDS", "300"))
 AUTH_DEBUG_ENDPOINTS_ENABLED = os.getenv("AUTH_DEBUG_ENDPOINTS_ENABLED", "false").lower() == "true"
 AUTH_DEBUG_TOKEN = os.getenv("AUTH_DEBUG_TOKEN", "")
+AUTH_ADMIN_TOKEN = os.getenv("AUTH_ADMIN_TOKEN", "")
 REFRESH_TOKEN_RETENTION_DAYS = int(os.getenv("REFRESH_TOKEN_RETENTION_DAYS", "30"))
 MAX_ACTIVE_SESSIONS_PER_USER = int(os.getenv("MAX_ACTIVE_SESSIONS_PER_USER", "5"))
 REFRESH_TOKEN_REPLAY_GRACE_SECONDS = int(os.getenv("REFRESH_TOKEN_REPLAY_GRACE_SECONDS", "30"))
@@ -191,7 +192,11 @@ class UserProfileResponse(BaseModel):
     username: str
     email: str
     mobile_number: str | None = None
-    created_at: str
+    created_at: str | None = None
+
+
+# Alias kept for production OpenAPI compatibility (CurrentUserResponse).
+CurrentUserResponse = UserProfileResponse
 
 
 class UserProfileUpdateRequest(BaseModel):
@@ -701,7 +706,22 @@ def _require_debug_access(debug_token: str | None) -> None:
     if not AUTH_DEBUG_ENDPOINTS_ENABLED:
         raise HTTPException(status_code=404, detail="Not found")
 
-    if AUTH_DEBUG_TOKEN and debug_token != AUTH_DEBUG_TOKEN:
+    # An enabled debug surface with no token configured would be world-readable,
+    # so treat a missing token as "not configured" rather than "no auth required".
+    if not AUTH_DEBUG_TOKEN:
+        logger.error("auth.debug.token_not_configured — refusing to serve debug endpoint")
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if not secrets.compare_digest(debug_token or "", AUTH_DEBUG_TOKEN):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _require_admin_access(admin_token: str | None) -> None:
+    """Destructive admin operations require AUTH_ADMIN_TOKEN to be set explicitly."""
+    if not AUTH_ADMIN_TOKEN:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if not secrets.compare_digest(admin_token or "", AUTH_ADMIN_TOKEN):
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
@@ -1047,9 +1067,18 @@ class AdminDeleteRequest(BaseModel):
 
 
 @router.post("/admin/delete-user")
-def admin_delete_user(req: AdminDeleteRequest):
-    """Temporary admin endpoint — remove after debugging."""
+def admin_delete_user(
+    req: AdminDeleteRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    """Delete any account by username or email. Requires AUTH_ADMIN_TOKEN.
+
+    Returns 404 when AUTH_ADMIN_TOKEN is unset so the route is invisible by default.
+    End users should use POST /auth/delete-account, which only deletes their own account.
+    """
+    _require_admin_access(x_admin_token)
     identifier = req.identifier.strip().lower()
+    logger.warning("auth.admin.delete_user.requested identifier=%s", identifier)
     db: Session = SessionLocal()
     try:
         user = db.query(UserModel).filter(
@@ -1073,6 +1102,7 @@ def admin_delete_user(req: AdminDeleteRequest):
         db.close()
 
 
+@router.get("/me", response_model=UserProfileResponse, summary="Current User Profile")
 @router.get("/profile", response_model=UserProfileResponse)
 def get_profile(authorization: str | None = Header(default=None, alias="Authorization")):
     user_id = _get_user_id_from_authorization(authorization)
@@ -1087,6 +1117,7 @@ def get_profile(authorization: str | None = Header(default=None, alias="Authoriz
         db.close()
 
 
+@router.patch("/me", response_model=UserProfileResponse)
 @router.patch("/profile", response_model=UserProfileResponse)
 def update_profile(
     body: UserProfileUpdateRequest,
@@ -1809,8 +1840,13 @@ def revoke_session(session_id: int, authorization: str | None = Header(default=N
 
 
 @router.get("/otp-debug")
-def otp_debug():
-    """Diagnostic endpoint to check SMS configuration and connectivity."""
+def otp_debug(x_debug_token: str | None = Header(default=None, alias="X-Debug-Token")):
+    """Diagnostic endpoint to check SMS configuration and connectivity.
+
+    Gated behind AUTH_DEBUG_ENDPOINTS_ENABLED + AUTH_DEBUG_TOKEN: it reveals provider
+    configuration and wallet balances, which must not be public.
+    """
+    _require_debug_access(x_debug_token)
     result = {
         "timestamp": datetime.utcnow().isoformat(),
         "otp_ttl_seconds": OTP_TTL_SECONDS,
@@ -1818,7 +1854,6 @@ def otp_debug():
         "fast2sms": {
             "enabled": bool(FAST2SMS_API_KEY),
             "api_key_length": len(FAST2SMS_API_KEY) if FAST2SMS_API_KEY else 0,
-            "api_key_prefix": (FAST2SMS_API_KEY[:8] + "...") if len(FAST2SMS_API_KEY) > 8 else "(empty)",
             "status": "unknown"
         },
         "twilio": {
@@ -2025,6 +2060,8 @@ def verify_otp(request: VerifyOTPRequest, req: Request = None):
                 # Update existing user with mobile number
                 existing.mobile_number = mobile_number
                 user = existing
+                db.commit()
+                db.refresh(user)
             else:
                 # Create new user
                 user = UserModel(
@@ -2051,6 +2088,14 @@ def verify_otp(request: VerifyOTPRequest, req: Request = None):
         token_version = int(getattr(user, "token_version", 0) or 0)
         access_token, refresh_token = _create_auth_tokens(user_id=user.id, token_version=token_version)
 
+        # Without this the refresh token has no server-side row, so /auth/refresh
+        # rejects it and the user is silently logged out when the access token expires.
+        try:
+            _persist_refresh_token(db, user_id=user.id, refresh_token=refresh_token, request=req)
+        except Exception as exc:
+            db.rollback()
+            logger.exception("auth.otp.session_init_failed user_id=%s reason=%s", user.id, str(exc))
+
         logger.info("auth.otp.login_success user_id=%s mobile_number=%s", user.id, mobile_number)
 
         return AuthResponse(
@@ -2069,7 +2114,7 @@ def verify_otp(request: VerifyOTPRequest, req: Request = None):
 # ---------------------------------------------------------------------------
 
 @router.post("/firebase-phone", response_model=AuthResponse)
-def firebase_phone_auth(request: FirebasePhoneAuthRequest):
+def firebase_phone_auth(request: FirebasePhoneAuthRequest, req: Request = None):
     """Authenticate via Firebase Phone Auth — verify the Firebase ID token
     and issue BYSEL access/refresh tokens."""
 
@@ -2132,6 +2177,8 @@ def firebase_phone_auth(request: FirebasePhoneAuthRequest):
             if existing:
                 existing.mobile_number = mobile_number
                 user = existing
+                db.commit()
+                db.refresh(user)
             else:
                 user = UserModel(
                     username=username,
@@ -2154,6 +2201,14 @@ def firebase_phone_auth(request: FirebasePhoneAuthRequest):
 
         token_version = int(getattr(user, "token_version", 0) or 0)
         access_token, refresh_token = _create_auth_tokens(user_id=user.id, token_version=token_version)
+
+        # Without this the refresh token has no server-side row, so /auth/refresh
+        # rejects it and the user is silently logged out when the access token expires.
+        try:
+            _persist_refresh_token(db, user_id=user.id, refresh_token=refresh_token, request=req)
+        except Exception as exc:
+            db.rollback()
+            logger.exception("auth.firebase.session_init_failed user_id=%s reason=%s", user.id, str(exc))
 
         logger.info("auth.firebase.login_success user_id=%s mobile=%s", user.id, mobile_number)
 

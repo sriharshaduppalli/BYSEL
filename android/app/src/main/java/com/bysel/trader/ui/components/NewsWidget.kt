@@ -53,9 +53,9 @@ fun NewsWidget(
                     color = LocalAppTheme.current.text,
                 )
                 val subtitle = if (trackedSymbols.isNotEmpty()) {
-                    "Tracking ${trackedSymbols.joinToString(", ")}"
+                    "Tracking ${trackedSymbols.size} names · ${headlines.size} headlines"
                 } else {
-                    "Top live headlines from tracked market leaders"
+                    "Latest headlines across major NSE stocks"
                 }
                 Text(
                     text = subtitle,

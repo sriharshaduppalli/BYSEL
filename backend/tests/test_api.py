@@ -1930,3 +1930,41 @@ def test_investor_portfolio_insights_endpoint_returns_changes_and_ideas(monkeypa
     assert first_idea["thesis"]
     assert first_idea["whyNow"]
     assert isinstance(first_idea["backingInvestors"], list)
+
+def test_admin_delete_user_is_hidden_without_admin_token(monkeypatch):
+    """The destructive admin route must not exist unless AUTH_ADMIN_TOKEN is configured."""
+    monkeypatch.setattr(auth_routes, "AUTH_ADMIN_TOKEN", "")
+
+    response = client.post(
+        "/auth/admin/delete-user",
+        json={"identifier": "someone@example.com"},
+    )
+    assert response.status_code == 404
+
+
+def test_admin_delete_user_rejects_wrong_admin_token(monkeypatch):
+    monkeypatch.setattr(auth_routes, "AUTH_ADMIN_TOKEN", "correct-admin-token")
+
+    response = client.post(
+        "/auth/admin/delete-user",
+        json={"identifier": "someone@example.com"},
+        headers={"X-Admin-Token": "wrong-token"},
+    )
+    assert response.status_code == 403
+
+
+def test_otp_debug_requires_debug_token(monkeypatch):
+    """otp-debug exposes SMS provider configuration, so it must stay gated."""
+    monkeypatch.setattr(auth_routes, "AUTH_DEBUG_ENDPOINTS_ENABLED", False)
+    assert client.get("/auth/otp-debug").status_code == 404
+
+    # Enabled but with no token configured is still refused rather than served openly.
+    monkeypatch.setattr(auth_routes, "AUTH_DEBUG_ENDPOINTS_ENABLED", True)
+    monkeypatch.setattr(auth_routes, "AUTH_DEBUG_TOKEN", "")
+    assert client.get("/auth/otp-debug").status_code == 404
+
+    monkeypatch.setattr(auth_routes, "AUTH_DEBUG_TOKEN", "debug-token")
+    assert client.get("/auth/otp-debug").status_code == 403
+    assert "api_key_prefix" not in client.get(
+        "/auth/otp-debug", headers={"X-Debug-Token": "debug-token"}
+    ).text

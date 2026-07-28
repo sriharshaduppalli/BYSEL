@@ -109,111 +109,173 @@ def get_market_heatmap() -> Dict:
     if _HEATMAP_CACHE["data"] and (now - _HEATMAP_CACHE["timestamp"]) < _HEATMAP_CACHE_TTL:
         return _HEATMAP_CACHE["data"]
 
-    if not _is_nse_market_open():
+    market_open = _is_nse_market_open()
+    if not market_open:
         persisted = _load_persisted_heatmap_snapshot()
         if persisted:
-            _HEATMAP_CACHE["data"] = persisted
+            stamped = dict(persisted)
+            stamped["isStale"] = True
+            stamped["marketOpen"] = False
+            stamped["staleReason"] = "Market closed — showing last saved session snapshot."
+            _HEATMAP_CACHE["data"] = stamped
             _HEATMAP_CACHE["timestamp"] = now
-            return persisted
-    
-    # Collect ALL unique symbols across all sectors (avoid duplicate fetches)
-    all_symbols = set()
-    for symbols in SECTOR_STOCKS.values():
-        all_symbols.update(symbols)
-    all_symbols = list(all_symbols)
-    
-    # Fetch quotes ONCE for all symbols
-    quotes_list = fetch_quotes(all_symbols)
-    quotes_dict = {q["symbol"]: q for q in quotes_list if isinstance(q, dict) and "symbol" in q}
-    
-    # Now analyze each sector using the pre-fetched quotes
-    sectors_data = []
-    all_advances = 0
-    all_declines = 0
-    all_unchanged = 0
-    total_stocks = 0
+            return stamped
+        # No snapshot yet: return an empty-but-valid payload (never 500 / blank crash).
+        empty = _empty_heatmap_payload(
+            mood_desc="Market is closed and no prior session snapshot is available yet."
+        )
+        empty["isStale"] = True
+        empty["marketOpen"] = False
+        _HEATMAP_CACHE["data"] = empty
+        _HEATMAP_CACHE["timestamp"] = now
+        return empty
 
-    for sector_name, symbols in SECTOR_STOCKS.items():
-        sector_result = _analyze_sector(sector_name, symbols, quotes_dict)
-        sectors_data.append(sector_result)
+    try:
+        # Collect ALL unique symbols across all sectors (avoid duplicate fetches)
+        all_symbols = set()
+        for symbols in SECTOR_STOCKS.values():
+            all_symbols.update(symbols)
+        all_symbols = list(all_symbols)
 
-        all_advances += sector_result["advances"]
-        all_declines += sector_result["declines"]
-        all_unchanged += sector_result["unchanged"]
-        total_stocks += sector_result["totalStocks"]
+        # Fetch quotes ONCE for all symbols
+        quotes_list = fetch_quotes(all_symbols)
+        quotes_dict = {q["symbol"]: q for q in quotes_list if isinstance(q, dict) and "symbol" in q}
 
-    # Sort sectors by performance (best to worst)
-    sectors_data.sort(key=lambda x: x["avgChange"], reverse=True)
+        # Now analyze each sector using the pre-fetched quotes
+        sectors_data = []
+        all_advances = 0
+        all_declines = 0
+        all_unchanged = 0
+        total_stocks = 0
 
-    # Market mood
-    if total_stocks > 0:
-        advance_ratio = all_advances / total_stocks
-    else:
-        advance_ratio = 0.5
+        for sector_name, symbols in SECTOR_STOCKS.items():
+            sector_result = _analyze_sector(sector_name, symbols, quotes_dict)
+            sectors_data.append(sector_result)
 
-    if advance_ratio >= 0.7:
-        mood = "EUPHORIC"
-        mood_emoji = "🚀"
-        mood_desc = "Markets are on fire! Strong buying across sectors."
-    elif advance_ratio >= 0.55:
-        mood = "BULLISH"
-        mood_emoji = "🟢"
-        mood_desc = "Positive sentiment with broad-based buying."
-    elif advance_ratio >= 0.45:
-        mood = "NEUTRAL"
-        mood_emoji = "🟡"
-        mood_desc = "Mixed signals. Markets are indecisive."
-    elif advance_ratio >= 0.3:
-        mood = "BEARISH"
-        mood_emoji = "🔴"
-        mood_desc = "Selling pressure across multiple sectors."
-    else:
-        mood = "FEARFUL"
-        mood_emoji = "⚫"
-        mood_desc = "Heavy selling! Markets in panic mode."
+            all_advances += sector_result["advances"]
+            all_declines += sector_result["declines"]
+            all_unchanged += sector_result["unchanged"]
+            total_stocks += sector_result["totalStocks"]
 
-    # Best and worst sectors
-    best_sector = sectors_data[0] if sectors_data else None
-    worst_sector = sectors_data[-1] if sectors_data else None
+        # Sort sectors by performance (best to worst)
+        sectors_data.sort(key=lambda x: x["avgChange"], reverse=True)
 
-    result = {
-        "sectors": sectors_data,
+        # Market mood
+        if total_stocks > 0:
+            advance_ratio = all_advances / total_stocks
+        else:
+            advance_ratio = 0.5
+
+        if advance_ratio >= 0.7:
+            mood = "EUPHORIC"
+            mood_emoji = "🚀"
+            mood_desc = "Markets are on fire! Strong buying across sectors."
+        elif advance_ratio >= 0.55:
+            mood = "BULLISH"
+            mood_emoji = "🟢"
+            mood_desc = "Positive sentiment with broad-based buying."
+        elif advance_ratio >= 0.45:
+            mood = "NEUTRAL"
+            mood_emoji = "🟡"
+            mood_desc = "Mixed signals. Markets are indecisive."
+        elif advance_ratio >= 0.3:
+            mood = "BEARISH"
+            mood_emoji = "🔴"
+            mood_desc = "Selling pressure across multiple sectors."
+        else:
+            mood = "FEARFUL"
+            mood_emoji = "⚫"
+            mood_desc = "Heavy selling! Markets in panic mode."
+
+        # Best and worst sectors
+        best_sector = sectors_data[0] if sectors_data else None
+        worst_sector = sectors_data[-1] if sectors_data else None
+
+        result = {
+            "sectors": sectors_data,
+            "marketBreadth": {
+                "advances": all_advances,
+                "declines": all_declines,
+                "unchanged": all_unchanged,
+                "total": total_stocks,
+                "advanceRatio": round(advance_ratio, 3),
+            },
+            "mood": mood,
+            "moodEmoji": mood_emoji,
+            "moodDescription": mood_desc,
+            "bestSector": {
+                "name": best_sector["name"] if best_sector else "N/A",
+                "change": best_sector["avgChange"] if best_sector else 0,
+            },
+            "worstSector": {
+                "name": worst_sector["name"] if worst_sector else "N/A",
+                "change": worst_sector["avgChange"] if worst_sector else 0,
+            },
+            "lastUpdated": datetime.utcnow().isoformat(),
+            "marketOpen": True,
+            "isStale": False,
+        }
+
+        if _is_valid_heatmap_snapshot(result):
+            _persist_heatmap_snapshot(result)
+        else:
+            persisted = _load_persisted_heatmap_snapshot()
+            if persisted:
+                stamped = dict(persisted)
+                stamped["isStale"] = True
+                stamped["marketOpen"] = market_open
+                stamped["staleReason"] = "Live heatmap incomplete — showing last saved snapshot."
+                _HEATMAP_CACHE["data"] = stamped
+                _HEATMAP_CACHE["timestamp"] = now
+                return stamped
+
+        # Cache result for 30 seconds
+        _HEATMAP_CACHE["data"] = result
+        _HEATMAP_CACHE["timestamp"] = now
+        return result
+    except Exception as exc:
+        logger.error("heatmap.live_build_failed reason=%s", exc)
+        persisted = _load_persisted_heatmap_snapshot()
+        if persisted:
+            stamped = dict(persisted)
+            stamped["isStale"] = True
+            stamped["staleReason"] = "Live heatmap failed — showing last saved snapshot."
+            _HEATMAP_CACHE["data"] = stamped
+            _HEATMAP_CACHE["timestamp"] = now
+            return stamped
+        return _empty_heatmap_payload(mood_desc=f"Heatmap temporarily unavailable ({exc}).")
+
+
+def _empty_heatmap_payload(mood_desc: str = "No heatmap data available.") -> Dict:
+    return {
+        "sectors": [
+            {
+                "name": name,
+                "avgChange": 0.0,
+                "advances": 0,
+                "declines": 0,
+                "unchanged": 0,
+                "totalStocks": 0,
+                "stocks": [],
+            }
+            for name in SECTOR_STOCKS.keys()
+        ],
         "marketBreadth": {
-            "advances": all_advances,
-            "declines": all_declines,
-            "unchanged": all_unchanged,
-            "total": total_stocks,
-            "advanceRatio": round(advance_ratio, 3),
+            "advances": 0,
+            "declines": 0,
+            "unchanged": 0,
+            "total": 0,
+            "advanceRatio": 0.0,
         },
-        "mood": mood,
-        "moodEmoji": mood_emoji,
+        "mood": "NEUTRAL",
+        "moodEmoji": "🟡",
         "moodDescription": mood_desc,
-        "bestSector": {
-            "name": best_sector["name"] if best_sector else "N/A",
-            "change": best_sector["avgChange"] if best_sector else 0,
-        },
-        "worstSector": {
-            "name": worst_sector["name"] if worst_sector else "N/A",
-            "change": worst_sector["avgChange"] if worst_sector else 0,
-        },
+        "bestSector": {"name": "N/A", "change": 0},
+        "worstSector": {"name": "N/A", "change": 0},
         "lastUpdated": datetime.utcnow().isoformat(),
+        "marketOpen": _is_nse_market_open(),
+        "isStale": True,
     }
-
-    if _is_valid_heatmap_snapshot(result):
-        _persist_heatmap_snapshot(result)
-    else:
-        persisted = _load_persisted_heatmap_snapshot()
-        if persisted:
-            _HEATMAP_CACHE["data"] = persisted
-            _HEATMAP_CACHE["timestamp"] = now
-            return persisted
-
-    # Cache result for 30 seconds
-    _HEATMAP_CACHE["data"] = result
-    _HEATMAP_CACHE["timestamp"] = now
-    
-    return result
-
 
 def _is_nse_market_open() -> bool:
     ist = datetime.now().astimezone().astimezone()

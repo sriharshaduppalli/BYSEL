@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.bysel.trader.data.PinnedStocksStore
 import com.bysel.trader.data.PinnedWidgetsStore
 import com.bysel.trader.data.local.BYSELDatabase
+import com.bysel.trader.data.models.MarketMoverQuote
 import com.bysel.trader.data.models.MarketNewsHeadline
 import com.bysel.trader.data.repository.Result
 import com.bysel.trader.data.repository.TradingRepository
@@ -68,17 +69,30 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     private val _newsError = MutableStateFlow<String?>(null)
     val newsError: StateFlow<String?> = _newsError.asStateFlow()
 
+    private val _momentumLeaders = MutableStateFlow<List<MarketMoverQuote>>(emptyList())
+    val momentumLeaders: StateFlow<List<MarketMoverQuote>> = _momentumLeaders.asStateFlow()
+
+    private val _pressureZone = MutableStateFlow<List<MarketMoverQuote>>(emptyList())
+    val pressureZone: StateFlow<List<MarketMoverQuote>> = _pressureZone.asStateFlow()
+
+    private val _moversUniverseSize = MutableStateFlow(0)
+    val moversUniverseSize: StateFlow<Int> = _moversUniverseSize.asStateFlow()
+
+    private val _moversLoading = MutableStateFlow(false)
+    val moversLoading: StateFlow<Boolean> = _moversLoading.asStateFlow()
+
     init {
         loadPinnedStocks()
         loadPinnedWidgets()
         loadWidgetOrder()
         refreshMarketNews()
+        refreshMarketMovers()
     }
 
     fun refreshMarketNews() {
         viewModelScope.launch {
             _newsLoading.value = true
-            when (val response = repository.getMarketNews(limit = 5)) {
+            when (val response = repository.getMarketNews(limit = 10)) {
                 is Result.Success -> {
                     _marketNews.value = response.data.headlines
                     _newsSymbols.value = response.data.symbolsConsidered
@@ -86,15 +100,36 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                 }
 
                 is Result.Error -> {
-                    _newsError.value = response.message
+                    // Keep prior headlines on timeout; only show error if the feed is empty.
                     if (_marketNews.value.isEmpty()) {
+                        _newsError.value = response.message
                         _newsSymbols.value = emptyList()
+                    } else {
+                        _newsError.value = null
                     }
                 }
 
                 Result.Loading -> Unit
             }
             _newsLoading.value = false
+        }
+    }
+
+    fun refreshMarketMovers() {
+        viewModelScope.launch {
+            _moversLoading.value = true
+            when (val response = repository.getMarketMovers(limit = 8)) {
+                is Result.Success -> {
+                    _momentumLeaders.value = response.data.gainers
+                    _pressureZone.value = response.data.losers
+                    _moversUniverseSize.value = response.data.universeSize
+                }
+                is Result.Error -> {
+                    // Keep prior movers on failure; Home can fall back to local quotes.
+                }
+                Result.Loading -> Unit
+            }
+            _moversLoading.value = false
         }
     }
     fun moveWidgetUp(widget: String) {

@@ -152,6 +152,31 @@ class TradingViewModel(
     val aiLoading: StateFlow<Boolean> = _aiLoading.asStateFlow()
     private val _chatHistory = MutableStateFlow<List<ChatMessage>>(emptyList())
     val chatHistory: StateFlow<List<ChatMessage>> = _chatHistory.asStateFlow()
+    @Volatile private var lastAiSuccessAtMs: Long = 0L
+    @Volatile private var lastAiWarmAtMs: Long = 0L
+    private val AI_WARM_WINDOW_MS = 8 * 60_000L
+    private val _aiLikelyColdStart = MutableStateFlow(true)
+    val aiLikelyColdStart: StateFlow<Boolean> = _aiLikelyColdStart.asStateFlow()
+
+    private fun refreshAiColdStartFlag() {
+        val now = System.currentTimeMillis()
+        val recentlySucceeded = lastAiSuccessAtMs > 0L && (now - lastAiSuccessAtMs) < AI_WARM_WINDOW_MS
+        val recentlyWarmed = lastAiWarmAtMs > 0L && (now - lastAiWarmAtMs) < AI_WARM_WINDOW_MS
+        _aiLikelyColdStart.value = !(recentlySucceeded || recentlyWarmed)
+    }
+
+    /** Best-effort ping so the first real chat prompt does not pay cold-start alone. */
+    fun warmAiBackend() {
+        viewModelScope.launch {
+            when (repository.warmAiBackend()) {
+                is Result.Success -> {
+                    lastAiWarmAtMs = System.currentTimeMillis()
+                    refreshAiColdStartFlag()
+                }
+                else -> Unit
+            }
+        }
+    }
 
     val onDeviceLlmState: StateFlow<LlmDownloadState> = OnDeviceLlmManager.state
 
@@ -279,6 +304,8 @@ class TradingViewModel(
     private val AUTO_REFRESH_INTERVAL = 15_000L
     private val FAST_REFRESH_INTERVAL = 1_000L
     private val FOREGROUND_WARMUP_DEBOUNCE = 3_000L
+    private val INITIAL_STATUS_WARMUP_DELAY = 250L
+    private val INITIAL_HOLDINGS_WARMUP_DELAY = 600L
     private val QUOTE_STALE_THRESHOLD = 20_000L
     private val QUOTE_REFRESH_DEBOUNCE = 1_250L
     private val ALL_QUOTES_WARMUP_INTERVAL = 10 * 60_000L
@@ -299,8 +326,11 @@ class TradingViewModel(
         "WIPRO", "NTPC", "POWERGRID", "ULTRACEMCO", "TITAN"
     )
 
+    // Benchmark indices the Home strip needs on every cold start.
+    private val indexSymbols = listOf("NIFTY50", "SENSEX", "BANKNIFTY")
+
     private fun trackedSymbols(additional: List<String> = emptyList()): List<String> {
-        return (defaultSymbols + _watchlist.value + additional)
+        return (indexSymbols + defaultSymbols + _watchlist.value + additional)
             .map { it.trim().uppercase() }
             .filter { it.isNotBlank() }
             .distinct()
@@ -418,14 +448,8 @@ class TradingViewModel(
         val restoredWatchlist = readNormalizedWatchlist()
         _watchlist.value = restoredWatchlist
         watchlistPrefs.edit().putStringSet("symbols", restoredWatchlist.toSet()).apply()
-        refreshWallet()
-        refreshMarketStatus()
-        refreshHoldings()
         refreshQuotes(force = true)
-        viewModelScope.launch {
-            kotlinx.coroutines.delay(2_500L)
-            loadAllQuotes()
-        }
+        scheduleInitialWarmup()
     }
 
     
@@ -467,6 +491,25 @@ class TradingViewModel(
         _achievements.value = defaultAchievementsFromCode().map {
             if (unlocked.contains(it.id)) it.copy(unlocked = true) else it
         }
+    }
+
+    /**
+     * Only what the home screen needs to render. The full symbol universe used to be
+     * fetched here too, which cost a whole-market quote request on every launch; the
+     * trading screen now loads it on first visit instead.
+     */
+    private fun scheduleInitialWarmup() {
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(INITIAL_STATUS_WARMUP_DELAY)
+            refreshMarketStatus()
+            refreshWallet()
+
+            kotlinx.coroutines.delay(INITIAL_HOLDINGS_WARMUP_DELAY)
+            refreshHoldings()
+        }
+        // Wake the Render free-tier AI host in the background so the first chat
+        // message does not pay the full cold-start cost.
+        warmAiBackend()
     }
 
     private fun defaultAchievementsFromCode() = listOf(
@@ -555,7 +598,16 @@ class TradingViewModel(
                         loadNextQuotesPage()
                     }
                     is Result.Error -> {
-                        _error.value = result.message
+                        // Keep showing cached quotes; only surface a hard error when Home
+                        // has nothing to render (otherwise "timeout" sits on Home Layout).
+                        if (_quotes.value.isEmpty()) {
+                            _error.value = result.message
+                        } else {
+                            android.util.Log.w(
+                                "TradingViewModel",
+                                "Quote refresh soft-failed with cache present: ${result.message}"
+                            )
+                        }
                         _isLoading.value = false
                     }
                 }
@@ -1777,6 +1829,32 @@ class TradingViewModel(
             )
         }
 
+    private fun normalizeGreetingQuery(query: String): String =
+        query.lowercase()
+            .replace(Regex("[^a-z\\s]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+    private fun localSmallTalkReply(query: String): String? {
+        val n = normalizeGreetingQuery(query)
+        return when (n) {
+            "hi", "hii", "hiii", "hello", "hey", "yo", "namaste", "namaskar",
+            "hi there", "hello there", "hey there" ->
+                "Hi! I am BYSEL AI. Ask me about stock prices, buy/sell signals, comparisons, or valuation."
+            "thanks", "thank you", "thx", "ty" ->
+                "You're welcome. Ask another stock question anytime."
+            "bye", "goodbye" ->
+                "Bye! Come back when you want a quick market check."
+            "gm", "good morning" ->
+                "Good morning! Ask for a price, signal, or valuation on any NSE stock."
+            "gn", "good night" ->
+                "Good night! I’ll be here for the next market session."
+            "how are you", "how r u" ->
+                "I’m ready. Ask about a stock, sector, or your portfolio."
+            else -> null
+        }
+    }
+
     // --- AI assistant ---
     fun askAi(query: String) {
         val cleanedQuery = query.trim()
@@ -1785,7 +1863,21 @@ class TradingViewModel(
         viewModelScope.launch {
             _aiLoading.value = true
             _chatHistory.value = _chatHistory.value + ChatMessage(cleanedQuery, isUser = true)
-            // Build context: holdings, wallet balance, portfolio health where available
+
+            // Instant local path for greetings / chitchat — no network, no wake banner.
+            localSmallTalkReply(cleanedQuery)?.let { reply ->
+                _chatHistory.value = _chatHistory.value + ChatMessage(
+                    reply,
+                    isUser = false,
+                    source = "small-talk"
+                )
+                lastAiSuccessAtMs = System.currentTimeMillis()
+                refreshAiColdStartFlag()
+                _aiLoading.value = false
+                return@launch
+            }
+
+            // Build context only for real market prompts.
             val holdingsSummary = _holdings.value.joinToString(separator = ";") { h ->
                 "${h.symbol}:${h.qty}@${h.last}"
             }
@@ -1796,7 +1888,6 @@ class TradingViewModel(
             contextParts.add("wallet=$wallet")
             portfolio?.let { contextParts.add("portfolioScore=${it.overallScore}") }
 
-            // Add selected quote and recent history summary to context when available
             val symbol = _selectedQuote.value?.symbol
             symbol?.let { contextParts.add("symbol=$it") }
             _selectedQuote.value?.let { q ->
@@ -1804,89 +1895,95 @@ class TradingViewModel(
                 q.pctChange.let { contextParts.add("pctChange=${it}") }
             }
 
-            // gather recent history (prefer in-memory state, fallback to cached DB)
-            val recentHistory = mutableListOf<HistoryCandle>()
-            if (_quoteHistory.value.isNotEmpty()) {
-                recentHistory.addAll(_quoteHistory.value)
-            } else if (symbol != null) {
-                try {
-                    repository.getCachedHistory(symbol).collectLatest { cached ->
-                        if (cached.isNotEmpty()) {
-                            recentHistory.clear()
-                            recentHistory.addAll(cached)
-                        }
-                    }
-                } catch (_: Exception) { /* ignore */ }
-            }
+            // Prefer in-memory candles only — never block the chat send on a DB/network history read.
+            val recentHistory = _quoteHistory.value.takeLast(10)
 
             if (recentHistory.isNotEmpty()) {
-                val lastN = recentHistory.takeLast(10)
-                val closes = lastN.map { it.close }
+                val closes = recentHistory.map { it.close }
                 val avgClose = closes.average()
                 val variance = closes.map { (it - avgClose) * (it - avgClose) }.average()
                 val volatility = kotlin.math.sqrt(variance)
-                contextParts.add("history_count=${lastN.size}")
+                contextParts.add("history_count=${recentHistory.size}")
                 contextParts.add("history_avg=${String.format("%.2f", avgClose)}")
                 contextParts.add("history_vol=${String.format("%.4f", volatility)}")
-                // small inline list of recent closes for AI context (comma-separated)
-                val closesShort = lastN.joinToString(",") { String.format("%.2f", it.close) }
+                val closesShort = recentHistory.joinToString(",") { String.format("%.2f", it.close) }
                 contextParts.add("history_closes=[$closesShort]")
             }
 
-            val prompt = PromptBuilder.buildPrompt(cleanedQuery, holdingsSummary, wallet, portfolio?.overallScore, _selectedQuote.value, recentHistory)
+            val prompt = PromptBuilder.buildPrompt(
+                cleanedQuery,
+                holdingsSummary,
+                wallet,
+                portfolio?.overallScore,
+                _selectedQuote.value,
+                recentHistory
+            )
 
-            // Try on-device LLM first — runs entirely on the user's phone, no server needed
-            if (OnDeviceLlmManager.isReady()) {
-                val stockCtx = contextParts.joinToString("; ")
-                val devicePrompt = OnDeviceLlmManager.buildPrompt(cleanedQuery, stockCtx)
-                val answer = withContext(kotlinx.coroutines.Dispatchers.Default) {
-                    OnDeviceLlmManager.generateResponse(devicePrompt)
-                }
-                if (!answer.isNullOrBlank()) {
-                    _chatHistory.value = _chatHistory.value + ChatMessage(answer.trim(), isUser = false, source = "on-device")
-                    _aiLoading.value = false
-                    return@launch
-                }
-            }
-
-            // Check if we should use enhanced AI analysis
-            val shouldUseEnhanced = shouldUseEnhancedAnalysis(cleanedQuery, symbol)
-
-            if (shouldUseEnhanced && symbol != null) {
-                // Use enhanced AI analysis
-                when (val r = repository.aiAnalyzeEnhanced(symbol, cleanedQuery)) {
-                    is Result.Success -> {
-                        val enhancedResponse = convertEnhancedToAiResponse(r.data, cleanedQuery)
-                        _aiResponse.value = enhancedResponse
-                        _chatHistory.value = _chatHistory.value + ChatMessage(
-                            enhancedResponse.answer,
-                            isUser = false,
-                            suggestions = enhancedResponse.suggestions,
-                            enhancedFeatures = r.data.enhancedFeatures
-                        )
-                    }
-                    is Result.Error -> {
-                        // Fallback to basic AI
-                        when (val fallback = repository.aiAsk(prompt, buildConversationHistory())) {
-                            is Result.Success -> {
-                                _aiResponse.value = fallback.data
-                                _chatHistory.value = _chatHistory.value + ChatMessage(fallback.data.answer, isUser = false, suggestions = fallback.data.suggestions, source = fallback.data.source)
+            // Prefer the server (better Indian-market routing). On-device Gemma is
+            // a fallback when the network path fails — not the first reply.
+            when (val r = repository.aiAsk(prompt, buildConversationHistory())) {
+                is Result.Success -> {
+                    lastAiSuccessAtMs = System.currentTimeMillis()
+                    lastAiWarmAtMs = lastAiSuccessAtMs
+                    refreshAiColdStartFlag()
+                    _aiResponse.value = r.data
+                    _chatHistory.value = _chatHistory.value + ChatMessage(
+                        r.data.answer,
+                        isUser = false,
+                        suggestions = r.data.suggestions,
+                        source = r.data.source
+                    )
+                    // Optionally enrich the last bubble with v2 cards when a symbol is in focus.
+                    if (shouldUseEnhancedAnalysis(cleanedQuery, symbol) && symbol != null) {
+                        launch {
+                            when (val enhanced = repository.aiAnalyzeEnhanced(symbol, cleanedQuery)) {
+                                is Result.Success -> {
+                                    val enhancedResponse = convertEnhancedToAiResponse(enhanced.data, cleanedQuery)
+                                    _aiResponse.value = enhancedResponse
+                                    val history = _chatHistory.value.toMutableList()
+                                    val lastAssistantIdx = history.indexOfLast { !it.isUser }
+                                    if (lastAssistantIdx >= 0) {
+                                        val prev = history[lastAssistantIdx]
+                                        history[lastAssistantIdx] = prev.copy(
+                                            enhancedFeatures = enhanced.data.enhancedFeatures
+                                                ?: prev.enhancedFeatures
+                                        )
+                                        _chatHistory.value = history
+                                    }
+                                }
+                                else -> Unit
                             }
-                            else -> _chatHistory.value = _chatHistory.value + ChatMessage("Sorry, I couldn't process that.", isUser = false)
                         }
                     }
-                    else -> _chatHistory.value = _chatHistory.value + ChatMessage("Sorry, I couldn't process that.", isUser = false)
                 }
-            } else {
-                // Use basic AI analysis
-                when (val r = repository.aiAsk(prompt, buildConversationHistory())) {
-                    is Result.Success -> {
-                        _aiResponse.value = r.data
-                        _chatHistory.value = _chatHistory.value + ChatMessage(r.data.answer, isUser = false, suggestions = r.data.suggestions, source = r.data.source)
+                is Result.Error -> {
+                    var answeredOnDevice = false
+                    if (OnDeviceLlmManager.isReady()) {
+                        val stockCtx = contextParts.joinToString("; ")
+                        val devicePrompt = OnDeviceLlmManager.buildPrompt(cleanedQuery, stockCtx)
+                        val answer = withContext(kotlinx.coroutines.Dispatchers.Default) {
+                            OnDeviceLlmManager.generateResponse(devicePrompt)
+                        }
+                        if (!answer.isNullOrBlank()) {
+                            _chatHistory.value = _chatHistory.value + ChatMessage(
+                                answer.trim(),
+                                isUser = false,
+                                source = "on-device"
+                            )
+                            answeredOnDevice = true
+                            lastAiSuccessAtMs = System.currentTimeMillis()
+                            refreshAiColdStartFlag()
+                        }
                     }
-                    is Result.Error -> _chatHistory.value = _chatHistory.value + ChatMessage("Sorry, I couldn't process that.", isUser = false)
-                    else -> {}
+                    if (!answeredOnDevice) {
+                        _chatHistory.value = _chatHistory.value + ChatMessage(
+                            r.message.ifBlank { "Sorry, I couldn't process that. Please try again." },
+                            isUser = false,
+                            source = "error"
+                        )
+                    }
                 }
+                else -> Unit
             }
             _aiLoading.value = false
         }
@@ -2111,7 +2208,10 @@ class TradingViewModel(
 
         viewModelScope.launch {
             _signalLabBucketsLoading.value = true
-            when (val r = repository.getSignalLabBuckets(limitPerBucket = limitPerBucket)) {
+            when (val r = repository.getSignalLabBuckets(
+                limitPerBucket = limitPerBucket,
+                forceRefresh = force,
+            )) {
                 is Result.Success -> {
                     _signalLabBuckets.value = r.data.buckets
                     lastSignalLabRefreshAt = System.currentTimeMillis()

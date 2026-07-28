@@ -47,11 +47,18 @@ interface BYSELApiService {
     @POST("/auth/delete-account")
     suspend fun deleteAccount(@Body request: DeleteAccountRequest): Map<String, String>
 
-    @GET("/auth/profile")
+    // Production serves GET/PATCH under /auth/me (legacy /auth/profile may 404).
+    @GET("/auth/me")
     suspend fun getProfile(): UserProfile
 
-    @PATCH("/auth/profile")
+    @PATCH("/auth/me")
     suspend fun updateProfile(@Body request: UserProfileUpdateRequest): UserProfile
+
+    @GET("/auth/profile")
+    suspend fun getProfileLegacy(): UserProfile
+
+    @PATCH("/auth/profile")
+    suspend fun updateProfileLegacy(@Body request: UserProfileUpdateRequest): UserProfile
 
     // ==================== QUOTES ====================
     @GET("/quotes")
@@ -254,6 +261,11 @@ interface BYSELApiService {
         @Query("limit") limit: Int = 5
     ): MarketNewsResponse
 
+    @GET("/market/movers")
+    suspend fun getMarketMovers(
+        @Query("limit") limit: Int = 10
+    ): MarketMoversResponse
+
     // ==================== AI STOCK ASSISTANT ====================
     @POST("/ai/ask")
     suspend fun aiAsk(@Body query: AiQuery): AiAssistantResponse
@@ -338,7 +350,8 @@ interface BYSELApiService {
 
     @GET("/market/signal-lab/buckets")
     suspend fun getSignalLabBuckets(
-        @Query("limitPerBucket") limitPerBucket: Int = 8
+        @Query("limitPerBucket") limitPerBucket: Int = 8,
+        @Query("forceRefresh") forceRefresh: Boolean = false,
     ): SignalLabBucketsResponse
 
     // ==================== DERIVATIVES INTELLIGENCE ====================

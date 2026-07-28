@@ -45,8 +45,6 @@ import com.bysel.trader.ui.components.QueryUnderstandingCard
 import com.bysel.trader.ui.components.ProfitSignalCard
 import com.bysel.trader.ui.components.ProfitSignalExtractor
 import com.bysel.trader.utils.TradeIntentParser
-import kotlin.random.Random
-
 @Composable
 fun AiAssistantScreen(
     chatHistory: List<ChatMessage>,
@@ -60,6 +58,8 @@ fun AiAssistantScreen(
     onNavigateToStock: ((symbol: String) -> Unit)? = null,
     onDeviceLlmState: LlmDownloadState = LlmDownloadState.NotDownloaded,
     onDownloadModel: () -> Unit = {},
+    likelyColdStart: Boolean = false,
+    onWarmAi: () -> Unit = {},
 ) {
     var query by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -69,10 +69,20 @@ fun AiAssistantScreen(
         buildAdaptiveSuggestions(selectedSymbol, chatHistory)
     }
 
+    // Keep the free-tier host warm while chat is open.
+    LaunchedEffect(Unit) {
+        onWarmAi()
+        while (true) {
+            kotlinx.coroutines.delay(4 * 60_000L)
+            onWarmAi()
+        }
+    }
+
     // Auto-scroll to bottom when new messages arrive
-    LaunchedEffect(chatHistory.size) {
-        if (chatHistory.isNotEmpty()) {
-            listState.animateScrollToItem(chatHistory.size - 1)
+    LaunchedEffect(chatHistory.size, isLoading) {
+        if (chatHistory.isNotEmpty() || isLoading) {
+            val target = (chatHistory.size + if (isLoading) 1 else 0).coerceAtLeast(1) - 1
+            listState.animateScrollToItem(target)
         }
     }
 
@@ -245,7 +255,10 @@ fun AiAssistantScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(vertical = 12.dp)
             ) {
-                items(chatHistory) { message ->
+                items(
+                    items = chatHistory,
+                    key = { "${it.timestamp}_${it.isUser}" }
+                ) { message ->
                     ChatBubble(
                         message = message,
                         onSuggestionClick = onSuggestionClick,
@@ -256,7 +269,7 @@ fun AiAssistantScreen(
                 }
                 if (isLoading) {
                     item {
-                        TypingIndicator()
+                        TypingIndicator(likelyColdStart = likelyColdStart)
                     }
                 }
             }
@@ -396,8 +409,8 @@ private val quickNameMap = mapOf(
 
 private fun extractMentionedSymbols(prompts: List<String>, focusSymbol: String?): List<String> {
     val found = linkedSetOf<String>()
-    if (focusSymbol != null) found.add(focusSymbol)
-    for (prompt in prompts.takeLast(8)) {
+    // Prefer the most recent user prompts first so follow-ups stay on the same stock.
+    for (prompt in prompts.asReversed().take(8)) {
         val upper = prompt.uppercase()
         for (sym in knownSymbols) {
             if (Regex("\\b${Regex.escape(sym)}\\b").containsMatchIn(upper)) found.add(sym)
@@ -407,7 +420,17 @@ private fun extractMentionedSymbols(prompts: List<String>, focusSymbol: String?)
             if (lower.contains(name)) found.add(sym)
         }
     }
+    if (focusSymbol != null) found.add(focusSymbol)
     return found.toList()
+}
+
+private fun suggestionMentionsOtherSymbol(text: String, primary: String, secondary: String?): Boolean {
+    val upper = text.uppercase()
+    for (sym in knownSymbols) {
+        if (sym == primary || (secondary != null && sym == secondary)) continue
+        if (Regex("\\b${Regex.escape(sym)}\\b").containsMatchIn(upper)) return true
+    }
+    return false
 }
 
 private fun buildAdaptiveSuggestions(
@@ -422,47 +445,50 @@ private fun buildAdaptiveSuggestions(
     val primarySymbol = allMentioned.firstOrNull()
     val secondarySymbol = allMentioned.drop(1).firstOrNull()
 
+    // Prefer server follow-ups attached to the latest assistant reply when present.
+    val lastAssistant = chatHistory.lastOrNull { !it.isUser }
+    val serverFollowUps = lastAssistant?.suggestions.orEmpty()
+        .mapNotNull { text ->
+            val clean = text.trim()
+            if (clean.isBlank()) null
+            else clean to Icons.Filled.Lightbulb
+        }
+
     val suggestions = linkedSetOf<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>>()
+    serverFollowUps.forEach { suggestions.add(it) }
 
     // Always start with symbol-specific follow-ups if a stock is in focus
     if (primarySymbol != null) {
-        buildSymbolSuggestions(primarySymbol).take(4).forEach { suggestions.add(it) }
+        buildSymbolSuggestions(primarySymbol).forEach { suggestions.add(it) }
     }
 
-    val recent = userPrompts.takeLast(8).map { it.lowercase() }
+    val recent = userPrompts.takeLast(3).map { it.lowercase() }
 
     // ── 1. VALUATION context ────────────────────────────────────────────────
     val hasValuation = recent.any { textContainsAny(it, listOf("overvalued", "undervalued", "valuation", "fair value", "pe ratio", "p/e", "expensive", "cheap", "fairly valued", "priced")) }
-    if (hasValuation) {
-        if (primarySymbol != null) {
-            suggestions.add("What P/E is fair for $primarySymbol vs its history?" to Icons.Filled.PriceCheck)
-            suggestions.add("Compare $primarySymbol valuation with sector peers" to Icons.AutoMirrored.Filled.CompareArrows)
-            suggestions.add("Is $primarySymbol cheap compared to its 5-year average?" to Icons.Filled.PriceCheck)
-            suggestions.add("Price-to-book ratio analysis for $primarySymbol" to Icons.Filled.Analytics)
-        }
-        if (secondarySymbol != null)
+    if (hasValuation && primarySymbol != null) {
+        suggestions.add("What P/E is fair for $primarySymbol vs its history?" to Icons.Filled.PriceCheck)
+        suggestions.add("Compare $primarySymbol valuation with sector peers" to Icons.AutoMirrored.Filled.CompareArrows)
+        suggestions.add("Is $primarySymbol cheap compared to its 5-year average?" to Icons.Filled.PriceCheck)
+        suggestions.add("Price-to-book ratio analysis for $primarySymbol" to Icons.Filled.Analytics)
+        if (secondarySymbol != null) {
             suggestions.add("Compare $primarySymbol and $secondarySymbol on P/E and P/B" to Icons.AutoMirrored.Filled.CompareArrows)
-        suggestions.add("Which NIFTY 50 stocks are undervalued right now?" to Icons.Filled.PriceCheck)
-        suggestions.add("What P/E ratio is considered cheap for Indian banks?" to Icons.AutoMirrored.Filled.Help)
-        suggestions.add("PEG ratio explained — growth vs valuation" to Icons.AutoMirrored.Filled.Help)
+        }
     }
 
     // ── 2. PREDICTION context ───────────────────────────────────────────────
     val hasPrediction = recent.any { textContainsAny(it, listOf("predict", "forecast", "target", "future", "price next", "this quarter", "this month", "outlook", "upside")) }
-    if (hasPrediction) {
-        if (primarySymbol != null) {
-            suggestions.add("Bull case vs bear case for $primarySymbol" to Icons.Filled.Analytics)
-            suggestions.add("$primarySymbol price target for next 3 months" to Icons.Filled.Timeline)
-            suggestions.add("What catalysts could drive $primarySymbol higher?" to Icons.AutoMirrored.Filled.TrendingUp)
-            suggestions.add("Downside risk for $primarySymbol if market corrects" to Icons.Filled.Warning)
-        }
-        suggestions.add("Which NIFTY stocks have highest upside potential?" to Icons.Filled.Timeline)
-        suggestions.add("NIFTY 50 target for next 6 months" to Icons.Filled.Timeline)
-        suggestions.add("IT sector outlook for next quarter" to Icons.Filled.Timeline)
+    if (hasPrediction && primarySymbol != null) {
+        suggestions.add("Bull case vs bear case for $primarySymbol" to Icons.Filled.Analytics)
+        suggestions.add("$primarySymbol price target for next 3 months" to Icons.Filled.Timeline)
+        suggestions.add("What catalysts could drive $primarySymbol higher?" to Icons.AutoMirrored.Filled.TrendingUp)
+        suggestions.add("Downside risk for $primarySymbol if market corrects" to Icons.Filled.Warning)
+        suggestions.add("Should I buy $primarySymbol after this forecast?" to Icons.AutoMirrored.Filled.TrendingUp)
+        suggestions.add("Key support and resistance for $primarySymbol" to Icons.AutoMirrored.Filled.ShowChart)
     }
 
     // ── 3. COMPARISON context ───────────────────────────────────────────────
-    val hasComparison = recent.any { textContainsAny(it, listOf("compare", "versus", "vs", "better", "which is better", "difference between")) }
+    val hasComparison = recent.any { textContainsAny(it, listOf("compare", "versus", " vs ", "better", "which is better", "difference between")) }
     if (hasComparison) {
         if (primarySymbol != null && secondarySymbol != null) {
             suggestions.add("$primarySymbol vs $secondarySymbol — debt and cash flow" to Icons.AutoMirrored.Filled.CompareArrows)
@@ -472,149 +498,72 @@ private fun buildAdaptiveSuggestions(
             suggestions.add("$primarySymbol vs its top competitor" to Icons.AutoMirrored.Filled.CompareArrows)
             suggestions.add("How does $primarySymbol rank in its sector?" to Icons.Filled.Analytics)
         }
-        suggestions.add("TCS vs Infosys — which is a better long-term pick?" to Icons.AutoMirrored.Filled.CompareArrows)
-        suggestions.add("HDFCBANK vs ICICIBANK — fundamentals comparison" to Icons.AutoMirrored.Filled.CompareArrows)
-        suggestions.add("SUNPHARMA vs DRREDDY — which has better growth?" to Icons.AutoMirrored.Filled.CompareArrows)
-        suggestions.add("SBIN vs HDFCBANK — value vs quality banking" to Icons.AutoMirrored.Filled.CompareArrows)
     }
 
     // ── 4. BUY / SELL / ENTRY context ───────────────────────────────────────
     val hasRecommendation = recent.any { textContainsAny(it, listOf("buy", "sell", "should i", "invest", "entry", "accumulate", "hold", "exit", "add")) }
-    if (hasRecommendation) {
-        if (primarySymbol != null) {
-            suggestions.add("What is the ideal entry price for $primarySymbol?" to Icons.AutoMirrored.Filled.TrendingUp)
-            suggestions.add("Should I SIP into $primarySymbol every month?" to Icons.Filled.Payments)
-            suggestions.add("Stop-loss and target price for $primarySymbol trade" to Icons.Filled.PriceCheck)
-            suggestions.add("Is $primarySymbol good for long-term holding?" to Icons.AutoMirrored.Filled.TrendingUp)
-            suggestions.add("At what price should I add more $primarySymbol?" to Icons.AutoMirrored.Filled.TrendingUp)
-        }
-        suggestions.add("Best large-cap stocks for long-term SIP" to Icons.Filled.Payments)
-        suggestions.add("Which NIFTY 50 stocks are safe to hold for 3 years?" to Icons.AutoMirrored.Filled.TrendingUp)
-        suggestions.add("Lump sum vs SIP — which is better now?" to Icons.AutoMirrored.Filled.Help)
+    if (hasRecommendation && primarySymbol != null) {
+        suggestions.add("What is the ideal entry price for $primarySymbol?" to Icons.AutoMirrored.Filled.TrendingUp)
+        suggestions.add("Should I SIP into $primarySymbol every month?" to Icons.Filled.Payments)
+        suggestions.add("Stop-loss and target price for $primarySymbol trade" to Icons.Filled.PriceCheck)
+        suggestions.add("Is $primarySymbol good for long-term holding?" to Icons.AutoMirrored.Filled.TrendingUp)
+        suggestions.add("At what price should I add more $primarySymbol?" to Icons.AutoMirrored.Filled.TrendingUp)
     }
 
     // ── 5. TECHNICAL ANALYSIS context ───────────────────────────────────────
     val hasTechnical = recent.any { textContainsAny(it, listOf("technical", "rsi", "macd", "support", "resistance", "trend", "bollinger", "sma", "moving average", "breakout", "chart", "candlestick")) }
-    if (hasTechnical) {
-        if (primarySymbol != null) {
-            suggestions.add("RSI and MACD signal for $primarySymbol today" to Icons.Filled.Analytics)
-            suggestions.add("Is $primarySymbol above its 200-day moving average?" to Icons.AutoMirrored.Filled.ShowChart)
-            suggestions.add("Bollinger Bands position for $primarySymbol" to Icons.AutoMirrored.Filled.ShowChart)
-            suggestions.add("Key support and resistance levels for $primarySymbol" to Icons.AutoMirrored.Filled.ShowChart)
-            suggestions.add("Is $primarySymbol forming a bullish pattern?" to Icons.AutoMirrored.Filled.TrendingUp)
-        }
-        suggestions.add("Which NIFTY stocks are oversold on RSI right now?" to Icons.Filled.Analytics)
-        suggestions.add("Technical analysis for banking sector" to Icons.Filled.Analytics)
-        suggestions.add("What does a golden cross signal in stocks?" to Icons.AutoMirrored.Filled.Help)
+    if (hasTechnical && primarySymbol != null) {
+        suggestions.add("RSI and MACD signal for $primarySymbol today" to Icons.Filled.Analytics)
+        suggestions.add("Is $primarySymbol above its 200-day moving average?" to Icons.AutoMirrored.Filled.ShowChart)
+        suggestions.add("Bollinger Bands position for $primarySymbol" to Icons.AutoMirrored.Filled.ShowChart)
+        suggestions.add("Key support and resistance levels for $primarySymbol" to Icons.AutoMirrored.Filled.ShowChart)
+        suggestions.add("Is $primarySymbol forming a bullish pattern?" to Icons.AutoMirrored.Filled.TrendingUp)
     }
 
-    // ── 6. PROFIT / RISK MANAGEMENT context ─────────────────────────────────
-    val hasProfit = recent.any { textContainsAny(it, listOf("profit", "gain", "return", "loss", "stop loss", "target", "risk reward", "portfolio")) }
-    if (hasProfit) {
-        if (primarySymbol != null) {
-            suggestions.add("Risk-to-reward ratio for buying $primarySymbol now" to Icons.Filled.PriceCheck)
-            suggestions.add("Profit target and stop-loss for $primarySymbol" to Icons.Filled.PriceCheck)
-        }
-        suggestions.add("How to set trailing stop-loss in volatile markets?" to Icons.AutoMirrored.Filled.Help)
-        suggestions.add("When should I book profits on a winning trade?" to Icons.Filled.Warning)
-        suggestions.add("1:3 risk-reward strategy explained" to Icons.AutoMirrored.Filled.Help)
-        suggestions.add("How to diversify across sectors to reduce risk?" to Icons.Filled.Payments)
+    // ── 6. RISK context ─────────────────────────────────────────────────────
+    val hasRisk = recent.any { textContainsAny(it, listOf("risk", "stop loss", "stop-loss", "drawdown", "volatile", "hedge", "safe")) }
+    if (hasRisk && primarySymbol != null) {
+        suggestions.add("Risk-to-reward ratio for buying $primarySymbol now" to Icons.Filled.PriceCheck)
+        suggestions.add("What are the key risks in $primarySymbol?" to Icons.Filled.Warning)
+        suggestions.add("How would $primarySymbol perform in a market crash?" to Icons.Filled.Warning)
     }
 
-    // ── 7. SECTOR context ───────────────────────────────────────────────────
-    val hasSector = recent.any { textContainsAny(it, listOf("sector", "banking", "pharma", "it stocks", "auto sector", "fmcg", "energy sector", "infra", "defence", "psu")) }
-    if (hasSector) {
-        suggestions.add("Which bank stock has the best NIM and ROE?" to Icons.Filled.AccountBalance)
-        suggestions.add("Top IT stocks for next earnings season" to Icons.Filled.Analytics)
-        suggestions.add("Best pharma stocks with strong export growth" to Icons.Filled.Analytics)
-        suggestions.add("Which auto stock benefits most from EV shift in India?" to Icons.AutoMirrored.Filled.TrendingUp)
-        suggestions.add("Top PSU stocks with government capex tailwind" to Icons.Filled.Analytics)
-        suggestions.add("FMCG stocks with rural recovery play" to Icons.AutoMirrored.Filled.TrendingUp)
-        suggestions.add("Defence stocks — which has the strongest order book?" to Icons.Filled.Analytics)
+    // ── 7. EARNINGS / DIVIDEND context ──────────────────────────────────────
+    val hasEarnings = recent.any { textContainsAny(it, listOf("earning", "results", "eps", "revenue", "quarter")) }
+    if (hasEarnings && primarySymbol != null) {
+        suggestions.add("$primarySymbol expected EPS and revenue this quarter" to Icons.Filled.Analytics)
+        suggestions.add("$primarySymbol earnings trend — last 4 quarters" to Icons.Filled.Analytics)
+        suggestions.add("What to expect from $primarySymbol next results?" to Icons.Filled.Analytics)
+    }
+    val hasDividend = recent.any { textContainsAny(it, listOf("dividend", "yield", "payout")) }
+    if (hasDividend && primarySymbol != null) {
+        suggestions.add("$primarySymbol dividend history and next expected payout" to Icons.Filled.Payments)
     }
 
-    // ── 8. RISK / SAFETY context ─────────────────────────────────────────────
-    val hasRisk = recent.any { textContainsAny(it, listOf("risk", "volatile", "safe", "crash", "bear market", "fall", "protect", "hedge", "correction", "sideways")) }
-    if (hasRisk) {
-        if (primarySymbol != null) {
-            suggestions.add("What are the key risks in $primarySymbol?" to Icons.Filled.Warning)
-            suggestions.add("How would $primarySymbol perform in a market crash?" to Icons.Filled.Warning)
-        }
-        suggestions.add("Which NIFTY stocks are least volatile (low beta)?" to Icons.Filled.Analytics)
-        suggestions.add("How to hedge a stock portfolio in India?" to Icons.AutoMirrored.Filled.Help)
-        suggestions.add("Safest NIFTY 50 stocks for capital protection" to Icons.Filled.Analytics)
-        suggestions.add("Gold ETF vs defensive stocks — which is safer?" to Icons.AutoMirrored.Filled.CompareArrows)
-    }
-
-    // ── 9. DIVIDEND / INCOME context ─────────────────────────────────────────
-    val hasDividend = recent.any { textContainsAny(it, listOf("dividend", "yield", "income", "sip", "passive income", "regular income", "payout")) }
-    if (hasDividend) {
-        if (primarySymbol != null)
-            suggestions.add("$primarySymbol dividend history and next expected payout" to Icons.Filled.Payments)
-        suggestions.add("Top 5 highest dividend-yield NIFTY 50 stocks" to Icons.Filled.Payments)
-        suggestions.add("Which PSU stocks give the best dividends?" to Icons.Filled.Payments)
-        suggestions.add("ONGC vs COALINDIA — which gives better dividend yield?" to Icons.AutoMirrored.Filled.CompareArrows)
-        suggestions.add("Best stocks for monthly income through dividends" to Icons.Filled.Payments)
-        suggestions.add("Tax on dividend income in India — explained" to Icons.AutoMirrored.Filled.Help)
-    }
-
-    // ── 10. MACRO / ECONOMY context ──────────────────────────────────────────
-    val hasMacro = recent.any { textContainsAny(it, listOf("rbi", "rate cut", "rate hike", "inflation", "rupee", "fii", "dii", "budget", "nifty", "sensex", "economy", "gdp", "recession", "fed")) }
-    if (hasMacro) {
-        suggestions.add("Which sectors benefit from RBI rate cut?" to Icons.Filled.Analytics)
-        suggestions.add("Effect of FII selling on Indian banking stocks" to Icons.Filled.Analytics)
-        suggestions.add("How does a strong dollar affect IT stock earnings?" to Icons.Filled.Analytics)
-        suggestions.add("Budget impact on infra, defence and PSU stocks" to Icons.Filled.Analytics)
-        suggestions.add("What happens to NIFTY when US Fed cuts rates?" to Icons.AutoMirrored.Filled.Help)
-        suggestions.add("Inflation impact on FMCG and consumer stocks" to Icons.Filled.Analytics)
-    }
-
-    // ── 11. EARNINGS / RESULTS context ───────────────────────────────────────
-    val hasEarnings = recent.any { textContainsAny(it, listOf("earnings", "results", "quarterly", "q1", "q2", "q3", "q4", "revenue", "eps", "profit growth", "margin", "guidance")) }
-    if (hasEarnings) {
-        if (primarySymbol != null) {
-            suggestions.add("$primarySymbol expected EPS and revenue this quarter" to Icons.Filled.Analytics)
-            suggestions.add("$primarySymbol earnings trend — last 4 quarters" to Icons.Filled.Analytics)
-            suggestions.add("What to expect from $primarySymbol next results?" to Icons.Filled.Analytics)
-        }
-        suggestions.add("Which IT stocks are expected to beat earnings?" to Icons.Filled.Analytics)
-        suggestions.add("Banks with best NIM growth this earnings season" to Icons.Filled.AccountBalance)
-        suggestions.add("Which NIFTY stocks have strong earnings momentum?" to Icons.AutoMirrored.Filled.TrendingUp)
-    }
-
-    // ── 12. IPO / NEW LISTING context ────────────────────────────────────────
-    val hasIPO = recent.any { textContainsAny(it, listOf("ipo", "listing", "upcoming ipo", "new listing", "grey market", "gmp", "subscribe")) }
-    if (hasIPO) {
-        suggestions.add("How to evaluate if an IPO is worth subscribing?" to Icons.AutoMirrored.Filled.Help)
-        suggestions.add("What is IPO Grey Market Premium and how to use it?" to Icons.AutoMirrored.Filled.Help)
-        suggestions.add("Risks of investing in newly listed stocks" to Icons.Filled.Warning)
-        suggestions.add("Best performing IPOs in last 2 years in India" to Icons.Filled.Analytics)
-        suggestions.add("How long should I hold an IPO allotment?" to Icons.AutoMirrored.Filled.Help)
-    }
-
-    // ── 13. EDUCATIONAL context ──────────────────────────────────────────────
-    val hasEducation = recent.any { textContainsAny(it, listOf("what is", "how to", "explain", "understand", "what does", "what are", "mean", "difference between", "beginner", "basics")) }
-    if (hasEducation) {
-        suggestions.add("What is Debt-to-Equity ratio and why it matters?" to Icons.AutoMirrored.Filled.Help)
-        suggestions.add("Difference between growth stocks and value stocks" to Icons.AutoMirrored.Filled.Help)
-        suggestions.add("How to read a candlestick chart for beginners?" to Icons.AutoMirrored.Filled.Help)
-        suggestions.add("What is circuit breaker in Indian stock market?" to Icons.AutoMirrored.Filled.Help)
-        suggestions.add("FII and DII flows — how do they affect NIFTY?" to Icons.AutoMirrored.Filled.Help)
-        suggestions.add("ROCE vs ROE — which matters more for stock picking?" to Icons.AutoMirrored.Filled.Help)
-        suggestions.add("What is promoter pledging and why is it a red flag?" to Icons.Filled.Warning)
-    }
-
-    // Fill remaining with shuffled default pool
-    val fallbackPool = buildDefaultSuggestionPool().shuffled(Random(System.currentTimeMillis()))
-    for (item in fallbackPool) {
-        if (suggestions.size >= 16) break
-        suggestions.add(item)
-    }
-
-    return suggestions
+    // When a stock is in focus, never inject unrelated tickers like INFY/TCS.
+    // Peer compares that still mention the focus stock are allowed.
+    val contextual = suggestions
+        .asSequence()
         .filterNot { normalizePrompt(it.first) in askedPrompts }
-        .take(14)
-        .ifEmpty { fallbackPool.take(8) }
+        .filter {
+            if (primarySymbol == null) true
+            else {
+                val upper = it.first.uppercase()
+                upper.contains(primarySymbol) ||
+                    !suggestionMentionsOtherSymbol(it.first, primarySymbol, secondarySymbol)
+            }
+        }
+        .distinctBy { normalizePrompt(it.first) }
+        .take(10)
+        .toList()
+
+    if (contextual.isNotEmpty()) return contextual
+
+    // Empty chat / no symbol: only then use the default discovery pool.
+    return buildDefaultSuggestionPool()
+        .filterNot { normalizePrompt(it.first) in askedPrompts }
+        .take(8)
+        .ifEmpty { buildDefaultSuggestionPool().take(8) }
 }
 
 private fun textContainsAny(source: String, keywords: List<String>): Boolean {
@@ -1082,7 +1031,25 @@ private fun ChatBubble(
 }
 
 @Composable
-private fun TypingIndicator() {
+private fun TypingIndicator(likelyColdStart: Boolean = false) {
+    var statusText by remember(likelyColdStart) {
+        mutableStateOf(if (likelyColdStart) "Connecting to AI…" else "AI is thinking…")
+    }
+    LaunchedEffect(likelyColdStart) {
+        if (likelyColdStart) {
+            // Only mention cold-start when the host may actually be asleep.
+            kotlinx.coroutines.delay(12_000L)
+            statusText = "Server may be waking up — almost there…"
+            kotlinx.coroutines.delay(20_000L)
+            statusText = "Still working — analyzing market data…"
+        } else {
+            kotlinx.coroutines.delay(8_000L)
+            statusText = "Still working…"
+            kotlinx.coroutines.delay(15_000L)
+            statusText = "Taking a bit longer — finishing analysis…"
+        }
+    }
+
     Row(
         modifier = Modifier.padding(start = 8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -1109,7 +1076,7 @@ private fun TypingIndicator() {
         }
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            "AI is thinking...",
+            statusText,
             color = LocalAppTheme.current.textSecondary,
             fontSize = 12.sp
         )

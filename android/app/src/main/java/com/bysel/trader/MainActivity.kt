@@ -18,6 +18,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import com.bysel.trader.ui.components.MarketDataStatusBanner
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -44,6 +45,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.bysel.trader.data.auth.AuthSessionManager
 import com.bysel.trader.data.local.BYSELDatabase
 import com.bysel.trader.data.repository.AuthRepository
+import com.bysel.trader.data.repository.Result
 import com.bysel.trader.data.repository.TradingRepository
 import com.bysel.trader.ui.screens.*
 import com.bysel.trader.ui.theme.LocalAppTheme
@@ -65,7 +67,7 @@ import kotlinx.coroutines.launch
 class MainActivity : FragmentActivity() {
     private var upiResultCallback: ((Boolean) -> Unit)? = null
     private lateinit var biometricAuthManager: BiometricAuthManager
-    private lateinit var tradingViewModel: TradingViewModel
+    private var tradingViewModel: TradingViewModel? = null
     private var isAuthenticated = false
 
 
@@ -94,15 +96,6 @@ class MainActivity : FragmentActivity() {
         }
 
         AuthSessionManager.init(applicationContext)
-
-        val database = BYSELDatabase.getInstance(this)
-        val repository = TradingRepository(database)
-        val factory = TradingViewModelFactory(repository)
-        factory.initApplication(application)
-        tradingViewModel = ViewModelProvider(
-            this,
-            factory
-        ).get(TradingViewModel::class.java)
         
         // Handle app shortcuts
         val shortcutAction = intent.getStringExtra("shortcut_action")
@@ -113,6 +106,7 @@ class MainActivity : FragmentActivity() {
             val isLoggedIn by AuthSessionManager.sessionState.collectAsState()
             var wasLoggedIn by remember { mutableStateOf(isLoggedIn) }
             var manualLogoutInProgress by remember { mutableStateOf(false) }
+            var activeTradingViewModel by remember { mutableStateOf(tradingViewModel) }
 
             // Show biometric lock screen if enabled and not authenticated
             var showLockScreen by remember { mutableStateOf(
@@ -160,6 +154,21 @@ class MainActivity : FragmentActivity() {
                 }
             }
 
+            LaunchedEffect(isLoggedIn, showLockScreen) {
+                if (isLoggedIn && !showLockScreen && activeTradingViewModel == null) {
+                    val database = BYSELDatabase.getInstance(applicationContext)
+                    val repository = TradingRepository(database)
+                    val factory = TradingViewModelFactory(repository)
+                    factory.initApplication(application)
+                    val createdViewModel = ViewModelProvider(
+                        this@MainActivity,
+                        factory
+                    ).get(TradingViewModel::class.java)
+                    tradingViewModel = createdViewModel
+                    activeTradingViewModel = createdViewModel
+                }
+            }
+
             if (!isLoggedIn) {
                 AuthScreen(
                     onAuthenticated = {
@@ -180,32 +189,52 @@ class MainActivity : FragmentActivity() {
                         )
                     }
                 )
+            } else if (activeTradingViewModel == null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
             } else {
+                val currentTradingViewModel = activeTradingViewModel ?: return@setContent
                 BYSELApp(
-                    viewModel = tradingViewModel,
+                    viewModel = currentTradingViewModel,
                     biometricAuthManager = biometricAuthManager,
                     initialTab = initialTab,
                     onUpiPay = { amount, upiPackageName ->
                         launchUpiPayment(amount, upiPackageName) { success ->
-                            if (success) tradingViewModel.addFunds(amount)
+                            if (success) currentTradingViewModel.addFunds(amount)
                         }
                     },
                     onLogout = {
                         manualLogoutInProgress = true
                         scope.launch {
-                            authRepository.logout()
+                            val result = authRepository.logout()
                             isAuthenticated = false
                             showLockScreen = false
-                            Toast.makeText(this@MainActivity, "Logged out successfully", Toast.LENGTH_SHORT).show()
+                            val message = if (result is Result.Error) {
+                                "Signed out on this device, but the server could not be reached"
+                            } else {
+                                "Logged out successfully"
+                            }
+                            Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
                         }
                     },
                     onLogoutAllDevices = {
                         manualLogoutInProgress = true
                         scope.launch {
-                            authRepository.logoutAllDevices()
+                            val result = authRepository.logoutAllDevices()
                             isAuthenticated = false
                             showLockScreen = false
-                            Toast.makeText(this@MainActivity, "Logged out from all devices", Toast.LENGTH_SHORT).show()
+                            val message = if (result is Result.Error) {
+                                "Signed out here, but other devices may still be signed in"
+                            } else {
+                                "Logged out from all devices"
+                            }
+                            Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
                         }
                     }
                 )
@@ -215,9 +244,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onStart() {
         super.onStart()
-        if (::tradingViewModel.isInitialized && AuthSessionManager.hasSession()) {
-            tradingViewModel.onAppForegroundResume()
-        }
+        tradingViewModel?.takeIf { AuthSessionManager.hasSession() }?.onAppForegroundResume()
     }
 
     override fun onResume() {
@@ -231,15 +258,11 @@ class MainActivity : FragmentActivity() {
             )
         }
 
-        if (::tradingViewModel.isInitialized && AuthSessionManager.hasSession()) {
-            tradingViewModel.onAppForegroundResume()
-        }
+        tradingViewModel?.takeIf { AuthSessionManager.hasSession() }?.onAppForegroundResume()
     }
 
     override fun onStop() {
-        if (::tradingViewModel.isInitialized) {
-            tradingViewModel.onAppBackgroundPause()
-        }
+        tradingViewModel?.onAppBackgroundPause()
         super.onStop()
     }
 
@@ -313,6 +336,13 @@ fun BiometricLockScreen(onRetry: () -> Unit) {
     }
 }
 
+/** A trade the AI assistant proposed, held until the user confirms it. */
+private data class AiTradeRequest(
+    val symbol: String,
+    val side: String,
+    val quantity: Int
+)
+
 @Composable
 fun BYSELApp(
     viewModel: TradingViewModel, 
@@ -336,8 +366,10 @@ fun BYSELApp(
 
     var selectedTab by remember { mutableStateOf(initialTab) }
     var previousTab by remember { mutableIntStateOf(0) }
+    // Trades suggested by the AI assistant are confirmed here before they reach the broker.
+    var pendingAiTrade by remember { mutableStateOf<AiTradeRequest?>(null) }
     var lastBackPressAt by remember { mutableLongStateOf(0L) }
-    var heatmapInterval by remember { mutableStateOf(2000) }
+    var heatmapInterval by remember { mutableStateOf(prefs.getInt("heatmapInterval", 30_000).coerceIn(5_000, 60_000)) }
     val density = LocalDensity.current
     val edgeThresholdPx = with(density) { 28.dp.toPx() }
     val swipeTriggerPx = with(density) { 110.dp.toPx() }
@@ -357,6 +389,7 @@ fun BYSELApp(
     // AI & Analytics state
     val chatHistory by viewModel.chatHistory.collectAsState()
     val aiLoading by viewModel.aiLoading.collectAsState()
+    val aiLikelyColdStart by viewModel.aiLikelyColdStart.collectAsState()
     val onDeviceLlmState by viewModel.onDeviceLlmState.collectAsState()
     val portfolioHealth by viewModel.portfolioHealth.collectAsState()
     val healthLoading by viewModel.healthLoading.collectAsState()
@@ -368,6 +401,7 @@ fun BYSELApp(
     val detailLoading by viewModel.detailLoading.collectAsState()
     val walletBalance by viewModel.walletBalance.collectAsState()
     val marketStatus by viewModel.marketStatus.collectAsState()
+    val lastQuoteUpdateAt by viewModel.lastQuoteUpdateAt.collectAsState()
     val investorPortfolios by viewModel.investorPortfolios.collectAsState()
     val investorPortfoliosLoading by viewModel.investorPortfoliosLoading.collectAsState()
     val investorPortfolioChanges by viewModel.investorPortfolioChanges.collectAsState()
@@ -442,7 +476,7 @@ fun BYSELApp(
                 selectedTab = previousTab
             }
 
-            selectedTab in 6..8 || selectedTab in 10..24 -> {
+            selectedTab in 6..8 || selectedTab in 10..26 -> {
                 selectedTab = 5
             }
 
@@ -463,6 +497,49 @@ fun BYSELApp(
     }
     CompositionLocalProvider(LocalAppTheme provides appTheme) {
         MaterialTheme(colorScheme = getMaterialColorScheme(currentThemeName, context)) {
+            pendingAiTrade?.let { trade ->
+                val livePrice = quotes.firstOrNull { it.symbol == trade.symbol }?.last
+                val estimate = livePrice?.let { it * trade.quantity }
+                AlertDialog(
+                    onDismissRequest = { pendingAiTrade = null },
+                    title = { Text("${trade.side} ${trade.quantity} ${trade.symbol}?") },
+                    text = {
+                        Column {
+                            if (livePrice != null) {
+                                Text("Last traded price: ₹${String.format("%.2f", livePrice)}")
+                                Text("Approximate order value: ₹${String.format("%.2f", estimate)}")
+                            } else {
+                                Text("Live price unavailable — the order will execute at the prevailing market price.")
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "This order was suggested by the AI assistant. AI analysis can be wrong; " +
+                                    "you are responsible for the trade.",
+                                fontSize = 12.sp,
+                                color = appTheme.textSecondary
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                viewModel.placeOrder(trade.symbol, trade.quantity, trade.side)
+                                pendingAiTrade = null
+                                selectedTab = 2
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (trade.side == "BUY") appTheme.positive else appTheme.negative
+                            )
+                        ) {
+                            Text("Confirm ${trade.side.lowercase()}")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { pendingAiTrade = null }) { Text("Cancel") }
+                    },
+                    containerColor = appTheme.card
+                )
+            }
             if (showOnboarding) {
                 com.bysel.trader.ui.screens.OnboardingScreen(
                     onFinish = {
@@ -479,6 +556,13 @@ fun BYSELApp(
                 ) {
                     Scaffold(
                     bottomBar = {
+                        // Stock detail (tab 9) is opened on top of another tab, so keep the
+                        // originating tab highlighted instead of falling through to "More".
+                        val navHighlightTab = if (selectedTab == 9 && previousTab in 0..4) {
+                            previousTab
+                        } else {
+                            selectedTab
+                        }
                         NavigationBar(
                             modifier = Modifier.background(appTheme.card),
                             containerColor = appTheme.card
@@ -487,11 +571,11 @@ fun BYSELApp(
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.Home, contentDescription = "Dashboard", modifier = Modifier.size(22.dp)) },
                         label = { Text("Home", fontSize = 10.sp) },
-                        selected = selectedTab == 0,
+                        selected = navHighlightTab == 0,
                         onClick = { selectedTab = 0 },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color(0xFF7C4DFF),
-                            selectedTextColor = Color(0xFF7C4DFF),
+                            selectedIconColor = appTheme.primary,
+                            selectedTextColor = appTheme.primary,
                             unselectedIconColor = Color.Gray,
                             unselectedTextColor = Color.Gray,
                             indicatorColor = Color.Transparent
@@ -501,11 +585,11 @@ fun BYSELApp(
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.Psychology, contentDescription = "AI", modifier = Modifier.size(22.dp)) },
                         label = { Text("AI", fontSize = 10.sp) },
-                        selected = selectedTab == 1,
+                        selected = navHighlightTab == 1,
                         onClick = { selectedTab = 1 },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color(0xFF7C4DFF),
-                            selectedTextColor = Color(0xFF7C4DFF),
+                            selectedIconColor = appTheme.primary,
+                            selectedTextColor = appTheme.primary,
                             unselectedIconColor = Color.Gray,
                             unselectedTextColor = Color.Gray,
                             indicatorColor = Color.Transparent
@@ -515,11 +599,11 @@ fun BYSELApp(
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.AttachMoney, contentDescription = "Trade", modifier = Modifier.size(22.dp)) },
                         label = { Text("Trade", fontSize = 10.sp) },
-                        selected = selectedTab == 2,
+                        selected = navHighlightTab == 2,
                         onClick = { selectedTab = 2 },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color(0xFF7C4DFF),
-                            selectedTextColor = Color(0xFF7C4DFF),
+                            selectedIconColor = appTheme.primary,
+                            selectedTextColor = appTheme.primary,
                             unselectedIconColor = Color.Gray,
                             unselectedTextColor = Color.Gray,
                             indicatorColor = Color.Transparent
@@ -529,11 +613,11 @@ fun BYSELApp(
                     NavigationBarItem(
                         icon = { Icon(Icons.AutoMirrored.Filled.ShowChart, contentDescription = "Portfolio", modifier = Modifier.size(22.dp)) },
                         label = { Text("Portfolio", fontSize = 10.sp) },
-                        selected = selectedTab == 3,
+                        selected = navHighlightTab == 3,
                         onClick = { selectedTab = 3 },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color(0xFF7C4DFF),
-                            selectedTextColor = Color(0xFF7C4DFF),
+                            selectedIconColor = appTheme.primary,
+                            selectedTextColor = appTheme.primary,
                             unselectedIconColor = Color.Gray,
                             unselectedTextColor = Color.Gray,
                             indicatorColor = Color.Transparent
@@ -543,11 +627,11 @@ fun BYSELApp(
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.GridView, contentDescription = "Heatmap", modifier = Modifier.size(22.dp)) },
                         label = { Text("Heatmap", fontSize = 10.sp) },
-                        selected = selectedTab == 4,
+                        selected = navHighlightTab == 4,
                         onClick = { selectedTab = 4 },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color(0xFF7C4DFF),
-                            selectedTextColor = Color(0xFF7C4DFF),
+                            selectedIconColor = appTheme.primary,
+                            selectedTextColor = appTheme.primary,
                             unselectedIconColor = Color.Gray,
                             unselectedTextColor = Color.Gray,
                             indicatorColor = Color.Transparent
@@ -557,11 +641,11 @@ fun BYSELApp(
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.MoreHoriz, contentDescription = "More", modifier = Modifier.size(22.dp)) },
                         label = { Text("More", fontSize = 10.sp) },
-                        selected = selectedTab in 5..24,
+                        selected = navHighlightTab in 5..26,
                         onClick = { selectedTab = 5 },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color(0xFF7C4DFF),
-                            selectedTextColor = Color(0xFF7C4DFF),
+                            selectedIconColor = appTheme.primary,
+                            selectedTextColor = appTheme.primary,
                             unselectedIconColor = Color.Gray,
                             unselectedTextColor = Color.Gray,
                             indicatorColor = Color.Transparent
@@ -595,7 +679,7 @@ fun BYSELApp(
                                         return@detectHorizontalDragGestures
                                     }
 
-                                    val canSwipeBack = selectedTab == 9 || selectedTab in 6..8 || selectedTab in 10..24
+                                    val canSwipeBack = selectedTab == 9 || selectedTab in 6..8 || selectedTab in 10..26
                                     val canSwipeForwardFromMore = selectedTab == 5
                                     val startedFromLeftEdge = dragStartX <= edgeThresholdPx
                                     val startedFromRightEdge = dragStartX >= size.width - edgeThresholdPx
@@ -623,12 +707,21 @@ fun BYSELApp(
                         Modifier
                     }
 
-                    Box(
+                    Column(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(paddingValues)
-                            .then(edgeGestureModifier)
                             .background(appTheme.surface)
+                    ) {
+                        // Shown on every tab so a stale price is never mistaken for a live one.
+                        MarketDataStatusBanner(
+                            lastQuoteUpdateAt = lastQuoteUpdateAt,
+                            isMarketOpen = marketStatus?.isOpen
+                        )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .then(edgeGestureModifier)
                     ) {
                         // Swipeable tabs for main 5 tabs (0-4)
                         if (selectedTab in 0..4) {
@@ -666,8 +759,7 @@ fun BYSELApp(
                                         onClearChat = { viewModel.clearChatHistory() },
                                         selectedSymbol = selectedQuote?.symbol,
                                         onTradeAction = { symbol, side, qty ->
-                                            viewModel.placeOrder(symbol, qty ?: 1, side)
-                                            selectedTab = 2
+                                            pendingAiTrade = AiTradeRequest(symbol, side, qty ?: 1)
                                         },
                                         onAlertAction = { symbol, price, alertType ->
                                             price?.let { viewModel.createAlert(symbol, it, alertType) }
@@ -679,6 +771,8 @@ fun BYSELApp(
                                         },
                                         onDeviceLlmState = onDeviceLlmState,
                                         onDownloadModel = { viewModel.downloadOnDeviceModel() },
+                                        likelyColdStart = aiLikelyColdStart,
+                                        onWarmAi = { viewModel.warmAiBackend() },
                                     )
                                     2 -> TradingScreen(
                                         isLoading = isLoading,
@@ -712,12 +806,14 @@ fun BYSELApp(
                                         onRefreshHealth = { viewModel.loadPortfolioHealth() },
                                         onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
                                         onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") },
-                                        onErrorDismiss = { viewModel.clearError() }
+                                        onErrorDismiss = { viewModel.clearError() },
+                                        onNavigateToTrade = { selectedTab = 2 }
                                     )
                                     4 -> HeatmapScreen(
                                         heatmap = marketHeatmap,
                                         isLoading = heatmapLoading,
                                         heatmapInterval = heatmapInterval,
+                                        isActive = pagerState.currentPage == 4,
                                         onRefresh = { viewModel.loadMarketHeatmap(force = true) },
                                         onStockClick = { symbol ->
                                             previousTab = selectedTab
@@ -749,6 +845,8 @@ fun BYSELApp(
                                     onRiskLabClick = { selectedTab = 22 },
                                     onEarningsCalendarClick = { selectedTab = 23 },
                                     onTradeJournalClick = { selectedTab = 24 },
+                                    onWatchlistClick = { selectedTab = 25 },
+                                    onMarketCalendarClick = { selectedTab = 26 },
                                 )
                                 10 -> com.bysel.trader.ui.screens.AchievementsScreen(viewModel)
                                 11 -> MutualFundsScreen(viewModel)
@@ -804,6 +902,21 @@ fun BYSELApp(
                                     viewModel = viewModel,
                                     onBack = { selectedTab = 5 }
                                 )
+                                25 -> WatchlistScreen(
+                                    quotes = quotes.filter { quote ->
+                                        watchlistSymbols.any { it.equals(quote.symbol, ignoreCase = true) }
+                                    },
+                                    isLoading = isLoading,
+                                    error = error,
+                                    onRefresh = { viewModel.refreshQuotes(force = true) },
+                                    onQuoteClick = { quote ->
+                                        previousTab = selectedTab
+                                        viewModel.setSelectedQuote(quote)
+                                        selectedTab = 9
+                                    },
+                                    onErrorDismiss = { viewModel.clearError() }
+                                )
+                                26 -> MarketCalendarScreen(onBack = { selectedTab = 5 })
                                 6 -> SearchScreen(
                                     quotes = quotes,
                                     watchlistSymbols = watchlistSymbols,
@@ -843,8 +956,9 @@ fun BYSELApp(
                                     },
                                     heatmapInterval = heatmapInterval,
                                     onHeatmapIntervalChange = { interval ->
-                                        heatmapInterval = interval
-                                        prefs.edit().putInt("heatmapInterval", interval).apply()
+                                        val clamped = interval.coerceIn(5_000, 60_000)
+                                        heatmapInterval = clamped
+                                        prefs.edit().putInt("heatmapInterval", clamped).apply()
                                     },
                                     onLogout = onLogout,
                                     onLogoutAllDevices = onLogoutAllDevices
@@ -883,6 +997,7 @@ fun BYSELApp(
                                 }
                             }
                         }
+                    }
                     }
                 }
             }

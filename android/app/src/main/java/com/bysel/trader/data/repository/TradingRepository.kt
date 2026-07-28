@@ -42,9 +42,27 @@ open class TradingRepository(private val database: BYSELDatabase) {
             database.holdingDao().insertHoldings(holdings)
         }
     private val apiService: BYSELApiService = RetrofitClient.apiService
+    private val aiApiService: BYSELApiService = RetrofitClient.aiApiService
     private val liveMarketDataClient = LiveMarketDataClient(apiService)
 
     // ==================== QUOTES ====================
+    private fun toNetworkErrorMessage(e: Exception, fallback: String): String {
+        val raw = e.message.orEmpty()
+        return when {
+            e is java.net.SocketTimeoutException ||
+                raw.contains("timeout", ignoreCase = true) ||
+                raw.contains("timed out", ignoreCase = true) ->
+                "Market data is taking longer than usual. Pull to refresh — cached prices stay visible."
+            e is java.net.UnknownHostException ||
+                (e is java.io.IOException && raw.contains("Unable to resolve host", ignoreCase = true)) ->
+                "No internet connection. Showing last saved data when available."
+            raw.contains("503") || raw.contains("502") || raw.contains("504") ->
+                "Market server is temporarily unavailable. Retry in a moment."
+            raw.isNotBlank() && raw.length < 120 -> "$fallback ($raw)"
+            else -> fallback
+        }
+    }
+
     open fun getQuotes(symbols: List<String>): Flow<Result<List<Quote>>> = flow {
         try {
             emit(Result.Loading)
@@ -53,7 +71,7 @@ open class TradingRepository(private val database: BYSELDatabase) {
             database.quoteDao().insertQuotes(quotes)
             emit(Result.Success(quotes))
         } catch (e: Exception) {
-            emit(Result.Error(e.message ?: "Unknown error"))
+            emit(Result.Error(toNetworkErrorMessage(e, "Failed to refresh quotes")))
         }
     }
 
@@ -64,7 +82,7 @@ open class TradingRepository(private val database: BYSELDatabase) {
             database.quoteDao().insertQuotes(quotes)
             emit(Result.Success(quotes))
         } catch (e: Exception) {
-            emit(Result.Error(e.message ?: "Unknown error"))
+            emit(Result.Error(toNetworkErrorMessage(e, "Failed to load quotes")))
         }
     }
 
@@ -390,7 +408,16 @@ open class TradingRepository(private val database: BYSELDatabase) {
             val response = apiService.getMarketNews(symbols = symbolQuery, limit = limit)
             Result.Success(response)
         } catch (e: Exception) {
-            Result.Error(e.message ?: "Unknown error")
+            Result.Error(toNetworkErrorMessage(e, "Failed to load market news"))
+        }
+    }
+
+    suspend fun getMarketMovers(limit: Int = 10): Result<MarketMoversResponse> {
+        return try {
+            val response = apiService.getMarketMovers(limit = limit)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(toNetworkErrorMessage(e, "Failed to load market movers"))
         }
     }
 
@@ -404,58 +431,85 @@ open class TradingRepository(private val database: BYSELDatabase) {
     }
 
     // ==================== AI STOCK ASSISTANT ====================
+    private fun toAiErrorMessage(e: Exception, fallback: String): String {
+        val raw = e.message.orEmpty()
+        return when {
+            e is java.net.SocketTimeoutException ||
+                raw.contains("timeout", ignoreCase = true) ||
+                raw.contains("timed out", ignoreCase = true) ->
+                "AI is taking too long (server may be waking up). Please try again in a few seconds."
+            e is java.net.UnknownHostException ||
+                (e is java.io.IOException && raw.contains("Unable to resolve host", ignoreCase = true)) ->
+                "No internet connection. Check your network and retry."
+            raw.contains("503") || raw.contains("502") || raw.contains("504") ->
+                "AI server is temporarily unavailable. Please retry shortly."
+            raw.isNotBlank() -> "$fallback ($raw)"
+            else -> fallback
+        }
+    }
+
+    /** Cheap ping that wakes the Render free-tier instance before the user opens chat. */
+    suspend fun warmAiBackend(): Result<Unit> {
+        return try {
+            aiApiService.healthCheck()
+            Result.Success(Unit)
+        } catch (e: Exception) {
+            Result.Error(toAiErrorMessage(e, "AI warmup failed"))
+        }
+    }
+
     suspend fun aiAsk(query: String, chatHistory: List<ConversationTurn>? = null): Result<AiAssistantResponse> {
         return try {
-            val response = apiService.aiAsk(AiQuery(query = query, conversationHistory = chatHistory))
+            val response = aiApiService.aiAsk(AiQuery(query = query, conversationHistory = chatHistory))
             Result.Success(response)
         } catch (e: Exception) {
-            Result.Error(e.message ?: "Unknown error")
+            Result.Error(toAiErrorMessage(e, "AI request failed"))
         }
     }
 
     suspend fun aiAnalyze(symbol: String): Result<StockAnalysis> {
         return try {
-            val analysis = apiService.aiAnalyze(symbol)
+            val analysis = aiApiService.aiAnalyze(symbol)
             Result.Success(analysis)
         } catch (e: Exception) {
-            Result.Error(e.message ?: "Unknown error")
+            Result.Error(toAiErrorMessage(e, "Analysis failed"))
         }
     }
 
     suspend fun aiAnalyzeFast(symbol: String): Result<StockAnalysis> {
         return try {
-            val analysis = apiService.aiAnalyzeFast(symbol)
+            val analysis = aiApiService.aiAnalyzeFast(symbol)
             Result.Success(analysis)
         } catch (e: Exception) {
-            Result.Error(e.message ?: "Unknown error")
+            Result.Error(toAiErrorMessage(e, "Fast analysis failed"))
         }
     }
 
     suspend fun aiPredict(symbol: String): Result<StockPredictionResponse> {
         return try {
-            val prediction = apiService.aiPredict(symbol)
+            val prediction = aiApiService.aiPredict(symbol)
             Result.Success(prediction)
         } catch (e: Exception) {
-            Result.Error(e.message ?: "Unknown error")
+            Result.Error(toAiErrorMessage(e, "Prediction failed"))
         }
     }
 
     suspend fun getStockRecommendations(limit: Int = 10): Result<StockRecommendationsResponse> {
         return try {
-            val recommendations = apiService.getStockRecommendations(limit)
+            val recommendations = aiApiService.getStockRecommendations(limit)
             Result.Success(recommendations)
         } catch (e: Exception) {
-            Result.Error(e.message ?: "Unknown error")
+            Result.Error(toAiErrorMessage(e, "Recommendations failed"))
         }
     }
 
     // ==================== ENHANCED AI ANALYSIS (LEVEL 2) ====================
     suspend fun aiAnalyzeEnhanced(symbol: String, query: String? = null): Result<EnhancedStockAnalysisResponse> {
         return try {
-            val response = apiService.aiAnalyzeEnhanced(symbol, query)
+            val response = aiApiService.aiAnalyzeEnhanced(symbol, query)
             Result.Success(response)
         } catch (e: Exception) {
-            Result.Error(e.message ?: "Unknown error")
+            Result.Error(toAiErrorMessage(e, "Enhanced analysis failed"))
         }
     }
 
@@ -663,10 +717,16 @@ open class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
-    suspend fun getSignalLabBuckets(limitPerBucket: Int = 8): Result<SignalLabBucketsResponse> {
+    suspend fun getSignalLabBuckets(
+        limitPerBucket: Int = 8,
+        forceRefresh: Boolean = false,
+    ): Result<SignalLabBucketsResponse> {
         return try {
             val normalizedLimit = limitPerBucket.coerceIn(3, 20)
-            val response = apiService.getSignalLabBuckets(limitPerBucket = normalizedLimit)
+            val response = apiService.getSignalLabBuckets(
+                limitPerBucket = normalizedLimit,
+                forceRefresh = forceRefresh,
+            )
             Result.Success(response)
         } catch (e: Exception) {
             Result.Error(e.message ?: "Unknown error")

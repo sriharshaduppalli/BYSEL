@@ -56,26 +56,44 @@ class TemplateModelBackend:
     def _compose_answer(cls, prompt: str) -> str:
         intent = cls._extract_field(prompt, "Intent") or "general_query"
         category = cls._extract_field(prompt, "Category") or "stocks"
-        disclaimer = cls._extract_field(prompt, "Compliance disclaimer")
         context_lines = cls._extract_context_lines(prompt)
+        deterministic = ""
+        marker = "Deterministic checks:\n"
+        if marker in prompt:
+            block = prompt.split(marker, 1)[1]
+            stop = block.find("\nCompliance disclaimer:")
+            deterministic = (block if stop < 0 else block[:stop]).strip()
 
-        # Return all grounded context (analysis + guidance)
-        # Remove ONLY system metadata headers, keep all actual content
-        answer_lines = []
+        headers = {
+            "market_calculations": "Indian market equations & calculations",
+            "fundamentals": "Fundamental snapshot",
+            "stock_analysis": "Stock analysis notes",
+            "prediction": "Forecast framing (not a guarantee)",
+            "portfolio": "Portfolio guidance",
+            "events_news": "Market / regulatory context",
+            "price_action": "Price-action notes",
+            "general_query": "Indian market knowledge",
+        }
+        title = headers.get(intent, f"Indian market insight ({category})")
+        parts = [f"**{title}**", ""]
 
         if context_lines:
-            # Include all context lines (actual analysis and domain guidance)
-            answer_lines.extend(context_lines)
+            for line in context_lines:
+                text = line[2:].strip() if line.startswith("- ") else line
+                parts.append(f"• {text}")
         else:
-            answer_lines.append("No analysis available for this query.")
+            parts.append("No grounded knowledge snippets matched this query.")
 
-        answer = "\n".join(answer_lines)
+        if deterministic:
+            parts.extend(["", "**Computed checks**", deterministic])
 
-        if disclaimer:
-            answer = f"{answer}\n\n{disclaimer}"
-
-        return answer
-
+        parts.extend(
+            [
+                "",
+                "_Grounded by BYSEL Indian Stock LLM knowledge pack (equations, terms, sectors, symbols)._",
+            ]
+        )
+        return "\n".join(parts)
 
 @dataclass(frozen=True)
 class HttpModelBackend:

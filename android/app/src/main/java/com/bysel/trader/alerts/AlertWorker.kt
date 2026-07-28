@@ -21,16 +21,24 @@ class AlertWorker(appContext: Context, params: WorkerParameters) : CoroutineWork
 
             val alertsManager = AlertsManager(applicationContext)
 
+            if (alerts.isEmpty()) return Result.success()
+
+            // One batched request for every watched symbol rather than one request per alert.
+            val symbols = alerts.map { it.symbol }.distinct()
+            val quoteResult = repo.getQuotes(symbols).first { it !is com.bysel.trader.data.repository.Result.Loading }
+            if (quoteResult !is com.bysel.trader.data.repository.Result.Success) {
+                Log.w(TAG, "Alert poll could not fetch quotes for ${symbols.size} symbol(s)")
+                return Result.retry()
+            }
+            val priceBySymbol = quoteResult.data.associate { it.symbol to it.last }
+
             for (a in alerts) {
+                val price = priceBySymbol[a.symbol] ?: continue
                 try {
-                    val r = repo.getQuote(a.symbol)
-                    if (r is com.bysel.trader.data.repository.Result.Success) {
-                        val price = r.data.last
-                        when (a.alertType.uppercase()) {
-                            "ABOVE" -> if (price >= a.thresholdPrice) alertsManager.sendPriceAlert(a, price)
-                            "BELOW" -> if (price <= a.thresholdPrice) alertsManager.sendPriceAlert(a, price)
-                            else -> {}
-                        }
+                    when (a.alertType.uppercase()) {
+                        "ABOVE" -> if (price >= a.thresholdPrice) alertsManager.sendPriceAlert(a, price)
+                        "BELOW" -> if (price <= a.thresholdPrice) alertsManager.sendPriceAlert(a, price)
+                        else -> {}
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "Error checking alert ${a.id} ${a.symbol}", e)

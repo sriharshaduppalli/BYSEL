@@ -20,32 +20,26 @@ from .knowledge_base import (
     MLReranker,
     SentenceTransformerEmbeddingProvider,
 )
+from .builtin_knowledge import builtin_knowledge_items
 from .learning_loop import ContinualLearningManager, DailyFeedbackAnalyzer
 from .model_serving import HttpModelBackend, ModelOrchestrator, TemplateModelBackend
 from .prediction import PredictionEngine, PredictionSignals
 from .safety import SafetyPolicy
 
 INTENT_KEYWORDS = {
-    "price_action": {"price", "target", "entry", "exit"},
+    "price_action": {"price", "target", "entry", "exit", "support", "resistance"},
     "prediction": {"predict", "prediction", "forecast", "tomorrow", "next", "week"},
-    "fundamentals": {"pe", "valuation", "fundamental", "fundamentals", "profit", "profits", "balance", "sheet"},
+    "fundamentals": {
+        "pe", "pb", "valuation", "fundamental", "fundamentals", "profit", "profits",
+        "balance", "sheet", "roe", "roce", "eps", "dividend",
+    },
     "events_news": {"news", "event", "result", "results", "quarter", "guidance", "sebi", "regulation"},
-    "portfolio": {"portfolio", "allocation", "risk", "diversification"},
-    "stock_analysis": {"analyze", "analysis", "technical", "trend", "momentum"},
+    "portfolio": {"portfolio", "allocation", "risk", "diversification", "sip"},
+    "stock_analysis": {"analyze", "analysis", "technical", "trend", "momentum", "checklist"},
     "market_calculations": {
-        "calculate",
-        "calculation",
-        "cagr",
-        "return",
-        "volatility",
-        "beta",
-        "indicator",
-        "indicators",
-        "rsi",
-        "sma",
-        "ema",
-        "macd",
-        "bollinger",
+        "calculate", "calculation", "cagr", "return", "volatility", "beta", "indicator",
+        "indicators", "rsi", "sma", "ema", "macd", "bollinger", "formula", "equation",
+        "atr", "vwap", "sharpe", "peg", "define", "explain", "meaning",
     },
 }
 MAX_CONFIDENCE = 0.95
@@ -144,6 +138,7 @@ class StockMarketAssistant:
                 embedding_provider=embedding_provider,
                 vector_index=InMemoryVectorIndex(),
                 reranker=reranker,
+                extra_items=builtin_knowledge_items(),
             )
         except Exception as exc:
             raise ValueError(
@@ -298,8 +293,36 @@ class StockMarketAssistant:
             )
         self.learning_manager.record_feedback(query=query, intent=intent)
         self.learning_manager.record_anonymized_feedback(query=query, intent=intent)
+
+        # Prefer deterministic education pack for definitions / equations.
+        education = None
+        try:
+            from app.market_education import get_education_answer
+
+            education = get_education_answer(query)
+        except Exception:
+            education = None
+        if education:
+            return AssistantResponse(
+                intent="market_calculations",
+                category="calculations",
+                answer=education,
+                confidence=0.92,
+                citations=("bysel_market_education",),
+                disclaimer=self._policy_disclaimer("market_calculations"),
+                safe_for_trading_advice=False,
+                policy_reason=policy_decision.reason,
+            )
+
         readiness = self.data_layer.readiness_report()
-        if self.config.require_ready_data_for_factual and intent in factual_intents and not readiness.ready:
+        # Local JSON enterprise feeds are often marked partial/stale — do not block
+        # educational/analysis answers when the knowledge pack is available.
+        if (
+            self.config.require_ready_data_for_factual
+            and intent in factual_intents
+            and not readiness.ready
+            and not self.knowledge_base.items
+        ):
             return AssistantResponse(
                 intent=intent,
                 category=category,
@@ -314,15 +337,35 @@ class StockMarketAssistant:
                 policy_reason="Data readiness gate blocked factual response",
             )
         resolved_entity = self.data_layer.resolve_entity(query)
-        intent_tag_map = {"events_news": "sebi", "fundamentals": "fundamentals"}
-        metadata_filters = {"tag": intent_tag_map[intent]} if intent in intent_tag_map else None
+        # Soft retrieval — do not hard-filter by tag (that emptied results before).
         context_items = self.knowledge_base.search(
             query,
             top_k=self.config.top_k_context,
             min_score=self.config.min_retrieval_score,
-            metadata_filters=metadata_filters,
+            metadata_filters=None,
             intent=intent,
         )
+
+        # Inject resolved instrument facts into grounding context.
+        if resolved_entity:
+            from .knowledge_base import KnowledgeItem as _KI
+
+            entity_blurb = (
+                f"Matched instrument: {resolved_entity.get('symbol')} — "
+                f"{resolved_entity.get('company_name', '')} "
+                f"(exchange={resolved_entity.get('exchange', 'NSE')}, "
+                f"ISIN={resolved_entity.get('isin', 'n/a')})."
+            )
+            context_items = [
+                _KI(
+                    id=f"entity_{resolved_entity.get('symbol', 'x')}",
+                    title=f"Instrument {resolved_entity.get('symbol')}",
+                    content=entity_blurb,
+                    tags=["symbols", "stocks"],
+                    source="instrument_master",
+                ),
+                *context_items,
+            ][: self.config.top_k_context + 1]
 
         citations = self._extract_citations(context_items)
         deterministic_note = ""
@@ -347,13 +390,14 @@ class StockMarketAssistant:
 
         if context_items:
             context_text = "\n".join(
-                f"- {item.content}" for item in context_items
+                f"- **{getattr(item, 'title', 'Insight')}**: {item.content}" for item in context_items
             )
             readiness_note = (
                 f"refreshed_at={self.data_layer.snapshot.refreshed_at}; "
                 f"stale={self.data_layer.snapshot.stale_feeds or ('none',)}; "
                 f"partial={self.data_layer.snapshot.partial_feeds or ('none',)}; "
-                f"entity={resolved_entity if resolved_entity else 'None'}"
+                f"entity={resolved_entity if resolved_entity else 'None'}; "
+                f"kb_items={len(self.knowledge_base.items)}"
             )
             prompt = self.model_orchestrator.compose_prompt(
                 query=query,
@@ -367,7 +411,7 @@ class StockMarketAssistant:
             )
             generated = self.model_orchestrator.generate(
                 prompt,
-                require_citations=intent in factual_intents,
+                require_citations=False,
                 citations=citations,
             )
             prediction_note = (
@@ -402,14 +446,16 @@ class StockMarketAssistant:
                     "key_signals": list(signals.key_signals),
                     "overall_confidence": signals.overall_confidence,
                 }
-            # Clean answer for user, diagnostic metadata stored separately
-            answer = (
-                f"{generated.answer}\n\n"
-                f"{self.learning_manager.daily_learning_summary()}\n"
-                "⚠️ Disclaimer: Use this as a starting point and validate with live NSE/BSE data before decisions."
+            answer_parts = [generated.answer.strip()]
+            if deterministic_note:
+                answer_parts.append(deterministic_note)
+            if prediction_note.strip():
+                answer_parts.append(prediction_note.strip())
+            answer_parts.append(
+                "⚠️ Disclaimer: Educational / informational only — validate with live NSE/BSE data before decisions."
             )
+            answer = "\n\n".join(part for part in answer_parts if part)
 
-            # Store all diagnostic metadata separately (not in user-facing answer)
             diagnostics = {
                 "intent": intent,
                 "category": category,
@@ -422,14 +468,15 @@ class StockMarketAssistant:
                 "resolved_entity": resolved_entity if resolved_entity else "None",
                 "prediction_note": prediction_note.strip() if prediction_note else None,
                 "deterministic_note": deterministic_note if deterministic_note else None,
+                "kb_size": len(self.knowledge_base.items),
             }
 
             confidence = min(MAX_CONFIDENCE, BASE_CONTEXT_CONFIDENCE + CONFIDENCE_PER_CONTEXT_ITEM * len(context_items))
         else:
             answer = (
-                f"I could not find enough domain context in the local knowledge base. "
-                f"{self.learning_manager.daily_learning_summary()}\n"
-                "Please enrich data sources for better accuracy."
+                "I could not find enough domain context in the local Indian-market knowledge pack. "
+                "Try asking about an indicator (RSI, MACD, P/E), a sector (banking, IT, pharma), "
+                "or a specific NSE symbol."
             )
             confidence = 0.25
             prediction_signals = None
@@ -437,24 +484,26 @@ class StockMarketAssistant:
                 "intent": intent,
                 "category": category,
                 "latency_mode": self.config.latency_mode,
+                "kb_size": len(self.knowledge_base.items),
                 "model_backend": "fallback_no_context",
                 "resolved_entity": resolved_entity if resolved_entity else "None",
                 "error_reason": "insufficient_domain_context",
             }
 
-        if intent in factual_intents and not citations:
+        # Soft grounding — don't zero out confident KB answers just for missing citation tags.
+        if intent in factual_intents and not citations and not resolved_entity and confidence < 0.4:
             answer = (
-                "Insufficient grounding: I cannot provide factual/calculation output without citations. "
-                "Please refresh enterprise sources."
+                "I need a clearer stock symbol or topic (for example RSI, P/E, banking sector, or RELIANCE) "
+                "to give a grounded Indian-market answer."
             )
-            confidence = min(confidence, 0.2)
+            confidence = min(confidence, 0.3)
             if diagnostics:
                 diagnostics["error_reason"] = "insufficient_citations_for_factual_intent"
 
-        if confidence < self.config.min_confidence_threshold and (context_items or intent in factual_intents):
+        if confidence < self.config.min_confidence_threshold and not context_items and intent in factual_intents:
             answer = (
                 f"Low-confidence response ({confidence:.2f}) withheld for safety. "
-                "Please refine the question or refresh trusted data sources."
+                "Please refine the question with a symbol, indicator, or sector."
             )
             citations = ()
             if diagnostics:
