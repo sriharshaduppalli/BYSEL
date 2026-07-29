@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import LiveHeatmap from "../components/LiveHeatmap";
+import AiTryDemo from "../components/AiTryDemo";
 
 const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.bysel.trader";
 
@@ -73,23 +74,23 @@ export default function Home() {
       <section className="hero-wrap">
         <div className="site-container hero-grid">
           <div data-animate>
-            <span className="eyebrow">Android app for Indian markets</span>
+            <span className="eyebrow">BYSEL Trader</span>
             <h1 className="page-title">Paper-trade NSE stocks with AI coaching and live market context.</h1>
             <p className="lead">
-              BYSEL Trader is a simulation-first Android app: live quotes, sector heatmap, AI assistant,
-              paper portfolio, and structured practice tools — built for India, not generic US-market demos.
+              Try the live AI demo and sector heatmap on this page — then open the Android app for full
+              paper trading, Buy / Set Alert from chat, portfolio, and 1–2s heatmap refresh.
             </p>
 
             <div className="btn-row">
               <Link href={PLAY_STORE_URL} className="btn-primary" target="_blank" rel="noreferrer">
                 Get on Google Play
               </Link>
-              <Link href="/features" className="btn-secondary">
-                Explore Features
-              </Link>
-              <Link href="/markets" className="btn-neutral">
-                Live Market View
-              </Link>
+              <a href="#try-ai" className="btn-secondary">
+                Try AI on the web
+              </a>
+              <a href="#live-heatmap" className="btn-neutral">
+                View heatmap
+              </a>
             </div>
 
             <div className="stat-grid">
@@ -108,33 +109,8 @@ export default function Home() {
             </div>
           </div>
 
-          <aside className="glass-card hero-panel" data-animate data-delay="1">
-            <div className="panel-head">
-              <h2 className="panel-title">Inside the app</h2>
-              <span className="status-chip live">Android</span>
-            </div>
-            <p className="mini-muted">What users open every session — Home, AI, Trade, Portfolio, Heatmap.</p>
-
-            <div className="stack-grid" style={{ marginTop: "0.7rem" }}>
-              <div className="info-row">
-                <p className="info-title">Home</p>
-                <p className="info-copy">Index strip, ideas, movers, watchlist, and quick trade entry.</p>
-              </div>
-              <div className="info-row">
-                <p className="info-title">AI Assistant</p>
-                <p className="info-copy">Stock Q&amp;A, trade decisions with Entry / Target / Stop-Loss, confirmable orders.</p>
-              </div>
-              <div className="info-row">
-                <p className="info-title">Auth that works offline SMS</p>
-                <p className="info-copy">Register with username + email + password, or use phone OTP when SMS delivery is available.</p>
-              </div>
-            </div>
-
-            <div className="pill-row">
-              <span className="tag-pill">NSE / BSE context</span>
-              <span className="tag-pill">Paper wallet</span>
-              <span className="tag-pill">Not a SEBI broker</span>
-            </div>
+          <aside id="try-ai" data-animate data-delay="1">
+            <AiTryDemo />
           </aside>
         </div>
       </section>
@@ -167,7 +143,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="section-wrap">
+      <section className="section-wrap" id="live-heatmap">
         <div className="site-container split-grid">
           <div data-animate>
             <LiveHeatmap />
@@ -175,10 +151,10 @@ export default function Home() {
 
           <div className="glass-card hero-panel" data-animate data-delay="1">
             <div className="panel-head">
-              <h2 className="panel-title">Market Signal Stack</h2>
-              <span className="status-chip warn">Intraday</span>
+              <h2 className="panel-title">In the Android app</h2>
+              <span className="status-chip live">Full product</span>
             </div>
-            <p className="mini-muted">Use these modules to avoid random entries and prioritize high-quality setups.</p>
+            <p className="mini-muted">Web demos are a preview. The app unlocks the full practice loop.</p>
 
             <div className="stack-grid" style={{ marginTop: "0.7rem" }}>
               {MARKET_SIGNALS.map((signal) => (
@@ -187,6 +163,25 @@ export default function Home() {
                   <p className="info-copy">{signal.copy}</p>
                 </div>
               ))}
+              <div className="info-row">
+                <p className="info-title">AI Buy / Set Alert</p>
+                <p className="info-copy">
+                  Act on chat replies with paper orders and price alerts — not available in this web preview.
+                </p>
+              </div>
+            </div>
+
+            <div className="btn-row" style={{ marginTop: "0.9rem", alignItems: "center" }}>
+              <Image
+                src="/ic_launcher.png"
+                alt="BYSEL Trader app icon"
+                width={48}
+                height={48}
+                style={{ borderRadius: 12 }}
+              />
+              <Link href={PLAY_STORE_URL} className="btn-primary" target="_blank" rel="noreferrer">
+                Get the app
+              </Link>
             </div>
           </div>
         </div>
