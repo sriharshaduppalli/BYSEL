@@ -1,11 +1,13 @@
 package com.bysel.trader.ui.screens
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,10 +18,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -30,6 +36,8 @@ import com.bysel.trader.ui.components.PullToRefreshBox
 import com.bysel.trader.ui.theme.LocalAppTheme
 import java.util.Calendar
 import java.util.TimeZone
+import kotlin.math.max
+import kotlin.math.roundToInt
 
 private fun isNseMarketOpen(): Boolean {
     val ist = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata"))
@@ -37,6 +45,81 @@ private fun isNseMarketOpen(): Boolean {
     if (dow == Calendar.SATURDAY || dow == Calendar.SUNDAY) return false
     val timeInMin = ist.get(Calendar.HOUR_OF_DAY) * 60 + ist.get(Calendar.MINUTE)
     return timeInMin in (9 * 60 + 15)..(15 * 60 + 30)
+}
+
+/** Snapshot of advance/decline/unchanged share for the live breath graph. */
+private data class BreathSample(
+    val advanceShare: Float,
+    val declineShare: Float,
+    val unchangedShare: Float,
+    val tqi: Int,
+)
+
+/**
+ * Trade Quality Index (0–100%) — “how safe is the tape to trade”,
+ * analogous to AQI but inverted toward healthier = higher %.
+ */
+private data class TradeQualityIndex(
+    val score: Int,
+    val label: String,
+    val guidance: String,
+    val color: Color,
+)
+
+private fun computeTradeQualityIndex(
+    advanceRatio: Double,
+    advances: Int,
+    declines: Int,
+    total: Int,
+    mood: String,
+): TradeQualityIndex {
+    val safeTotal = total.coerceAtLeast(1)
+    val raw = when {
+        advanceRatio > 0.0 -> advanceRatio * 100.0
+        else -> (advances.toDouble() / safeTotal) * 100.0
+    }
+    // Slight mood tilt so fearful markets never read as “excellent”.
+    val moodBias = when (mood.uppercase()) {
+        "EUPHORIC" -> 6.0
+        "BULLISH" -> 3.0
+        "NEUTRAL" -> 0.0
+        "BEARISH" -> -6.0
+        "FEARFUL" -> -12.0
+        else -> 0.0
+    }
+    val score = (raw + moodBias).coerceIn(0.0, 100.0).roundToInt()
+    return when {
+        score >= 81 -> TradeQualityIndex(
+            score = score,
+            label = "Excellent",
+            guidance = "Strong market breath — constructive for selective paper trades.",
+            color = Color(0xFF00C853),
+        )
+        score >= 61 -> TradeQualityIndex(
+            score = score,
+            label = "Good",
+            guidance = "Healthy breath — favor high-participation setups only.",
+            color = Color(0xFF43A047),
+        )
+        score >= 41 -> TradeQualityIndex(
+            score = score,
+            label = "Moderate",
+            guidance = "Mixed breath — keep size small and wait for clearer leadership.",
+            color = Color(0xFFFFB300),
+        )
+        score >= 21 -> TradeQualityIndex(
+            score = score,
+            label = "Unhealthy",
+            guidance = "Weak breath — defensive bias; avoid chasing breakouts.",
+            color = Color(0xFFFF7043),
+        )
+        else -> TradeQualityIndex(
+            score = score,
+            label = "Hazardous",
+            guidance = "Toxic breath — prioritize capital preservation over new risk.",
+            color = Color(0xFFE53935),
+        )
+    }
 }
 
 @Composable
@@ -49,17 +132,43 @@ fun HeatmapScreen(
     isActive: Boolean = true
 ) {
     var marketOpen by remember { mutableStateOf(isNseMarketOpen()) }
+    val breathHistory = remember { mutableStateListOf<BreathSample>() }
 
-    // Initial load (always, to show last available data)
     LaunchedEffect(Unit) {
         if (heatmap == null) onRefresh()
     }
 
-    // Periodic refresh — only during NSE market hours, only while this tab is visible.
-    // Floor at 5s: backend heatmap cache is ~30s, so sub-second polling wastes work.
+    // Append live breath samples as heatmap refreshes (for the distribution graph).
+    LaunchedEffect(heatmap?.lastUpdated, heatmap?.marketBreadth?.advances, heatmap?.marketBreadth?.declines) {
+        val breadth = heatmap?.marketBreadth ?: return@LaunchedEffect
+        val total = breadth.total.toFloat().coerceAtLeast(1f)
+        val advanceShare = breadth.advances / total
+        val declineShare = breadth.declines / total
+        val unchangedShare = (1f - advanceShare - declineShare).coerceAtLeast(0f)
+        val tqi = computeTradeQualityIndex(
+            advanceRatio = breadth.advanceRatio,
+            advances = breadth.advances,
+            declines = breadth.declines,
+            total = breadth.total,
+            mood = heatmap.mood,
+        ).score
+        val sample = BreathSample(advanceShare, declineShare, unchangedShare, tqi)
+        val last = breathHistory.lastOrNull()
+        if (last == null ||
+            last.advanceShare != sample.advanceShare ||
+            last.declineShare != sample.declineShare ||
+            last.tqi != sample.tqi
+        ) {
+            breathHistory.add(sample)
+            while (breathHistory.size > 36) {
+                breathHistory.removeAt(0)
+            }
+        }
+    }
+
     LaunchedEffect(heatmapInterval, isActive) {
         if (!isActive) return@LaunchedEffect
-        val pollMs = heatmapInterval.toLong().coerceAtLeast(5_000L)
+        val pollMs = heatmapInterval.toLong().coerceIn(1_000L, 10_000L)
         while (true) {
             marketOpen = isNseMarketOpen()
             if (marketOpen) {
@@ -76,10 +185,8 @@ fun HeatmapScreen(
             .fillMaxSize()
             .background(LocalAppTheme.current.surface)
     ) {
-        // Header with market mood
         HeatmapHeader(heatmap)
 
-        // Market status banner
         MarketStatusBanner(
             marketOpen = marketOpen,
             staleReason = heatmap?.staleReason ?: heatmap?.moodDescription?.takeIf { heatmap.isStale },
@@ -113,16 +220,17 @@ fun HeatmapScreen(
                     contentPadding = PaddingValues(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                // Market Breadth Card
-                item {
-                    MarketBreadthCard(heatmap)
-                }
+                    item {
+                        MarketBreathCard(
+                            heatmap = heatmap,
+                            breathHistory = breathHistory.toList(),
+                        )
+                    }
 
-                // Sector cards
-                items(heatmap.sectors, key = { it.name }) { sector ->
-                    SectorHeatmapCard(sector, onStockClick)
+                    items(heatmap.sectors, key = { it.name }) { sector ->
+                        SectorHeatmapCard(sector, onStockClick)
+                    }
                 }
-            }
             }
         } else {
             Box(
@@ -244,7 +352,30 @@ private fun HeatmapHeader(heatmap: MarketHeatmap?) {
 }
 
 @Composable
-private fun MarketBreadthCard(heatmap: MarketHeatmap) {
+private fun MarketBreathCard(
+    heatmap: MarketHeatmap,
+    breathHistory: List<BreathSample>,
+) {
+    val breadth = heatmap.marketBreadth
+    val total = breadth.total.toFloat().coerceAtLeast(1f)
+    val advancePct = breadth.advances / total
+    val declinePct = breadth.declines / total
+    val unchangedPct = (1f - advancePct - declinePct).coerceAtLeast(0f)
+    val tqi = remember(breadth.advances, breadth.declines, breadth.total, breadth.advanceRatio, heatmap.mood) {
+        computeTradeQualityIndex(
+            advanceRatio = breadth.advanceRatio,
+            advances = breadth.advances,
+            declines = breadth.declines,
+            total = breadth.total,
+            mood = heatmap.mood,
+        )
+    }
+    val animatedTqi by animateFloatAsState(
+        targetValue = tqi.score / 100f,
+        animationSpec = tween(650),
+        label = "tqi",
+    )
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -252,25 +383,84 @@ private fun MarketBreadthCard(heatmap: MarketHeatmap) {
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                "Market Breadth",
+                "Market Breath",
                 color = LocalAppTheme.current.text,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp
             )
-            Spacer(modifier = Modifier.height(12.dp))
+            val coverageLabel = when {
+                heatmap.universeSize > 0 && heatmap.quotedCount > 0 ->
+                    "Breath across ${heatmap.quotedCount} quoted of ${heatmap.universeSize} active NSE listings" +
+                        if (heatmap.pendingQuotes > 0) " (${heatmap.pendingQuotes} still warming)." else "."
+                heatmap.universeSize > 0 ->
+                    "Covering ${heatmap.universeSize} active NSE listings (quotes filling in)."
+                else ->
+                    "How the market is breathing — advances vs declines across the heatmap universe."
+            }
+            Text(
+                coverageLabel,
+                color = LocalAppTheme.current.textSecondary,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(top = 2.dp)
+            )
 
-            // Advance/Decline bar
-            val total = heatmap.marketBreadth.total.toFloat().coerceAtLeast(1f)
-            val advancePct = heatmap.marketBreadth.advances / total
-            val declinePct = heatmap.marketBreadth.declines / total
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TqiGauge(
+                    progress = animatedTqi,
+                    score = tqi.score,
+                    color = tqi.color,
+                    modifier = Modifier.size(88.dp)
+                )
+                Spacer(modifier = Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Trade Quality Index",
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 11.sp
+                    )
+                    Text(
+                        "${tqi.score}% · ${tqi.label}",
+                        color = tqi.color,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        tqi.guidance,
+                        color = LocalAppTheme.current.text.copy(alpha = 0.85f),
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        "Like AQI for trading: higher % = healthier breath to take risk.",
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                "Live breath distribution",
+                color = LocalAppTheme.current.text,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(24.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .height(22.dp)
+                    .clip(RoundedCornerShape(11.dp))
             ) {
-                if (advancePct > 0) {
+                if (advancePct > 0f) {
                     Box(
                         modifier = Modifier
                             .weight(advancePct.coerceAtLeast(0.01f))
@@ -278,21 +468,20 @@ private fun MarketBreadthCard(heatmap: MarketHeatmap) {
                             .background(Color(0xFF00C853))
                     )
                 }
-                if (declinePct > 0) {
-                    Box(
-                        modifier = Modifier
-                            .weight(declinePct.coerceAtLeast(0.01f))
-                            .fillMaxHeight()
-                            .background(Color(0xFFE53935))
-                    )
-                }
-                val unchangedPct = 1f - advancePct - declinePct
                 if (unchangedPct > 0.01f) {
                     Box(
                         modifier = Modifier
                             .weight(unchangedPct)
                             .fillMaxHeight()
-                            .background(LocalAppTheme.current.textSecondary)
+                            .background(Color(0xFF78909C))
+                    )
+                }
+                if (declinePct > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .weight(declinePct.coerceAtLeast(0.01f))
+                            .fillMaxHeight()
+                            .background(Color(0xFFE53935))
                     )
                 }
             }
@@ -303,12 +492,34 @@ private fun MarketBreadthCard(heatmap: MarketHeatmap) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                BreadthLabel("Advances", heatmap.marketBreadth.advances, Color(0xFF00C853))
-                BreadthLabel("Declines", heatmap.marketBreadth.declines, Color(0xFFE53935))
-                BreadthLabel("Unchanged", heatmap.marketBreadth.unchanged, LocalAppTheme.current.textSecondary)
+                BreathLabel("Advances", breadth.advances, Color(0xFF00C853), advancePct)
+                BreathLabel("Unchanged", breadth.unchanged, Color(0xFF78909C), unchangedPct)
+                BreathLabel("Declines", breadth.declines, Color(0xFFE53935), declinePct)
             }
 
-            // Best and worst sectors
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Text(
+                if (breathHistory.size >= 2) "Breath trend (live)" else "Breath trend builds as the heatmap refreshes",
+                color = LocalAppTheme.current.textSecondary,
+                fontSize = 11.sp
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            BreathDistributionGraph(
+                samples = if (breathHistory.isNotEmpty()) {
+                    breathHistory
+                } else {
+                    listOf(BreathSample(advancePct, declinePct, unchangedPct, tqi.score))
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(110.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(LocalAppTheme.current.surface.copy(alpha = 0.55f))
+                    .border(1.dp, LocalAppTheme.current.textSecondary.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                    .padding(8.dp)
+            )
+
             Spacer(modifier = Modifier.height(12.dp))
             HorizontalDivider(color = Color(0xFF333333))
             Spacer(modifier = Modifier.height(12.dp))
@@ -343,7 +554,131 @@ private fun MarketBreadthCard(heatmap: MarketHeatmap) {
 }
 
 @Composable
-private fun BreadthLabel(label: String, count: Int, color: Color) {
+private fun TqiGauge(
+    progress: Float,
+    score: Int,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val stroke = 10.dp.toPx()
+            val diameter = size.minDimension - stroke
+            val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
+            drawArc(
+                color = color.copy(alpha = 0.18f),
+                startAngle = 135f,
+                sweepAngle = 270f,
+                useCenter = false,
+                topLeft = topLeft,
+                size = Size(diameter, diameter),
+                style = Stroke(width = stroke, cap = StrokeCap.Round),
+            )
+            drawArc(
+                color = color,
+                startAngle = 135f,
+                sweepAngle = 270f * progress.coerceIn(0f, 1f),
+                useCenter = false,
+                topLeft = topLeft,
+                size = Size(diameter, diameter),
+                style = Stroke(width = stroke, cap = StrokeCap.Round),
+            )
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                "$score%",
+                color = color,
+                fontWeight = FontWeight.Bold,
+                fontSize = 20.sp
+            )
+            Text("TQI", color = LocalAppTheme.current.textSecondary, fontSize = 10.sp)
+        }
+    }
+}
+
+@Composable
+private fun BreathDistributionGraph(
+    samples: List<BreathSample>,
+    modifier: Modifier = Modifier,
+) {
+    val advanceColor = Color(0xFF00C853)
+    val declineColor = Color(0xFFE53935)
+    val unchangedColor = Color(0xFF78909C)
+    val gridColor = LocalAppTheme.current.textSecondary.copy(alpha = 0.2f)
+
+    Canvas(modifier = modifier) {
+        if (samples.isEmpty()) return@Canvas
+        val w = size.width
+        val h = size.height
+        val n = max(samples.size - 1, 1)
+
+        listOf(0.25f, 0.5f, 0.75f).forEach { yFrac ->
+            val y = h * (1f - yFrac)
+            drawLine(gridColor, Offset(0f, y), Offset(w, y), strokeWidth = 1f)
+        }
+
+        fun pointX(index: Int): Float = if (samples.size == 1) w / 2f else (index.toFloat() / n) * w
+
+        fun stackedTops(sample: BreathSample): Pair<Float, Float> {
+            val adv = sample.advanceShare.coerceIn(0f, 1f)
+            val unc = sample.unchangedShare.coerceIn(0f, 1f - adv)
+            val yAdv = h * (1f - adv)
+            val yUnc = h * (1f - (adv + unc))
+            return yAdv to yUnc
+        }
+
+        // Advances (green) from bottom
+        val advancePath = Path().apply {
+            moveTo(pointX(0), h)
+            samples.forEachIndexed { index, sample ->
+                lineTo(pointX(index), stackedTops(sample).first)
+            }
+            lineTo(pointX(samples.lastIndex), h)
+            close()
+        }
+        // Unchanged (grey) mid band
+        val unchangedPath = Path().apply {
+            val first = stackedTops(samples.first())
+            moveTo(pointX(0), first.first)
+            samples.forEachIndexed { index, sample ->
+                lineTo(pointX(index), stackedTops(sample).second)
+            }
+            for (index in samples.indices.reversed()) {
+                lineTo(pointX(index), stackedTops(samples[index]).first)
+            }
+            close()
+        }
+        // Declines (red) — area between unchanged-top and chart top
+        val declineArea = Path().apply {
+            moveTo(pointX(0), stackedTops(samples.first()).second)
+            samples.forEachIndexed { index, sample ->
+                lineTo(pointX(index), stackedTops(sample).second)
+            }
+            lineTo(pointX(samples.lastIndex), 0f)
+            lineTo(pointX(0), 0f)
+            close()
+        }
+
+        drawPath(declineArea, declineColor.copy(alpha = 0.50f))
+        drawPath(unchangedPath, unchangedColor.copy(alpha = 0.45f))
+        drawPath(advancePath, advanceColor.copy(alpha = 0.55f))
+
+        val tqiPath = Path()
+        samples.forEachIndexed { index, sample ->
+            val x = pointX(index)
+            val y = h * (1f - (sample.tqi / 100f).coerceIn(0f, 1f))
+            if (index == 0) tqiPath.moveTo(x, y) else tqiPath.lineTo(x, y)
+        }
+        drawPath(
+            tqiPath,
+            color = Color.White.copy(alpha = 0.9f),
+            style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round),
+        )
+    }
+}
+
+@Composable
+private fun BreathLabel(label: String, count: Int, color: Color, share: Float) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             "$count",
@@ -355,6 +690,12 @@ private fun BreadthLabel(label: String, count: Int, color: Color) {
             label,
             color = LocalAppTheme.current.textSecondary,
             fontSize = 11.sp
+        )
+        Text(
+            "${(share * 100f).roundToInt()}%",
+            color = color.copy(alpha = 0.9f),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium
         )
     }
 }
@@ -376,7 +717,6 @@ private fun SectorHeatmapCard(sector: HeatmapSector, onStockClick: (String) -> U
         colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            // Sector header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -407,16 +747,19 @@ private fun SectorHeatmapCard(sector: HeatmapSector, onStockClick: (String) -> U
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Advances/Declines mini bar
             Text(
-                "↑${sector.advances} ↓${sector.declines} (${sector.totalStocks} stocks)",
+                buildString {
+                    append("↑${sector.advances} ↓${sector.declines}")
+                    append(" · ${sector.totalStocks} quoted")
+                    if (sector.listedStocks > 0) append(" / ${sector.listedStocks} listed")
+                    if (sector.tilesTruncated) append(" · showing top movers")
+                },
                 color = LocalAppTheme.current.textSecondary,
                 fontSize = 11.sp
             )
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Stock tiles grid (heatmap visualization)
             val chunked = sector.stocks.chunked(4)
             chunked.forEach { row ->
                 Row(
@@ -430,7 +773,6 @@ private fun SectorHeatmapCard(sector: HeatmapSector, onStockClick: (String) -> U
                             onClick = { onStockClick(stock.symbol) }
                         )
                     }
-                    // Fill remaining
                     repeat(4 - row.size) {
                         Spacer(modifier = Modifier.weight(1f))
                     }

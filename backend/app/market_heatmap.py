@@ -12,6 +12,7 @@ Sector-wise market visualization showing:
 import json
 import logging
 import os
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -21,16 +22,31 @@ from .market_data import INDIAN_STOCKS, fetch_quote, fetch_quotes
 logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────────────────
-# HEATMAP CACHE (30-second TTL for fast sub-1s market updates)
+# HEATMAP CACHE
+# Open market: 2s TTL + stale-while-revalidate so clients polling
+# every 1–2s always get a fast response while quotes refresh.
+# Closed market: long TTL (snapshot does not change).
 # ──────────────────────────────────────────────────────────────
 _HEATMAP_CACHE = {"data": None, "timestamp": 0}
-_HEATMAP_CACHE_TTL = 30  # 30 seconds
+_HEATMAP_CACHE_TTL_OPEN = float(os.getenv("HEATMAP_CACHE_TTL_OPEN", "2"))
+_HEATMAP_CACHE_TTL_CLOSED = float(os.getenv("HEATMAP_CACHE_TTL_CLOSED", "120"))
+# Full-universe quotes cannot refresh every 1–2s (Yahoo rate limits).
+# Heatmap payload still caches ~2s; underlying quotes refresh on this TTL.
+_HEATMAP_QUOTE_MAX_AGE_OPEN = float(os.getenv("HEATMAP_QUOTE_MAX_AGE_OPEN", "45"))
+_HEATMAP_QUOTE_STALE_ACCEPT = float(os.getenv("HEATMAP_QUOTE_STALE_ACCEPT", "300"))
+_HEATMAP_QUOTE_REFRESH_BUDGET = int(os.getenv("HEATMAP_QUOTE_REFRESH_BUDGET", "120"))
+_HEATMAP_TILES_PER_SECTOR = int(os.getenv("HEATMAP_TILES_PER_SECTOR", "16"))
+_HEATMAP_REFRESH_OFFSET = 0
+# Backward-compatible alias used by older tests/patches.
+_HEATMAP_CACHE_TTL = _HEATMAP_CACHE_TTL_OPEN
 _HEATMAP_SNAPSHOT_PATH = Path(
     os.getenv(
         "HEATMAP_SNAPSHOT_PATH",
         str(Path(__file__).resolve().parent.parent / ".cache" / "market_heatmap_snapshot.json"),
     )
 )
+_HEATMAP_REFRESH_LOCK = threading.Lock()
+_HEATMAP_REFRESH_IN_FLIGHT = False
 
 
 # ──────────────────────────────────────────────────────────────
@@ -99,7 +115,9 @@ SECTOR_STOCKS = {
 def get_market_heatmap() -> Dict:
     """
     Generate a complete market heatmap with sector-wise data.
-    Uses caching for fast sub-1 second market updates.
+
+    While the market is open, serve a 1–2s cache and refresh in the background
+    so Android clients polling every 1–2s always get a fast response.
 
     When the market is closed:
       1) Prefer the last persisted in-session snapshot
@@ -108,10 +126,19 @@ def get_market_heatmap() -> Dict:
       Never return an all-zero empty shell when quotes are available.
     """
     now = time.time()
-    if _HEATMAP_CACHE["data"] and (now - _HEATMAP_CACHE["timestamp"]) < _HEATMAP_CACHE_TTL:
-        return _HEATMAP_CACHE["data"]
-
     market_open = _is_nse_market_open()
+    ttl = _HEATMAP_CACHE_TTL_OPEN if market_open else _HEATMAP_CACHE_TTL_CLOSED
+    cached = _HEATMAP_CACHE["data"]
+    age = now - float(_HEATMAP_CACHE.get("timestamp") or 0)
+
+    if cached and age < ttl:
+        return cached
+
+    # Open market: never block the request on a full Yahoo rebuild.
+    # Return the previous snapshot immediately and refresh in the background.
+    if market_open and cached:
+        _schedule_heatmap_refresh(market_open=True)
+        return cached
 
     if not market_open:
         persisted = _load_persisted_heatmap_snapshot()
@@ -156,8 +183,32 @@ def get_market_heatmap() -> Dict:
         _HEATMAP_CACHE["timestamp"] = now
         return empty
 
+    # Open market, no cache yet — must build synchronously once.
+    return _refresh_heatmap_sync(market_open=True)
+
+
+def _schedule_heatmap_refresh(*, market_open: bool) -> None:
+    global _HEATMAP_REFRESH_IN_FLIGHT
+    with _HEATMAP_REFRESH_LOCK:
+        if _HEATMAP_REFRESH_IN_FLIGHT:
+            return
+        _HEATMAP_REFRESH_IN_FLIGHT = True
+
+    def _runner():
+        global _HEATMAP_REFRESH_IN_FLIGHT
+        try:
+            _refresh_heatmap_sync(market_open=market_open)
+        finally:
+            with _HEATMAP_REFRESH_LOCK:
+                _HEATMAP_REFRESH_IN_FLIGHT = False
+
+    threading.Thread(target=_runner, name="heatmap-refresh", daemon=True).start()
+
+
+def _refresh_heatmap_sync(*, market_open: bool) -> Dict:
+    now = time.time()
     try:
-        result = _build_heatmap_from_quotes(market_open=True)
+        result = _build_heatmap_from_quotes(market_open=market_open)
         if _is_valid_heatmap_snapshot(result):
             _persist_heatmap_snapshot(result)
         else:
@@ -165,7 +216,7 @@ def get_market_heatmap() -> Dict:
             if persisted:
                 stamped = _stamp_stale(
                     persisted,
-                    market_open=True,
+                    market_open=market_open,
                     reason="Live heatmap incomplete — showing last saved snapshot.",
                 )
                 _HEATMAP_CACHE["data"] = stamped
@@ -201,14 +252,40 @@ def _stamp_stale(payload: Dict, *, market_open: bool, reason: str) -> Dict:
 
 
 def _build_heatmap_from_quotes(*, market_open: bool) -> Dict:
-    """Fetch quotes once and assemble the full heatmap payload."""
-    all_symbols = sorted({sym for symbols in SECTOR_STOCKS.values() for sym in symbols})
-    quotes_list = fetch_quotes(all_symbols)
-    quotes_dict = {
-        q["symbol"]: q
-        for q in (quotes_list or [])
-        if isinstance(q, dict) and q.get("symbol")
-    }
+    """Assemble heatmap from the full active equity universe.
+
+    Quotes refresh on a rotating budget so Yahoo rate limits are respected while
+    Market Breath / TQI still cover every listed symbol that already has a quote.
+    """
+    global _HEATMAP_REFRESH_OFFSET
+    from .heatmap_universe import get_heatmap_sector_symbols, universe_size
+    from .market_data import _quote_cache
+
+    sector_symbols = get_heatmap_sector_symbols()
+    all_symbols = sorted({sym for symbols in sector_symbols.values() for sym in symbols})
+    fresh_age = _HEATMAP_QUOTE_MAX_AGE_OPEN if market_open else _HEATMAP_QUOTE_STALE_ACCEPT
+
+    quotes_dict: Dict[str, dict] = {}
+    missing: List[str] = []
+    for sym in all_symbols:
+        quote = _quote_cache.get(sym, max_age_seconds=fresh_age)
+        if quote is None:
+            quote = _quote_cache.get_allow_stale(sym, _HEATMAP_QUOTE_STALE_ACCEPT)
+        if quote:
+            quotes_dict[sym] = quote
+        else:
+            missing.append(sym)
+
+    if missing:
+        start = _HEATMAP_REFRESH_OFFSET % len(missing)
+        budget = max(1, _HEATMAP_QUOTE_REFRESH_BUDGET)
+        window = [missing[(start + i) % len(missing)] for i in range(min(budget, len(missing)))]
+        _HEATMAP_REFRESH_OFFSET = start + len(window)
+        # Force refresh this window (ignore cache age).
+        fetched = fetch_quotes(window, max_age_seconds=0)
+        for quote in fetched or []:
+            if isinstance(quote, dict) and quote.get("symbol"):
+                quotes_dict[quote["symbol"]] = quote
 
     sectors_data = []
     all_advances = 0
@@ -216,8 +293,15 @@ def _build_heatmap_from_quotes(*, market_open: bool) -> Dict:
     all_unchanged = 0
     total_stocks = 0
 
-    for sector_name, symbols in SECTOR_STOCKS.items():
-        sector_result = _analyze_sector(sector_name, symbols, quotes_dict)
+    for sector_name, symbols in sector_symbols.items():
+        sector_result = _analyze_sector(
+            sector_name,
+            symbols,
+            quotes_dict,
+            tile_limit=_HEATMAP_TILES_PER_SECTOR,
+        )
+        if sector_result["totalStocks"] <= 0 and not sector_result.get("stocks"):
+            continue
         sectors_data.append(sector_result)
         all_advances += sector_result["advances"]
         all_declines += sector_result["declines"]
@@ -249,6 +333,7 @@ def _build_heatmap_from_quotes(*, market_open: bool) -> Dict:
 
     best_sector = sectors_data[0] if sectors_data else None
     worst_sector = sectors_data[-1] if sectors_data else None
+    catalog_size = universe_size()
 
     return {
         "sectors": sectors_data,
@@ -273,10 +358,21 @@ def _build_heatmap_from_quotes(*, market_open: bool) -> Dict:
         "lastUpdated": datetime.utcnow().isoformat(),
         "marketOpen": market_open,
         "isStale": not market_open,
+        "universeSize": catalog_size,
+        "quotedCount": total_stocks,
+        "tilesPerSector": _HEATMAP_TILES_PER_SECTOR,
+        "pendingQuotes": len(missing),
     }
 
 
 def _empty_heatmap_payload(mood_desc: str = "No heatmap data available.") -> Dict:
+    from .heatmap_universe import HEATMAP_SECTOR_ORDER, universe_size
+
+    try:
+        catalog_size = universe_size()
+    except Exception:
+        catalog_size = 0
+
     return {
         "sectors": [
             {
@@ -286,9 +382,11 @@ def _empty_heatmap_payload(mood_desc: str = "No heatmap data available.") -> Dic
                 "declines": 0,
                 "unchanged": 0,
                 "totalStocks": 0,
+                "listedStocks": 0,
                 "stocks": [],
+                "tilesTruncated": False,
             }
-            for name in SECTOR_STOCKS.keys()
+            for name in HEATMAP_SECTOR_ORDER
         ],
         "marketBreadth": {
             "advances": 0,
@@ -303,8 +401,11 @@ def _empty_heatmap_payload(mood_desc: str = "No heatmap data available.") -> Dic
         "bestSector": {"name": "N/A", "change": 0},
         "worstSector": {"name": "N/A", "change": 0},
         "lastUpdated": datetime.utcnow().isoformat(),
-        "marketOpen": _is_nse_market_open(),
+        "marketOpen": False,
         "isStale": True,
+        "universeSize": catalog_size,
+        "quotedCount": 0,
+        "tilesPerSector": _HEATMAP_TILES_PER_SECTOR,
     }
 
 
@@ -364,8 +465,17 @@ def _persist_heatmap_snapshot(payload: Dict) -> None:
         logger.warning("heatmap.snapshot_persist_failed reason=%s", exc)
 
 
-def _analyze_sector(sector_name: str, symbols: List[str], quotes_dict: Dict) -> Dict:
-    """Analyze a single sector's stocks using pre-fetched quotes (no redundant fetches)."""
+def _analyze_sector(
+    sector_name: str,
+    symbols: List[str],
+    quotes_dict: Dict,
+    tile_limit: int | None = None,
+) -> Dict:
+    """Analyze a single sector's stocks using pre-fetched quotes (no redundant fetches).
+
+    Breadth counts use every quoted symbol in the sector. UI tiles are capped to
+    the strongest absolute movers when tile_limit is set (full-universe mode).
+    """
     stocks_data = []
     total_change = 0
     advances = 0
@@ -373,7 +483,6 @@ def _analyze_sector(sector_name: str, symbols: List[str], quotes_dict: Dict) -> 
     unchanged = 0
     valid_count = 0
 
-    # Use pre-fetched quotes (passed from get_market_heatmap)
     for sym in symbols:
         quote = quotes_dict.get(sym, {})
         if not quote or quote.get("last", 0) == 0:
@@ -383,6 +492,14 @@ def _analyze_sector(sector_name: str, symbols: List[str], quotes_dict: Dict) -> 
         change = quote.get("change", 0)
         pct_change = quote.get("pctChange", 0)
         name = INDIAN_STOCKS.get(sym, (None, sym))[1]
+        if name == sym:
+            try:
+                from .market_data import get_stock_catalog
+
+                catalog_name = get_stock_catalog().get(sym, (None, sym))[1]
+                name = catalog_name or sym
+            except Exception:
+                pass
 
         if pct_change > 0.05:
             advances += 1
@@ -394,7 +511,6 @@ def _analyze_sector(sector_name: str, symbols: List[str], quotes_dict: Dict) -> 
         total_change += pct_change
         valid_count += 1
 
-        # Determine intensity for heatmap coloring
         if pct_change >= 3:
             intensity = "strong_positive"
         elif pct_change >= 1:
@@ -417,12 +533,9 @@ def _analyze_sector(sector_name: str, symbols: List[str], quotes_dict: Dict) -> 
             "intensity": intensity,
         })
 
-    # Sort stocks by performance
     stocks_data.sort(key=lambda x: x["pctChange"], reverse=True)
-
     avg_change = (total_change / valid_count) if valid_count > 0 else 0
 
-    # Sector intensity
     if avg_change >= 2:
         sector_intensity = "strong_positive"
     elif avg_change >= 0.5:
@@ -434,34 +547,58 @@ def _analyze_sector(sector_name: str, symbols: List[str], quotes_dict: Dict) -> 
     else:
         sector_intensity = "strong_negative"
 
+    tile_stocks = stocks_data
+    if tile_limit is not None and tile_limit > 0 and len(stocks_data) > tile_limit:
+        # Prefer largest absolute moves for the visual grid.
+        tile_stocks = sorted(stocks_data, key=lambda x: abs(x["pctChange"]), reverse=True)[:tile_limit]
+        tile_stocks.sort(key=lambda x: x["pctChange"], reverse=True)
+
     return {
         "name": sector_name,
-        "stocks": stocks_data,
+        "stocks": tile_stocks,
         "avgChange": round(avg_change, 2),
         "advances": advances,
         "declines": declines,
         "unchanged": unchanged,
         "totalStocks": valid_count,
+        "listedStocks": len(symbols),
         "intensity": sector_intensity,
         "topGainer": stocks_data[0] if stocks_data else None,
         "topLoser": stocks_data[-1] if stocks_data else None,
+        "tilesTruncated": bool(tile_limit and len(stocks_data) > tile_limit),
     }
 
 
 def get_sector_detail(sector_name: str) -> Optional[Dict]:
-    """Get detailed data for a specific sector."""
-    sector_key = sector_name.strip().title()
-    if sector_key not in SECTOR_STOCKS:
-        # Try fuzzy match
-        for key in SECTOR_STOCKS:
-            if sector_name.lower() in key.lower():
+    """Get detailed data for a specific sector (full listed symbols in that bucket)."""
+    from .heatmap_universe import get_heatmap_sector_symbols
+
+    sector_symbols = get_heatmap_sector_symbols()
+    sector_key = sector_name.strip()
+    if sector_key not in sector_symbols:
+        lowered = sector_name.lower()
+        for key in sector_symbols:
+            if lowered in key.lower():
                 sector_key = key
                 break
         else:
-            return None
+            # Fall back to curated SECTOR_STOCKS for older clients/tests.
+            sector_key = sector_name.strip().title()
+            if sector_key not in SECTOR_STOCKS:
+                for key in SECTOR_STOCKS:
+                    if sector_name.lower() in key.lower():
+                        sector_key = key
+                        break
+                else:
+                    return None
+                symbols = SECTOR_STOCKS[sector_key]
+            else:
+                symbols = SECTOR_STOCKS[sector_key]
+            quotes_list = fetch_quotes(symbols)
+            quotes_dict = {q["symbol"]: q for q in quotes_list if isinstance(q, dict) and "symbol" in q}
+            return _analyze_sector(sector_key, symbols, quotes_dict, tile_limit=None)
 
-    symbols = SECTOR_STOCKS[sector_key]
-    # Fetch quotes for this sector
+    symbols = sector_symbols[sector_key]
     quotes_list = fetch_quotes(symbols)
     quotes_dict = {q["symbol"]: q for q in quotes_list if isinstance(q, dict) and "symbol" in q}
-    return _analyze_sector(sector_key, symbols, quotes_dict)
+    return _analyze_sector(sector_key, symbols, quotes_dict, tile_limit=None)

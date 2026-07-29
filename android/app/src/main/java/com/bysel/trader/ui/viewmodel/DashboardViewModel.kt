@@ -81,12 +81,22 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     private val _moversLoading = MutableStateFlow(false)
     val moversLoading: StateFlow<Boolean> = _moversLoading.asStateFlow()
 
+    private val _practiceIdeas = MutableStateFlow<List<com.bysel.trader.data.models.PracticeIdea>>(emptyList())
+    val practiceIdeas: StateFlow<List<com.bysel.trader.data.models.PracticeIdea>> = _practiceIdeas.asStateFlow()
+
+    private val _practiceIdeasLoading = MutableStateFlow(false)
+    val practiceIdeasLoading: StateFlow<Boolean> = _practiceIdeasLoading.asStateFlow()
+
+    private val _practiceIdeasDisclaimer = MutableStateFlow("")
+    val practiceIdeasDisclaimer: StateFlow<String> = _practiceIdeasDisclaimer.asStateFlow()
+
     init {
         loadPinnedStocks()
         loadPinnedWidgets()
         loadWidgetOrder()
         refreshMarketNews()
         refreshMarketMovers()
+        refreshPracticeIdeas()
     }
 
     fun refreshMarketNews() {
@@ -135,6 +145,24 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             _moversLoading.value = false
         }
     }
+
+    fun refreshPracticeIdeas(limit: Int = 6) {
+        viewModelScope.launch {
+            _practiceIdeasLoading.value = true
+            when (val response = repository.getPracticeIdeas(limit = limit)) {
+                is Result.Success -> {
+                    _practiceIdeas.value = response.data.ideas
+                    _practiceIdeasDisclaimer.value = response.data.disclaimer
+                }
+                is Result.Error -> {
+                    // Keep prior cards on failure so Home still feels useful offline-ish.
+                }
+                Result.Loading -> Unit
+            }
+            _practiceIdeasLoading.value = false
+        }
+    }
+
     fun moveWidgetUp(widget: String) {
         val idx = _widgetOrder.value.indexOf(widget)
         if (idx > 0) {

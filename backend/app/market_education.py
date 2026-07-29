@@ -272,6 +272,62 @@ _TERM_ANSWERS: dict[str, str] = {
         "Premium is driven by spot, strike, time, and implied volatility (Greeks).\n\n"
         "**Common mistake:** Buying cheap far-OTM options as ‘lottery tickets’ without a probability plan."
     ),
+    "dividend yield": (
+        "**Dividend Yield**\n\n"
+        "**Equation:**\n"
+        "`Dividend Yield = (Annual Dividend per Share / Price) × 100`\n\n"
+        "Useful for income comparison within a sector. A very high yield can signal price stress "
+        "or an unsustainable payout.\n\n"
+        "**Common mistake:** Chasing yield without checking payout ratio and cash flows."
+    ),
+    "stt": (
+        "**STT (Securities Transaction Tax)**\n\n"
+        "Tax levied on Indian equity/F&O trades. Delivery equity buy/sell and F&O have different STT rates. "
+        "It is part of your real trading cost along with brokerage, GST, exchange fees, and stamp duty.\n\n"
+        "**Common mistake:** Ignoring STT when comparing intraday vs delivery profitability."
+    ),
+    "t+1": (
+        "**T+1 Settlement**\n\n"
+        "Indian equity cash currently settles on **T+1** (trade day + 1 business day). "
+        "Delivery buys credit shares to demat after settlement; sells credit funds on settlement.\n\n"
+        "**Common mistake:** Expecting instant withdrawable cash the same day as a delivery sell."
+    ),
+    "lot size": (
+        "**Lot Size (F&O)**\n\n"
+        "Exchange-defined contract size for futures/options (e.g. Nifty, Bank Nifty, stock F&O). "
+        "Position value ≈ lot size × price × number of lots; margins are required.\n\n"
+        "**Common mistake:** Trading multiple lots without checking SPAN/exposure margin."
+    ),
+    "stcg": (
+        "**STCG (Equity — educational overview)**\n\n"
+        "Short-term capital gains on listed equity generally apply when holding period is **≤ 12 months** "
+        "(rules/rates can change — verify current tax law). Often taxed at a special equity STCG rate.\n\n"
+        "**Common mistake:** Planning trades only for tax without considering risk and liquidity."
+    ),
+    "ltcg": (
+        "**LTCG (Equity — educational overview)**\n\n"
+        "Long-term capital gains on listed equity generally apply when holding period is **> 12 months** "
+        "(rules/exemptions/rates can change — verify current tax law).\n\n"
+        "**Common mistake:** Holding a weak thesis only to ‘wait for LTCG’."
+    ),
+    "demat": (
+        "**Demat Account**\n\n"
+        "Electronic account that holds shares in dematerialised form. Needed for delivery investing "
+        "on NSE/BSE. Linked with a trading account for order placement.\n\n"
+        "**Common mistake:** Confusing trading ledger cash with settled withdrawable balance."
+    ),
+    "gamma": (
+        "**Gamma (Options Greek)**\n\n"
+        "Rate of change of delta as the underlying moves. High gamma near ATM/expiry means "
+        "delta (and P&L) can change quickly.\n\n"
+        "**Common mistake:** Ignoring gamma risk when shorting options into event days."
+    ),
+    "nifty pe": (
+        "**Nifty P/E (Index Valuation)**\n\n"
+        "Aggregate price-to-earnings for Nifty constituents — a broad valuation thermometer, "
+        "not a timing signal by itself. Compare with history and earnings growth backdrop.\n\n"
+        "**Common mistake:** Going all-cash solely because Nifty P/E looks ‘high’."
+    ),
 }
 
 # Aliases
@@ -288,12 +344,24 @@ _TERM_ANSWERS["moving average convergence divergence"] = _TERM_ANSWERS["macd"]
 _TERM_ANSWERS["implied volatility"] = _TERM_ANSWERS["iv"]
 _TERM_ANSWERS["circuit breaker"] = _TERM_ANSWERS["circuit"]
 _TERM_ANSWERS["circuit filter"] = _TERM_ANSWERS["circuit"]
+_TERM_ANSWERS["circuit limit"] = _TERM_ANSWERS["circuit"]
 _TERM_ANSWERS["price band"] = _TERM_ANSWERS["circuit"]
 _TERM_ANSWERS["simple moving average"] = _TERM_ANSWERS["sma"]
 _TERM_ANSWERS["exponential moving average"] = _TERM_ANSWERS["ema"]
 _TERM_ANSWERS["bank nifty"] = _TERM_ANSWERS["banknifty"]
 _TERM_ANSWERS["nifty 50"] = _TERM_ANSWERS["nifty"]
-
+_TERM_ANSWERS["dividend"] = _TERM_ANSWERS["dividend yield"]
+_TERM_ANSWERS["securities transaction tax"] = _TERM_ANSWERS["stt"]
+_TERM_ANSWERS["t+1 settlement"] = _TERM_ANSWERS["t+1"]
+_TERM_ANSWERS["settlement cycle"] = _TERM_ANSWERS["t+1"]
+_TERM_ANSWERS["f&o lot"] = _TERM_ANSWERS["lot size"]
+_TERM_ANSWERS["short term capital gains"] = _TERM_ANSWERS["stcg"]
+_TERM_ANSWERS["long term capital gains"] = _TERM_ANSWERS["ltcg"]
+_TERM_ANSWERS["demat account"] = _TERM_ANSWERS["demat"]
+_TERM_ANSWERS["fii dii"] = _TERM_ANSWERS["fii"]
+_TERM_ANSWERS["delta gamma"] = _TERM_ANSWERS["gamma"]
+_TERM_ANSWERS["nifty p/e"] = _TERM_ANSWERS["nifty pe"]
+_TERM_ANSWERS["index pe"] = _TERM_ANSWERS["nifty pe"]
 
 def get_education_answer(query: str) -> Optional[str]:
     """Return a structured education answer if the query is definitional/formulaic."""

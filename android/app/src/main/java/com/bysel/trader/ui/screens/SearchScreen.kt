@@ -113,9 +113,9 @@ fun SearchScreen(
             ),
             SearchShortcut(
                 title = "Heatmap",
-                caption = "Sector leadership, breadth, and hot or cold pockets",
+                caption = "Sector leadership, market breath, and hot or cold pockets",
                 tab = 4,
-                keywords = listOf("heatmap", "sector", "breadth", "leadership", "market map"),
+                keywords = listOf("heatmap", "sector", "breath", "breadth", "leadership", "market map", "tqi"),
             ),
             SearchShortcut(
                 title = "Signal Lab",

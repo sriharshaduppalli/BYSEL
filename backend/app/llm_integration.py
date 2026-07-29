@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -75,6 +76,16 @@ def _load_assistant():
 
         instrument_path = _sync_instrument_master()
         base = default_config()
+
+        emb = os.getenv("ISM_EMBEDDING_LOCAL_MODEL")
+        if emb is None:
+            try:
+                import sentence_transformers  # noqa: F401
+
+                emb = "sentence-transformers/all-MiniLM-L6-v2"
+            except Exception:
+                emb = None
+
         cfg = base.__class__(
             **{
                 **base.__dict__,
@@ -90,12 +101,27 @@ def _load_assistant():
                 "min_retrieval_score": 0.12,
                 "min_confidence_threshold": 0.30,
                 "model_timeout_seconds": 4.0,
+                # Closed-loop RAG learning paths (retrieval KB growth — NOT LoRA auto-train).
+                "feedback_log_path": _LLM_DATA / "daily_feedback.log",
+                "learned_knowledge_path": _LLM_DATA / "learned_knowledge.json",
+                "embedding_cache_path": _LLM_DATA / "embedding_cache.json",
+                "feedback_learning_enabled": True,
+                "nightly_refresh_enabled": True,
+                "open_source_market_data_enabled": True,
+                "embedding_local_model": emb,
             }
         )
         _assistant = StockMarketAssistant(config=cfg)
+        emb_mode = (
+            f"sentence-transformers:{emb}"
+            if emb
+            else ("http:" + str(cfg.embedding_endpoint) if cfg.embedding_endpoint else "local-hash-fallback")
+        )
         logger.info(
-            "Indian Stock LLM loaded OK (kb=%d items)",
+            "Indian Stock LLM loaded OK (kb=%d items, embedding=%s, feedback_learning=%s)",
             len(getattr(_assistant.knowledge_base, "items", []) or []),
+            emb_mode,
+            cfg.feedback_learning_enabled,
         )
         return _assistant
     except Exception as exc:
@@ -114,10 +140,16 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
         return None
 
     # 1) Deterministic equations / glossary (highest precision).
+    # Skip pure glossary when user asks for a live indicator on a named symbol.
     try:
+        from indian_stock_llm.calculations import PandasTaIndicatorCalculator
         from .market_education import get_education_answer
 
-        education = get_education_answer(cleaned)
+        wants_live_indicator = (
+            PandasTaIndicatorCalculator.indicator_requested(cleaned)
+            and bool(PandasTaIndicatorCalculator._symbol_from_query(cleaned))
+        )
+        education = None if wants_live_indicator else get_education_answer(cleaned)
         if education:
             return {
                 "answer": education,
@@ -127,8 +159,23 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
                 "category": "calculations",
                 "source": "indian-stock-llm-education",
             }
+        if wants_live_indicator:
+            note = PandasTaIndicatorCalculator.indicator_note(cleaned)
+            if note:
+                return {
+                    "answer": (
+                        f"{note}\n\n"
+                        "Educational calculation from recent market history — "
+                        "not investment advice."
+                    ),
+                    "intent": "market_calculations",
+                    "confidence": 0.9,
+                    "citations": ["live_indicator_v1"],
+                    "category": "calculations",
+                    "source": "indian-stock-llm-indicator",
+                }
     except Exception as exc:
-        logger.debug("Education pack miss: %s", exc)
+        logger.debug("Education/indicator pack miss: %s", exc)
 
     assistant = _load_assistant()
     if assistant is None:

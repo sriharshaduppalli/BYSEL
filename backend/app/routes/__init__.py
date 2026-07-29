@@ -1142,7 +1142,7 @@ def _goal_to_response(goal: GoalPlanModel) -> GoalPlanResponse:
 # default thread pool instead.
 
 
-@router.get("/quotes", response_model=list[Quote])
+@router.get("/quotes", response_model=list[Quote], response_model_exclude_none=True)
 async def get_quotes_endpoint(
     symbols: str = Query(""),
     db: Session = Depends(get_db)
@@ -1175,31 +1175,40 @@ async def get_quotes_endpoint(
         logger.warning("trigger_evaluation_failed reason=%s", str(exc))
 
     from ..market_data import _safe_number
+    now_ms = int(time.time() * 1000)
     safe = []
     for q in raw_quotes or []:
         try:
+            ts_raw = q.get("timestamp")
+            try:
+                ts = int(ts_raw) if ts_raw is not None else now_ms
+            except (TypeError, ValueError):
+                ts = now_ms
             safe.append(Quote(
                 symbol=str(q.get("symbol") or ""),
                 last=round(_safe_number(q.get("last"), 0.0), 2),
                 pctChange=round(_safe_number(q.get("pctChange"), 0.0), 2),
+                timestamp=ts,
             ))
         except Exception:
             continue
     return safe
 
 
-@router.get("/quotes/all", response_model=list[Quote])
+@router.get("/quotes/all", response_model=list[Quote], response_model_exclude_none=True)
 async def get_all_quotes_endpoint():
     """Get live quotes for ALL supported NSE symbols."""
     raw_quotes = await asyncio.to_thread(fetch_quotes, get_all_symbols())
+    now_ms = int(time.time() * 1000)
     return [Quote(
         symbol=q["symbol"],
         last=q["last"],
         pctChange=q["pctChange"],
+        timestamp=int(q.get("timestamp") or now_ms),
     ) for q in raw_quotes]
 
 
-@router.get("/quotes/{symbol}", response_model=Quote)
+@router.get("/quotes/{symbol}", response_model=Quote, response_model_exclude_none=True)
 async def get_single_quote_endpoint(symbol: str):
     """Get a live quote for a single stock symbol."""
     q = await asyncio.to_thread(fetch_quote, symbol.upper())
@@ -1209,6 +1218,7 @@ async def get_single_quote_endpoint(symbol: str):
         symbol=q["symbol"],
         last=q["last"],
         pctChange=q["pctChange"],
+        timestamp=int(q.get("timestamp") or int(time.time() * 1000)),
     )
 
 
@@ -1578,35 +1588,41 @@ async def market_movers_endpoint(
 
 # ==================== ALERTS ====================
 
-@router.get("/alerts", response_model=list[Alert])
+def _alert_created_at_ms(created_at) -> int:
+    if created_at is None:
+        return int(time.time() * 1000)
+    try:
+        return int(created_at.timestamp() * 1000)
+    except Exception:
+        return int(time.time() * 1000)
+
+
+def _alert_to_schema(a) -> Alert:
+    return Alert(
+        id=a.id,
+        symbol=a.symbol,
+        thresholdPrice=a.threshold_price,
+        alertType=a.alert_type,
+        isActive=a.is_active,
+        createdAt=_alert_created_at_ms(a.created_at),
+    )
+
+
+@router.get("/alerts", response_model=list[Alert], response_model_exclude_none=True)
 async def get_alerts_endpoint(db: Session = Depends(get_db)):
     """Get all alerts."""
     alerts = db.query(AlertModel).all()
-    return [Alert(
-        id=a.id,
-        symbol=a.symbol,
-        thresholdPrice=a.threshold_price,
-        alertType=a.alert_type,
-        isActive=a.is_active,
-        createdAt=a.created_at
-    ) for a in alerts]
+    return [_alert_to_schema(a) for a in alerts]
 
 
-@router.get("/alerts/active", response_model=list[Alert])
+@router.get("/alerts/active", response_model=list[Alert], response_model_exclude_none=True)
 async def get_active_alerts_endpoint(db: Session = Depends(get_db)):
     """Get active alerts only."""
     alerts = db.query(AlertModel).filter(AlertModel.is_active == True).all()
-    return [Alert(
-        id=a.id,
-        symbol=a.symbol,
-        thresholdPrice=a.threshold_price,
-        alertType=a.alert_type,
-        isActive=a.is_active,
-        createdAt=a.created_at
-    ) for a in alerts]
+    return [_alert_to_schema(a) for a in alerts]
 
 
-@router.post("/alerts", response_model=Alert)
+@router.post("/alerts", response_model=Alert, response_model_exclude_none=True)
 async def create_alert_endpoint(alert: AlertCreate, db: Session = Depends(get_db)):
     """Create a new price alert."""
     alert_db = AlertModel(
@@ -1618,17 +1634,10 @@ async def create_alert_endpoint(alert: AlertCreate, db: Session = Depends(get_db
     db.add(alert_db)
     db.commit()
     db.refresh(alert_db)
-    return Alert(
-        id=alert_db.id,
-        symbol=alert_db.symbol,
-        thresholdPrice=alert_db.threshold_price,
-        alertType=alert_db.alert_type,
-        isActive=alert_db.is_active,
-        createdAt=alert_db.created_at
-    )
+    return _alert_to_schema(alert_db)
 
 
-@router.put("/alerts/{alert_id}", response_model=Alert)
+@router.put("/alerts/{alert_id}", response_model=Alert, response_model_exclude_none=True)
 async def update_alert_endpoint(alert_id: int, alert: AlertCreate, db: Session = Depends(get_db)):
     """Update an existing alert."""
     alert_db = db.query(AlertModel).filter(AlertModel.id == alert_id).first()
@@ -1640,14 +1649,7 @@ async def update_alert_endpoint(alert_id: int, alert: AlertCreate, db: Session =
     alert_db.alert_type = alert.alertType
     db.commit()
     db.refresh(alert_db)
-    return Alert(
-        id=alert_db.id,
-        symbol=alert_db.symbol,
-        thresholdPrice=alert_db.threshold_price,
-        alertType=alert_db.alert_type,
-        isActive=alert_db.is_active,
-        createdAt=alert_db.created_at
-    )
+    return _alert_to_schema(alert_db)
 
 
 @router.delete("/alert/{alert_id}", response_model=AlertResponse)
@@ -2215,6 +2217,16 @@ async def ai_recommendations_endpoint(limit: int = 10):
     from .ai_engine import get_best_stocks_to_buy
     result = get_best_stocks_to_buy(limit=limit)
     return result
+
+
+@router.get("/ai/practice-ideas")
+async def ai_practice_ideas_endpoint(limit: int = 6):
+    """Educational paper-trade practice drills (entry/target/SL + coaching).
+
+    Not SEBI tips or investment advice — drills for simulation discipline.
+    """
+    from ..ai_engine import get_practice_ideas
+    return get_practice_ideas(limit=limit)
 
 
 @router.get("/ai/trade-levels/{symbol}")

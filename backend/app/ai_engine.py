@@ -2610,6 +2610,10 @@ def _build_recommendation_answer(symbol: str, analysis: Dict) -> str:
         f"• Trend: {trend}\n"
         f"• 1-Month Model Move: {month_change:+.1f}%\n"
         f"• Risk Check: {risk_flag}\n\n"
+        f"**Levels**\n"
+        f"• Entry: ₹{price:.2f}\n"
+        f"• Target: ₹{(price * (1.05 if month_change >= 0 else 0.95)):.2f}\n"
+        f"• Stop-Loss: ₹{(price * (0.97 if month_change >= 0 else 1.03)):.2f}\n\n"
         f"Actionable note: {action_note}\n\n"
         f"{news_block}"
     )
@@ -4270,3 +4274,135 @@ def _handle_indian_finance_query(query: str) -> Dict:
         "suggestions": ["What is IPO?", "How does SIP work?", "Mutual funds basics"]
     }
 
+
+# ──────────────────────────────────────────────────────────────
+# PRACTICE IDEAS (educational paper-trade drills — not advisory tips)
+# ──────────────────────────────────────────────────────────────
+
+_PRACTICE_IDEAS_CACHE: Dict[str, object] = {"data": None, "timestamp": 0.0}
+_PRACTICE_IDEAS_CACHE_TTL = 180.0
+_PRACTICE_IDEAS_LOCK = Lock()
+
+
+def get_practice_ideas(limit: int = 6) -> Dict:
+    """Build fast, educational practice cards from live quotes.
+
+    These are drills for paper trading (levels + process coaching), not SEBI tips.
+    """
+    import time as _time
+    from .market_data import DEFAULT_SYMBOLS, INDIAN_STOCKS, fetch_quotes
+
+    limit = max(3, min(int(limit or 6), 12))
+    now = _time.time()
+    with _PRACTICE_IDEAS_LOCK:
+        cached = _PRACTICE_IDEAS_CACHE.get("data")
+        ts = float(_PRACTICE_IDEAS_CACHE.get("timestamp") or 0.0)
+        if cached and (now - ts) < _PRACTICE_IDEAS_CACHE_TTL:
+            return cached
+
+    quotes = fetch_quotes(list(DEFAULT_SYMBOLS))
+    usable = []
+    for q in quotes or []:
+        if not isinstance(q, dict):
+            continue
+        symbol = str(q.get("symbol") or "").upper()
+        last = float(q.get("last") or 0)
+        pct = float(q.get("pctChange") or 0)
+        if not symbol or last <= 0:
+            continue
+        usable.append((symbol, last, pct, q))
+
+    if not usable:
+        payload = {
+            "ideas": [],
+            "disclaimer": "Educational practice drills only. Not investment advice.",
+            "generatedAt": datetime.utcnow().isoformat(),
+        }
+        return payload
+
+    # Prefer a mix: strong upside, soft dips, and quiet names for journaling.
+    strong = sorted([u for u in usable if u[2] >= 0.8], key=lambda x: x[2], reverse=True)
+    soft = sorted([u for u in usable if u[2] <= -0.8], key=lambda x: x[2])
+    quiet = sorted([u for u in usable if abs(u[2]) < 0.8], key=lambda x: abs(x[2]))
+
+    picked = []
+    for bucket in (strong, soft, quiet):
+        for row in bucket:
+            if row[0] in {p[0] for p in picked}:
+                continue
+            picked.append(row)
+            if len(picked) >= limit:
+                break
+        if len(picked) >= limit:
+            break
+    if len(picked) < limit:
+        for row in sorted(usable, key=lambda x: abs(x[2]), reverse=True):
+            if row[0] in {p[0] for p in picked}:
+                continue
+            picked.append(row)
+            if len(picked) >= limit:
+                break
+
+    ideas = []
+    for symbol, last, pct, _q in picked[:limit]:
+        move = abs(pct)
+        # Wider stops on hotter names so practice risk is realistic.
+        sl_pct = min(0.045, max(0.012, move / 100.0 * 1.4 + 0.01))
+        tp_pct = min(0.07, max(0.018, sl_pct * 1.7))
+        entry = round(last, 2)
+        stop_loss = round(last * (1.0 - sl_pct), 2)
+        target = round(last * (1.0 + tp_pct), 2)
+        risk = max(entry - stop_loss, 0.01)
+        reward = max(target - entry, 0.01)
+        rr = round(reward / risk, 2)
+
+        if pct >= 0.8:
+            stance = "MOMENTUM_DRILL"
+            title = "Momentum practice"
+            coaching = (
+                f"{symbol} is up {pct:+.2f}% today. Practice waiting for a clean pullback entry "
+                f"near ₹{entry:.2f} with a predefined stop — do not chase mid-candle."
+            )
+        elif pct <= -0.8:
+            stance = "DIP_DRILL"
+            title = "Dip discipline drill"
+            coaching = (
+                f"{symbol} is down {pct:+.2f}% today. Practice either sitting out or a tiny paper add "
+                f"only if your journal rule allows — stop first, story second."
+            )
+        else:
+            stance = "RANGE_DRILL"
+            title = "Range journaling drill"
+            coaching = (
+                f"{symbol} is quiet ({pct:+.2f}%). Practice marking levels and skipping forced trades; "
+                f"use this name to rehearse alert placement."
+            )
+
+        name = INDIAN_STOCKS.get(symbol, (None, symbol))[1]
+        ideas.append({
+            "symbol": symbol,
+            "name": name,
+            "stance": stance,
+            "title": title,
+            "coaching": coaching,
+            "lastPrice": entry,
+            "pctChange": round(pct, 2),
+            "entry": entry,
+            "stopLoss": stop_loss,
+            "target": target,
+            "riskReward": rr,
+            "suggestedQty": 1,
+        })
+
+    payload = {
+        "ideas": ideas,
+        "disclaimer": (
+            "BYSEL Practice Ideas are educational paper-trading drills. "
+            "They are not SEBI-registered recommendations or investment advice."
+        ),
+        "generatedAt": datetime.utcnow().isoformat(),
+    }
+    with _PRACTICE_IDEAS_LOCK:
+        _PRACTICE_IDEAS_CACHE["data"] = payload
+        _PRACTICE_IDEAS_CACHE["timestamp"] = now
+    return payload

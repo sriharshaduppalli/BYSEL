@@ -18,3 +18,8 @@ twilio>=8.0.0
 firebase-admin>=6.2.0
 google-generativeai>=0.8.0
 groq>=0.9.0
+# Stock analysis helpers
+pandas>=2.0.0
+# `ta` works across modern Python; pandas-ta is preferred when available (Python <3.14).
+ta>=0.11.0
+nsepython>=2.97

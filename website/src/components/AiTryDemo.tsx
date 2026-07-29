@@ -99,17 +99,35 @@ export default function AiTryDemo() {
         { id: `a-${Date.now()}`, role: "assistant", content: answer },
       ]);
       setTurnsUsed((n) => n + 1);
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const isAbort = err instanceof DOMException && err.name === "AbortError";
+      const looksLikeCorsOrNetwork =
+        /Failed to fetch|NetworkError|Load failed|CORS|Access-Control/i.test(message) ||
+        message === "Failed to fetch";
+
+      let assistantNote =
+        "The AI server is waking up or busy. Wait a few seconds and retry — or open the Android app for a more reliable session.";
+      let tip: string | null = "If this keeps failing, wait ~30s for the API to wake, then retry.";
+
+      if (isAbort) {
+        assistantNote = "The request timed out. The API may be cold-starting — wait a moment and try again.";
+      } else if (looksLikeCorsOrNetwork) {
+        assistantNote =
+          "Browser blocked the request (CORS). The marketing site origin is not allowed on the API yet.";
+        tip =
+          "On Render → bysel-backend → Environment, set BYSEL_ALLOWED_ORIGINS to include https://byseltrader.com and https://www.byseltrader.com, then restart.";
+      }
+
       setMessages((prev) => [
         ...prev,
         {
           id: `e-${Date.now()}`,
           role: "assistant",
-          content:
-            "The AI server is waking up or busy. Wait a few seconds and retry — or open the Android app for a more reliable session.",
+          content: assistantNote,
         },
       ]);
-      setError("If this keeps failing, the API may still be cold-starting (about 30–60s).");
+      setError(tip);
     } finally {
       setBusy(false);
       scrollToBottom();

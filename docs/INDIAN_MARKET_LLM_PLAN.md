@@ -1,7 +1,9 @@
 # BYSEL Indian-Market LLM — Architecture Plan
 
-Status: living plan. Last updated 2026-07-28 after production knowledge-pack
-upgrade (equations, terms, sectors, symbols, analysis frameworks).
+Status: living plan. Last updated 2026-07-29 after knowledge-pack v2
+(Hinglish jargon, F&O/tax/corporate-actions literacy, paper-practice coaching)
+and analysis-library integration (`ta` / optional `pandas-ta`, `nsepython`,
+live OHLCV indicators for RSI/MACD/ATR/etc.).
 
 ## What already exists (do not rebuild)
 
@@ -28,6 +30,34 @@ upgrade (equations, terms, sectors, symbols, analysis frameworks).
 Honest label: this is a **production-ready grounded Indian-market knowledge
 assistant**, not a GPU-finetuned neural LLM. Groq remains the generative primary
 when available; ISM tier is the reliable domain fallback.
+
+## Shipped — knowledge pack v2 + paper-practice coaching (2026-07-29)
+
+- `bysel_builtin_v2` RAG items: Hinglish retail jargon (demat, circuit, T+1, STT,
+  delivery vs intraday), F&O lot/expiry/margin risk, STCG/LTCG educational basics,
+  corporate-actions literacy, paper journaling / no-chase coaching, portfolio
+  practice stance, and an explicit SEBI educational disclaimer item
+- Intent keywords + light Hinglish normalizer before classify (`kharid`/`bech`/…)
+- Groq `_BASE_SYSTEM_PROMPT` PAPER PRACTICE section (simulation-first, process over
+  tip certainty, never claim SEBI RA status)
+- Android AI empty-state / suggestion chips: practice-oriented prompts
+- `/ai/recommendations`: left as-is (5-min cache already present; no risky refactor)
+
+## Shipped — closed-loop RAG learning (2026-07-29)
+
+Honest status (not LoRA auto-train):
+
+- **Semantic MiniLM** if `sentence-transformers` is installed (else hash-embedding
+  fallback). Opt-in via `ISM_EMBEDDING_LOCAL_MODEL` / production auto-detect in
+  `llm_integration.py`.
+- **Feedback → learned KB**: `FeedbackLearningPipeline` promotes frequent TSV
+  queries and high-confidence grounded answers into `learned_knowledge.json`
+  (educational coaching / truncated answers). Improves retrieval over time;
+  it does **not** fine-tune neural LLM weights.
+- **Embedding cache** on disk (`embedding_cache.json`) keyed by item id.
+- **Live quote grounding** when an instrument resolves (`live_quote_v1` via
+  `fetch_quote` / yfinance).
+- Nightly `trigger_index_refresh` can promote feedback + rebuild the index.
 
 
 ## Shipped reliability (Phase −1) — done 2026-07-27

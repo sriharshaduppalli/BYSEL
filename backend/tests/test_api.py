@@ -1933,7 +1933,7 @@ def test_market_heatmap_returns_persisted_snapshot_when_market_closed(monkeypatc
 def test_market_heatmap_rebuilds_last_session_when_closed_without_snapshot(monkeypatch, tmp_path):
     snapshot_path = tmp_path / "market_heatmap_snapshot.json"
 
-    def _fake_fetch_quotes(symbols):
+    def _fake_fetch_quotes(symbols, max_age_seconds=None):
         return [
             {
                 "symbol": symbol,

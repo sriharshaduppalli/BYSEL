@@ -155,7 +155,8 @@ class TradingViewModel(
     @Volatile private var lastAiSuccessAtMs: Long = 0L
     @Volatile private var lastAiWarmAtMs: Long = 0L
     private val AI_WARM_WINDOW_MS = 8 * 60_000L
-    private val _aiLikelyColdStart = MutableStateFlow(true)
+    // Used only for telemetry / future UX; typing indicator no longer shows wake copy.
+    private val _aiLikelyColdStart = MutableStateFlow(false)
     val aiLikelyColdStart: StateFlow<Boolean> = _aiLikelyColdStart.asStateFlow()
 
     private fun refreshAiColdStartFlag() {
@@ -1800,15 +1801,71 @@ class TradingViewModel(
         }
     }
 
-    fun createAlert(symbol: String, thresholdPrice: Double, alertType: String) {
+    fun createAlert(symbol: String, thresholdPrice: Double?, alertType: String = "ABOVE") {
         viewModelScope.launch {
-            val duplicate = _alerts.value.any { it.symbol == symbol && it.thresholdPrice == thresholdPrice && it.alertType == alertType }
-            if (duplicate) {
-                _error.value = "Alert already exists for $symbol at ₹${String.format("%.2f", thresholdPrice)}"
+            val normalizedSymbol = symbol.trim().uppercase()
+            if (normalizedSymbol.isBlank()) {
+                _error.value = "Cannot set alert — stock symbol missing"
                 return@launch
             }
-            val a = Alert(symbol = symbol, thresholdPrice = thresholdPrice, alertType = alertType)
-            when (val r = repository.createAlert(a)) { is Result.Error -> _error.value = r.message; else -> {} }
+            val normalizedType = if (alertType.equals("BELOW", ignoreCase = true)) "BELOW" else "ABOVE"
+
+            val price = thresholdPrice?.takeIf { it > 0.0 } ?: resolveAlertPrice(normalizedSymbol, normalizedType)
+            if (price == null || price <= 0.0) {
+                _error.value = "Cannot set alert for $normalizedSymbol — price unavailable"
+                return@launch
+            }
+
+            val duplicate = _alerts.value.any {
+                it.symbol.equals(normalizedSymbol, ignoreCase = true) &&
+                    kotlin.math.abs(it.thresholdPrice - price) < 0.01 &&
+                    it.alertType.equals(normalizedType, ignoreCase = true) &&
+                    it.isActive
+            }
+            if (duplicate) {
+                _error.value = "Alert already exists for $normalizedSymbol at ₹${String.format("%.2f", price)}"
+                return@launch
+            }
+
+            val a = Alert(symbol = normalizedSymbol, thresholdPrice = price, alertType = normalizedType)
+            when (val r = repository.createAlert(a)) {
+                is Result.Success -> {
+                    _error.value = null
+                    _productActionMessage.value =
+                        "Alert set: $normalizedSymbol $normalizedType ₹${String.format("%.2f", price)}"
+                }
+                is Result.Error -> {
+                    // Offline/local insert may still succeed inside repository — confirm via Room flow.
+                    val saved = _alerts.value.any {
+                        it.symbol.equals(normalizedSymbol, ignoreCase = true) &&
+                            kotlin.math.abs(it.thresholdPrice - price) < 0.01 &&
+                            it.alertType.equals(normalizedType, ignoreCase = true)
+                    }
+                    if (saved) {
+                        _error.value = null
+                        _productActionMessage.value =
+                            "Alert set: $normalizedSymbol $normalizedType ₹${String.format("%.2f", price)}"
+                    } else {
+                        _error.value = r.message ?: "Failed to create alert"
+                        _productActionMessage.value = _error.value
+                    }
+                }
+                else -> Unit
+            }
+        }
+    }
+
+    private suspend fun resolveAlertPrice(symbol: String, alertType: String): Double? {
+        val cached = _quotes.value.firstOrNull { it.symbol.equals(symbol, ignoreCase = true) }?.last
+        if (cached != null && cached > 0.0) {
+            return if (alertType == "BELOW") cached * 0.98 else cached * 1.02
+        }
+        return when (val r = repository.getQuote(symbol)) {
+            is Result.Success -> {
+                val last = r.data.last.takeIf { it > 0.0 } ?: return null
+                if (alertType == "BELOW") last * 0.98 else last * 1.02
+            }
+            else -> null
         }
     }
 
@@ -1927,11 +1984,17 @@ class TradingViewModel(
                     lastAiWarmAtMs = lastAiSuccessAtMs
                     refreshAiColdStartFlag()
                     _aiResponse.value = r.data
+                    val replySymbol = r.data.symbol?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
+                        ?: symbol?.trim()?.uppercase()
+                    val replyPrice = extractAiReferencePrice(r.data)
                     _chatHistory.value = _chatHistory.value + ChatMessage(
                         r.data.answer,
                         isUser = false,
                         suggestions = r.data.suggestions,
-                        source = r.data.source
+                        source = r.data.source,
+                        symbol = replySymbol,
+                        signal = r.data.signal,
+                        lastPrice = replyPrice,
                     )
                     // Optionally enrich the last bubble with v2 cards when a symbol is in focus.
                     if (shouldUseEnhancedAnalysis(cleanedQuery, symbol) && symbol != null) {
@@ -2004,6 +2067,24 @@ class TradingViewModel(
 
         val lowerQuery = query.lowercase()
         return analysisKeywords.any { lowerQuery.contains(it) }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun extractAiReferencePrice(response: AiAssistantResponse): Double? {
+        fun asPositive(value: Any?): Double? = when (value) {
+            is Number -> value.toDouble().takeIf { it > 0.0 }
+            is String -> value.replace(",", "").toDoubleOrNull()?.takeIf { it > 0.0 }
+            else -> null
+        }
+
+        val data = response.data ?: return null
+        asPositive(data["currentPrice"])?.let { return it }
+        asPositive(data["last"])?.let { return it }
+        asPositive(data["price"])?.let { return it }
+        val nested = data["quote"] as? Map<*, *>
+        asPositive(nested?.get("last"))?.let { return it }
+        asPositive(nested?.get("currentPrice"))?.let { return it }
+        return null
     }
 
     private fun convertEnhancedToAiResponse(enhanced: EnhancedStockAnalysisResponse, originalQuery: String): AiAssistantResponse {
@@ -2483,7 +2564,12 @@ data class ChatMessage(
     val suggestions: List<String> = emptyList(),
     val timestamp: Long = System.currentTimeMillis(),
     val enhancedFeatures: EnhancedFeatures? = null,
-    val source: String = ""
+    val source: String = "",
+    /** NSE symbol attached by the backend for actionable replies (Buy / Set Alert). */
+    val symbol: String? = null,
+    val signal: String? = null,
+    /** Last/reference price from the analysis payload, used when Target is missing. */
+    val lastPrice: Double? = null,
 )
 
 // Factory for TradingViewModel

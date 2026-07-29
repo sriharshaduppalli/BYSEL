@@ -5,7 +5,7 @@ import com.bysel.trader.BuildConfig
 import com.bysel.trader.data.api.BYSELApiService
 import com.bysel.trader.data.api.RetrofitClient
 import com.bysel.trader.data.models.Quote
-import com.google.gson.Gson
+import com.bysel.trader.data.api.SafeGsonFactory
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -36,7 +36,7 @@ class LiveMarketDataClient(
         const val TRACE_QUERY_PARAM = "traceId"
     }
 
-    private val gson = Gson()
+    private val gson = SafeGsonFactory.create()
     private val truedataToken = BuildConfig.MARKET_TRUEDATA_TOKEN
 
     fun streamQuotes(symbols: List<String>): Flow<List<Quote>> {
@@ -301,7 +301,19 @@ class LiveMarketDataClient(
     }
 
     private fun JsonObject.optDouble(key: String): Double? {
-        return if (has(key) && !get(key).isJsonNull) get(key).asDouble else null
+        if (!has(key) || get(key).isJsonNull) return null
+        val el = get(key)
+        if (!el.isJsonPrimitive) return null
+        val p = el.asJsonPrimitive
+        return try {
+            when {
+                p.isNumber -> p.asDouble
+                p.isString -> p.asString.trim().replace(",", "").toDoubleOrNull()
+                else -> null
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun normalizeSymbols(symbols: List<String>): List<String> {

@@ -369,7 +369,15 @@ fun BYSELApp(
     // Trades suggested by the AI assistant are confirmed here before they reach the broker.
     var pendingAiTrade by remember { mutableStateOf<AiTradeRequest?>(null) }
     var lastBackPressAt by remember { mutableLongStateOf(0L) }
-    var heatmapInterval by remember { mutableStateOf(prefs.getInt("heatmapInterval", 30_000).coerceIn(5_000, 60_000)) }
+    // Default 2s live refresh while market is open. Migrate older 30–60s prefs down.
+    var heatmapInterval by remember {
+        val saved = prefs.getInt("heatmapInterval", 2_000)
+        val migrated = when {
+            saved in 1_000..10_000 -> saved
+            else -> 2_000
+        }
+        mutableStateOf(migrated)
+    }
     val density = LocalDensity.current
     val edgeThresholdPx = with(density) { 28.dp.toPx() }
     val swipeTriggerPx = with(density) { 110.dp.toPx() }
@@ -386,6 +394,7 @@ fun BYSELApp(
     val isLoading by viewModel.isLoading.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
     val error by viewModel.error.collectAsState()
+    val productActionMessage by viewModel.productActionMessage.collectAsState()
     // AI & Analytics state
     val chatHistory by viewModel.chatHistory.collectAsState()
     val aiLoading by viewModel.aiLoading.collectAsState()
@@ -408,6 +417,12 @@ fun BYSELApp(
     val smartMoneyIdeas by viewModel.smartMoneyIdeas.collectAsState()
     val smartMoneyQuarterLabel by viewModel.smartMoneyQuarterLabel.collectAsState()
     val investorInsightsLoading by viewModel.investorInsightsLoading.collectAsState()
+
+    LaunchedEffect(productActionMessage) {
+        val message = productActionMessage?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        viewModel.clearProductActionMessage()
+    }
 
     // Check for in-app updates on app start
     LaunchedEffect(Unit) {
@@ -754,6 +769,12 @@ fun BYSELApp(
                                             previousTab = selectedTab
                                             selectedTab = 21
                                         },
+                                        onPaperBuy = { symbol, qty ->
+                                            viewModel.placeOrder(symbol, qty, "BUY")
+                                        },
+                                        onPracticeAlert = { symbol, price, alertType ->
+                                            viewModel.createAlert(symbol, price, alertType)
+                                        },
                                     )
                                     1 -> AiAssistantScreen(
                                         chatHistory = chatHistory,
@@ -769,10 +790,11 @@ fun BYSELApp(
                                         onClearChat = { viewModel.clearChatHistory() },
                                         selectedSymbol = selectedQuote?.symbol,
                                         onTradeAction = { symbol, side, qty ->
+                                            viewModel.fetchAndSelectQuote(symbol)
                                             pendingAiTrade = AiTradeRequest(symbol, side, qty ?: 1)
                                         },
                                         onAlertAction = { symbol, price, alertType ->
-                                            price?.let { viewModel.createAlert(symbol, it, alertType) }
+                                            viewModel.createAlert(symbol, price, alertType)
                                         },
                                         onNavigateToStock = { symbol ->
                                             previousTab = selectedTab
@@ -966,7 +988,7 @@ fun BYSELApp(
                                     },
                                     heatmapInterval = heatmapInterval,
                                     onHeatmapIntervalChange = { interval ->
-                                        val clamped = interval.coerceIn(5_000, 60_000)
+                                        val clamped = interval.coerceIn(1_000, 10_000)
                                         heatmapInterval = clamped
                                         prefs.edit().putInt("heatmapInterval", clamped).apply()
                                     },

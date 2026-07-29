@@ -86,6 +86,34 @@ class ContinualLearningManager:
         payload = {"ts": ts, "intent": intent, "query_hash": self.anonymize_query(query)}
         self._write_line(json.dumps(payload, ensure_ascii=False) + "\n")
 
+    def record_interaction(
+        self,
+        query: str,
+        intent: str,
+        confidence: float,
+        citation_count: int,
+        grounded: bool,
+    ) -> None:
+        """Append a richer JSONL interaction for closed-loop RAG learning.
+
+        This improves retrieval/knowledge over time via feedback promotion into a
+        learned KB — it is NOT full neural LLM fine-tuning / LoRA auto-train.
+        Existing TSV ``record_feedback`` / anonymized paths are unchanged.
+        """
+        if self.feedback_log_path is None:
+            return
+        ts = datetime.now(timezone.utc).isoformat()
+        payload = {
+            "ts": ts,
+            "kind": "interaction_v1",
+            "query": query.strip(),
+            "intent": intent,
+            "confidence": float(confidence),
+            "citation_count": int(citation_count),
+            "grounded": bool(grounded),
+        }
+        self._write_line(json.dumps(payload, ensure_ascii=False) + "\n")
+
     def feedback_metrics(self) -> dict[str, float]:
         if self.feedback_log_path is None or not self.feedback_log_path.exists():
             return {
@@ -196,3 +224,201 @@ class DailyFeedbackAnalyzer:
                 seen.add(tag)
                 result.append(tag)
         return result[:6]
+
+
+# Educational framing only — process coaching, never tips / guaranteed returns.
+_INTENT_COACHING: dict[str, str] = {
+    "fundamentals": (
+        "Educational framing: when studying fundamentals, compare valuation ratios "
+        "(P/E, P/B, ROE) across peers and cycles; treat single-period numbers as "
+        "incomplete. This is process coaching, not a buy/sell tip and not a return guarantee."
+    ),
+    "events_news": (
+        "Educational framing: for corporate/regulatory events, separate facts from "
+        "commentary, note effective dates, and cross-check NSE/BSE/SEBI primary sources. "
+        "This is process coaching — not investment advice or guaranteed outcomes."
+    ),
+    "market_calculations": (
+        "Educational framing: verify inputs, units, and time windows before trusting any "
+        "formula (CAGR, returns, indicators). Recalculate independently. Educational only — "
+        "not a trading signal or guaranteed return."
+    ),
+    "prediction": (
+        "Educational framing: forecasts are uncertain; list assumptions, scenarios, and "
+        "invalidation criteria. Prefer risk framing over point targets. Not advice and "
+        "not a promise of returns."
+    ),
+    "stock_analysis": (
+        "Educational framing: use a checklist (business, valuation, technical context, "
+        "risks) and write a journal entry before acting. Paper-practice first. Educational "
+        "only — no guaranteed profits."
+    ),
+    "portfolio": (
+        "Educational framing: size positions to risk tolerance, diversify thoughtfully, "
+        "and review correlations. Process coaching for learning — not personalized advice "
+        "or guaranteed returns."
+    ),
+    "price_action": (
+        "Educational framing: describe structure (levels, volume context) without "
+        "prescribing trades. Always note invalidation. Educational / paper-practice only."
+    ),
+    "paper_practice": (
+        "Educational framing: journal setups, risk rules, and post-trade reviews in "
+        "simulation before live capital. Process over tip certainty. Not SEBI RA advice."
+    ),
+    "general_query": (
+        "Educational framing: clarify the topic (symbol, indicator, regulation, or "
+        "concept), then ground answers in cited market knowledge. Informational only — "
+        "not guaranteed returns."
+    ),
+}
+
+
+def _slug_id(prefix: str, text: str) -> str:
+    digest = hashlib.sha256(text.strip().lower().encode("utf-8")).hexdigest()[:16]
+    return f"{prefix}_{digest}"
+
+
+def _load_learned_items(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    if not isinstance(data, list):
+        return []
+    return [row for row in data if isinstance(row, dict) and row.get("id")]
+
+
+def _save_learned_items(path: Path, items: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    by_id: dict[str, dict] = {}
+    for row in items:
+        item_id = str(row.get("id", "")).strip()
+        if not item_id:
+            continue
+        by_id[item_id] = row
+    path.write_text(json.dumps(list(by_id.values()), ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+class FeedbackLearningPipeline:
+    """Promote frequent feedback + grounded answers into a learned knowledge JSON.
+
+    Honest scope: this improves RAG retrieval/knowledge over time by writing
+    educational KnowledgeItem-like records. It is NOT full neural LLM fine-tuning.
+    """
+
+    @staticmethod
+    def promote_from_feedback_log(
+        feedback_log_path: Path | None,
+        learned_knowledge_path: Path | None,
+        min_count: int = 3,
+    ) -> int:
+        """Promote frequent TSV queries into educational learned KB items.
+
+        Returns the number of newly added items (0 if skipped / nothing new).
+        """
+        if feedback_log_path is None or learned_knowledge_path is None:
+            return 0
+        if not feedback_log_path.exists():
+            return 0
+
+        query_counts: dict[tuple[str, str], int] = {}
+        with feedback_log_path.open("r", encoding="utf-8") as fp:
+            for line in fp:
+                text = line.strip()
+                if not text or text.startswith("{"):
+                    continue
+                parts = text.split("\t")
+                if len(parts) < 3:
+                    continue
+                intent = parts[1].strip() or "general_query"
+                query = parts[2].strip()
+                if not query:
+                    continue
+                key = (query.lower(), intent)
+                query_counts[key] = query_counts.get(key, 0) + 1
+
+        existing = _load_learned_items(learned_knowledge_path)
+        existing_ids = {str(row["id"]) for row in existing}
+        added = 0
+        for (query_l, intent), count in query_counts.items():
+            if count < max(1, int(min_count)):
+                continue
+            item_id = _slug_id("learned_fb", f"{intent}|{query_l}")
+            if item_id in existing_ids:
+                continue
+            coaching = _INTENT_COACHING.get(intent, _INTENT_COACHING["general_query"])
+            # Use original-cased first TSV occurrence via query_l display.
+            title = f"Frequent topic coaching: {query_l[:80]}"
+            content = (
+                f"Learners often ask about «{query_l}» (intent={intent}). {coaching}"
+            )
+            tags = list(_INTENT_TOP_TAGS.get(intent, [intent, "education"]))
+            if "education" not in tags:
+                tags.append("education")
+            existing.append(
+                {
+                    "id": item_id,
+                    "title": title,
+                    "content": content,
+                    "tags": tags,
+                    "source": "learned_feedback_v1",
+                }
+            )
+            existing_ids.add(item_id)
+            added += 1
+
+        if added:
+            _save_learned_items(learned_knowledge_path, existing)
+        elif not learned_knowledge_path.exists():
+            _save_learned_items(learned_knowledge_path, existing)
+        return added
+
+    @staticmethod
+    def promote_grounded_answer(
+        learned_knowledge_path: Path | None,
+        query: str,
+        intent: str,
+        answer: str,
+        citations: list[str] | tuple[str, ...] | None,
+        confidence: float,
+    ) -> bool:
+        """Upsert a truncated grounded answer into the learned KB when quality gates pass.
+
+        Gates: confidence ≥ 0.55 and at least one citation. Content is truncated (~800 chars)
+        and framed as educational retrieval material — not LoRA weights / tip guarantees.
+        """
+        if learned_knowledge_path is None:
+            return False
+        cite_list = [c for c in (citations or []) if c]
+        if float(confidence) < 0.55 or not cite_list:
+            return False
+        cleaned_answer = (answer or "").strip()
+        if not cleaned_answer:
+            return False
+        truncated = cleaned_answer[:800]
+        if len(cleaned_answer) > 800:
+            truncated = truncated.rstrip() + "…"
+        item_id = _slug_id("learned_ans", f"{intent}|{query.strip().lower()}")
+        tags = list(_INTENT_TOP_TAGS.get(intent, [intent, "education"]))
+        if "education" not in tags:
+            tags.append("education")
+        item = {
+            "id": item_id,
+            "title": f"Grounded answer note: {query.strip()[:72]}",
+            "content": (
+                f"Educational retrieved note for «{query.strip()}» "
+                f"(intent={intent}, citations={', '.join(cite_list[:5])}). "
+                f"{truncated} "
+                "Informational only — not investment advice and not a guaranteed return."
+            ),
+            "tags": tags,
+            "source": "learned_answer_v1",
+        }
+        existing = _load_learned_items(learned_knowledge_path)
+        by_id = {str(row["id"]): row for row in existing}
+        by_id[item_id] = item
+        _save_learned_items(learned_knowledge_path, list(by_id.values()))
+        return True
