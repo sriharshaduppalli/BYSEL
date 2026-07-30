@@ -84,6 +84,21 @@ object RetrofitClient {
             .build()
     }
 
+    /**
+     * Dedicated client for auth endpoints.
+     *
+     * Render free-tier cold starts often exceed the shared 25s callTimeout, which
+     * surfaces as "timeout" on Login/Register even when credentials are valid.
+     */
+    val authHttpClient: OkHttpClient by lazy {
+        httpClient.newBuilder()
+            .callTimeout(90, TimeUnit.SECONDS)
+            .connectTimeout(45, TimeUnit.SECONDS)
+            .readTimeout(90, TimeUnit.SECONDS)
+            .writeTimeout(45, TimeUnit.SECONDS)
+            .build()
+    }
+
     private val gson by lazy { SafeGsonFactory.create() }
 
     private val retrofit: Retrofit by lazy {
@@ -102,11 +117,23 @@ object RetrofitClient {
             .build()
     }
 
+    private val authRetrofit: Retrofit by lazy {
+        Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(authHttpClient)
+            .addConverterFactory(GsonConverterFactory.create(gson))
+            .build()
+    }
+
     val apiService: BYSELApiService by lazy {
         retrofit.create(BYSELApiService::class.java)
     }
 
     val aiApiService: BYSELApiService by lazy {
         aiRetrofit.create(BYSELApiService::class.java)
+    }
+
+    val authApiService: BYSELApiService by lazy {
+        authRetrofit.create(BYSELApiService::class.java)
     }
 }

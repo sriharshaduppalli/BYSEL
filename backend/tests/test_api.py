@@ -827,6 +827,24 @@ def test_login_username_is_case_insensitive():
     assert "access_token" in payload
 
 
+def test_login_accepts_registered_email_case_insensitively():
+    username, email, password = _unique_user("EmailLoginUser")
+
+    register_response = client.post(
+        "/auth/register",
+        json={"username": username, "email": email, "password": password},
+    )
+    assert register_response.status_code == 200
+
+    for identifier in (email, email.upper(), f"  {email}  "):
+        login_response = client.post(
+            "/auth/login",
+            json={"username": identifier, "password": password},
+        )
+        assert login_response.status_code == 200, identifier
+        assert login_response.json()["status"] == "ok"
+
+
 def test_get_profile_returns_authenticated_user_details():
     username, email, password = _unique_user("profile_get_user")
 

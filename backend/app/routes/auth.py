@@ -1273,16 +1273,15 @@ def register(user: UserRegister, request: Request):
 @router.post("/login", response_model=AuthResponse)
 def login(user: UserLogin, request: Request):
     client_ip = _client_ip(request)
-    normalized_username = _normalize_username(user.username)
-    if not normalized_username:
-        raise HTTPException(status_code=400, detail="Username or email is required")
-    username_key = normalized_username.lower()
+    # Accept username OR email in the same field (email is case-insensitive).
+    normalized_identifier = _normalize_identifier(user.username)
+    username_key = normalized_identifier.lower()
     login_key = f"{client_ip}:{username_key}"
     try:
         _enforce_login_lockout(login_key)
     except HTTPException:
         _metric_inc("login.lockout_blocked")
-        logger.warning("auth.login.lockout_blocked ip=%s username=%s", client_ip, _mask_identifier(normalized_username))
+        logger.warning("auth.login.lockout_blocked ip=%s username=%s", client_ip, _mask_identifier(normalized_identifier))
         raise
 
     try:
@@ -1295,12 +1294,15 @@ def login(user: UserLogin, request: Request):
         )
     except HTTPException:
         _metric_inc("login.rate_limited")
-        logger.warning("auth.login.rate_limited ip=%s username=%s", client_ip, _mask_identifier(normalized_username))
+        logger.warning("auth.login.rate_limited ip=%s username=%s", client_ip, _mask_identifier(normalized_identifier))
         raise
 
-    if len(user.password) > 72:
+    raw_password = str(user.password or "")
+    if len(raw_password) > 72:
         _metric_inc("login.failure_password_too_long")
         raise HTTPException(status_code=400, detail="Password must be 72 characters or less.")
+    # Match register hashing: bcrypt/passlib operate on the same truncated form.
+    password = raw_password[:72]
     db: Session = SessionLocal()
     try:
         _prune_stale_refresh_tokens(db)
@@ -1308,14 +1310,22 @@ def login(user: UserLogin, request: Request):
             (func.lower(UserModel.username) == username_key) |
             (func.lower(UserModel.email) == username_key)
         ).first()
-        if not db_user or not _verify_password(user.password, db_user.password_hash):
+        if not db_user or not _verify_password(password, db_user.password_hash):
             _metric_inc("login.failure_invalid_credentials")
             lockout_triggered = _record_login_failure(login_key)
             if lockout_triggered:
                 _metric_inc("login.lockout_triggered")
-                logger.warning("auth.login.lockout_triggered ip=%s username=%s", client_ip, _mask_identifier(normalized_username))
-            logger.warning("auth.login.failed ip=%s username=%s reason=invalid_credentials", client_ip, _mask_identifier(normalized_username))
-            raise HTTPException(status_code=401, detail="Invalid username or password")
+                logger.warning("auth.login.lockout_triggered ip=%s username=%s", client_ip, _mask_identifier(normalized_identifier))
+            logger.warning(
+                "auth.login.failed ip=%s username=%s reason=%s",
+                client_ip,
+                _mask_identifier(normalized_identifier),
+                "user_not_found" if not db_user else "bad_password",
+            )
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid username or password. You can sign in with either your username or registered email.",
+            )
 
         token_version = int(getattr(db_user, "token_version", 0) or 0)
         access_token, refresh_token = _create_auth_tokens(user_id=db_user.id, token_version=token_version)
@@ -1327,7 +1337,7 @@ def login(user: UserLogin, request: Request):
 
         _record_login_success(login_key)
         _metric_inc("login.success")
-        logger.info("auth.login.success ip=%s user_id=%s username=%s", client_ip, db_user.id, _mask_identifier(normalized_username))
+        logger.info("auth.login.success ip=%s user_id=%s username=%s", client_ip, db_user.id, _mask_identifier(normalized_identifier))
         return AuthResponse(
             status="ok",
             user_id=db_user.id,

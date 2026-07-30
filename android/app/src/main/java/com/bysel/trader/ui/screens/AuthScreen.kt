@@ -97,6 +97,13 @@ fun AuthScreen(
 
     var otpCountdown by remember { mutableStateOf(0) }
 
+    // Wake Render free-tier before the user taps Login (avoids false "timeout" on cold start).
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { authRepository.warmBackend() }
+        }
+    }
+
     // Activity (needed to launch User Consent intent)
     val activity = LocalContext.current as? Activity
 
@@ -216,6 +223,15 @@ fun AuthScreen(
             } else "Create your account",
             color = appTheme.textSecondary
         )
+        if (isLoginMode && !isOtpMode) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "Use either your username or the email from registration — both work with the same password.",
+                fontSize = 12.sp,
+                color = appTheme.textSecondary,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
 
         Spacer(modifier = Modifier.height(20.dp))
 
