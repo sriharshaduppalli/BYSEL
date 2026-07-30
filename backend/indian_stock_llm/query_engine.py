@@ -16,25 +16,37 @@ from .knowledge_base import (
     HttpReranker,
     InMemoryVectorIndex,
     KnowledgeBase,
+    KnowledgeItem,
     LocalHashEmbeddingProvider,
     MLReranker,
     SentenceTransformerEmbeddingProvider,
 )
 from .builtin_knowledge import builtin_knowledge_items
-from .learning_loop import ContinualLearningManager, DailyFeedbackAnalyzer
+from .learning_loop import ContinualLearningManager, DailyFeedbackAnalyzer, FeedbackLearningPipeline
 from .model_serving import HttpModelBackend, ModelOrchestrator, TemplateModelBackend
 from .prediction import PredictionEngine, PredictionSignals
 from .safety import SafetyPolicy
+import json
+from pathlib import Path
 
 INTENT_KEYWORDS = {
-    "price_action": {"price", "target", "entry", "exit", "support", "resistance"},
+    "price_action": {
+        "price", "target", "entry", "exit", "support", "resistance",
+        "kharid", "bech", "buy", "sell",
+    },
     "prediction": {"predict", "prediction", "forecast", "tomorrow", "next", "week"},
     "fundamentals": {
         "pe", "pb", "valuation", "fundamental", "fundamentals", "profit", "profits",
-        "balance", "sheet", "roe", "roce", "eps", "dividend",
+        "balance", "sheet", "roe", "roce", "eps", "dividend", "ltcg", "stcg", "stt",
     },
-    "events_news": {"news", "event", "result", "results", "quarter", "guidance", "sebi", "regulation"},
-    "portfolio": {"portfolio", "allocation", "risk", "diversification", "sip"},
+    "events_news": {
+        "news", "event", "result", "results", "quarter", "guidance", "sebi", "regulation",
+        "demat", "circuit", "settlement",
+    },
+    "portfolio": {
+        "portfolio", "allocation", "risk", "diversification", "sip",
+        "paper", "practice", "journal", "margin", "lot",
+    },
     "stock_analysis": {"analyze", "analysis", "technical", "trend", "momentum", "checklist"},
     "market_calculations": {
         "calculate", "calculation", "cagr", "return", "volatility", "beta", "indicator",
@@ -46,6 +58,141 @@ MAX_CONFIDENCE = 0.95
 BASE_CONTEXT_CONFIDENCE = 0.65
 CONFIDENCE_PER_CONTEXT_ITEM = 0.1
 _SPACY_PIPELINE = None
+
+# Map common Hinglish / retail tokens to English cues before intent classify.
+_HINGLISH_ALIASES = {
+    "kharid": "buy",
+    "kharido": "buy",
+    "kharidna": "buy",
+    "kharidne": "buy",
+    "bech": "sell",
+    "becho": "sell",
+    "bechna": "sell",
+    "bechne": "sell",
+    "demat": "demat",
+    "circuit": "circuit",
+    "lot": "lot",
+    "margin": "margin",
+    "stt": "stt",
+    "ltcg": "ltcg",
+    "stcg": "stcg",
+    "paper": "paper",
+    "practice": "practice",
+    "journal": "journal",
+    "sip": "sip",
+}
+
+
+def _normalize_hinglish(query: str) -> str:
+    """Lightweight Hinglish → English cue expansion for intent classification."""
+    def _repl(match: re.Match[str]) -> str:
+        token = match.group(0)
+        mapped = _HINGLISH_ALIASES.get(token.lower())
+        if not mapped:
+            return token
+        # Keep original token and add English cue so keyword sets still match both.
+        if mapped.lower() == token.lower():
+            return token
+        return f"{token} {mapped}"
+
+    return re.sub(r"[A-Za-z0-9]+", _repl, query)
+
+
+def _load_learned_knowledge_items(path: Path | None) -> list[KnowledgeItem]:
+    if path is None or not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    if not isinstance(data, list):
+        return []
+    items: list[KnowledgeItem] = []
+    for row in data:
+        if not isinstance(row, dict):
+            continue
+        try:
+            items.append(
+                KnowledgeItem(
+                    id=str(row["id"]),
+                    title=str(row.get("title", row["id"])),
+                    content=str(row.get("content", "")),
+                    tags=list(row.get("tags") or []),
+                    source=str(row.get("source", "learned_feedback_v1")),
+                )
+            )
+        except Exception:
+            continue
+    return items
+
+
+def _yfinance_last_close(symbol: str) -> tuple[float, float] | None:
+    """Return (last, pct_change) from yfinance SYMBOL.NS; failures stay silent."""
+    try:
+        import yfinance as yf  # type: ignore
+
+        ticker = yf.Ticker(f"{symbol}.NS")
+        hist = ticker.history(period="5d")
+        if hist is None or getattr(hist, "empty", True):
+            return None
+        closes = hist["Close"]
+        last = float(closes.iloc[-1])
+        prev = float(closes.iloc[-2]) if len(closes) > 1 else last
+        pct = ((last - prev) / prev * 100.0) if prev else 0.0
+        return last, pct
+    except Exception:
+        return None
+
+
+def _live_quote_knowledge_item(symbol: str) -> KnowledgeItem | None:
+    """Build a live_quote_v1 KnowledgeItem for grounding; failures stay silent."""
+    sym = (symbol or "").strip().upper()
+    if not sym:
+        return None
+    last: float | None = None
+    pct: float | None = None
+    try:
+        from app.market_data import fetch_quote
+
+        quote = fetch_quote(sym)
+        if isinstance(quote, dict):
+            raw_last = quote.get("last")
+            raw_pct = quote.get("pctChange")
+            if raw_last is not None:
+                last = float(raw_last)
+            if raw_pct is not None:
+                pct = float(raw_pct)
+    except Exception:
+        pass
+    if last is None:
+        yf_pair = _yfinance_last_close(sym)
+        if yf_pair is None:
+            return None
+        last, pct = yf_pair
+    pct_s = f"{pct:+.2f}%" if pct is not None else "n/a"
+    market_note = ""
+    try:
+        from nsepython import nse_marketStatus  # type: ignore
+
+        status = nse_marketStatus()
+        if isinstance(status, dict):
+            state = status.get("marketState") or status.get("status") or status
+            market_note = f" NSE market status snapshot: {state}."
+        elif status:
+            market_note = f" NSE market status snapshot: {status}."
+    except Exception:
+        market_note = ""
+    content = (
+        f"Live quote snapshot for {sym}: last={last:.2f}, pctChange={pct_s}.{market_note} "
+        "Informational grounding only — not a trade recommendation or guaranteed return."
+    )
+    return KnowledgeItem(
+        id=f"live_{sym}",
+        title=f"Live quote {sym}",
+        content=content,
+        tags=["symbols", "stocks", "live_quote", sym.lower()],
+        source="live_quote_v1",
+    )
 
 
 def _regex_tokens(query: str) -> set[str]:
@@ -133,12 +280,15 @@ class StockMarketAssistant:
             reranker = HeuristicReranker()
 
         try:
+            extra = list(builtin_knowledge_items())
+            extra.extend(_load_learned_knowledge_items(self.config.learned_knowledge_path))
             self.knowledge_base = KnowledgeBase.from_json(
                 self.config.knowledge_base_path,
                 embedding_provider=embedding_provider,
                 vector_index=InMemoryVectorIndex(),
                 reranker=reranker,
-                extra_items=builtin_knowledge_items(),
+                extra_items=extra,
+                embedding_cache_path=self.config.embedding_cache_path,
             )
         except Exception as exc:
             raise ValueError(
@@ -194,16 +344,46 @@ class StockMarketAssistant:
         t.start()
 
     def trigger_index_refresh(self) -> None:
-        """Rebuild the knowledge-base embedding index in-place.
+        """Promote feedback into learned KB, merge items, rebuild embeddings, save cache.
 
-        Call this after adding new knowledge items or swapping the embedding provider.
-        It is also invoked automatically by the nightly refresh daemon when
-        ``nightly_refresh_enabled`` is ``True``.
+        Improves retrieval/knowledge over time — NOT full neural LLM fine-tuning.
+        Also invoked by the nightly refresh daemon when ``nightly_refresh_enabled``.
         """
-        self.knowledge_base.refresh_index()
+        if self.config.feedback_learning_enabled:
+            try:
+                FeedbackLearningPipeline.promote_from_feedback_log(
+                    self.config.feedback_log_path,
+                    self.config.learned_knowledge_path,
+                    min_count=self.config.feedback_promote_min_count,
+                )
+            except Exception:
+                pass
+
+        combined: list[KnowledgeItem] = []
+        seen: set[str] = set()
+        # Prefer current in-memory items (builtin + prior learned), then re-merge learned file.
+        for item in list(self.knowledge_base.items):
+            if item.id not in seen and not str(item.id).startswith("live_"):
+                combined.append(item)
+                seen.add(item.id)
+        for item in _load_learned_knowledge_items(self.config.learned_knowledge_path):
+            if item.id not in seen:
+                combined.append(item)
+                seen.add(item.id)
+        # Also keep sample JSON + builtin if somehow empty
+        if not combined:
+            combined = list(builtin_knowledge_items())
+
+        self.knowledge_base.refresh_index(new_items=combined)
+        if self.config.embedding_cache_path is not None:
+            try:
+                self.knowledge_base.save_embedding_cache(self.config.embedding_cache_path)
+            except Exception:
+                pass
 
     def classify_intent(self, query: str) -> str:
-        tokens = _regex_tokens(query) | _nlp_tokens(query, self.config.nlp_backend)
+        normalized = _normalize_hinglish(query)
+        tokens = _regex_tokens(normalized) | _nlp_tokens(normalized, self.config.nlp_backend)
         scores: dict[str, int] = {}
         for intent, keywords in INTENT_KEYWORDS.items():
             scores[intent] = len(tokens & keywords)
@@ -246,6 +426,23 @@ class StockMarketAssistant:
                 buy, sell = numbers[0], numbers[1]
                 absolute_return = DeterministicCalculator.absolute_return(buy=buy, sell=sell)
                 return f"Absolute return is {absolute_return:.2f}% (buy={buy}, sell={sell})."
+            if ("p/e" in q or "pe " in q or q.strip().startswith("pe") or " pe" in q) and "peg" not in q and len(numbers) >= 2:
+                pe = DeterministicCalculator.pe(price=numbers[0], eps=numbers[1])
+                return f"P/E is {pe:.2f} (price={numbers[0]}, EPS={numbers[1]})."
+            if ("p/b" in q or "pb " in q or "price to book" in q) and len(numbers) >= 2:
+                pb = DeterministicCalculator.pb(price=numbers[0], book_value=numbers[1])
+                return f"P/B is {pb:.2f} (price={numbers[0]}, book={numbers[1]})."
+            if "peg" in q and len(numbers) >= 2:
+                peg = DeterministicCalculator.peg(pe=numbers[0], growth_pct=numbers[1])
+                return f"PEG is {peg:.2f} (P/E={numbers[0]}, growth%={numbers[1]})."
+            if "sharpe" in q and len(numbers) >= 2:
+                sharpe = DeterministicCalculator.sharpe(
+                    excess_return_pct=numbers[0], volatility_pct=numbers[1]
+                )
+                return f"Sharpe is {sharpe:.2f} (excess return%={numbers[0]}, volatility%={numbers[1]})."
+            if "drawdown" in q and len(numbers) >= 2:
+                dd = DeterministicCalculator.drawdown(peak=numbers[0], trough=numbers[1])
+                return f"Drawdown is {dd:.2f}% (peak={numbers[0]}, trough={numbers[1]})."
         except ValueError:
             return None
         return None
@@ -295,11 +492,17 @@ class StockMarketAssistant:
         self.learning_manager.record_anonymized_feedback(query=query, intent=intent)
 
         # Prefer deterministic education pack for definitions / equations.
+        # Skip when the user asks for a live indicator on a named symbol.
         education = None
         try:
             from app.market_education import get_education_answer
 
-            education = get_education_answer(query)
+            wants_live_indicator = (
+                PandasTaIndicatorCalculator.indicator_requested(query)
+                and bool(PandasTaIndicatorCalculator._symbol_from_query(query))
+            )
+            if not wants_live_indicator:
+                education = get_education_answer(query)
         except Exception:
             education = None
         if education:
@@ -348,8 +551,6 @@ class StockMarketAssistant:
 
         # Inject resolved instrument facts into grounding context.
         if resolved_entity:
-            from .knowledge_base import KnowledgeItem as _KI
-
             entity_blurb = (
                 f"Matched instrument: {resolved_entity.get('symbol')} — "
                 f"{resolved_entity.get('company_name', '')} "
@@ -357,7 +558,7 @@ class StockMarketAssistant:
                 f"ISIN={resolved_entity.get('isin', 'n/a')})."
             )
             context_items = [
-                _KI(
+                KnowledgeItem(
                     id=f"entity_{resolved_entity.get('symbol', 'x')}",
                     title=f"Instrument {resolved_entity.get('symbol')}",
                     content=entity_blurb,
@@ -366,26 +567,35 @@ class StockMarketAssistant:
                 ),
                 *context_items,
             ][: self.config.top_k_context + 1]
+            live_item = _live_quote_knowledge_item(str(resolved_entity.get("symbol") or ""))
+            if live_item is not None:
+                context_items = [live_item, *context_items][: self.config.top_k_context + 2]
 
         citations = self._extract_citations(context_items)
         deterministic_note = ""
-        if intent == "market_calculations":
+        if intent == "market_calculations" or PandasTaIndicatorCalculator.indicator_requested(query):
             note_lines: list[str] = []
-            deterministic = self._deterministic_calculation(query)
-            if deterministic:
-                note_lines.append(f"Deterministic calculation: {deterministic}")
-            elif "cagr" in query.lower() or "return" in query.lower():
-                note_lines.append(
-                    "Deterministic calculation unavailable: provide valid positive numeric inputs "
-                    "(for CAGR: start, end, years; for return: buy, sell)."
+            if intent == "market_calculations":
+                deterministic = self._deterministic_calculation(query)
+                if deterministic:
+                    note_lines.append(f"Deterministic calculation: {deterministic}")
+                elif "cagr" in query.lower() or "return" in query.lower():
+                    note_lines.append(
+                        "Deterministic calculation unavailable: provide valid positive numeric inputs "
+                        "(for CAGR: start, end, years; for return: buy, sell)."
+                    )
+            if PandasTaIndicatorCalculator.indicator_requested(query):
+                indicator_note = PandasTaIndicatorCalculator.indicator_note(
+                    query,
+                    symbol_hint=str((resolved_entity or {}).get("symbol") or "") or None,
                 )
-            indicator_note = PandasTaIndicatorCalculator.indicator_note(query)
-            if indicator_note:
-                note_lines.append(f"Indicator calculation: {indicator_note}")
-            elif PandasTaIndicatorCalculator.indicator_requested(query):
-                note_lines.append(
-                    "Indicator calculation unavailable: provide an indicator query with explicit price series."
-                )
+                if indicator_note:
+                    note_lines.append(f"Indicator calculation: {indicator_note}")
+                else:
+                    note_lines.append(
+                        "Indicator calculation unavailable: name a symbol (e.g. RSI of RELIANCE) "
+                        "or provide an explicit price series."
+                    )
             deterministic_note = "\n".join(note_lines)
 
         if context_items:
@@ -508,6 +718,34 @@ class StockMarketAssistant:
             citations = ()
             if diagnostics:
                 diagnostics["error_reason"] = "low_confidence_safety_threshold"
+
+        grounded = bool(citations) and confidence >= 0.55
+        try:
+            self.learning_manager.record_interaction(
+                query=query,
+                intent=intent,
+                confidence=confidence,
+                citation_count=len(citations),
+                grounded=grounded,
+            )
+        except Exception:
+            pass
+        if (
+            self.config.feedback_learning_enabled
+            and grounded
+            and self.config.learned_knowledge_path is not None
+        ):
+            try:
+                FeedbackLearningPipeline.promote_grounded_answer(
+                    self.config.learned_knowledge_path,
+                    query=query,
+                    intent=intent,
+                    answer=answer,
+                    citations=citations,
+                    confidence=confidence,
+                )
+            except Exception:
+                pass
 
         return AssistantResponse(
             intent=intent,

@@ -48,8 +48,13 @@ data class Quote(
     val fiftyDayAverage: Double? = null,
     @SerializedName("twoHundredDayAverage")
     val twoHundredDayAverage: Double? = null,
-    val timestamp: Long = System.currentTimeMillis()
-)
+    // API often sends null; SafeGson maps null/"" → 0. Client fills wall-clock when 0.
+    @SerializedName("timestamp")
+    val timestamp: Long = 0L
+) {
+    fun withFreshTimestampIfMissing(): Quote =
+        if (timestamp > 0L) this else copy(timestamp = System.currentTimeMillis())
+}
  
 
 @Entity(tableName = "holdings")
@@ -259,6 +264,28 @@ data class StockRecommendationsResponse(
     val generatedAt: String = ""
 )
 
+/** Educational paper-trade drill card — not an investment tip. */
+data class PracticeIdea(
+    val symbol: String = "",
+    val name: String = "",
+    val stance: String = "",
+    val title: String = "",
+    val coaching: String = "",
+    val lastPrice: Double = 0.0,
+    val pctChange: Double = 0.0,
+    val entry: Double = 0.0,
+    val stopLoss: Double = 0.0,
+    val target: Double = 0.0,
+    val riskReward: Double = 0.0,
+    val suggestedQty: Int = 1,
+)
+
+data class PracticeIdeasResponse(
+    val ideas: List<PracticeIdea> = emptyList(),
+    val disclaimer: String = "",
+    val generatedAt: String = "",
+)
+
 data class HistoryCandle(
     val timestamp: Long = 0L,
     val open: Double = 0.0,
@@ -315,9 +342,11 @@ data class HeatmapSector(
     val declines: Int = 0,
     val unchanged: Int = 0,
     val totalStocks: Int = 0,
+    val listedStocks: Int = 0,
     val intensity: String = "",
     val topGainer: HeatmapStock? = null,
-    val topLoser: HeatmapStock? = null
+    val topLoser: HeatmapStock? = null,
+    val tilesTruncated: Boolean = false,
 )
 
 data class MarketBreadth(
@@ -340,6 +369,10 @@ data class MarketHeatmap(
     val marketOpen: Boolean? = null,
     val isStale: Boolean = false,
     val staleReason: String? = null,
+    val universeSize: Int = 0,
+    val quotedCount: Int = 0,
+    val tilesPerSector: Int = 0,
+    val pendingQuotes: Int = 0,
 )
 
 data class SectorSummary(

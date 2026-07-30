@@ -131,14 +131,10 @@ def _order_outcome_snapshot() -> dict[str, int | float]:
 
 
 def _resolve_allowed_origins() -> list[str]:
-    raw_origins = os.getenv("BYSEL_ALLOWED_ORIGINS", "").strip()
-    if raw_origins:
-        origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
-        if origins:
-            return origins
-
-    # Safe local defaults for Android emulator and local web clients.
-    return [
+    # Marketing site + local web clients — always merged unless origins are "*".
+    marketing_and_local = [
+        "https://byseltrader.com",
+        "https://www.byseltrader.com",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:5173",
@@ -146,6 +142,20 @@ def _resolve_allowed_origins() -> list[str]:
         "http://10.0.2.2:3000",
         "http://10.0.2.2:5173",
     ]
+
+    raw_origins = os.getenv("BYSEL_ALLOWED_ORIGINS", "").strip()
+    if raw_origins:
+        origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+        if origins:
+            if len(origins) == 1 and origins[0] == "*":
+                return origins
+            merged: list[str] = []
+            for origin in [*origins, *marketing_and_local]:
+                if origin and origin not in merged:
+                    merged.append(origin)
+            return merged
+
+    return marketing_and_local
 
 
 allowed_origins = _resolve_allowed_origins()

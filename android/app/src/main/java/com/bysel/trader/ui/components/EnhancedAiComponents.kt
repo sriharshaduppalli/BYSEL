@@ -44,18 +44,24 @@ data class ProfitSignal(
 )
 
 object ProfitSignalExtractor {
-    private val ENTRY_RE = Regex("""(?i)(?:entry|buy(?:\s+at)?|enter(?:\s+at)?|accumulate(?:\s+(?:near|around|at))?)[:\s]*₹?\s*([\d,]+(?:\.\d+)?)""")
-    private val TARGET_RE = Regex("""(?i)(?:target|upside|tp|take[\s-]?profit|price[\s-]?target)[:\s]*₹?\s*([\d,]+(?:\.\d+)?)""")
+    private val ENTRY_RE = Regex("""(?i)(?:entry|buy(?:\s+at)?|enter(?:\s+at)?|accumulate(?:\s+(?:near|around|at))?|current\s+price)[:\s]*₹?\s*([\d,]+(?:\.\d+)?)""")
+    private val TARGET_RE = Regex("""(?i)(?:target|upside|tp|take[\s-]?profit|price[\s-]?target|1[\s-]?month(?:\s+model)?(?:\s+move)?(?:\s+to)?)[:\s]*₹?\s*([\d,]+(?:\.\d+)?)""")
     private val SL_RE = Regex("""(?i)(?:stop[\s-]?loss|sl|stop|downside[\s-]?risk|risk[\s-]?at)[:\s]*₹?\s*([\d,]+(?:\.\d+)?)""")
-    private val SIGNAL_RE = Regex("""(?i)(STRONG[\s_]?BUY|BUY|STRONG[\s_]?SELL|SELL|HOLD|ACCUMULATE|NEUTRAL)""")
+    private val SIGNAL_RE = Regex("""(?i)(?:decision\s+bias\s*:\s*\**\s*)?(STRONG[\s_]?BUY|BUY|STRONG[\s_]?SELL|SELL|HOLD|ACCUMULATE|NEUTRAL)""")
     private val CONFIDENCE_RE = Regex("""(?i)(?:confidence|conviction)[:\s]*(\d{1,3})%?""")
     private val TIMEFRAME_RE = Regex("""(?i)(?:timeframe|horizon|term|holding[\s-]?period)[:\s]*(short[\s-]?term|medium[\s-]?term|long[\s-]?term|\d+\s*(?:day|week|month|year)s?)""")
-    private val SYMBOL_RE = Regex("""(?i)(?:for|analysis of|stock|symbol)[:\s]*([A-Z]{2,15})""")
+    private val SYMBOL_RE = Regex("""(?i)(?:for|analysis of|stock|symbol|trade decision)[:\s][^()\n]*\(([A-Z][A-Z0-9.&-]{1,19})\)|(?:for|analysis of|stock|symbol)[:\s]*([A-Z]{2,15})\b|\(([A-Z][A-Z0-9.&-]{1,19})\)""")
 
     fun extract(text: String, contextSymbol: String? = null): ProfitSignal? {
-        val entry = ENTRY_RE.find(text)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
-        val target = TARGET_RE.find(text)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
-        val stopLoss = SL_RE.find(text)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
+        var entry = ENTRY_RE.find(text)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
+        var target = TARGET_RE.find(text)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
+        var stopLoss = SL_RE.find(text)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
+
+        // Derive actionable levels from current price when AI reply only has price + signal.
+        if (entry != null && target == null && stopLoss == null) {
+            target = entry * 1.05
+            stopLoss = entry * 0.97
+        }
 
         // Need at least entry+target or target+stopLoss to show a useful card
         if (entry == null && target == null && stopLoss == null) return null
@@ -63,7 +69,11 @@ object ProfitSignalExtractor {
         val signal = SIGNAL_RE.find(text)?.groupValues?.get(1)?.uppercase()?.replace("_", " ") ?: "HOLD"
         val confidence = CONFIDENCE_RE.find(text)?.groupValues?.get(1)?.toIntOrNull()
         val timeframe = TIMEFRAME_RE.find(text)?.groupValues?.get(1)
-        val symbol = contextSymbol ?: SYMBOL_RE.find(text)?.groupValues?.get(1) ?: ""
+        val matchedSymbol = SYMBOL_RE.find(text)?.groupValues
+            ?.drop(1)
+            ?.firstOrNull { it.isNotBlank() }
+            ?.uppercase()
+        val symbol = contextSymbol?.trim()?.uppercase()?.takeIf { it.isNotBlank() } ?: matchedSymbol.orEmpty()
 
         return ProfitSignal(symbol, signal, entry, target, stopLoss, confidence, timeframe)
     }
@@ -188,7 +198,7 @@ fun ProfitSignalCard(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    if (onBuy != null && isBullish) {
+                    if (onBuy != null) {
                         Button(
                             onClick = onBuy,
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C853)),

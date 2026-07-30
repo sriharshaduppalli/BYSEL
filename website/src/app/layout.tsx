@@ -25,17 +25,19 @@ const monoFont = IBM_Plex_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.byseltrader.com"),
   title: {
-    default: "BYSEL Trader | AI-First Trading Simulator",
+    default: "BYSEL Trader | AI Paper Trading for Indian Markets",
     template: "%s | BYSEL Trader",
   },
   description:
-    "Train in realistic Indian markets with BYSEL's AI guidance, live market context, and skill-first execution workflows.",
+    "BYSEL Trader is an Android paper-trading app for NSE markets: AI stock assistant, live heatmap, portfolio practice, and educational tools. Not a SEBI-registered broker.",
   keywords: [
     "BYSEL",
     "paper trading",
     "stock simulator",
     "indian stock market app",
     "ai trading assistant",
+    "NSE heatmap",
+    "byseltrader",
   ],
   icons: {
     icon: "/ic_launcher.png",

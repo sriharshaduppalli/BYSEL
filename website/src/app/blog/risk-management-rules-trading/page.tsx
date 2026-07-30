@@ -109,7 +109,7 @@ export default function BlogPost() {
             </p>
 
             <div className="btn-row" style={{ marginTop: "1.5rem" }}>
-              <Link href="https://play.google.com/store" className="btn-primary" target="_blank" rel="noreferrer">
+              <Link href="https://play.google.com/store/apps/details?id=com.bysel.trader" className="btn-primary" target="_blank" rel="noreferrer">
                 Practice Risk Management
               </Link>
               <Link href="/blog/beginners-guide-indian-stock-market" className="btn-neutral">

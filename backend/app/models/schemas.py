@@ -12,7 +12,9 @@ class QuoteCreate(QuoteBase):
 
 class Quote(QuoteBase):
     id: Optional[int] = None
-    timestamp: Optional[datetime] = None
+    # Epoch millis for Android clients. Prefer int over datetime so JSON never
+    # serializes as an ISO string that Gson can't put into Long.
+    timestamp: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -44,7 +46,8 @@ class AlertCreate(AlertBase):
 class Alert(AlertBase):
     id: int
     isActive: bool = True
-    createdAt: Optional[datetime] = None
+    # Epoch millis for Android Long deserialization (ISO datetimes break Gson).
+    createdAt: Optional[int] = None
 
     class Config:
         from_attributes = True

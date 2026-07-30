@@ -405,5 +405,152 @@ def builtin_knowledge_items() -> list[KnowledgeItem]:
             "tags": ["promoter", "pledge", "shareholding", "risk", "fundamentals"],
             "source": "bysel_builtin_v1",
         },
+        # ── bysel_builtin_v2 — Hinglish retail jargon ─────────────────
+        {
+            "id": "v2_hinglish_demat",
+            "title": "Demat account (Hinglish retail jargon)",
+            "content": (
+                "Demat = dematerialised account jahan shares electronic form mein rehte hain (NSDL/CDSL). "
+                "Delivery kharidne ke baad shares demat mein credit hote hain (T+1 settlement). "
+                "Trading account orders place karta hai; demat holdings store karta hai. "
+                "BYSEL paper trades simulate karti hain — real demat debit/credit nahi hota."
+            ),
+            "tags": ["demat", "delivery", "settlement", "hinglish", "terms", "trading"],
+            "source": "bysel_builtin_v2",
+        },
+        {
+            "id": "v2_hinglish_circuit",
+            "title": "Circuit / price band (Hinglish)",
+            "content": (
+                "Circuit ya price band matlab stock ±X% se zyada move nahi kar sakta us din "
+                "(often 5/10/20% depending on stock). Upper circuit pe buyers, lower pe sellers freeze. "
+                "Freeze ke dauran exit guarantee nahi — liquidity gayab ho sakti hai. "
+                "Index circuit breakers pure market ko pause kar sakte hain extreme moves par."
+            ),
+            "tags": ["circuit", "price band", "hinglish", "risk", "nse", "volatility"],
+            "source": "bysel_builtin_v2",
+        },
+        {
+            "id": "v2_hinglish_t1_stt",
+            "title": "T+1, STT, delivery vs intraday (Hinglish)",
+            "content": (
+                "T+1: aaj delivery kharido, next trading day demat settle. "
+                "STT (Securities Transaction Tax) equity cash/FO trades par lagta hai — brokerage alag hai. "
+                "Delivery = shares rakhna (overnight risk + full STT on sell side typically higher framing). "
+                "Intraday/MIS = same-day square-off; overnight carry nahi. "
+                "Educational only — exact charge schedule broker/exchange ke hisaab se verify karo."
+            ),
+            "tags": ["t+1", "stt", "delivery", "intraday", "hinglish", "charges", "settlement"],
+            "source": "bysel_builtin_v2",
+        },
+        # ── F&O education ────────────────────────────────────────────
+        {
+            "id": "v2_fo_lot_expiry",
+            "title": "F&O lot size and expiry",
+            "content": (
+                "NSE F&O contracts trade in fixed lot sizes (e.g. NIFTY lots change over time; stock lots vary). "
+                "One order = one or more lots, not single shares. Expiry is weekly or monthly depending on "
+                "the contract — at expiry futures settle to cash/spot rules and options may expire worthless. "
+                "Rolling near expiry avoids gamma/theta spikes but adds cost. Always check current lot size "
+                "on NSE before sizing risk."
+            ),
+            "tags": ["fno", "lot", "expiry", "futures", "options", "nifty", "derivatives"],
+            "source": "bysel_builtin_v2",
+        },
+        {
+            "id": "v2_fo_margin_risk",
+            "title": "F&O margin and leverage risk",
+            "content": (
+                "Margin lets you control a large notional with less cash — SPAN + exposure margins apply. "
+                "MTM losses on futures can trigger margin calls the same day. Option buyers risk premium; "
+                "sellers face potentially large losses. Never size F&O like cash equity: a few lots can "
+                "wipe a small account on a gap. Prefer paper practice of lot risk before any live F&O."
+            ),
+            "tags": ["fno", "margin", "leverage", "risk", "futures", "options", "derivatives"],
+            "source": "bysel_builtin_v2",
+        },
+        # ── Equity tax basics (educational) ──────────────────────────
+        {
+            "id": "v2_tax_stcg_ltcg",
+            "title": "Equity STCG and LTCG basics (educational)",
+            "content": (
+                "For listed equity (and equity-oriented funds under common retail framing): "
+                "holding ≤ 12 months is often treated as short-term (STCG); > 12 months as long-term (LTCG). "
+                "Rates and exemptions change with Budget/Finance Act — e.g. historical LTCG exemption "
+                "thresholds and surcharge rules. STT-paid delivery equity has a different tax path than "
+                "intraday/F&O (business income). This is high-level education only — confirm current slabs "
+                "with a CA/tax professional; BYSEL does not compute your tax liability."
+            ),
+            "tags": ["stcg", "ltcg", "tax", "equity", "delivery", "education", "sebi"],
+            "source": "bysel_builtin_v2",
+        },
+        # ── Corporate actions literacy ───────────────────────────────
+        {
+            "id": "v2_corporate_actions",
+            "title": "Corporate actions literacy",
+            "content": (
+                "Common actions: dividend (cash credit), bonus (free shares, price adjusts), "
+                "stock split (more shares, lower price, same value), rights issue (offer to buy more), "
+                "buyback, merger/demerger. Record date / ex-date decide who gets the benefit. "
+                "Charts often adjust for splits/bonus — compare adjusted vs unadjusted carefully. "
+                "Always read exchange/company notices; do not trade only on tip-style rumour of actions."
+            ),
+            "tags": ["corporate actions", "dividend", "bonus", "split", "rights", "events", "education"],
+            "source": "bysel_builtin_v2",
+        },
+        # ── Paper-practice coaching ──────────────────────────────────
+        {
+            "id": "v2_paper_journal",
+            "title": "Paper-trade journaling (entry / SL / target)",
+            "content": (
+                "BYSEL defaults to paper/simulation money — practice process, not tip-chasing. "
+                "Before each paper trade write: (1) why this setup, (2) entry zone, (3) stop-loss, "
+                "(4) target / R:R, (5) invalidation. After exit: what worked, what you ignored, "
+                "did you move SL emotionally? Never chase a missed move — wait for the next valid setup. "
+                "Journaling builds discipline; random 'sure tip' entries do not."
+            ),
+            "tags": ["paper", "practice", "journal", "stop loss", "entry", "target", "education", "risk"],
+            "source": "bysel_builtin_v2",
+        },
+        {
+            "id": "v2_paper_no_chase",
+            "title": "Practice stance: no chase, levels first",
+            "content": (
+                "Practice coaching: mark support/resistance or VWAP levels first, then decide. "
+                "If price already ran far from your planned entry, skip — FOMO is not a plan. "
+                "Size paper positions so a full stop is emotionally boring. Review weekly win-rate "
+                "and average R — process metrics beat one lucky paper P&L screenshot."
+            ),
+            "tags": ["paper", "practice", "levels", "support", "resistance", "discipline", "education"],
+            "source": "bysel_builtin_v2",
+        },
+        # ── Portfolio practice stance ────────────────────────────────
+        {
+            "id": "v2_portfolio_practice",
+            "title": "Portfolio practice stance (educational)",
+            "content": (
+                "In paper portfolios: diversify across sectors, cap single-name risk, and separate "
+                "core (SIP-like slow adds) from satellite swing ideas with hard stops. "
+                "Rebalance on rules (e.g. sector drift), not headlines. Track drawdown of the whole "
+                "book, not only winners. Practice stance = risk budget first, conviction second — "
+                "educational simulation, not a live advisory mandate."
+            ),
+            "tags": ["portfolio", "practice", "diversification", "sip", "risk", "allocation", "education"],
+            "source": "bysel_builtin_v2",
+        },
+        # ── SEBI educational disclaimer ──────────────────────────────
+        {
+            "id": "v2_sebi_disclaimer",
+            "title": "SEBI educational disclaimer (BYSEL)",
+            "content": (
+                "BYSEL and its AI assistants are for education and paper/simulation practice. "
+                "They are NOT a SEBI-registered Research Analyst (RA), Investment Adviser (IA), "
+                "or portfolio manager. Nothing here is a buy/sell tip, guarantee, or personalized "
+                "advisory under SEBI regulations. Markets involve loss of capital. Verify with "
+                "live NSE/BSE data and consult a SEBI-registered intermediary before real trades."
+            ),
+            "tags": ["sebi", "disclaimer", "compliance", "education", "ra", "advice", "risk"],
+            "source": "bysel_builtin_v2",
+        },
     ]
     return [KnowledgeItem(**item) for item in raw]

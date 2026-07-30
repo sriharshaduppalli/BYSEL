@@ -7,11 +7,11 @@ const PRINCIPLES = [
   },
   {
     title: "Simulation before capital",
-    copy: "Confidence should come from repeatable behavior in realistic conditions before real money is at risk.",
+    copy: "Confidence should come from repeatable behavior in realistic Indian-market conditions before real money is at risk.",
   },
   {
     title: "Clarity in every metric",
-    copy: "Users deserve clear explanations, not black-box numbers that cannot guide better action.",
+    copy: "Users deserve clear explanations — AI levels, portfolio health, heatmap mood — not black-box hype.",
   },
 ];
 
@@ -25,21 +25,24 @@ export default function About() {
             Building confident traders through structured practice.
           </h1>
           <p className="lead">
-            BYSEL started with one conviction: trading education should be practical, measurable, and accessible to anyone serious about the craft.
+            BYSEL Trader is an Android paper-trading and market-learning product for Indian equities.
+            We are not a SEBI-registered broker or investment adviser — the app is educational and simulation-first.
           </p>
 
           <div className="split-grid" style={{ marginTop: "1.15rem" }}>
             <article className="glass-card hero-panel" data-animate>
               <h2 className="panel-title">Our Mission</h2>
               <p className="feature-copy" style={{ marginTop: "0.55rem" }}>
-                Help users develop disciplined execution habits with AI-assisted simulation, live market context, and clear feedback loops.
+                Help users develop disciplined execution habits with AI-assisted analysis, live NSE market context,
+                and clear paper-trading feedback loops.
               </p>
             </article>
 
             <article className="glass-card hero-panel" data-animate data-delay="1">
               <h2 className="panel-title">Our Vision</h2>
               <p className="feature-copy" style={{ marginTop: "0.55rem" }}>
-                Become the most trusted simulation-first platform for market learners and trading teams across India.
+                Become the most trusted simulation-first platform for market learners across India —
+                then expand carefully into regulated live trading only when licensing is in place.
               </p>
             </article>
           </div>
@@ -70,21 +73,27 @@ export default function About() {
           <article className="glass-card hero-panel" data-animate>
             <h2 className="panel-title">Leadership</h2>
             <p className="feature-copy" style={{ marginTop: "0.55rem" }}>
-              Sri Harsha Duppalli leads BYSEL with a blend of technology depth and market-learning focus, pushing for a product that teaches execution discipline at scale.
+              Sri Harsha Duppalli leads BYSEL with a blend of technology depth and market-learning focus,
+              pushing for a product that teaches execution discipline at scale.
             </p>
           </article>
 
           <article className="glass-card hero-panel" data-animate data-delay="1">
-            <h2 className="panel-title">Work with us</h2>
+            <h2 className="panel-title">Based in Hyderabad</h2>
             <p className="feature-copy" style={{ marginTop: "0.55rem" }}>
-              We are building a product-led team across engineering, design, and market education.
+              BYSEL Services · Kukatpally, Hyderabad, Telangana, India.
+              Reach us at{" "}
+              <Link href="mailto:support@byseltrader.com" style={{ color: "var(--brand)" }}>
+                support@byseltrader.com
+              </Link>
+              .
             </p>
-            <div className="btn-row" style={{ marginTop: "0.95rem" }}>
+            <div className="btn-row" style={{ marginTop: "0.9rem" }}>
               <Link href="/careers" className="btn-primary">
-                View Careers
+                Careers
               </Link>
               <Link href="/support" className="btn-neutral">
-                Contact Team
+                Support
               </Link>
             </div>
           </article>

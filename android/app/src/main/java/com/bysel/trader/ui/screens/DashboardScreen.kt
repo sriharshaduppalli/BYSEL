@@ -55,6 +55,7 @@ import com.bysel.trader.data.models.Holding
 import com.bysel.trader.data.models.MarketMoverQuote
 import com.bysel.trader.data.models.MarketNewsHeadline
 import com.bysel.trader.data.models.MarketStatus
+import com.bysel.trader.data.models.PracticeIdea
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.ui.components.DashboardSkeletonLoader
 import com.bysel.trader.ui.components.InfoChip
@@ -294,6 +295,8 @@ fun DashboardScreen(
     onQuickTradeClick: ((String) -> Unit)? = null,
     onSignalLabClick: (() -> Unit)? = null,
     onSmartMoneyClick: (() -> Unit)? = null,
+    onPaperBuy: ((String, Int) -> Unit)? = null,
+    onPracticeAlert: ((String, Double, String) -> Unit)? = null,
 ) {
     val dashboardViewModel: DashboardViewModel = viewModel()
     val pinnedStocks by dashboardViewModel.pinnedStocks.collectAsState()
@@ -309,6 +312,9 @@ fun DashboardScreen(
     val marketLosers by dashboardViewModel.pressureZone.collectAsState()
     val moversUniverseSize by dashboardViewModel.moversUniverseSize.collectAsState()
     val moversLoading by dashboardViewModel.moversLoading.collectAsState()
+    val practiceIdeas by dashboardViewModel.practiceIdeas.collectAsState()
+    val practiceIdeasLoading by dashboardViewModel.practiceIdeasLoading.collectAsState()
+    val practiceIdeasDisclaimer by dashboardViewModel.practiceIdeasDisclaimer.collectAsState()
 
     var showHomeGuide by rememberSaveable { mutableStateOf(false) }
     var homeGuideStep by rememberSaveable { mutableIntStateOf(0) }
@@ -330,6 +336,7 @@ fun DashboardScreen(
             onRefresh = {
                 onRefresh()
                 dashboardViewModel.refreshMarketMovers(staggerMs = 400L)
+                dashboardViewModel.refreshPracticeIdeas()
             },
             showHomeGuide = showHomeGuide,
             homeGuideStep = homeGuideStep,
@@ -355,11 +362,16 @@ fun DashboardScreen(
             marketGainers = marketGainers,
             marketLosers = marketLosers,
             moversUniverseSize = moversUniverseSize,
+            practiceIdeas = practiceIdeas,
+            practiceIdeasLoading = practiceIdeasLoading,
+            practiceIdeasDisclaimer = practiceIdeasDisclaimer,
             onAiClick = onAiClick,
             marketStatus = marketStatus,
             onQuickTradeClick = onQuickTradeClick,
             onSignalLabClick = onSignalLabClick,
             onSmartMoneyClick = onSmartMoneyClick,
+            onPaperBuy = onPaperBuy,
+            onPracticeAlert = onPracticeAlert,
         )
     }
 }
@@ -392,11 +404,16 @@ fun DashboardContent(
     marketGainers: List<MarketMoverQuote> = emptyList(),
     marketLosers: List<MarketMoverQuote> = emptyList(),
     moversUniverseSize: Int = 0,
+    practiceIdeas: List<PracticeIdea> = emptyList(),
+    practiceIdeasLoading: Boolean = false,
+    practiceIdeasDisclaimer: String = "",
     onAiClick: (() -> Unit)? = null,
     marketStatus: MarketStatus? = null,
     onQuickTradeClick: ((String) -> Unit)? = null,
     onSignalLabClick: (() -> Unit)? = null,
     onSmartMoneyClick: (() -> Unit)? = null,
+    onPaperBuy: ((String, Int) -> Unit)? = null,
+    onPracticeAlert: ((String, Double, String) -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
     val scope = rememberCoroutineScope()
@@ -611,6 +628,21 @@ fun DashboardContent(
                 positiveCount = positiveCount,
                 negativeCount = negativeCount,
                 moodTitle = marketMoodTitle,
+            )
+        }
+
+        item {
+            PracticeIdeasSection(
+                ideas = practiceIdeas.ifEmpty {
+                    buildLocalPracticeIdeas(topGainers + topLosers)
+                },
+                loading = practiceIdeasLoading && practiceIdeas.isEmpty(),
+                disclaimer = practiceIdeasDisclaimer.ifBlank {
+                    "Educational paper drills only — not investment advice."
+                },
+                onOpenSymbol = onTradeClick,
+                onPaperBuy = onPaperBuy,
+                onPracticeAlert = onPracticeAlert,
             )
         }
 
@@ -1116,6 +1148,13 @@ private fun DashboardHeroCard(
                         fontSize = 30.sp,
                         fontWeight = FontWeight.Bold,
                         color = theme.text,
+                    )
+                    Text(
+                        text = "Paper Practice · Simulated money",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = theme.primary,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 4.dp),
                     )
                     Text(
                         text = marketMoodTitle,
@@ -1640,6 +1679,252 @@ private fun MarketPulseHero(
 }
 
 @Composable
+private fun PracticeIdeasSection(
+    ideas: List<PracticeIdea>,
+    loading: Boolean,
+    disclaimer: String,
+    onOpenSymbol: (String) -> Unit,
+    onPaperBuy: ((String, Int) -> Unit)?,
+    onPracticeAlert: ((String, Double, String) -> Unit)?,
+) {
+    val theme = LocalAppTheme.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Practice Ideas",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = theme.text,
+                )
+                Text(
+                    text = "Drill entry · stop · target with paper money",
+                    fontSize = 11.sp,
+                    color = theme.textSecondary,
+                )
+            }
+            Text(
+                text = "SIM",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = theme.primary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(theme.primary.copy(alpha = 0.15f))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
+
+        when {
+            loading -> {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(2.dp)),
+                    color = theme.primary,
+                )
+            }
+            ideas.isEmpty() -> {
+                Text(
+                    text = "Pull to refresh for today’s practice drills.",
+                    fontSize = 12.sp,
+                    color = theme.textSecondary,
+                )
+            }
+            else -> {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(ideas, key = { it.symbol + it.stance }) { idea ->
+                        PracticeIdeaCard(
+                            idea = idea,
+                            onOpen = { onOpenSymbol(idea.symbol) },
+                            onPaperBuy = onPaperBuy?.let { buy ->
+                                { buy(idea.symbol, idea.suggestedQty.coerceAtLeast(1)) }
+                            },
+                            onAlertAtStop = onPracticeAlert?.let { alert ->
+                                { alert(idea.symbol, idea.stopLoss, "BELOW") }
+                            },
+                        )
+                    }
+                }
+                Text(
+                    text = disclaimer,
+                    fontSize = 10.sp,
+                    color = theme.textSecondary,
+                    lineHeight = 14.sp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PracticeIdeaCard(
+    idea: PracticeIdea,
+    onOpen: () -> Unit,
+    onPaperBuy: (() -> Unit)?,
+    onAlertAtStop: (() -> Unit)?,
+) {
+    val theme = LocalAppTheme.current
+    val stanceColor = when (idea.stance) {
+        "MOMENTUM_DRILL" -> theme.positive
+        "DIP_DRILL" -> theme.negative
+        else -> theme.primary
+    }
+    Column(
+        modifier = Modifier
+            .width(268.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(theme.card)
+            .clickable(onClick = onOpen)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = idea.symbol,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = theme.text,
+                )
+                Text(
+                    text = idea.title.ifBlank { "Practice drill" },
+                    fontSize = 11.sp,
+                    color = stanceColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(
+                text = formatSignedPercent(idea.pctChange),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (idea.pctChange >= 0) theme.positive else theme.negative,
+            )
+        }
+
+        Text(
+            text = idea.coaching,
+            fontSize = 11.sp,
+            color = theme.textSecondary,
+            lineHeight = 15.sp,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            LevelPill(label = "Entry", value = "₹${"%.1f".format(idea.entry)}")
+            LevelPill(label = "SL", value = "₹${"%.1f".format(idea.stopLoss)}")
+            LevelPill(label = "Target", value = "₹${"%.1f".format(idea.target)}")
+        }
+
+        Text(
+            text = "R:R ${"%.2f".format(idea.riskReward)} · qty ${idea.suggestedQty.coerceAtLeast(1)}",
+            fontSize = 10.sp,
+            color = theme.textSecondary,
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (onPaperBuy != null) {
+                Button(
+                    onClick = onPaperBuy,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(34.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = theme.positive),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                ) {
+                    Text("Paper Buy", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            if (onAlertAtStop != null) {
+                OutlinedButton(
+                    onClick = onAlertAtStop,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(34.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                ) {
+                    Text("Alert @ SL", fontSize = 11.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LevelPill(label: String, value: String) {
+    val theme = LocalAppTheme.current
+    Column {
+        Text(text = label, fontSize = 9.sp, color = theme.textSecondary)
+        Text(text = value, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = theme.text)
+    }
+}
+
+private fun buildLocalPracticeIdeas(quotes: List<Quote>): List<PracticeIdea> {
+    return quotes
+        .filter { it.last > 0 }
+        .distinctBy { it.symbol }
+        .take(6)
+        .map { q ->
+            val move = kotlin.math.abs(q.pctChange)
+            val slPct = (move / 100.0 * 1.4 + 0.01).coerceIn(0.012, 0.045)
+            val tpPct = (slPct * 1.7).coerceIn(0.018, 0.07)
+            val entry = q.last
+            val stop = entry * (1.0 - slPct)
+            val target = entry * (1.0 + tpPct)
+            val risk = (entry - stop).coerceAtLeast(0.01)
+            val reward = (target - entry).coerceAtLeast(0.01)
+            val stance = when {
+                q.pctChange >= 0.8 -> "MOMENTUM_DRILL"
+                q.pctChange <= -0.8 -> "DIP_DRILL"
+                else -> "RANGE_DRILL"
+            }
+            val title = when (stance) {
+                "MOMENTUM_DRILL" -> "Momentum practice"
+                "DIP_DRILL" -> "Dip discipline drill"
+                else -> "Range journaling drill"
+            }
+            PracticeIdea(
+                symbol = q.symbol,
+                name = q.symbol,
+                stance = stance,
+                title = title,
+                coaching = "Use live tape on ${q.symbol} to rehearse levels — paper only.",
+                lastPrice = entry,
+                pctChange = q.pctChange,
+                entry = entry,
+                stopLoss = stop,
+                target = target,
+                riskReward = reward / risk,
+                suggestedQty = 1,
+            )
+        }
+}
+
+@Composable
 private fun IdeasRail(
     topMover: Quote?,
     signalTitle: String?,
@@ -1693,7 +1978,7 @@ private fun IdeasRail(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            text = "Ideas",
+            text = "Shortcuts",
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
             color = theme.text,

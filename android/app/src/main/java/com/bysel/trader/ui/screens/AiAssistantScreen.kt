@@ -42,6 +42,7 @@ import com.bysel.trader.ui.components.PredictionReasoningCard
 import com.bysel.trader.ui.components.EventRiskCard
 import com.bysel.trader.ui.components.SentimentCard
 import com.bysel.trader.ui.components.QueryUnderstandingCard
+import com.bysel.trader.ui.components.ProfitSignal
 import com.bysel.trader.ui.components.ProfitSignalCard
 import com.bysel.trader.ui.components.ProfitSignalExtractor
 import com.bysel.trader.utils.TradeIntentParser
@@ -353,6 +354,7 @@ private fun buildSymbolSuggestions(symbol: String): List<Pair<String, androidx.c
     "Should I buy $symbol?" to Icons.AutoMirrored.Filled.TrendingUp,
     "Predict $symbol price" to Icons.Filled.Timeline,
     "Analyze $symbol" to Icons.Filled.Analytics,
+    "Practice levels for $symbol" to Icons.AutoMirrored.Filled.ShowChart,
     "Entry and exit targets for $symbol" to Icons.Filled.PriceCheck,
     "Profit potential for $symbol this quarter" to Icons.Filled.Payments,
     "Risk vs reward for buying $symbol now" to Icons.Filled.Warning,
@@ -643,6 +645,9 @@ private fun buildDefaultSuggestionPool(): List<Pair<String, androidx.compose.ui.
     "Which defensive stocks are safe to hold?" to Icons.Filled.Analytics,
     "Is it a good time to invest in IT sector?" to Icons.Filled.Analytics,
     // Educational — clear, focused questions
+    "Practice levels for RELIANCE" to Icons.AutoMirrored.Filled.ShowChart,
+    "Explain T+1 settlement" to Icons.AutoMirrored.Filled.Help,
+    "How should I journal a paper trade?" to Icons.AutoMirrored.Filled.Help,
     "What does RSI above 70 mean?" to Icons.AutoMirrored.Filled.Help,
     "How to read Bollinger Bands?" to Icons.AutoMirrored.Filled.Help,
     "What is a good P/E ratio for Indian stocks?" to Icons.AutoMirrored.Filled.Help,
@@ -822,15 +827,42 @@ private fun ChatBubble(
     onAlertAction: ((symbol: String, price: Double?, alertType: String) -> Unit)? = null,
     onNavigateToStock: ((symbol: String) -> Unit)? = null
 ) {
+    val contextSymbol = message.symbol?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
+
     // Parse trade intents from AI responses
-    val tradeIntents = remember(message.text, message.isUser) {
-        if (!message.isUser) TradeIntentParser.parse(message.text) else emptyList()
+    val tradeIntents = remember(message.text, message.isUser, contextSymbol) {
+        if (!message.isUser) TradeIntentParser.parse(message.text, contextSymbol) else emptyList()
     }
 
-    // Extract profit signal from AI response text
-    val profitSignal = remember(message.text, message.isUser) {
-        if (!message.isUser) ProfitSignalExtractor.extract(message.text) else null
+    // Extract profit signal from AI response text (or synthesize from API symbol/price).
+    val profitSignal = remember(message.text, message.isUser, contextSymbol, message.lastPrice, message.signal) {
+        if (message.isUser) return@remember null
+        val extracted = ProfitSignalExtractor.extract(message.text, contextSymbol)
+        when {
+            extracted != null -> {
+                val symbol = extracted.symbol.ifBlank { contextSymbol.orEmpty() }
+                val signal = message.signal?.takeIf { it.isNotBlank() } ?: extracted.signal
+                extracted.copy(symbol = symbol, signal = signal)
+            }
+            contextSymbol != null && message.lastPrice != null && message.lastPrice > 0.0 -> {
+                val entry = message.lastPrice
+                ProfitSignal(
+                    symbol = contextSymbol,
+                    signal = message.signal ?: "HOLD",
+                    entry = entry,
+                    target = entry * 1.05,
+                    stopLoss = entry * 0.97,
+                    confidence = null,
+                    timeframe = null,
+                )
+            }
+            else -> null
+        }
     }
+
+    val actionSymbol = profitSignal?.symbol?.takeIf { it.isNotBlank() }
+        ?: contextSymbol
+        ?: tradeIntents.firstOrNull()?.symbol
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -902,7 +934,7 @@ private fun ChatBubble(
 
                 // Prediction Reasoning
                 PredictionReasoningCard(
-                    symbol = "", // Will be filled from context
+                    symbol = actionSymbol.orEmpty(),
                     signal = message.enhancedFeatures.predictionReasoning.signal,
                     whyConfident = message.enhancedFeatures.predictionReasoning.whyConfident,
                     caveats = message.enhancedFeatures.predictionReasoning.caveats,
@@ -933,18 +965,59 @@ private fun ChatBubble(
         }
 
         // Profit Signal Card (extracted from AI response text)
-        if (profitSignal != null) {
+        if (profitSignal != null && profitSignal.symbol.isNotBlank()) {
             Spacer(modifier = Modifier.height(8.dp))
+            val signalUpper = profitSignal.signal.uppercase()
+            val isBearish = signalUpper.contains("SELL")
+            val alertPrice = profitSignal.target
+                ?: profitSignal.entry?.times(1.02)
+                ?: message.lastPrice?.times(1.02)
+            val alertType = if (isBearish) "BELOW" else "ABOVE"
             ProfitSignalCard(
                 signal = profitSignal,
-                onBuy = if (onTradeAction != null && profitSignal.symbol.isNotBlank()) {
+                onBuy = if (onTradeAction != null && !isBearish) {
                     { onTradeAction.invoke(profitSignal.symbol, "BUY", null) }
                 } else null,
-                onSetAlert = if (onAlertAction != null && profitSignal.symbol.isNotBlank()) {
-                    { onAlertAction.invoke(profitSignal.symbol, profitSignal.target, "ABOVE") }
+                onSetAlert = if (onAlertAction != null) {
+                    { onAlertAction.invoke(profitSignal.symbol, alertPrice, alertType) }
                 } else null,
                 modifier = Modifier.widthIn(max = 320.dp)
             )
+        } else if (!message.isUser && actionSymbol != null && (onTradeAction != null || onAlertAction != null)) {
+            // Fallback when reply has a symbol but no Entry/Target formatting.
+            Spacer(modifier = Modifier.height(8.dp))
+            val signalUpper = (message.signal ?: "").uppercase()
+            val isBearish = signalUpper.contains("SELL")
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.widthIn(max = 320.dp)
+            ) {
+                if (onTradeAction != null && !isBearish) {
+                    Button(
+                        onClick = { onTradeAction.invoke(actionSymbol, "BUY", null) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C853)),
+                        modifier = Modifier.height(32.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                    ) {
+                        Text("Buy $actionSymbol", fontSize = 11.sp, color = Color.White)
+                    }
+                }
+                if (onAlertAction != null) {
+                    OutlinedButton(
+                        onClick = {
+                            onAlertAction.invoke(
+                                actionSymbol,
+                                message.lastPrice?.times(if (isBearish) 0.98 else 1.02),
+                                if (isBearish) "BELOW" else "ABOVE"
+                            )
+                        },
+                        modifier = Modifier.height(32.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                    ) {
+                        Text("Set Alert", fontSize = 11.sp)
+                    }
+                }
+            }
         }
 
         // Trade intent action buttons (parsed from AI messages)
@@ -1032,22 +1105,14 @@ private fun ChatBubble(
 
 @Composable
 private fun TypingIndicator(likelyColdStart: Boolean = false) {
-    var statusText by remember(likelyColdStart) {
-        mutableStateOf(if (likelyColdStart) "Connecting to AI…" else "AI is thinking…")
-    }
+    // Keep status copy neutral — never mention server wake/cold-start (it confuses users
+    // and previously looked like a real status even on warm, healthy replies).
+    var statusText by remember { mutableStateOf("AI is thinking…") }
     LaunchedEffect(likelyColdStart) {
-        if (likelyColdStart) {
-            // Only mention cold-start when the host may actually be asleep.
-            kotlinx.coroutines.delay(12_000L)
-            statusText = "Server may be waking up — almost there…"
-            kotlinx.coroutines.delay(20_000L)
-            statusText = "Still working — analyzing market data…"
-        } else {
-            kotlinx.coroutines.delay(8_000L)
-            statusText = "Still working…"
-            kotlinx.coroutines.delay(15_000L)
-            statusText = "Taking a bit longer — finishing analysis…"
-        }
+        kotlinx.coroutines.delay(8_000L)
+        statusText = "Still working…"
+        kotlinx.coroutines.delay(15_000L)
+        statusText = "Taking a bit longer — finishing analysis…"
     }
 
     Row(

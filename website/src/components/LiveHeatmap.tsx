@@ -1,52 +1,65 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
 
-const API_URL = "https://www.byseltrader.com/api/heatmap";
-const REFRESH_INTERVAL_MS = 4000;
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { HEATMAP_URL } from "../lib/api";
 
-type HeatmapEntry = {
+const REFRESH_INTERVAL_MS = 5000;
+
+type HeatmapStock = {
   symbol: string;
   pctChange: number;
   color: string;
 };
 
-type RawHeatmapEntry = {
-  symbol?: unknown;
-  pctChange?: unknown;
-  changePercent?: unknown;
-  color?: unknown;
+type HeatmapSector = {
+  name: string;
+  avgChange: number;
+  advances: number;
+  declines: number;
+  stocks: HeatmapStock[];
 };
 
-const FALLBACK_HEATMAP: HeatmapEntry[] = [
-  { symbol: "RELIANCE", pctChange: 1.23, color: "linear-gradient(145deg, #2b8a57, #1f6f45)" },
-  { symbol: "TCS", pctChange: 0.74, color: "linear-gradient(145deg, #2f955f, #216f45)" },
-  { symbol: "INFY", pctChange: -0.41, color: "linear-gradient(145deg, #c85d4a, #9f4031)" },
-  { symbol: "HDFCBANK", pctChange: 0.34, color: "linear-gradient(145deg, #3a9871, #236f4f)" },
-  { symbol: "SBIN", pctChange: -1.08, color: "linear-gradient(145deg, #d96a51, #a84a37)" },
-  { symbol: "ICICIBANK", pctChange: 0.68, color: "linear-gradient(145deg, #2d8e68, #23654c)" },
-  { symbol: "LT", pctChange: 0.52, color: "linear-gradient(145deg, #369472, #245d49)" },
-  { symbol: "BHARTIARTL", pctChange: -0.27, color: "linear-gradient(145deg, #bd5a48, #8d3e2f)" },
-];
-
-const clamp = (value: number, min: number, max: number): number => {
-  return Math.min(max, Math.max(min, value));
+type HeatmapPayload = {
+  sectors: HeatmapSector[];
+  mood: string;
+  moodDescription: string;
+  marketOpen: boolean;
+  isStale?: boolean;
+  marketBreadth?: {
+    advances: number;
+    declines: number;
+    unchanged: number;
+    total: number;
+  };
 };
 
-const parsePercent = (value: unknown): number | null => {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === "string") {
-    const cleaned = value.replace(/%/g, "").trim();
-    const numeric = Number(cleaned);
-    if (Number.isFinite(numeric)) {
-      return numeric;
-    }
-  }
-
-  return null;
+const FALLBACK: HeatmapPayload = {
+  sectors: [
+    {
+      name: "Sample",
+      avgChange: 0.4,
+      advances: 5,
+      declines: 3,
+      stocks: [
+        { symbol: "RELIANCE", pctChange: 1.23, color: "" },
+        { symbol: "TCS", pctChange: 0.74, color: "" },
+        { symbol: "INFY", pctChange: -0.41, color: "" },
+        { symbol: "HDFCBANK", pctChange: 0.34, color: "" },
+        { symbol: "SBIN", pctChange: -1.08, color: "" },
+        { symbol: "ICICIBANK", pctChange: 0.68, color: "" },
+        { symbol: "LT", pctChange: 0.52, color: "" },
+        { symbol: "BHARTIARTL", pctChange: -0.27, color: "" },
+      ],
+    },
+  ],
+  mood: "NEUTRAL",
+  moodDescription: "Showing a sample until the live feed connects.",
+  marketOpen: false,
+  isStale: true,
 };
+
+const clamp = (value: number, min: number, max: number): number =>
+  Math.min(max, Math.max(min, value));
 
 const dynamicColor = (pctChange: number): string => {
   const scaled = clamp(Math.abs(pctChange) / 3.5, 0.18, 1);
@@ -54,37 +67,74 @@ const dynamicColor = (pctChange: number): string => {
     const opacity = 0.52 + scaled * 0.4;
     return `linear-gradient(145deg, rgba(43, 138, 87, ${opacity}), rgba(22, 102, 67, 0.96))`;
   }
-
   const opacity = 0.48 + scaled * 0.43;
   return `linear-gradient(145deg, rgba(206, 90, 67, ${opacity}), rgba(145, 54, 40, 0.96))`;
 };
 
-const toHeatmapEntry = (row: RawHeatmapEntry): HeatmapEntry | null => {
-  const symbolRaw = typeof row.symbol === "string" ? row.symbol.trim() : "";
-  if (!symbolRaw) {
-    return null;
+const parsePercent = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const numeric = Number(value.replace(/%/g, "").trim());
+    if (Number.isFinite(numeric)) return numeric;
   }
-
-  const pct = parsePercent(row.pctChange) ?? parsePercent(row.changePercent);
-  if (pct === null) {
-    return null;
-  }
-
-  const symbol = symbolRaw.toUpperCase().slice(0, 10);
-  const color = typeof row.color === "string" && row.color.trim() ? row.color : dynamicColor(pct);
-
-  return { symbol, pctChange: pct, color };
+  return null;
 };
 
-const parseHeatmapResponse = (payload: unknown): HeatmapEntry[] => {
-  if (!Array.isArray(payload)) {
-    return [];
+const parsePayload = (raw: unknown): HeatmapPayload | null => {
+  if (!raw || typeof raw !== "object") return null;
+  const data = raw as Record<string, unknown>;
+  const sectorsRaw = Array.isArray(data.sectors) ? data.sectors : [];
+  const sectors: HeatmapSector[] = [];
+
+  for (const sector of sectorsRaw) {
+    if (!sector || typeof sector !== "object") continue;
+    const s = sector as Record<string, unknown>;
+    const name = typeof s.name === "string" ? s.name : "";
+    if (!name) continue;
+    const avgChange = parsePercent(s.avgChange) ?? 0;
+    const stocksRaw = Array.isArray(s.stocks) ? s.stocks : [];
+    const stocks: HeatmapStock[] = [];
+    for (const row of stocksRaw) {
+      if (!row || typeof row !== "object") continue;
+      const r = row as Record<string, unknown>;
+      const symbol = typeof r.symbol === "string" ? r.symbol.trim().toUpperCase() : "";
+      const pct = parsePercent(r.pctChange) ?? parsePercent(r.changePercent);
+      if (!symbol || pct === null) continue;
+      stocks.push({
+        symbol: symbol.slice(0, 12),
+        pctChange: pct,
+        color: typeof r.color === "string" && r.color.trim() ? r.color : dynamicColor(pct),
+      });
+    }
+    sectors.push({
+      name,
+      avgChange,
+      advances: typeof s.advances === "number" ? s.advances : 0,
+      declines: typeof s.declines === "number" ? s.declines : 0,
+      stocks,
+    });
   }
 
-  return payload
-    .map((row) => toHeatmapEntry((row as RawHeatmapEntry) ?? {}))
-    .filter((item): item is HeatmapEntry => item !== null)
-    .sort((a, b) => Math.abs(b.pctChange) - Math.abs(a.pctChange));
+  if (sectors.length === 0) return null;
+
+  const breadth =
+    data.marketBreadth && typeof data.marketBreadth === "object"
+      ? (data.marketBreadth as HeatmapPayload["marketBreadth"])
+      : undefined;
+
+  return {
+    sectors,
+    mood: typeof data.mood === "string" ? data.mood : "NEUTRAL",
+    moodDescription:
+      typeof data.moodDescription === "string"
+        ? data.moodDescription
+        : typeof data.staleReason === "string"
+          ? data.staleReason
+          : "Market breadth snapshot",
+    marketOpen: Boolean(data.marketOpen),
+    isStale: Boolean(data.isStale),
+    marketBreadth: breadth,
+  };
 };
 
 const percentLabel = (value: number): string => {
@@ -93,86 +143,124 @@ const percentLabel = (value: number): string => {
 };
 
 export default function LiveHeatmap() {
-  const [entries, setEntries] = useState<HeatmapEntry[]>([]);
+  const [payload, setPayload] = useState<HeatmapPayload | null>(null);
+  const [selectedSector, setSelectedSector] = useState<string>("All");
   const [loading, setLoading] = useState(true);
   const [warning, setWarning] = useState<string | null>(null);
-  const [updatedAt, setUpdatedAt] = useState<string>("-");
+  const [updatedAt, setUpdatedAt] = useState("-");
 
-  useEffect(() => {
-    let isMounted = true;
-
-    const refreshHeatmap = async (): Promise<void> => {
-      try {
-        const response = await fetch(API_URL, { cache: "no-store" });
-        if (!response.ok) {
-          throw new Error(`Heatmap request failed (${response.status})`);
-        }
-
-        const payload: unknown = await response.json();
-        const parsed = parseHeatmapResponse(payload);
-        if (parsed.length === 0) {
-          throw new Error("Heatmap payload was empty");
-        }
-
-        if (!isMounted) {
-          return;
-        }
-
-        setEntries(parsed);
-        setWarning(null);
-        setUpdatedAt(
-          new Intl.DateTimeFormat("en-IN", {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-            hour12: false,
-          }).format(new Date()),
-        );
-      } catch {
-        if (!isMounted) {
-          return;
-        }
-
-        setWarning("Live feed delayed. Showing a representative market sample.");
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+  const refresh = useCallback(async () => {
+    try {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 25000);
+      const response = await fetch(HEATMAP_URL, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      window.clearTimeout(timeout);
+      if (!response.ok) {
+        throw new Error(`Heatmap request failed (${response.status})`);
       }
-    };
-
-    void refreshHeatmap();
-    const timerId = window.setInterval(() => {
-      void refreshHeatmap();
-    }, REFRESH_INTERVAL_MS);
-
-    return () => {
-      isMounted = false;
-      window.clearInterval(timerId);
-    };
+      const parsed = parsePayload(await response.json());
+      if (!parsed) {
+        throw new Error("Heatmap payload was empty");
+      }
+      setPayload(parsed);
+      setWarning(
+        parsed.isStale || !parsed.marketOpen
+          ? parsed.moodDescription || "Showing last session / cached breadth."
+          : null,
+      );
+      setUpdatedAt(
+        new Intl.DateTimeFormat("en-IN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false,
+        }).format(new Date()),
+      );
+    } catch {
+      setWarning("Live feed delayed (server waking up). Showing a sample until data arrives.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    void refresh();
+    const timerId = window.setInterval(() => {
+      void refresh();
+    }, REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(timerId);
+  }, [refresh]);
+
+  const view = payload ?? FALLBACK;
+
   const tiles = useMemo(() => {
-    if (entries.length > 0) {
-      return entries.slice(0, 16);
+    if (selectedSector === "All") {
+      return view.sectors
+        .flatMap((s) => s.stocks)
+        .sort((a, b) => Math.abs(b.pctChange) - Math.abs(a.pctChange))
+        .slice(0, 16)
+        .map((s) => ({ ...s, color: s.color || dynamicColor(s.pctChange) }));
     }
-    return FALLBACK_HEATMAP;
-  }, [entries]);
+    const sector = view.sectors.find((s) => s.name === selectedSector);
+    return (sector?.stocks ?? [])
+      .slice(0, 16)
+      .map((s) => ({ ...s, color: s.color || dynamicColor(s.pctChange) }));
+  }, [selectedSector, view]);
+
+  const statusLabel = !payload
+    ? "Sample"
+    : warning
+      ? view.marketOpen
+        ? "Catching up"
+        : "Session closed"
+      : "Live";
 
   return (
     <section className="glass-card hero-panel" aria-live="polite">
       <div className="panel-head">
         <h3 className="panel-title">Live Market Heatmap</h3>
-        <span className={`status-chip ${warning ? "warn" : "live"}`}>{warning ? "Fallback" : "Live"}</span>
+        <span className={`status-chip ${warning || !payload ? "warn" : "live"}`}>{statusLabel}</span>
       </div>
 
       <p className="mini-muted">
-        {loading ? "Loading market breadth..." : `Last refresh: ${updatedAt} IST`}
+        {loading
+          ? "Connecting to BYSEL market API…"
+          : `${view.mood} · ${view.moodDescription} · Updated ${updatedAt} IST`}
       </p>
+
+      {view.marketBreadth ? (
+        <p className="mini-muted" style={{ marginTop: "0.25rem" }}>
+          Breadth {view.marketBreadth.advances} adv / {view.marketBreadth.declines} dec
+          {view.marketBreadth.total ? ` · ${view.marketBreadth.total} names` : ""}
+        </p>
+      ) : null}
+
+      <div className="heatmap-sector-row">
+        <button
+          type="button"
+          className={`heatmap-sector-chip${selectedSector === "All" ? " active" : ""}`}
+          onClick={() => setSelectedSector("All")}
+        >
+          All movers
+        </button>
+        {view.sectors.slice(0, 8).map((sector) => (
+          <button
+            key={sector.name}
+            type="button"
+            className={`heatmap-sector-chip${selectedSector === sector.name ? " active" : ""}`}
+            onClick={() => setSelectedSector(sector.name)}
+          >
+            {sector.name} {percentLabel(sector.avgChange)}
+          </button>
+        ))}
+      </div>
 
       <div className="heatmap-grid" style={{ marginTop: "0.65rem" }}>
         {tiles.map((stock) => (
-          <div key={stock.symbol} className="heatmap-tile" style={{ background: stock.color }}>
+          <div key={`${selectedSector}-${stock.symbol}`} className="heatmap-tile" style={{ background: stock.color }}>
             <span className="heatmap-symbol">{stock.symbol}</span>
             <p className="heatmap-move">{percentLabel(stock.pctChange)}</p>
           </div>
@@ -180,6 +268,9 @@ export default function LiveHeatmap() {
       </div>
 
       {warning ? <p className="mini-muted" style={{ marginTop: "0.7rem" }}>{warning}</p> : null}
+      <p className="mini-muted" style={{ marginTop: "0.45rem" }}>
+        Full interactive heatmap with 1–2s refresh lives in the Android app.
+      </p>
     </section>
   );
 }

@@ -312,8 +312,18 @@ open class TradingRepository(private val database: BYSELDatabase) {
             database.alertDao().insertAlert(createdAlert)
             Result.Success(createdAlert)
         } catch (e: Exception) {
+            // Persist locally so the Alerts tab still shows the user action.
             database.alertDao().insertAlert(alert)
-            Result.Error(e.message ?: "Unknown error")
+            val msg = e.message.orEmpty()
+            // Common: API wrote the alert, but response createdAt (ISO datetime) failed Long parse.
+            if (e is com.google.gson.JsonSyntaxException ||
+                msg.contains("NumberFormatException", ignoreCase = true) ||
+                msg.contains("Expected a long", ignoreCase = true)
+            ) {
+                Result.Success(alert)
+            } else {
+                Result.Error(msg.ifBlank { "Unknown error" })
+            }
         }
     }
 
@@ -437,7 +447,7 @@ open class TradingRepository(private val database: BYSELDatabase) {
             e is java.net.SocketTimeoutException ||
                 raw.contains("timeout", ignoreCase = true) ||
                 raw.contains("timed out", ignoreCase = true) ->
-                "AI is taking too long (server may be waking up). Please try again in a few seconds."
+                "AI is taking too long. Please try again in a few seconds."
             e is java.net.UnknownHostException ||
                 (e is java.io.IOException && raw.contains("Unable to resolve host", ignoreCase = true)) ->
                 "No internet connection. Check your network and retry."
@@ -500,6 +510,15 @@ open class TradingRepository(private val database: BYSELDatabase) {
             Result.Success(recommendations)
         } catch (e: Exception) {
             Result.Error(toAiErrorMessage(e, "Recommendations failed"))
+        }
+    }
+
+    suspend fun getPracticeIdeas(limit: Int = 6): Result<PracticeIdeasResponse> {
+        return try {
+            val ideas = aiApiService.getPracticeIdeas(limit)
+            Result.Success(ideas)
+        } catch (e: Exception) {
+            Result.Error(toAiErrorMessage(e, "Practice ideas failed"))
         }
     }
 

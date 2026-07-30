@@ -1,45 +1,48 @@
 import Link from "next/link";
 
+const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.bysel.trader";
+
 const PLANS = [
   {
     label: "Starter",
     price: "Free",
-    note: "For first-time learners",
+    note: "Closed testing & early access",
     items: [
-      "Core simulator with delayed review",
-      "Basic market pulse and heatmap",
-      "Limited AI guidance prompts",
-      "Single paper portfolio",
+      "Paper trading wallet and portfolio",
+      "Home pulse, watchlist, movers",
+      "Sector heatmap (live when market open)",
+      "AI assistant with Buy / Set Alert actions",
+      "Username + email password login",
     ],
-    cta: "Start Free",
-    href: "https://play.google.com/store",
+    cta: "Get the App",
+    href: PLAY_STORE_URL,
     featured: false,
   },
   {
     label: "Pro",
-    price: "INR 499/mo",
-    note: "For disciplined solo traders",
+    price: "Coming soon",
+    note: "For serious solo practice",
     items: [
-      "Full AI execution coach",
-      "Advanced analytics and trade journal",
-      "Priority market event alerts",
-      "Multi-portfolio optimization",
+      "Deeper AI coaching workflows",
+      "Advanced journal & analytics",
+      "Priority alerts and event windows",
+      "Portfolio optimization tools",
     ],
-    cta: "Upgrade to Pro",
+    cta: "Join Waitlist",
     href: "/support",
     featured: true,
   },
   {
     label: "Desk",
     price: "Custom",
-    note: "For academies and trading teams",
+    note: "Academies and trading teams",
     items: [
       "Team workspaces and role access",
       "Shared performance dashboards",
-      "Dedicated onboarding and support",
-      "Custom reporting exports",
+      "Dedicated onboarding",
+      "Custom reporting",
     ],
-    cta: "Talk to Sales",
+    cta: "Talk to Us",
     href: "/support",
     featured: false,
   },
@@ -47,16 +50,19 @@ const PLANS = [
 
 const FAQ = [
   {
-    question: "Can I cancel anytime?",
-    answer: "Yes. Pro subscriptions can be canceled from your billing panel without lock-in periods.",
+    question: "Is BYSEL a SEBI-registered broker?",
+    answer:
+      "No. BYSEL Trader is an educational paper-trading app. It does not place live brokerage orders or provide registered investment advice.",
   },
   {
-    question: "Do you offer student pricing?",
-    answer: "Yes. Learners from recognized institutes can request discounted annual access via support.",
+    question: "How should I sign in while OTP SMS is unreliable?",
+    answer:
+      "Use Register with username, email, and password. Phone OTP remains available when Firebase SMS delivery works for your number.",
   },
   {
-    question: "Is this for real trading?",
-    answer: "BYSEL is simulation-first and education-focused. It does not place live orders for brokerage accounts.",
+    question: "Where do I download the app?",
+    answer:
+      "Android builds are distributed via Google Play for package com.bysel.trader. Public listing depends on Play Console production approval / closed testing access.",
   },
 ];
 
@@ -67,10 +73,10 @@ export default function Pricing() {
         <div className="site-container">
           <span className="eyebrow">Pricing</span>
           <h1 className="page-title" style={{ fontSize: "clamp(2rem, 5vw, 3.2rem)" }}>
-            Plans for every stage of your trading journey.
+            Start free while we grow with testers.
           </h1>
           <p className="lead">
-            Start free, then upgrade when you want deeper analytics, stronger coaching workflows, and professional-grade process reviews.
+            Core paper trading and AI practice are available in the Android app today. Paid tiers will unlock deeper coaching when we open wider distribution.
           </p>
 
           <div className="price-grid" style={{ marginTop: "1.2rem" }}>
@@ -81,26 +87,25 @@ export default function Pricing() {
                 data-animate
                 data-delay={String(Math.min(index, 4))}
               >
-                <p className="price-label">{plan.label}</p>
-                <p className="price-value">{plan.price}</p>
-                <p className="mini-muted">{plan.note}</p>
-
-                <ul className="list-tight">
+                <p className="feature-kicker">{plan.note}</p>
+                <h2 className="feature-title">{plan.label}</h2>
+                <p className="stat-value" style={{ margin: "0.4rem 0" }}>
+                  {plan.price}
+                </p>
+                <ul className="price-list">
                   {plan.items.map((item) => (
                     <li key={item}>{item}</li>
                   ))}
                 </ul>
-
-                <div className="btn-row" style={{ marginTop: "0.85rem" }}>
-                  <Link
-                    href={plan.href}
-                    className={plan.featured ? "btn-primary" : "btn-neutral"}
-                    target={plan.href.startsWith("http") ? "_blank" : undefined}
-                    rel={plan.href.startsWith("http") ? "noreferrer" : undefined}
-                  >
-                    {plan.cta}
-                  </Link>
-                </div>
+                <Link
+                  href={plan.href}
+                  className={plan.featured ? "btn-primary" : "btn-neutral"}
+                  target={plan.href.startsWith("http") ? "_blank" : undefined}
+                  rel={plan.href.startsWith("http") ? "noreferrer" : undefined}
+                  style={{ marginTop: "1rem", display: "inline-flex" }}
+                >
+                  {plan.cta}
+                </Link>
               </article>
             ))}
           </div>
@@ -108,36 +113,16 @@ export default function Pricing() {
       </section>
 
       <section className="section-wrap" style={{ paddingTop: "0.2rem" }}>
-        <div className="site-container split-grid">
-          <article className="glass-card hero-panel" data-animate>
-            <h2 className="panel-title">What is included in Pro</h2>
-            <div className="stack-grid" style={{ marginTop: "0.7rem" }}>
-              <div className="info-row">
-                <p className="info-title">High-frequency market context</p>
-                <p className="info-copy">Heatmap updates, sector strength drift, and event flags built for intraday review.</p>
-              </div>
-              <div className="info-row">
-                <p className="info-title">Execution-quality analytics</p>
-                <p className="info-copy">Measure adherence to your trade plan instead of only outcome statistics.</p>
-              </div>
-              <div className="info-row">
-                <p className="info-title">Priority onboarding</p>
-                <p className="info-copy">Hands-on setup help so your first week is focused and productive.</p>
-              </div>
-            </div>
-          </article>
-
-          <article className="glass-card hero-panel" data-animate data-delay="1">
-            <h2 className="panel-title">Pricing FAQs</h2>
-            <div className="stack-grid" style={{ marginTop: "0.7rem" }}>
-              {FAQ.map((item) => (
-                <div key={item.question} className="info-row">
-                  <p className="info-title">{item.question}</p>
-                  <p className="info-copy">{item.answer}</p>
-                </div>
-              ))}
-            </div>
-          </article>
+        <div className="site-container">
+          <h2 className="section-title">FAQ</h2>
+          <div className="feature-grid" style={{ marginTop: "1rem" }}>
+            {FAQ.map((item) => (
+              <article key={item.question} className="glass-card feature-card">
+                <h3 className="feature-title">{item.question}</h3>
+                <p className="feature-copy">{item.answer}</p>
+              </article>
+            ))}
+          </div>
         </div>
       </section>
     </main>

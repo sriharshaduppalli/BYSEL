@@ -432,10 +432,102 @@ a {
   color: var(--brand-strong);
 }
 
+.heatmap-sector-row,
+.ai-demo-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.65rem;
+}
+
+.heatmap-sector-chip {
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 0.32rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.heatmap-sector-chip:hover:not(:disabled),
+.heatmap-sector-chip.active {
+  border-color: rgba(14, 99, 111, 0.45);
+  color: var(--brand-strong);
+  background: rgba(14, 99, 111, 0.08);
+}
+
+.heatmap-sector-chip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .heatmap-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.45rem;
+}
+
+.ai-demo-thread {
+  margin-top: 0.7rem;
+  max-height: 280px;
+  overflow-y: auto;
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.55rem;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.ai-demo-bubble {
+  max-width: 92%;
+  padding: 0.65rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  color: var(--ink-strong);
+}
+
+.ai-demo-bubble.user {
+  justify-self: end;
+  background: rgba(14, 99, 111, 0.12);
+  border: 1px solid rgba(14, 99, 111, 0.22);
+}
+
+.ai-demo-bubble.assistant {
+  justify-self: start;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+}
+
+.ai-demo-bubble.muted {
+  color: var(--ink);
+  opacity: 0.85;
+}
+
+.ai-demo-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+
+.ai-demo-input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.7rem 0.8rem;
+  background: var(--surface-strong);
+  color: var(--ink-strong);
+  font: inherit;
+}
+
+.ai-demo-input:focus {
+  outline: 2px solid rgba(14, 99, 111, 0.28);
+  outline-offset: 1px;
 }
 
 .heatmap-tile {
@@ -521,6 +613,17 @@ a {
 .price-card.featured {
   border-color: rgba(14, 99, 111, 0.48);
   box-shadow: 0 20px 44px rgba(14, 99, 111, 0.18);
+}
+
+.price-list {
+  margin: 0.55rem 0 0;
+  padding-left: 1rem;
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.price-list li {
+  margin-bottom: 0.34rem;
 }
 
 .price-label {

@@ -202,7 +202,7 @@ fun UpgradedQuoteCard(quote: Quote, onClick: () -> Unit) {
 @Composable
 fun PortfolioScreen(
     holdings: List<Holding>,
-    @Suppress("UNUSED_PARAMETER") quotes: List<Quote>,
+    quotes: List<Quote>,
     isLoading: Boolean,
     error: String?,
     portfolioHealth: PortfolioHealthScore?,
@@ -219,6 +219,8 @@ fun PortfolioScreen(
             onRefreshHealth()
         }
     }
+
+    val quoteBySymbol = remember(quotes) { quotes.associateBy { it.symbol } }
 
     var pendingSell by remember { mutableStateOf<Holding?>(null) }
 
@@ -264,7 +266,7 @@ fun PortfolioScreen(
         )
     }
 
-    // `quotes` parameter intentionally kept for future use (API stability)
+    // `quotes` used for educational holding stance (day move)
 
     if (isLoading && holdings.isEmpty()) {
         PortfolioSkeletonLoader(
@@ -283,12 +285,21 @@ fun PortfolioScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Portfolio",
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = LocalAppTheme.current.text
-                )
+                Column {
+                    Text(
+                        text = "Portfolio",
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = LocalAppTheme.current.text
+                    )
+                    Text(
+                        text = "Paper Practice · Simulated holdings",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = LocalAppTheme.current.primary,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     val ctx = androidx.compose.ui.platform.LocalContext.current
                     OutlinedButton(
@@ -411,6 +422,7 @@ fun PortfolioScreen(
                         ) {
                             UpgradedPortfolioHoldingItem(
                                 holding = holding,
+                                dayPctChange = quoteBySymbol[holding.symbol]?.pctChange ?: 0.0,
                                 onBuy = { onBuy(holding.symbol, 1) },
                                 onSell = { onSell(holding.symbol, 1) }
                             )
@@ -426,14 +438,22 @@ fun PortfolioScreen(
 @Composable
 fun UpgradedPortfolioHoldingItem(
     holding: Holding,
+    dayPctChange: Double = 0.0,
     onBuy: () -> Unit,
     onSell: () -> Unit
 ) {
+    val theme = LocalAppTheme.current
+    val invested = holding.avgPrice * holding.qty
+    val pnlPct = if (invested > 0) (holding.pnl / invested) * 100.0 else 0.0
+    val stance = remember(holding.symbol, pnlPct, dayPctChange) {
+        computeEducationalHoldingStance(pnlPct = pnlPct, dayPct = dayPctChange)
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp),
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+        colors = CardDefaults.cardColors(containerColor = theme.card),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(
@@ -451,12 +471,12 @@ fun UpgradedPortfolioHoldingItem(
                         text = holding.symbol,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = LocalAppTheme.current.text
+                        color = theme.text
                     )
                     Text(
                         text = "₹${String.format("%.2f", holding.last)}",
                         fontSize = 14.sp,
-                        color = LocalAppTheme.current.textSecondary,
+                        color = theme.textSecondary,
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
@@ -465,7 +485,29 @@ fun UpgradedPortfolioHoldingItem(
                     text = "${if (holding.pnl > 0) "+" else ""}₹${String.format("%.2f", holding.pnl)}",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (holding.pnl > 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
+                    color = if (holding.pnl > 0) theme.positive else theme.negative
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(stance.accent.copy(alpha = 0.12f))
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    text = "Practice stance · ${stance.label}",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = stance.accent
+                )
+                Text(
+                    text = stance.reason,
+                    fontSize = 11.sp,
+                    color = theme.textSecondary,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
 
@@ -484,39 +526,39 @@ fun UpgradedPortfolioHoldingItem(
                     Text(
                         text = "Quantity",
                         fontSize = 11.sp,
-                        color = LocalAppTheme.current.textSecondary
+                        color = theme.textSecondary
                     )
                     Text(
                         text = "${holding.qty}",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = LocalAppTheme.current.text
+                        color = theme.text
                     )
                 }
                 Column {
                     Text(
                         text = "Avg Cost",
                         fontSize = 11.sp,
-                        color = LocalAppTheme.current.textSecondary
+                        color = theme.textSecondary
                     )
                     Text(
                         text = "₹${String.format("%.2f", holding.avgPrice)}",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = LocalAppTheme.current.text
+                        color = theme.text
                     )
                 }
                 Column {
                     Text(
                         text = "Current Value",
                         fontSize = 11.sp,
-                        color = LocalAppTheme.current.textSecondary
+                        color = theme.textSecondary
                     )
                     Text(
                         text = "₹${String.format("%.2f", holding.qty * holding.last)}",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = LocalAppTheme.current.text
+                        color = theme.text
                     )
                 }
             }
@@ -541,13 +583,49 @@ fun UpgradedPortfolioHoldingItem(
                     modifier = Modifier
                         .weight(1f)
                         .height(36.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.negative),
+                    colors = ButtonDefaults.buttonColors(containerColor = theme.negative),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text("Sell", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
+    }
+}
+
+private data class EducationalHoldingStance(
+    val label: String,
+    val reason: String,
+    val accent: Color,
+)
+
+private fun computeEducationalHoldingStance(pnlPct: Double, dayPct: Double): EducationalHoldingStance {
+    return when {
+        pnlPct >= 12.0 -> EducationalHoldingStance(
+            label = "Practice Trim",
+            reason = "Strong paper gain — rehearse booking a partial profit instead of hoping forever.",
+            accent = Color(0xFF2E7D32),
+        )
+        pnlPct <= -10.0 -> EducationalHoldingStance(
+            label = "Review Risk",
+            reason = "Deep paper drawdown — journal the thesis or practice cutting size.",
+            accent = Color(0xFFC62828),
+        )
+        dayPct <= -2.0 && pnlPct < 0.0 -> EducationalHoldingStance(
+            label = "Tighten Stop",
+            reason = "Weak day on a losing name — practice stop discipline before averaging down.",
+            accent = Color(0xFFE65100),
+        )
+        pnlPct >= 4.0 && dayPct >= 0.5 -> EducationalHoldingStance(
+            label = "Hold Strong",
+            reason = "Working in your favor — avoid overtrading a winner just for activity.",
+            accent = Color(0xFF1565C0),
+        )
+        else -> EducationalHoldingStance(
+            label = "Hold & Journal",
+            reason = "Neutral zone — note why you still own it in your practice journal.",
+            accent = Color(0xFF546E7A),
+        )
     }
 }
 

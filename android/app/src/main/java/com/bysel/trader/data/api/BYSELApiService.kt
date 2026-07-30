@@ -285,6 +285,9 @@ interface BYSELApiService {
     @GET("/ai/recommendations")
     suspend fun getStockRecommendations(@Query("limit") limit: Int = 10): StockRecommendationsResponse
 
+    @GET("/ai/practice-ideas")
+    suspend fun getPracticeIdeas(@Query("limit") limit: Int = 6): PracticeIdeasResponse
+
     // ==================== ENHANCED AI ANALYSIS (LEVEL 2) ====================
     @POST("/api/ai/v2/analyze-with-explanation")
     suspend fun aiAnalyzeEnhanced(

@@ -30,8 +30,8 @@ def _env_int(name: str, default: int, minimum: int = 1) -> int:
     return max(minimum, parsed)
 
 
-QUOTE_CACHE_TTL_SECONDS = _env_int("QUOTE_CACHE_TTL_SECONDS", 60, minimum=5)
-QUOTE_CACHE_MAX_ENTRIES = _env_int("QUOTE_CACHE_MAX_ENTRIES", 350, minimum=50)
+QUOTE_CACHE_TTL_SECONDS = _env_int("QUOTE_CACHE_TTL_SECONDS", 180, minimum=5)
+QUOTE_CACHE_MAX_ENTRIES = _env_int("QUOTE_CACHE_MAX_ENTRIES", 3000, minimum=50)
 QUOTE_BATCH_SIZE = _env_int("QUOTE_BATCH_SIZE", 40, minimum=1)
 
 HISTORY_ALLOWED_PERIODS = {
@@ -622,11 +622,29 @@ class QuoteCache:
             self._cache.pop(symbol, None)
             self._timestamps.pop(symbol, None)
 
-    def get(self, symbol: str) -> Optional[dict]:
+    def get(self, symbol: str, max_age_seconds: Optional[float] = None) -> Optional[dict]:
         now = time.time()
         with self._lock:
             self._evict_expired_locked(now)
+            timestamp = self._timestamps.get(symbol)
+            if timestamp is None:
+                return None
+            age_limit = float(self._ttl if max_age_seconds is None else max_age_seconds)
+            if age_limit >= 0 and (now - timestamp) >= age_limit:
+                return None
             return self._cache.get(symbol)
+
+    def get_allow_stale(self, symbol: str, max_age_seconds: float) -> Optional[dict]:
+        """Return a cached quote even if past the default TTL, up to max_age_seconds."""
+        now = time.time()
+        with self._lock:
+            timestamp = self._timestamps.get(symbol)
+            payload = self._cache.get(symbol)
+            if timestamp is None or payload is None:
+                return None
+            if (now - timestamp) >= float(max_age_seconds):
+                return None
+            return payload
 
     def put(self, symbol: str, data: dict):
         now = time.time()
@@ -814,13 +832,16 @@ def fetch_quote(symbol: str) -> dict:
         return _empty_quote(symbol)
 
 
-def fetch_quotes(symbols: List[str]) -> List[dict]:
+def fetch_quotes(symbols: List[str], max_age_seconds: Optional[float] = None) -> List[dict]:
     """Fetch quotes for multiple symbols with optimized batching and caching.
     
     Optimization: 
     - Returns cached results first (faster)
     - Batches uncached requests to minimize API calls
     - Falls back to individual fetches on batch errors
+
+    max_age_seconds: if set, treat cache entries older than this as misses
+    (used by live heatmap to refresh every 1–2s while market is open).
     """
     if not symbols:
         return []
@@ -831,7 +852,7 @@ def fetch_quotes(symbols: List[str]) -> List[dict]:
 
     # Separate cached from uncached, preserving order
     for idx, s in enumerate(symbols):
-        cached = _quote_cache.get(s)
+        cached = _quote_cache.get(s, max_age_seconds=max_age_seconds)
         if cached:
             results.append((idx, cached))
         else:
