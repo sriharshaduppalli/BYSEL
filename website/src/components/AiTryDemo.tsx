@@ -36,7 +36,7 @@ export default function AiTryDemo() {
       id: "welcome",
       role: "assistant",
       content:
-        "Hi — try a quick NSE question here. Full Buy / Set Alert actions and paper trading are in the Android app.",
+        "Hi — try a quick NSE question here. Practice Ideas, Paper Buy, and habit review live in the Android app.",
     },
   ]);
   const [input, setInput] = useState("");

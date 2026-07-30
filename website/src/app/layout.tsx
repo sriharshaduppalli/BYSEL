@@ -29,14 +29,16 @@ export const metadata: Metadata = {
     template: "%s | BYSEL Trader",
   },
   description:
-    "BYSEL Trader is an Android paper-trading app for NSE markets: AI stock assistant, live heatmap, portfolio practice, and educational tools. Not a SEBI-registered broker.",
+    "BYSEL Trader: Practice Ideas, Idea → Trade → Review habit loop, instant practice credit, after-hours paper fills, AI coaching, and NSE heatmap. Educational simulation — not a SEBI-registered broker.",
   keywords: [
     "BYSEL",
     "paper trading",
+    "practice ideas",
     "stock simulator",
     "indian stock market app",
     "ai trading assistant",
     "NSE heatmap",
+    "after hours paper trading",
     "byseltrader",
   ],
   icons: {

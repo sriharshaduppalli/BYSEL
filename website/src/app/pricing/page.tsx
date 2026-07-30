@@ -8,10 +8,11 @@ const PLANS = [
     price: "Free",
     note: "Closed testing & early access",
     items: [
-      "Paper trading wallet and portfolio",
-      "Home pulse, watchlist, movers",
-      "Sector heatmap (live when market open)",
-      "AI assistant with Buy / Set Alert actions",
+      "Practice Ideas with Paper Buy & Alert @ SL",
+      "Today's Practice habit loop (Idea → Review)",
+      "Instant practice credit (no UPI required)",
+      "After-hours paper fills at last session prices",
+      "Sector heatmap + AI assistant with Buy / Alert",
       "Username + email password login",
     ],
     cta: "Get the App",
@@ -55,6 +56,16 @@ const FAQ = [
       "No. BYSEL Trader is an educational paper-trading app. It does not place live brokerage orders or provide registered investment advice.",
   },
   {
+    question: "Do I need UPI to add funds?",
+    answer:
+      "No. Use Add Funds → Practice credit for instant simulation capital. UPI providers are an optional demo path only — paper trading never requires real payment.",
+  },
+  {
+    question: "Can I paper-trade after market close?",
+    answer:
+      "Yes. BYSEL allows paper fills after 3:30 PM IST and on weekends using last session prices, so practice drills stay available outside NSE hours.",
+  },
+  {
     question: "How should I sign in while OTP SMS is unreliable?",
     answer:
       "Use Register with username, email, and password. Phone OTP remains available when Firebase SMS delivery works for your number.",
@@ -76,7 +87,7 @@ export default function Pricing() {
             Start free while we grow with testers.
           </h1>
           <p className="lead">
-            Core paper trading and AI practice are available in the Android app today. Paid tiers will unlock deeper coaching when we open wider distribution.
+            Core paper trading — including Practice Ideas, practice credit, and after-hours fills — is available in the Android app today. Paid tiers will unlock deeper coaching when we open wider distribution.
           </p>
 
           <div className="price-grid" style={{ marginTop: "1.2rem" }}>
