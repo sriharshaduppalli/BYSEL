@@ -33,8 +33,8 @@ export default function About() {
             <article className="glass-card hero-panel" data-animate>
               <h2 className="panel-title">Our Mission</h2>
               <p className="feature-copy" style={{ marginTop: "0.55rem" }}>
-                Help users develop disciplined execution habits with AI-assisted analysis, live NSE market context,
-                and clear paper-trading feedback loops.
+                Help users develop disciplined execution habits with Practice Ideas, Idea → Trade → Review loops,
+                AI-assisted analysis, live NSE context, and clear paper-trading feedback — even after market close.
               </p>
             </article>
 

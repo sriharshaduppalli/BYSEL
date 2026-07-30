@@ -7,64 +7,64 @@ const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.bysel.
 
 const FEATURE_CARDS = [
   {
-    kicker: "AI Stock Assistant",
-    title: "Ask, analyze, then act",
-    copy: "Chat about NSE stocks with grounded answers. Buy and Set Alert actions sit right on AI replies so you can paper-trade without leaving the conversation.",
+    kicker: "Practice Ideas",
+    title: "Entry, stop, and target drills",
+    copy: "Home Practice Ideas show educational levels with Paper Buy and Alert @ SL — drills for process, not tip-selling.",
   },
   {
-    kicker: "Home Market Pulse",
-    title: "Indices, ideas, and watchlist",
-    copy: "NIFTY / SENSEX / BANK NIFTY strip, idea rails, movers, and a denser watchlist with sort chips and quick Trade CTAs.",
+    kicker: "Today's Practice",
+    title: "Idea → Trade → Review",
+    copy: "A daily habit strip tracks idea seen, paper trade taken, and review logged so practice compounds into discipline.",
+  },
+  {
+    kicker: "Practice credit",
+    title: "Instant paper wallet funding",
+    copy: "Add simulation capital in one tap — no UPI required. Optional UPI demo stays available; paper trading never needs real money.",
+  },
+  {
+    kicker: "After-hours paper",
+    title: "Practice when NSE is closed",
+    copy: "Paper fills still work after 3:30 PM IST using last session prices, so evenings and weekends stay useful for drills.",
+  },
+  {
+    kicker: "AI Stock Assistant",
+    title: "Ask, analyze, then act",
+    copy: "Chat about NSE stocks with grounded answers. Buy and Set Alert actions sit on AI replies so you can paper-trade in flow.",
   },
   {
     kicker: "Live Heatmap",
     title: "Sector heat in 1–2 seconds",
-    copy: "While the market is open, the sentiment heatmap refreshes about every 1–2 seconds so breadth and sector leadership stay current.",
-  },
-  {
-    kicker: "Paper Trading",
-    title: "Practice with a virtual wallet",
-    copy: "Place simulated BUY/SELL orders, track holdings and PnL, and review portfolio health without risking real capital.",
-  },
-  {
-    kicker: "Signal Lab & Smart Money",
-    title: "Momentum, pressure, and investor flows",
-    copy: "Surface high-participation names, track smart-money style portfolio changes, and route straight into stock detail or trade.",
-  },
-  {
-    kicker: "Discipline Tools",
-    title: "Alerts, journal, risk & SIP labs",
-    copy: "Price alerts, trade journal, risk lab, earnings calendar, mutual funds / SIP / IPO explorers — built for Indian-market learning.",
+    copy: "While the market is open, the sentiment heatmap refreshes about every 1–2 seconds; closed sessions show last-session context.",
   },
 ];
 
 const EXECUTION_LOOP = [
   {
-    title: "Scan the tape",
-    copy: "Use Home pulse, heatmap, and Signal Lab to shortlist symbols with real participation — not random tips.",
+    title: "Pick a Practice Idea",
+    copy: "See Entry / SL / Target with coaching notes. These are educational drills — not SEBI tips or buy recommendations.",
   },
   {
-    title: "Ask AI, then confirm",
-    copy: "Get a trade decision with levels. Tap Buy or Set Alert in chat, confirm the order, and keep risk explicit.",
+    title: "Paper Buy or Alert @ SL",
+    copy: "Execute a simulated buy with practice credit, or set an alert at the stop so you rehearse risk levels.",
   },
   {
-    title: "Review and improve",
-    copy: "Journal, portfolio health, and post-trade coaching help you tighten process week over week.",
+    title: "Review the trade",
+    copy: "Log whether you set a stop, followed the plan, and what you learned — then check portfolio health and journal.",
   },
 ];
 
 const MARKET_SIGNALS = [
   {
+    title: "Practice Ideas rail",
+    copy: "Educational drills with levels, Paper Buy, and Alert @ SL on Home — process practice, not tip feed.",
+  },
+  {
     title: "Sector Heatmap",
     copy: "Banking, IT, Pharma, Auto, and more — with advances/declines and mood when the session is live.",
   },
   {
-    title: "Movers & Momentum",
-    copy: "Gainers, losers, and most-active names with stale-while-revalidate so Home stays fast on cold starts.",
-  },
-  {
-    title: "Price Alerts",
-    copy: "Create ABOVE/BELOW alerts from AI cards or the Alerts screen and get notified as levels approach.",
+    title: "After-hours paper fills",
+    copy: "NSE closed? Keep practicing with last session prices and instant practice credit.",
   },
 ];
 
@@ -75,10 +75,10 @@ export default function Home() {
         <div className="site-container hero-grid">
           <div data-animate>
             <span className="eyebrow">BYSEL Trader</span>
-            <h1 className="page-title">Paper-trade NSE stocks with AI coaching and live market context.</h1>
+            <h1 className="page-title">Idea → paper trade → review. Indian-market practice that builds process.</h1>
             <p className="lead">
-              Try the live AI demo and sector heatmap on this page — then open the Android app for full
-              paper trading, Buy / Set Alert from chat, portfolio, and 1–2s heatmap refresh.
+              Try the live AI demo and sector heatmap here — then open Android for Practice Ideas, instant
+              practice credit, after-hours paper fills, and the daily review habit.
             </p>
 
             <div className="btn-row">
@@ -95,12 +95,12 @@ export default function Home() {
 
             <div className="stat-grid">
               <div className="stat-item">
-                <span className="stat-value">1–2s</span>
-                <span className="stat-label">Heatmap refresh (market open)</span>
+                <span className="stat-value">Idea→Review</span>
+                <span className="stat-label">Daily practice habit loop</span>
               </div>
               <div className="stat-item">
-                <span className="stat-value">AI+</span>
-                <span className="stat-label">Chat with Buy / Alert actions</span>
+                <span className="stat-value">24×7</span>
+                <span className="stat-label">Paper fills after NSE close</span>
               </div>
               <div className="stat-item">
                 <span className="stat-value">100%</span>
@@ -121,7 +121,7 @@ export default function Home() {
             <div>
               <h2 className="section-title">What ships in the latest BYSEL Android app</h2>
               <p className="section-copy">
-                Product surfaces that match the live app — not a generic financial-planning brochure.
+                Practice Ideas, habit tracking, practice credit, and after-hours paper — matching the live app, not a brochure.
               </p>
             </div>
           </div>
@@ -192,7 +192,9 @@ export default function Home() {
           <div className="section-head">
             <div>
               <h2 className="section-title">The BYSEL practice loop</h2>
-              <p className="section-copy">Scan → decide with AI → paper-execute → review. Built for habit, not hype.</p>
+              <p className="section-copy">
+                Idea → Paper Buy / Alert @ SL → Review. Built for habit, not hype — educational drills only.
+              </p>
             </div>
           </div>
 
@@ -218,8 +220,8 @@ export default function Home() {
                 Ready to practice Indian markets on Android?
               </h2>
               <p className="section-copy">
-                Install BYSEL Trader, create a username/password account (recommended while OTP SMS is being stabilized),
-                and start with paper capital. Educational use only — not investment advice and not a SEBI-registered broker.
+                Install BYSEL Trader, add practice credit in seconds, and run today&apos;s Practice Ideas — even after
+                market close. Educational use only — not investment advice and not a SEBI-registered broker.
               </p>
             </div>
 

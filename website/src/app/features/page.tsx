@@ -4,14 +4,29 @@ const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.bysel.
 
 const CORE_MODULES = [
   {
+    kicker: "Home",
+    title: "Practice Ideas",
+    copy: "Educational drills with Entry / Stop / Target, coaching notes, Paper Buy, and Alert @ SL. Process practice — not tip-selling.",
+  },
+  {
+    kicker: "Habit",
+    title: "Today's Practice strip",
+    copy: "Track Idea → Trade → Review for the day so paper practice becomes a repeatable routine instead of random taps.",
+  },
+  {
+    kicker: "Wallet",
+    title: "Practice credit",
+    copy: "Fund the simulation wallet instantly without UPI. Optional UPI demo remains; real money is never required to practice.",
+  },
+  {
+    kicker: "Trade",
+    title: "After-hours paper fills",
+    copy: "When NSE is closed, paper orders still execute using last session prices so evenings and weekends stay useful.",
+  },
+  {
     kicker: "AI",
     title: "Stock Assistant Chat",
     copy: "Ask prices, buy/sell bias, valuation, and comparisons. Replies can include Entry / Target / Stop-Loss with Buy and Set Alert buttons.",
-  },
-  {
-    kicker: "Home",
-    title: "Market Pulse & Watchlist",
-    copy: "Live index strip, idea rails, movers, news-aware brief, and a watchlist built for fast scan-to-trade.",
   },
   {
     kicker: "Heatmap",
@@ -19,14 +34,9 @@ const CORE_MODULES = [
     copy: "NSE sector heatmap with mood and breadth. Targets ~1–2s refresh while the market is open; last-session snapshot when closed.",
   },
   {
-    kicker: "Trade",
-    title: "Paper Order Ticket",
-    copy: "Market/limit style paper orders against a virtual wallet, with confirmation for AI-suggested trades.",
-  },
-  {
     kicker: "Portfolio",
-    title: "Holdings & Health",
-    copy: "Track positions, PnL, and portfolio health scores so practice stays measurable.",
+    title: "Holdings & educational stance",
+    copy: "Track positions, PnL, and portfolio health — plus practice actions like trim, review risk, and journal holds.",
   },
   {
     kicker: "Labs",
@@ -41,16 +51,16 @@ const ACCESS_TRACK = [
     copy: "Register with username, email, and password — the most reliable path for testers right now.",
   },
   {
-    title: "Optional phone OTP",
-    copy: "Firebase phone login is available; live SMS depends on Firebase delivery. Test numbers / password login keep access unblocked.",
+    title: "Add practice credit",
+    copy: "Open Trade → Add Funds → Practice credit. Instant paper capital — no UPI needed to start drills.",
   },
   {
-    title: "Explore markets",
-    copy: "Home → Heatmap → AI → Trade. Everything stays paper until you are ready for real brokerage elsewhere.",
+    title: "Run a Practice Idea",
+    copy: "On Home, pick a drill, tap Paper Buy or Alert @ SL, then complete the short practice review.",
   },
   {
     title: "Review discipline",
-    copy: "Use journal, alerts, and portfolio health to tighten process before risking real capital.",
+    copy: "Use Today's Practice, journal, alerts, and portfolio health to tighten process before real capital.",
   },
 ];
 
@@ -64,8 +74,8 @@ export default function Features() {
             Features that match the live Android app.
           </h1>
           <p className="lead">
-            BYSEL Trader is an Indian-market paper-trading and learning app: AI chat, live context, simulated execution,
-            and review tools — not a SEBI-registered brokerage.
+            BYSEL Trader is an Indian-market paper-trading and learning app: Practice Ideas, habit review,
+            instant practice credit, after-hours paper fills, AI chat, and live context — not a SEBI-registered brokerage.
           </p>
 
           <div className="feature-grid" style={{ marginTop: "1.2rem" }}>
@@ -106,16 +116,26 @@ export default function Features() {
             </div>
             <div className="stack-grid">
               <div className="info-row">
-                <p className="info-title">India-first data</p>
-                <p className="info-copy">NSE symbols, sector heatmap, and Indian-market coaching — not a US-stock template.</p>
+                <p className="info-title">India-first practice cockpit</p>
+                <p className="info-copy">
+                  Practice Ideas and habit review for NSE learners — not a tip marketplace and not a live broker clone.
+                </p>
+              </div>
+              <div className="info-row">
+                <p className="info-title">Paper anytime</p>
+                <p className="info-copy">
+                  Instant practice credit and after-hours fills using last session prices keep drills available beyond 3:30 PM IST.
+                </p>
               </div>
               <div className="info-row">
                 <p className="info-title">AI that can act (in paper)</p>
                 <p className="info-copy">Buy / Set Alert from chat responses, with confirmation before paper orders execute.</p>
               </div>
               <div className="info-row">
-                <p className="info-title">Safe practice</p>
-                <p className="info-copy">Virtual wallet and educational disclaimers. No live brokerage order routing in this product.</p>
+                <p className="info-title">Educational stance</p>
+                <p className="info-copy">
+                  Virtual wallet and SEBI-aware disclaimers. No live brokerage order routing in this product.
+                </p>
               </div>
             </div>
 
