@@ -1080,14 +1080,14 @@ class TradingViewModel(
             "INVALID_SIDE" -> "Use BUY or SELL only."
             "INVALID_IDEMPOTENCY_KEY" -> "Retry order once; avoid duplicate submissions."
             "IDEMPOTENCY_KEY_REUSED" -> "Use a fresh order request to avoid key conflicts."
-            "MARKET_CLOSED" -> "Try again during market hours."
+            "MARKET_CLOSED" -> "Paper trading stays available after hours using last session prices."
             "PRICE_UNAVAILABLE" -> "Wait for live quote refresh and retry."
             "TRIGGER_NOT_MET" -> "Use a limit/trigger setup closer to market price."
             else -> null
         }
 
-        val trace = response.traceId?.takeIf { it.isNotBlank() }?.let { "Trace: $it" }
-        return listOfNotNull(base, action, trace).joinToString("\n")
+        // Keep Trace ID in _lastOrderTraceId only — do not append to user-visible error text.
+        return listOfNotNull(base, action).joinToString("\n")
     }
 
     private fun extractTraceIdFromError(message: String?): String? {
@@ -2554,6 +2554,40 @@ class TradingViewModel(
 
     suspend fun fetchJournalInsights(): Map<String, Any>? =
         try { com.bysel.trader.data.api.RetrofitClient.apiService.getJournalInsights() } catch (_: Exception) { null }
+
+    /** Log a practice-ideas review into the trade journal (educational habit loop). */
+    fun logPracticeReview(
+        symbol: String,
+        qty: Int,
+        price: Double,
+        userNote: String,
+        setSl: Boolean,
+        followedPlan: Boolean,
+    ) {
+        viewModelScope.launch {
+            try {
+                val note = buildString {
+                    if (userNote.isNotBlank()) append(userNote.trim())
+                    if (isNotEmpty()) append(" | ")
+                    append(if (setSl) "Set SL: yes" else "Set SL: no")
+                    append(if (followedPlan) " | Followed plan: yes" else " | Followed plan: no")
+                    append(" | source=practice_ideas")
+                }
+                com.bysel.trader.data.api.RetrofitClient.apiService.logTrade(
+                    mapOf(
+                        "symbol" to symbol.uppercase(),
+                        "side" to "BUY",
+                        "qty" to qty.coerceAtLeast(1),
+                        "price" to price.coerceAtLeast(0.0),
+                        "userNote" to note,
+                    )
+                )
+                _productActionMessage.value = "Practice review saved — keep the Idea → Trade → Review habit."
+            } catch (e: Exception) {
+                _productActionMessage.value = "Practice trade placed. Review note could not sync — try Trade Journal later."
+            }
+        }
+    }
 
 }
 

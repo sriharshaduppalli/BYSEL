@@ -580,6 +580,7 @@ def _execute_order_at_price(
     status: str = "COMPLETED",
     idempotency_key: str | None = None,
     trace_id: str | None = None,
+    after_hours_paper: bool = False,
 ) -> tuple[OrderResponse, OrderModel]:
     normalized_order = _normalize_order_payload(order, idempotency_key=idempotency_key)
     resolved_trace_id = (trace_id or f"trc-{uuid4().hex[:16]}").strip()
@@ -724,11 +725,18 @@ def _execute_order_at_price(
         user_id,
     )
 
+    fill_note = ""
+    if after_hours_paper:
+        fill_note = " | Paper fill @ last session (NSE closed)"
     return (
         OrderResponse(
             status="ok",
             order=normalized_order,
-            message=f"{side} {normalized_order.qty} shares of {normalized_order.symbol} @ ₹{execution_price:.2f} = ₹{execution_price * normalized_order.qty:.2f} | Balance: ₹{wallet.balance:.2f}",
+            message=(
+                f"{side} {normalized_order.qty} shares of {normalized_order.symbol} "
+                f"@ ₹{execution_price:.2f} = ₹{execution_price * normalized_order.qty:.2f} "
+                f"| Balance: ₹{wallet.balance:.2f}{fill_note}"
+            ),
             orderId=order_db.id,
             executedPrice=round(order_db.price or 0.0, 2),
             total=round(order_db.total or 0.0, 2),
@@ -922,16 +930,11 @@ def place_order(
                 return _idempotency_reused_response(normalized_order, duplicate_order, resolved_trace_id)
 
             return _duplicate_order_response(normalized_order, duplicate_order, resolved_trace_id)
+    # BYSEL is paper/simulation trading: allow practice fills outside NSE hours
+    # using the latest available quote (last session). Live NSE gatekeeping is
+    # informational only — do not hard-block paper orders after 3:30 PM IST.
     market = is_market_open()
-    if not market.isOpen:
-        return OrderResponse(
-            status="error",
-            order=normalized_order,
-            message=f"Cannot trade: {market.message}",
-            traceId=resolved_trace_id,
-            idempotencyKey=normalized_order.idempotencyKey,
-            errorCode="MARKET_CLOSED",
-        )
+    after_hours_paper = not market.isOpen
 
     live_quote = fetch_quote(normalized_order.symbol)
     live_price = float(live_quote.get("last") or 0.0)
@@ -976,6 +979,7 @@ def place_order(
             user_id=user_id,
             idempotency_key=normalized_order.idempotencyKey,
             trace_id=resolved_trace_id,
+            after_hours_paper=after_hours_paper,
         )
         return response
     except LifecycleTransitionError as exc:
