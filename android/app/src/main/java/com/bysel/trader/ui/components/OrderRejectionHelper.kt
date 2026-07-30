@@ -55,11 +55,12 @@ private val REJECTION_RULES: List<Pair<Regex, RejectionResolution>> = listOf(
         icon = Icons.Filled.AccountBalanceWallet,
         accentColor = Color(0xFFE53935),
     ),
-    // Market closed
-    Regex("market.*(closed?|not.open|holiday|halted)|outside.*(trading.hours|market.hours)|pre.market|post.market", RegexOption.IGNORE_CASE) to RejectionResolution(
-        title = "Market Closed",
-        explanation = "Orders cannot be placed outside trading hours. NSE/BSE hours are 9:15 AM – 3:30 PM on weekdays.",
-        primaryCta = "Set GTT Alert",
+    // Market closed (legacy copy — paper fills are allowed after hours)
+    Regex("market.*(closed?|not.open|holiday|halted)|outside.*(trading.hours|market.hours)|pre.market|post.market|cannot trade", RegexOption.IGNORE_CASE) to RejectionResolution(
+        title = "NSE Session Closed",
+        explanation = "Live NSE is closed, but BYSEL paper trading still works using last session prices. Add practice credit if your wallet is empty.",
+        primaryCta = "Dismiss",
+        secondaryCta = "Add Funds",
         category = RejectionCategory.MARKET_CLOSED,
         icon = Icons.Filled.Schedule,
         accentColor = Color(0xFFFF8F00),

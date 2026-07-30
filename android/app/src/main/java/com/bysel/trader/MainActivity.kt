@@ -395,6 +395,7 @@ fun BYSELApp(
     val isSearching by viewModel.isSearching.collectAsState()
     val error by viewModel.error.collectAsState()
     val productActionMessage by viewModel.productActionMessage.collectAsState()
+    val lastExecutedOrder by viewModel.lastExecutedOrder.collectAsState()
     // AI & Analytics state
     val chatHistory by viewModel.chatHistory.collectAsState()
     val aiLoading by viewModel.aiLoading.collectAsState()
@@ -775,6 +776,17 @@ fun BYSELApp(
                                         onPracticeAlert = { symbol, price, alertType ->
                                             viewModel.createAlert(symbol, price, alertType)
                                         },
+                                        lastExecutedOrder = lastExecutedOrder,
+                                        onPracticeReviewSubmit = { symbol, qty, price, note, setSl, followedPlan ->
+                                            viewModel.logPracticeReview(
+                                                symbol = symbol,
+                                                qty = qty,
+                                                price = price,
+                                                userNote = note,
+                                                setSl = setSl,
+                                                followedPlan = followedPlan,
+                                            )
+                                        },
                                     )
                                     1 -> AiAssistantScreen(
                                         chatHistory = chatHistory,
@@ -819,6 +831,7 @@ fun BYSELApp(
                                             viewModel.refreshMarketStatus()
                                         },
                                         onAddFunds = { amount, upiProvider -> onUpiPay(amount, upiProvider) },
+                                        onAddPracticeCredit = { amount -> viewModel.addFunds(amount) },
                                         onErrorDismiss = { viewModel.clearError() },
                                         onTraceSupportLookup = { traceId ->
                                             viewModel.seedTraceLookup(traceId)

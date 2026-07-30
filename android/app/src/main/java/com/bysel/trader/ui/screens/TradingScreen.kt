@@ -187,6 +187,7 @@ fun TradingScreen(
     onSell: (String, Int) -> Unit,
     onRefresh: () -> Unit,
     onAddFunds: (Double, String) -> Unit,
+    onAddPracticeCredit: (Double) -> Unit = {},
     onErrorDismiss: () -> Unit,
     onTraceSupportLookup: ((String) -> Unit)? = null,
     viewModel: com.bysel.trader.viewmodel.TradingViewModel
@@ -259,10 +260,14 @@ fun TradingScreen(
     if (showAddFundsDialog) {
         AddFundsDialog(
             onDismiss = { showAddFundsDialog = false },
-            onAdd = { amount, upiProvider ->
+            onAddPracticeCredit = { amount ->
+                onAddPracticeCredit(amount)
+                showAddFundsDialog = false
+            },
+            onAddViaUpi = { amount, upiProvider ->
                 onAddFunds(amount, upiProvider)
                 showAddFundsDialog = false
-            }
+            },
         )
     }
 
@@ -679,7 +684,7 @@ private fun SpotTradingWorkspace(
                     .padding(horizontal = 16.dp, vertical = 4.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = if (marketStatus.isOpen) Color(0xFF1B5E20).copy(alpha = 0.3f)
-                    else Color(0xFFB71C1C).copy(alpha = 0.3f)
+                    else LocalAppTheme.current.primary.copy(alpha = 0.12f)
                 ),
                 shape = RoundedCornerShape(8.dp)
             ) {
@@ -694,14 +699,18 @@ private fun SpotTradingWorkspace(
                         Text(
                             text = if (marketStatus.isOpen) "\u2B24" else "\u2B24",
                             fontSize = 10.sp,
-                            color = if (marketStatus.isOpen) LocalAppTheme.current.positive else LocalAppTheme.current.negative,
+                            color = if (marketStatus.isOpen) LocalAppTheme.current.positive else LocalAppTheme.current.primary,
                             modifier = Modifier.padding(end = 8.dp)
                         )
                         Text(
-                            text = marketStatus.message,
+                            text = if (marketStatus.isOpen) {
+                                marketStatus.message
+                            } else {
+                                "NSE closed · paper trading still available"
+                            },
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = if (marketStatus.isOpen) LocalAppTheme.current.positive else LocalAppTheme.current.negative
+                            color = if (marketStatus.isOpen) LocalAppTheme.current.positive else LocalAppTheme.current.text
                         )
                     }
                 }
@@ -1341,7 +1350,7 @@ private fun TradeBottomSheetContent(
     }
 
     LaunchedEffect(quote.symbol, qty, tradeType, orderType, limitPriceInput, isMarketOpen) {
-        if (qty <= 0 || !isMarketOpen || limitInvalid || limitDeviationHardBlock) {
+        if (qty <= 0 || limitInvalid || limitDeviationHardBlock) {
             viewModel.clearPreTradeCopilotSignal()
             return@LaunchedEffect
         }
@@ -1399,18 +1408,18 @@ private fun TradeBottomSheetContent(
             }
         }
 
-        // Market closed warning
+        // After-hours paper trading is allowed — fill uses last session quote.
         if (!isMarketOpen) {
             Card(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFB71C1C).copy(alpha = 0.3f)),
+                colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.primary.copy(alpha = 0.12f)),
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Text(
-                    text = "⚠ ${marketStatus?.message ?: "Market is closed"}",
+                    text = "NSE closed · paper fills use last session price. ${marketStatus?.message.orEmpty()}".trim(),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = LocalAppTheme.current.negative,
+                    color = LocalAppTheme.current.text,
                     modifier = Modifier.padding(10.dp)
                 )
             }
@@ -1680,7 +1689,7 @@ private fun TradeBottomSheetContent(
                 hasEstimate = preTradeEstimate != null,
                 onRefreshGuidance = {
                     viewModel.loadPortfolioCopilotActions()
-                    if (qty > 0 && isMarketOpen && !limitInvalid && !limitDeviationHardBlock) {
+                    if (qty > 0 && !limitInvalid && !limitDeviationHardBlock) {
                         viewModel.fetchPreTradeEstimate(
                             com.bysel.trader.data.models.AdvancedOrderRequest(
                                 symbol = quote.symbol,
@@ -1848,7 +1857,7 @@ private fun TradeBottomSheetContent(
                         showConfirmDialog = true
                     }
                 },
-                enabled = qty > 0 && isMarketOpen && !limitInvalid && !limitDeviationHardBlock && !copilotBlocksTrade && !orderExecutionLoading && (tradeType == "SELL" || canAfford),
+                enabled = qty > 0 && !limitInvalid && !limitDeviationHardBlock && !copilotBlocksTrade && !orderExecutionLoading && (tradeType == "SELL" || canAfford),
                 modifier = Modifier.weight(2f).height(48.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (tradeType == "BUY") Color(0xFF00B050) else LocalAppTheme.current.negative,
@@ -2064,10 +2073,12 @@ private fun StreamHealthPill(health: TradingViewModel.StreamHealth) {
 @Composable
 fun AddFundsDialog(
     onDismiss: () -> Unit,
-    onAdd: (Double, String) -> Unit
+    onAddPracticeCredit: (Double) -> Unit,
+    onAddViaUpi: (Double, String) -> Unit,
 ) {
     var amount by remember { mutableStateOf("") }
     val presetAmounts = listOf(10000.0, 25000.0, 50000.0, 100000.0)
+    var fundingMode by remember { mutableStateOf("practice") } // practice | upi
     var selectedUpi by remember { mutableStateOf("") }
     val upiProviders = listOf(
         "GPay" to "com.google.android.apps.nbu.paisa.user",
@@ -2075,15 +2086,25 @@ fun AddFundsDialog(
         "Amazon Pay" to "in.amazon.mShop.android.shopping"
     )
     var selectedUpiPackage by remember { mutableStateOf("") }
+    val parsedAmount = amount.toDoubleOrNull() ?: 0.0
+    val canConfirm = parsedAmount > 0 && (
+        fundingMode == "practice" || (selectedUpi.isNotEmpty() && selectedUpiPackage.isNotEmpty())
+    )
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = LocalAppTheme.current.card,
         title = {
-            Text("Add Funds to Wallet", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold)
+            Text("Add practice funds", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold)
         },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "BYSEL uses paper money. Credit your simulation wallet instantly — no real payment needed.",
+                    fontSize = 12.sp,
+                    color = LocalAppTheme.current.textSecondary,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
                 OutlinedTextField(
                     value = amount,
                     onValueChange = { amount = it },
@@ -2112,24 +2133,58 @@ fun AddFundsDialog(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("Select UPI Provider", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
+                Text("Funding method", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    upiProviders.forEach { (name, pkg) ->
-                        Button(
-                            onClick = {
-                                selectedUpi = name
-                                selectedUpiPackage = pkg
-                            },
-                            modifier = Modifier.weight(1f).height(34.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (selectedUpi == name) Color(0xFF7C4DFF) else Color(0xFF2A2A2A)
-                            ),
-                            contentPadding = PaddingValues(horizontal = 4.dp)
-                        ) {
-                            Text(name, fontSize = 10.sp)
+                    Button(
+                        onClick = { fundingMode = "practice" },
+                        modifier = Modifier.weight(1f).height(36.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (fundingMode == "practice") LocalAppTheme.current.primary else Color(0xFF2A2A2A)
+                        ),
+                        contentPadding = PaddingValues(horizontal = 4.dp)
+                    ) {
+                        Text("Practice credit", fontSize = 11.sp)
+                    }
+                    Button(
+                        onClick = { fundingMode = "upi" },
+                        modifier = Modifier.weight(1f).height(36.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (fundingMode == "upi") LocalAppTheme.current.primary else Color(0xFF2A2A2A)
+                        ),
+                        contentPadding = PaddingValues(horizontal = 4.dp)
+                    ) {
+                        Text("UPI demo", fontSize = 11.sp)
+                    }
+                }
+
+                if (fundingMode == "upi") {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "Optional demo path — opens a UPI app. Prefer Practice credit for paper trading.",
+                        fontSize = 11.sp,
+                        color = LocalAppTheme.current.textSecondary,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        upiProviders.forEach { (name, pkg) ->
+                            Button(
+                                onClick = {
+                                    selectedUpi = name
+                                    selectedUpiPackage = pkg
+                                },
+                                modifier = Modifier.weight(1f).height(34.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (selectedUpi == name) Color(0xFF7C4DFF) else Color(0xFF2A2A2A)
+                                ),
+                                contentPadding = PaddingValues(horizontal = 4.dp)
+                            ) {
+                                Text(name, fontSize = 10.sp)
+                            }
                         }
                     }
                 }
@@ -2138,15 +2193,20 @@ fun AddFundsDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    val amt = amount.toDoubleOrNull() ?: 0.0
-                    if (amt > 0 && selectedUpi.isNotEmpty() && selectedUpiPackage.isNotEmpty()) {
-                        onAdd(amt, selectedUpiPackage)
+                    if (parsedAmount <= 0) return@Button
+                    if (fundingMode == "practice") {
+                        onAddPracticeCredit(parsedAmount)
+                    } else if (selectedUpiPackage.isNotEmpty()) {
+                        onAddViaUpi(parsedAmount, selectedUpiPackage)
                     }
                 },
-                enabled = (amount.toDoubleOrNull() ?: 0.0) > 0 && selectedUpi.isNotEmpty() && selectedUpiPackage.isNotEmpty(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF))
+                enabled = canConfirm,
+                colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary)
             ) {
-                Text("Add Funds", fontWeight = FontWeight.Bold)
+                Text(
+                    if (fundingMode == "practice") "Add practice credit" else "Continue with UPI",
+                    fontWeight = FontWeight.Bold,
+                )
             }
         },
         dismissButton = {

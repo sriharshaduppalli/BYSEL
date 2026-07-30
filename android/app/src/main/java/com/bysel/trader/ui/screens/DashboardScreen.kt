@@ -51,12 +51,25 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.bysel.trader.data.PracticeHabitStore
 import com.bysel.trader.data.models.Holding
 import com.bysel.trader.data.models.MarketMoverQuote
 import com.bysel.trader.data.models.MarketNewsHeadline
 import com.bysel.trader.data.models.MarketStatus
+import com.bysel.trader.data.models.OrderResponse
 import com.bysel.trader.data.models.PracticeIdea
 import com.bysel.trader.data.models.Quote
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.ShoppingCart
+import java.util.Locale
 import com.bysel.trader.ui.components.DashboardSkeletonLoader
 import com.bysel.trader.ui.components.InfoChip
 import com.bysel.trader.ui.components.NewsWidget
@@ -297,7 +310,10 @@ fun DashboardScreen(
     onSmartMoneyClick: (() -> Unit)? = null,
     onPaperBuy: ((String, Int) -> Unit)? = null,
     onPracticeAlert: ((String, Double, String) -> Unit)? = null,
+    lastExecutedOrder: OrderResponse? = null,
+    onPracticeReviewSubmit: ((symbol: String, qty: Int, price: Double, note: String, setSl: Boolean, followedPlan: Boolean) -> Unit)? = null,
 ) {
+    val context = LocalContext.current
     val dashboardViewModel: DashboardViewModel = viewModel()
     val pinnedStocks by dashboardViewModel.pinnedStocks.collectAsState()
     val portfolioPinned by dashboardViewModel.portfolioPinned.collectAsState()
@@ -318,6 +334,31 @@ fun DashboardScreen(
 
     var showHomeGuide by rememberSaveable { mutableStateOf(false) }
     var homeGuideStep by rememberSaveable { mutableIntStateOf(0) }
+    var habit by remember { mutableStateOf(PracticeHabitStore.load(context)) }
+    var pendingPracticeBuy by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    var practiceReview by remember { mutableStateOf<PracticeReviewTarget?>(null) }
+
+    LaunchedEffect(practiceIdeas) {
+        if (practiceIdeas.isNotEmpty()) {
+            habit = PracticeHabitStore.markIdeaSeen(context)
+        }
+    }
+
+    LaunchedEffect(lastExecutedOrder) {
+        val order = lastExecutedOrder ?: return@LaunchedEffect
+        val pending = pendingPracticeBuy ?: return@LaunchedEffect
+        if (!order.order.symbol.equals(pending.first, ignoreCase = true)) return@LaunchedEffect
+        habit = PracticeHabitStore.markTraded(context, order.order.symbol)
+        val price = order.executedPrice
+            ?: quotes.firstOrNull { it.symbol.equals(order.order.symbol, true) }?.last
+            ?: 0.0
+        practiceReview = PracticeReviewTarget(
+            symbol = order.order.symbol.uppercase(Locale.US),
+            qty = pending.second.coerceAtLeast(1),
+            price = price,
+        )
+        pendingPracticeBuy = null
+    }
 
     if (isLoading && quotes.isEmpty()) {
         DashboardSkeletonLoader(
@@ -337,6 +378,7 @@ fun DashboardScreen(
                 onRefresh()
                 dashboardViewModel.refreshMarketMovers(staggerMs = 400L)
                 dashboardViewModel.refreshPracticeIdeas()
+                habit = PracticeHabitStore.load(context)
             },
             showHomeGuide = showHomeGuide,
             homeGuideStep = homeGuideStep,
@@ -365,13 +407,51 @@ fun DashboardScreen(
             practiceIdeas = practiceIdeas,
             practiceIdeasLoading = practiceIdeasLoading,
             practiceIdeasDisclaimer = practiceIdeasDisclaimer,
+            practiceHabit = habit,
             onAiClick = onAiClick,
             marketStatus = marketStatus,
             onQuickTradeClick = onQuickTradeClick,
             onSignalLabClick = onSignalLabClick,
             onSmartMoneyClick = onSmartMoneyClick,
-            onPaperBuy = onPaperBuy,
-            onPracticeAlert = onPracticeAlert,
+            onPaperBuy = onPaperBuy?.let { buy ->
+                { symbol, qty ->
+                    pendingPracticeBuy = symbol to qty
+                    buy(symbol, qty)
+                }
+            },
+            onPracticeAlert = onPracticeAlert?.let { alert ->
+                { symbol, price, type ->
+                    habit = PracticeHabitStore.markAlertSet(context, symbol)
+                    alert(symbol, price, type)
+                }
+            },
+            onOpenPracticeReview = {
+                val symbol = habit.tradedSymbol
+                if (!symbol.isNullOrBlank()) {
+                    val qty = 1
+                    val price = quotes.firstOrNull { it.symbol.equals(symbol, true) }?.last ?: 0.0
+                    practiceReview = PracticeReviewTarget(symbol, qty, price)
+                }
+            },
+        )
+    }
+
+    practiceReview?.let { target ->
+        PracticeReviewSheet(
+            target = target,
+            onDismiss = { practiceReview = null },
+            onSubmit = { note, setSl, followedPlan ->
+                habit = PracticeHabitStore.markReviewed(context, setSl, followedPlan)
+                onPracticeReviewSubmit?.invoke(
+                    target.symbol,
+                    target.qty,
+                    target.price,
+                    note,
+                    setSl,
+                    followedPlan,
+                )
+                practiceReview = null
+            },
         )
     }
 }
@@ -414,6 +494,8 @@ fun DashboardContent(
     onSmartMoneyClick: (() -> Unit)? = null,
     onPaperBuy: ((String, Int) -> Unit)? = null,
     onPracticeAlert: ((String, Double, String) -> Unit)? = null,
+    practiceHabit: PracticeHabitStore.DayState = PracticeHabitStore.DayState(dateKey = ""),
+    onOpenPracticeReview: (() -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
     val scope = rememberCoroutineScope()
@@ -628,6 +710,13 @@ fun DashboardContent(
                 positiveCount = positiveCount,
                 negativeCount = negativeCount,
                 moodTitle = marketMoodTitle,
+            )
+        }
+
+        item {
+            TodaysPracticeStrip(
+                habit = practiceHabit,
+                onReviewClick = onOpenPracticeReview,
             )
         }
 
@@ -1673,6 +1762,235 @@ private fun MarketPulseHero(
                             .background(theme.positive.copy(alpha = 0.85f)),
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TodaysPracticeStrip(
+    habit: PracticeHabitStore.DayState,
+    onReviewClick: (() -> Unit)?,
+) {
+    val theme = LocalAppTheme.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(theme.card)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Today's Practice",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = theme.text,
+                )
+                Text(
+                    text = "Idea → Paper trade → Review  ·  score ${habit.score}/3",
+                    fontSize = 11.sp,
+                    color = theme.textSecondary,
+                )
+            }
+            Text(
+                text = "${habit.score}/3",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = theme.primary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(theme.primary.copy(alpha = 0.14f))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            PracticeStepChip(
+                label = "Idea",
+                done = habit.ideaSeen,
+                icon = Icons.Filled.AutoAwesome,
+                modifier = Modifier.weight(1f),
+            )
+            PracticeStepChip(
+                label = if (habit.tradeDone) habit.tradedSymbol ?: "Trade" else "Trade",
+                done = habit.tradeDone || habit.alertSet,
+                icon = if (habit.alertSet && !habit.tradeDone) {
+                    Icons.Filled.NotificationsActive
+                } else {
+                    Icons.Filled.ShoppingCart
+                },
+                modifier = Modifier.weight(1f),
+            )
+            PracticeStepChip(
+                label = "Review",
+                done = habit.reviewed,
+                icon = Icons.Filled.EditNote,
+                modifier = Modifier
+                    .weight(1f)
+                    .then(
+                        if (!habit.reviewed && habit.tradeDone && onReviewClick != null) {
+                            Modifier.clickable(onClick = onReviewClick)
+                        } else {
+                            Modifier
+                        }
+                    ),
+            )
+        }
+        if (habit.tradeDone && !habit.reviewed) {
+            Text(
+                text = "Tap Review to journal SL discipline — that closes today's loop.",
+                fontSize = 10.sp,
+                color = theme.textSecondary,
+            )
+        } else if (habit.reviewed) {
+            Text(
+                text = "Loop complete. Come back tomorrow for the next drill.",
+                fontSize = 10.sp,
+                color = theme.positive,
+            )
+        } else {
+            Text(
+                text = "Pick a Practice Idea below, paper-buy or set Alert @ SL, then review.",
+                fontSize = 10.sp,
+                color = theme.textSecondary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PracticeStepChip(
+    label: String,
+    done: Boolean,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+) {
+    val theme = LocalAppTheme.current
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+                if (done) theme.positive.copy(alpha = 0.14f) else theme.surface
+            )
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            imageVector = if (done) Icons.Filled.CheckCircle else icon,
+            contentDescription = null,
+            tint = if (done) theme.positive else theme.textSecondary,
+            modifier = Modifier.size(14.dp),
+        )
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = if (done) theme.positive else theme.text,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+private data class PracticeReviewTarget(
+    val symbol: String,
+    val qty: Int,
+    val price: Double,
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PracticeReviewSheet(
+    target: PracticeReviewTarget,
+    onDismiss: () -> Unit,
+    onSubmit: (note: String, setSl: Boolean, followedPlan: Boolean) -> Unit,
+) {
+    val theme = LocalAppTheme.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var note by rememberSaveable { mutableStateOf("") }
+    var setSl by rememberSaveable { mutableStateOf(true) }
+    var followedPlan by rememberSaveable { mutableStateOf(true) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = theme.card,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = "Practice Review",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = theme.text,
+            )
+            Text(
+                text = "${target.symbol} · ${target.qty} share(s) @ ₹${"%.2f".format(target.price)}",
+                fontSize = 13.sp,
+                color = theme.textSecondary,
+            )
+            Text(
+                text = "Close the habit loop — process over P&L.",
+                fontSize = 12.sp,
+                color = theme.textSecondary,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(
+                    checked = setSl,
+                    onCheckedChange = { setSl = it },
+                )
+                Text("I set / respected a stop-loss", color = theme.text, fontSize = 13.sp)
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(
+                    checked = followedPlan,
+                    onCheckedChange = { followedPlan = it },
+                )
+                Text("I followed the idea plan (no chase)", color = theme.text, fontSize = 13.sp)
+            }
+            OutlinedTextField(
+                value = note,
+                onValueChange = { note = it.take(240) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Journal note (optional)") },
+                placeholder = { Text("Why this entry? What will you do if SL hits?") },
+                minLines = 3,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+            )
+            Button(
+                onClick = { onSubmit(note, setSl, followedPlan) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = theme.primary),
+                shape = RoundedCornerShape(10.dp),
+            ) {
+                Text("Save review", fontWeight = FontWeight.Bold)
+            }
+            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                Text("Skip for now")
             }
         }
     }
