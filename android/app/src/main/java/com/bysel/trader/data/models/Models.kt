@@ -860,8 +860,13 @@ data class AuthResponse(
     val status: String,
     val user_id: Int,
     val access_token: String,
-    val refresh_token: String
-)
+    val refresh_token: String,
+    @SerializedName("expires_in") val expiresIn: Int? = null,
+    @SerializedName("expires_in_seconds") val expiresInSeconds: Int? = null,
+) {
+    fun accessTtlSeconds(defaultSeconds: Int = 7200): Int =
+        (expiresIn ?: expiresInSeconds)?.takeIf { it > 0 } ?: defaultSeconds
+}
 
 data class UserProfile(
     val status: String,

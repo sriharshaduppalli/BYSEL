@@ -1,12 +1,9 @@
 package com.bysel.trader.data.auth
 
-import kotlinx.coroutines.runBlocking
 import okhttp3.Authenticator
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.Route
-import java.io.IOException
-import retrofit2.HttpException
 
 class TokenRefreshAuthenticator : Authenticator {
     override fun authenticate(route: Route?, response: Response): Request? {
@@ -14,34 +11,20 @@ class TokenRefreshAuthenticator : Authenticator {
         if (path.startsWith("/auth/")) return null
         if (responseCount(response) >= 2) return null
 
-        return synchronized(this) {
-            val latestToken = AuthSessionManager.getAccessToken()
-            val currentAuth = response.request.header("Authorization")
-            if (!latestToken.isNullOrBlank() && currentAuth != "Bearer $latestToken") {
-                return@synchronized rebuildWithAuth(response.request, latestToken)
-            }
+        val failedAccessToken = response.request.header("Authorization")
+            ?.removePrefix("Bearer ")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
 
-            val refreshToken = AuthSessionManager.getRefreshToken() ?: return@synchronized null
-
-            try {
-                val refreshed = runBlocking { AuthTokenRefresher.refresh(refreshToken) }
-                AuthSessionManager.saveSession(
-                    accessToken = refreshed.access_token,
-                    refreshToken = refreshed.refresh_token,
-                    userId = refreshed.user_id
-                )
-                rebuildWithAuth(response.request, refreshed.access_token)
-            } catch (httpException: HttpException) {
-                if (httpException.code() == 401 || httpException.code() == 403) {
-                    AuthSessionManager.clearSession()
-                }
-                null
-            } catch (_: IOException) {
-                null
-            } catch (_: Exception) {
-                null
-            }
+        val latestToken = AuthSessionManager.getAccessToken()
+        if (!latestToken.isNullOrBlank() && latestToken != failedAccessToken) {
+            return rebuildWithAuth(response.request, latestToken)
         }
+
+        val refreshedAccess = AuthTokenRefresher.refreshBlocking(failedAccessToken = failedAccessToken)
+            ?: return null
+
+        return rebuildWithAuth(response.request, refreshedAccess)
     }
 
     private fun rebuildWithAuth(request: Request, accessToken: String): Request {

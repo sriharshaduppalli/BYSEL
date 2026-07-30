@@ -944,23 +944,6 @@ class TradingViewModel(
         _streamHealth.value = StreamHealth.OFFLINE
     }
 
-    private fun proactiveTokenRefresh() {
-        if (!AuthSessionManager.isAccessTokenExpiringSoon()) return
-        val refreshToken = AuthSessionManager.getRefreshToken() ?: return
-        viewModelScope.launch {
-            try {
-                val refreshed = AuthTokenRefresher.refresh(refreshToken)
-                AuthSessionManager.saveSession(
-                    accessToken = refreshed.access_token,
-                    refreshToken = refreshed.refresh_token,
-                    userId = refreshed.user_id,
-                )
-            } catch (_: Exception) {
-                // Non-critical — OkHttp Authenticator handles actual 401s reactively
-            }
-        }
-    }
-
     fun onAppForegroundResume(force: Boolean = false) {
         val now = System.currentTimeMillis()
         if (!force && now - lastForegroundWarmupAt < FOREGROUND_WARMUP_DEBOUNCE) {
@@ -968,22 +951,27 @@ class TradingViewModel(
         }
         lastForegroundWarmupAt = now
 
-        proactiveTokenRefresh()
+        viewModelScope.launch {
+            // Refresh first so wallet/quotes don't stampede 401s with a stale access token.
+            withContext(kotlinx.coroutines.Dispatchers.IO) {
+                AuthTokenRefresher.refreshBlocking(failedAccessToken = null)
+            }
 
-        refreshMarketStatus()
-        refreshWallet()
+            refreshMarketStatus()
+            refreshWallet()
 
-        val quotesAreStale = now - lastQuotesRefreshAt > QUOTE_STALE_THRESHOLD
-        if (force || _quotes.value.isEmpty() || quotesAreStale) {
-            refreshQuotes()
-        }
+            val quotesAreStale = System.currentTimeMillis() - lastQuotesRefreshAt > QUOTE_STALE_THRESHOLD
+            if (force || _quotes.value.isEmpty() || quotesAreStale) {
+                refreshQuotes()
+            }
 
-        if (force || _holdings.value.isEmpty()) {
-            refreshHoldings()
-        }
+            if (force || _holdings.value.isEmpty()) {
+                refreshHoldings()
+            }
 
-        if (_fastRefreshEnabled.value) {
-            startFastRefresh(symbols = trackedSymbols())
+            if (_fastRefreshEnabled.value) {
+                startFastRefresh(symbols = trackedSymbols())
+            }
         }
     }
 

@@ -3,6 +3,7 @@ package com.bysel.trader.data.repository
 import com.bysel.trader.data.api.BYSELApiService
 import com.bysel.trader.data.api.RetrofitClient
 import com.bysel.trader.data.auth.AuthSessionManager
+import com.bysel.trader.data.auth.AuthTokenRefresher
 import com.bysel.trader.data.models.AuthResponse
 import com.bysel.trader.data.models.ChangePasswordRequest
 import com.bysel.trader.data.models.PasswordResetConfirmRequest
@@ -23,15 +24,44 @@ import com.bysel.trader.data.models.UserProfile
 import com.bysel.trader.data.models.UserProfileUpdateRequest
 import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import retrofit2.HttpException
 
 private const val TAG = "AuthRepository"
 
 class AuthRepository(
-    private val apiService: BYSELApiService = RetrofitClient.apiService
+    private val apiService: BYSELApiService = RetrofitClient.authApiService
 ) {
+    suspend fun warmBackend() {
+        runCatching { apiService.healthCheck() }
+    }
+
+    private fun normalizeLoginIdentifier(raw: String): String {
+        val trimmed = raw.trim()
+        return if (trimmed.contains("@")) trimmed.lowercase() else trimmed
+    }
+
     private fun toAuthErrorMessage(exception: Exception, fallback: String): String {
+        val rawMessage = exception.message.orEmpty()
+        if (
+            exception is java.net.SocketTimeoutException ||
+            exception is java.io.InterruptedIOException ||
+            rawMessage.contains("timeout", ignoreCase = true) ||
+            rawMessage.contains("timed out", ignoreCase = true)
+        ) {
+            return "Server is waking up. Wait a few seconds and try again — your password was not rejected."
+        }
+        if (
+            exception is java.net.UnknownHostException ||
+            exception is java.net.ConnectException ||
+            rawMessage.contains("Unable to resolve host", ignoreCase = true) ||
+            rawMessage.contains("failed to connect", ignoreCase = true)
+        ) {
+            return "Cannot reach BYSEL servers. Check your internet and try again."
+        }
+
         if (exception is HttpException) {
             val detail = runCatching {
                 exception.response()
@@ -42,8 +72,16 @@ class AuthRepository(
             }.getOrNull()
 
             return when (exception.code()) {
-                401 -> detail
-                    ?: "Invalid username/email or password. Please verify credentials and try again."
+                401 -> {
+                    val base = detail
+                        ?: "Invalid username/email or password. Please verify credentials and try again."
+                    if (base.contains("Invalid username or password", ignoreCase = true)) {
+                        "$base Tip: use the same username OR email from registration (both work)."
+                    } else {
+                        base
+                    }
+                }
+                429 -> detail ?: "Too many attempts. Please wait a minute and try again."
                 else -> detail ?: (exception.message ?: fallback)
             }
         }
@@ -53,13 +91,14 @@ class AuthRepository(
 
     suspend fun register(username: String, email: String, password: String): Result<AuthResponse> {
         val normalizedUsername = username.trim()
-        val normalizedEmail = email.trim()
+        val normalizedEmail = email.trim().lowercase()
+        val normalizedPassword = password.trim()
         return try {
             val response = apiService.register(
                 RegisterRequest(
                     username = normalizedUsername,
                     email = normalizedEmail,
-                    password = password,
+                    password = normalizedPassword,
                 )
             )
             AuthSessionManager.saveSession(
@@ -74,46 +113,18 @@ class AuthRepository(
     }
 
     suspend fun login(username: String, password: String): Result<AuthResponse> {
-        val normalizedUsername = username.trim()
-        val trimmedPassword = password.trim()
-        return try {
-            val response = apiService.login(LoginRequest(username = normalizedUsername, password = password))
-            AuthSessionManager.saveSession(
-                accessToken = response.access_token,
-                refreshToken = response.refresh_token,
-                userId = response.user_id
-            )
-            Result.Success(response)
-        } catch (firstAttemptError: Exception) {
-            if (trimmedPassword != password) {
-                try {
-                    val retryResponse = apiService.login(
-                        LoginRequest(
-                            username = normalizedUsername,
-                            password = trimmedPassword,
-                        )
-                    )
-                    AuthSessionManager.saveSession(
-                        accessToken = retryResponse.access_token,
-                        refreshToken = retryResponse.refresh_token,
-                        userId = retryResponse.user_id
-                    )
-                    return Result.Success(retryResponse)
-                } catch (_: Exception) {
-                    // Fall through to canonical error for the original login attempt.
-                }
-            }
-
-            Result.Error(toAuthErrorMessage(firstAttemptError, "Login failed"))
+        val normalizedUsername = normalizeLoginIdentifier(username)
+        val normalizedPassword = password.trim()
+        if (normalizedUsername.isBlank()) {
+            return Result.Error("Username or email is required")
         }
-    }
-
-    suspend fun refreshSession(): Result<AuthResponse> {
-        val refreshToken = AuthSessionManager.getRefreshToken()
-            ?: return Result.Error("No refresh token found")
-
+        if (normalizedPassword.isBlank()) {
+            return Result.Error("Password is required")
+        }
         return try {
-            val response = apiService.refreshToken(RefreshTokenRequest(refreshToken = refreshToken))
+            val response = apiService.login(
+                LoginRequest(username = normalizedUsername, password = normalizedPassword)
+            )
             AuthSessionManager.saveSession(
                 accessToken = response.access_token,
                 refreshToken = response.refresh_token,
@@ -121,9 +132,34 @@ class AuthRepository(
             )
             Result.Success(response)
         } catch (e: Exception) {
-            if (e is HttpException && (e.code() == 401 || e.code() == 403)) {
-                AuthSessionManager.clearSession()
+            Result.Error(toAuthErrorMessage(e, "Login failed"))
+        }
+    }
+
+    suspend fun refreshSession(): Result<AuthResponse> {
+        if (AuthSessionManager.getRefreshToken().isNullOrBlank()) {
+            return Result.Error("No refresh token found")
+        }
+
+        return try {
+            val access = withContext(Dispatchers.IO) {
+                AuthTokenRefresher.refreshBlocking(failedAccessToken = null)
             }
+            if (access.isNullOrBlank()) {
+                return Result.Error(
+                    if (AuthSessionManager.hasSession()) "Session refresh failed"
+                    else "Session expired. Please sign in again."
+                )
+            }
+            Result.Success(
+                AuthResponse(
+                    status = "ok",
+                    user_id = AuthSessionManager.getUserId() ?: 0,
+                    access_token = access,
+                    refresh_token = AuthSessionManager.getRefreshToken().orEmpty(),
+                )
+            )
+        } catch (e: Exception) {
             Result.Error(toAuthErrorMessage(e, "Session refresh failed"))
         }
     }
