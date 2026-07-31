@@ -22,7 +22,17 @@ const FAQ = [
   {
     question: "OTP SMS is not arriving. What should I do?",
     answer:
-      "Use Register with username, email, and password. That path is fully working. Phone OTP depends on Firebase SMS delivery and may be rate-limited.",
+      "Use Register with username, email, and password. That path is fully working. Phone OTP depends on Firebase SMS delivery and may be rate-limited. After either login, you stay signed in until you Sign out.",
+  },
+  {
+    question: "I got signed out unexpectedly. What should I do?",
+    answer:
+      "Update to the latest Android build. Sessions are meant to persist after OTP or email login across restarts and network switches. If it still happens, email support@byseltrader.com with app version, sign-in method, and when it occurred.",
+  },
+  {
+    question: "Does biometric lock sign me out?",
+    answer:
+      "No. Fingerprint or face unlock is an optional screen lock when you return to the app. Your BYSEL account session stays active until you use Sign out.",
   },
   {
     question: "How quickly does support respond?",

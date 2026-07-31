@@ -43,12 +43,21 @@ const CORE_MODULES = [
     title: "Signal, Risk, Smart Money",
     copy: "Signal Lab, Risk Lab, investor portfolio changes, earnings calendar, trade journal, SIP / MF / IPO explorers.",
   },
+  {
+    kicker: "Account",
+    title: "Stay signed in",
+    copy: "After email/password or phone OTP login, your session persists across restarts and network changes. Optional biometric lock only unlocks the app UI — it does not sign you out.",
+  },
 ];
 
 const ACCESS_TRACK = [
   {
     title: "Create account",
-    copy: "Register with username, email, and password — the most reliable path for testers right now.",
+    copy: "Register with username, email, and password, or sign in with phone OTP when SMS delivery works. Both paths keep you signed in afterward.",
+  },
+  {
+    title: "Stay signed in",
+    copy: "Open the app daily for Practice Ideas without logging in again. Sessions refresh quietly; only Sign out (or a revoked session) ends account access.",
   },
   {
     title: "Add practice credit",
@@ -135,6 +144,13 @@ export default function Features() {
                 <p className="info-title">Educational stance</p>
                 <p className="info-copy">
                   Virtual wallet and SEBI-aware disclaimers. No live brokerage order routing in this product.
+                </p>
+              </div>
+              <div className="info-row">
+                <p className="info-title">Durable login</p>
+                <p className="info-copy">
+                  Email/password and OTP sessions stay active until you Sign out. Biometric lock is optional device
+                  unlock — not a logout.
                 </p>
               </div>
             </div>
