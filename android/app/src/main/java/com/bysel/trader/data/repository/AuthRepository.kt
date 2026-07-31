@@ -104,7 +104,8 @@ class AuthRepository(
             AuthSessionManager.saveSession(
                 accessToken = response.access_token,
                 refreshToken = response.refresh_token,
-                userId = response.user_id
+                userId = response.user_id,
+                accessTokenTtlSeconds = response.accessTtlSeconds(),
             )
             Result.Success(response)
         } catch (e: Exception) {
@@ -128,7 +129,8 @@ class AuthRepository(
             AuthSessionManager.saveSession(
                 accessToken = response.access_token,
                 refreshToken = response.refresh_token,
-                userId = response.user_id
+                userId = response.user_id,
+                accessTokenTtlSeconds = response.accessTtlSeconds(),
             )
             Result.Success(response)
         } catch (e: Exception) {
@@ -200,6 +202,7 @@ class AuthRepository(
                 accessToken = response.access_token,
                 refreshToken = response.refresh_token,
                 userId = response.user_id,
+                accessTokenTtlSeconds = response.accessTtlSeconds(),
             )
             Result.Success(response)
         } catch (e: Exception) {
@@ -283,7 +286,8 @@ class AuthRepository(
             AuthSessionManager.saveSession(
                 accessToken = response.access_token,
                 refreshToken = response.refresh_token,
-                userId = response.user_id
+                userId = response.user_id,
+                accessTokenTtlSeconds = response.accessTtlSeconds(),
             )
             Result.Success(response)
         } catch (e: Exception) {
@@ -302,7 +306,8 @@ class AuthRepository(
             AuthSessionManager.saveSession(
                 accessToken = response.access_token,
                 refreshToken = response.refresh_token,
-                userId = response.user_id
+                userId = response.user_id,
+                accessTokenTtlSeconds = response.accessTtlSeconds(),
             )
             Result.Success(response)
         } catch (e: Exception) {
