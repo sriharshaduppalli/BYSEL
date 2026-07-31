@@ -48,7 +48,6 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
 
     var darkMode by remember { mutableStateOf(currentTheme.lowercase() != "light") }
-    var enableNotifications by remember { mutableStateOf(true) }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var legalDocument by remember { mutableStateOf<com.bysel.trader.ui.components.LegalDocument?>(null) }
@@ -369,12 +368,11 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(12.dp))
         }
         item {
-            SettingItem(
+            SettingClickItem(
                 icon = Icons.Filled.Notifications,
-                title = "Push Notifications",
-                subtitle = "Get alerts for price changes",
-                value = enableNotifications,
-                onValueChange = { enableNotifications = it }
+                title = "Notifications",
+                subtitle = "In-app price alerts only · push delivery coming soon",
+                onClick = { }
             )
         }
         item {

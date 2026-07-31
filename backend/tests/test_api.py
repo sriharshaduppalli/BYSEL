@@ -1282,7 +1282,7 @@ def test_ai_undervalued_screening_query_stays_screening(monkeypatch):
     assert "top" in result["answer"].lower()
 
 
-def test_ai_ask_endpoint_passes_db_context(monkeypatch):
+def test_ai_ask_endpoint_uses_monkeypatched_rule_assistant(monkeypatch):
     def fake_ai_assistant(query: str, db=None):
         return {
             "answer": f"db_present={db is not None}; query={query}",
@@ -1290,11 +1290,17 @@ def test_ai_ask_endpoint_passes_db_context(monkeypatch):
 
     monkeypatch.setattr(routes_module, "ai_assistant", fake_ai_assistant)
 
-    response = client.post("/ai/ask", json={"query": "Is KAYNES overvalued?"})
+    # Force rule-engine so Groq / Gemini / Indian Stock LLM cannot replace the answer.
+    response = client.post(
+        "/ai/ask",
+        json={"query": "Is KAYNES overvalued?", "tier": "rule-engine"},
+    )
     assert response.status_code == 200
     payload = response.json()
-    assert payload["source"] in {"rule-engine", "groq", "gemini", "indian-stock-llm"}
-    assert "db_present=true" in payload["answer"].lower()
+    assert payload["source"] == "rule-engine"
+    # Request Session is intentionally not shared into the Yahoo worker thread.
+    assert "db_present=false" in payload["answer"].lower()
+    assert "kaynes" in payload["answer"].lower()
 
 
 def test_ai_ask_greeting_short_circuits_before_stock_pipeline(monkeypatch):
@@ -1641,6 +1647,7 @@ def test_fetch_recent_headlines_returns_latest_five(monkeypatch):
 
     ai_engine._news_cache.clear()
     monkeypatch.setattr(ai_engine.yf, "Ticker", lambda symbol: FakeTicker())
+    monkeypatch.setattr(ai_engine, "_fetch_google_news_items", lambda symbol, limit=8: [])
 
     headlines = ai_engine._fetch_recent_headlines("KAYNES")
 
