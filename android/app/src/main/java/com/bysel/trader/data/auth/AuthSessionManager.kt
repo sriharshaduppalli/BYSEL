@@ -66,19 +66,20 @@ object AuthSessionManager {
     fun saveSession(accessToken: String?, refreshToken: String?, userId: Int?, accessTokenTtlSeconds: Int = 7200) {
         val sharedPrefs = prefs ?: return
         val expiryMs = if (!accessToken.isNullOrBlank()) System.currentTimeMillis() + (accessTokenTtlSeconds * 1000L) else 0L
+        // commit() so concurrent refresh/auth threads always see the latest tokens.
         with(sharedPrefs.edit()) {
             if (accessToken.isNullOrBlank()) remove(KEY_ACCESS_TOKEN) else putString(KEY_ACCESS_TOKEN, accessToken)
             if (refreshToken.isNullOrBlank()) remove(KEY_REFRESH_TOKEN) else putString(KEY_REFRESH_TOKEN, refreshToken)
             if (userId == null) remove(KEY_USER_ID) else putInt(KEY_USER_ID, userId)
             if (expiryMs > 0L) putLong(KEY_ACCESS_TOKEN_EXPIRY, expiryMs) else remove(KEY_ACCESS_TOKEN_EXPIRY)
-            apply()
+            commit()
         }
         _sessionState.value = hasSession()
     }
 
     fun clearSession() {
         val sharedPrefs = prefs ?: return
-        sharedPrefs.edit().clear().apply()
+        sharedPrefs.edit().clear().commit()
         _sessionState.value = false
     }
 

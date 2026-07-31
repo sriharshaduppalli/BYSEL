@@ -190,6 +190,8 @@ fun TradingScreen(
     onAddPracticeCredit: (Double) -> Unit = {},
     onErrorDismiss: () -> Unit,
     onTraceSupportLookup: ((String) -> Unit)? = null,
+    openAddFundsRequest: Boolean = false,
+    onOpenAddFundsConsumed: () -> Unit = {},
     viewModel: com.bysel.trader.viewmodel.TradingViewModel
 ) {
     // Start fast-refresh while this screen is visible; stop on dispose.
@@ -218,6 +220,13 @@ fun TradingScreen(
         )
     }
     var showAddFundsDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(openAddFundsRequest) {
+        if (openAddFundsRequest) {
+            showAddFundsDialog = true
+            onOpenAddFundsConsumed()
+        }
+    }
     var selectedWorkspaceIndex by remember { mutableIntStateOf(0) }
     var activeTradeSymbol by remember { mutableStateOf<String?>(null) }
 
@@ -539,7 +548,11 @@ private fun SpotTradingWorkspace(
                     modifier = Modifier.height(34.dp),
                     contentPadding = PaddingValues(horizontal = 14.dp)
                 ) {
-                    Text("+ Add Funds", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (walletBalance > 0.0) "+ Add Funds" else "+ Practice credit",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
@@ -2074,33 +2087,22 @@ private fun StreamHealthPill(health: TradingViewModel.StreamHealth) {
 fun AddFundsDialog(
     onDismiss: () -> Unit,
     onAddPracticeCredit: (Double) -> Unit,
-    onAddViaUpi: (Double, String) -> Unit,
+    onAddViaUpi: (Double, String) -> Unit = { _, _ -> },
 ) {
     var amount by remember { mutableStateOf("") }
     val presetAmounts = listOf(10000.0, 25000.0, 50000.0, 100000.0)
-    var fundingMode by remember { mutableStateOf("practice") } // practice | upi
-    var selectedUpi by remember { mutableStateOf("") }
-    val upiProviders = listOf(
-        "GPay" to "com.google.android.apps.nbu.paisa.user",
-        "PhonePe" to "com.phonepe.app",
-        "Amazon Pay" to "in.amazon.mShop.android.shopping"
-    )
-    var selectedUpiPackage by remember { mutableStateOf("") }
     val parsedAmount = amount.toDoubleOrNull() ?: 0.0
-    val canConfirm = parsedAmount > 0 && (
-        fundingMode == "practice" || (selectedUpi.isNotEmpty() && selectedUpiPackage.isNotEmpty())
-    )
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = LocalAppTheme.current.card,
         title = {
-            Text("Add practice funds", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold)
+            Text("Add practice credit", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold)
         },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "BYSEL uses paper money. Credit your simulation wallet instantly — no real payment needed.",
+                    text = "BYSEL uses paper money only. Credit your simulation wallet instantly — no UPI or real payment.",
                     fontSize = 12.sp,
                     color = LocalAppTheme.current.textSecondary,
                     modifier = Modifier.padding(bottom = 12.dp),
@@ -2131,82 +2133,17 @@ fun AddFundsDialog(
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("Funding method", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = { fundingMode = "practice" },
-                        modifier = Modifier.weight(1f).height(36.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (fundingMode == "practice") LocalAppTheme.current.primary else Color(0xFF2A2A2A)
-                        ),
-                        contentPadding = PaddingValues(horizontal = 4.dp)
-                    ) {
-                        Text("Practice credit", fontSize = 11.sp)
-                    }
-                    Button(
-                        onClick = { fundingMode = "upi" },
-                        modifier = Modifier.weight(1f).height(36.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (fundingMode == "upi") LocalAppTheme.current.primary else Color(0xFF2A2A2A)
-                        ),
-                        contentPadding = PaddingValues(horizontal = 4.dp)
-                    ) {
-                        Text("UPI demo", fontSize = 11.sp)
-                    }
-                }
-
-                if (fundingMode == "upi") {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        "Optional demo path — opens a UPI app. Prefer Practice credit for paper trading.",
-                        fontSize = 11.sp,
-                        color = LocalAppTheme.current.textSecondary,
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        upiProviders.forEach { (name, pkg) ->
-                            Button(
-                                onClick = {
-                                    selectedUpi = name
-                                    selectedUpiPackage = pkg
-                                },
-                                modifier = Modifier.weight(1f).height(34.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (selectedUpi == name) Color(0xFF7C4DFF) else Color(0xFF2A2A2A)
-                                ),
-                                contentPadding = PaddingValues(horizontal = 4.dp)
-                            ) {
-                                Text(name, fontSize = 10.sp)
-                            }
-                        }
-                    }
-                }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    if (parsedAmount <= 0) return@Button
-                    if (fundingMode == "practice") {
-                        onAddPracticeCredit(parsedAmount)
-                    } else if (selectedUpiPackage.isNotEmpty()) {
-                        onAddViaUpi(parsedAmount, selectedUpiPackage)
-                    }
+                    if (parsedAmount > 0) onAddPracticeCredit(parsedAmount)
                 },
-                enabled = canConfirm,
+                enabled = parsedAmount > 0,
                 colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary)
             ) {
-                Text(
-                    if (fundingMode == "practice") "Add practice credit" else "Continue with UPI",
-                    fontWeight = FontWeight.Bold,
-                )
+                Text("Add practice credit", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {

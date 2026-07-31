@@ -13,7 +13,7 @@ const PLANS = [
       "Instant practice credit (no UPI required)",
       "After-hours paper fills at last session prices",
       "Sector heatmap + AI assistant with Buy / Alert",
-      "Username + email password login",
+      "Email/password or phone OTP — stay signed in",
     ],
     cta: "Get the App",
     href: PLAY_STORE_URL,
@@ -66,9 +66,14 @@ const FAQ = [
       "Yes. BYSEL allows paper fills after 3:30 PM IST and on weekends using last session prices, so practice drills stay available outside NSE hours.",
   },
   {
-    question: "How should I sign in while OTP SMS is unreliable?",
+    question: "Phone OTP or email login — which should I use?",
     answer:
-      "Use Register with username, email, and password. Phone OTP remains available when Firebase SMS delivery works for your number.",
+      "Either works. Register with username, email, and password for a reliable path anytime. Phone OTP is available when Firebase SMS delivery works for your number. Both keep you signed in afterward.",
+  },
+  {
+    question: "Do I stay signed in after login?",
+    answer:
+      "Yes. After email/password or OTP login, your account session persists across app restarts and brief network changes. You should not need to sign in every time you open the app. Optional biometric lock only unlocks the screen — it does not sign you out.",
   },
   {
     question: "Where do I download the app?",

@@ -38,10 +38,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ViewModelProvider
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.ViewModelProvider
 import com.bysel.trader.data.auth.AuthSessionManager
 import com.bysel.trader.data.local.BYSELDatabase
 import com.bysel.trader.data.repository.AuthRepository
@@ -103,15 +106,33 @@ class MainActivity : FragmentActivity() {
         setContent {
             val authRepository = remember { AuthRepository() }
             val scope = rememberCoroutineScope()
+            val lifecycleOwner = LocalLifecycleOwner.current
             val isLoggedIn by AuthSessionManager.sessionState.collectAsState()
             var wasLoggedIn by remember { mutableStateOf(isLoggedIn) }
             var manualLogoutInProgress by remember { mutableStateOf(false) }
             var activeTradingViewModel by remember { mutableStateOf(tradingViewModel) }
 
-            // Show biometric lock screen if enabled and not authenticated
-            var showLockScreen by remember { mutableStateOf(
-                isLoggedIn && biometricAuthManager.isBiometricEnabled() && !isAuthenticated
-            ) }
+            // Biometric unlock gate — cleared on background so returning requires unlock again.
+            var biometricUnlocked by remember {
+                mutableStateOf(!biometricAuthManager.isBiometricEnabled())
+            }
+            val showLockScreen =
+                isLoggedIn && biometricAuthManager.isBiometricEnabled() && !biometricUnlocked
+
+            DisposableEffect(lifecycleOwner, isLoggedIn) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (
+                        event == Lifecycle.Event.ON_STOP &&
+                        AuthSessionManager.hasSession() &&
+                        biometricAuthManager.isBiometricEnabled()
+                    ) {
+                        biometricUnlocked = false
+                        isAuthenticated = false
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+            }
             
             // Determine initial tab based on shortcut
             val initialTab = remember {
@@ -129,27 +150,31 @@ class MainActivity : FragmentActivity() {
 
                 if (wasLoggedIn && !isLoggedIn && !manualLogoutInProgress) {
                     isAuthenticated = false
-                    showLockScreen = false
+                    biometricUnlocked = false
                     Toast.makeText(this@MainActivity, "Session expired. Please sign in again.", Toast.LENGTH_SHORT).show()
                 }
 
                 if (!isLoggedIn) {
                     manualLogoutInProgress = false
+                    tradingViewModel = null
+                    activeTradingViewModel = null
+                    viewModelStore.clear()
+                    isAuthenticated = false
+                    biometricUnlocked = !biometricAuthManager.isBiometricEnabled()
                 }
                 wasLoggedIn = isLoggedIn
-                
-                // Trigger biometric auth if enabled
-                if (isLoggedIn && biometricAuthManager.isBiometricEnabled() && !isAuthenticated) {
+            }
+
+            LaunchedEffect(showLockScreen) {
+                if (showLockScreen) {
                     biometricAuthManager.authenticateForAppUnlock(
                         activity = this@MainActivity,
                         onSuccess = {
                             isAuthenticated = true
-                            showLockScreen = false
+                            biometricUnlocked = true
                         },
-                        onCancel = {
-                            // User cancelled - exit app
-                            finish()
-                        }
+                        // Stay on lock screen — cancel must not sign the user out or kill the process.
+                        onCancel = { }
                     )
                 }
             }
@@ -173,7 +198,7 @@ class MainActivity : FragmentActivity() {
                 AuthScreen(
                     onAuthenticated = {
                         isAuthenticated = !biometricAuthManager.isBiometricEnabled()
-                        showLockScreen = biometricAuthManager.isBiometricEnabled() && !isAuthenticated
+                        biometricUnlocked = !biometricAuthManager.isBiometricEnabled()
                     }
                 )
             } else if (showLockScreen) {
@@ -183,9 +208,9 @@ class MainActivity : FragmentActivity() {
                             activity = this@MainActivity,
                             onSuccess = {
                                 isAuthenticated = true
-                                showLockScreen = false
+                                biometricUnlocked = true
                             },
-                            onCancel = { finish() }
+                            onCancel = { }
                         )
                     }
                 )
@@ -213,8 +238,11 @@ class MainActivity : FragmentActivity() {
                         manualLogoutInProgress = true
                         scope.launch {
                             val result = authRepository.logout()
+                            tradingViewModel = null
+                            activeTradingViewModel = null
+                            viewModelStore.clear()
                             isAuthenticated = false
-                            showLockScreen = false
+                            biometricUnlocked = false
                             val message = if (result is Result.Error) {
                                 "Signed out on this device, but the server could not be reached"
                             } else {
@@ -227,8 +255,11 @@ class MainActivity : FragmentActivity() {
                         manualLogoutInProgress = true
                         scope.launch {
                             val result = authRepository.logoutAllDevices()
+                            tradingViewModel = null
+                            activeTradingViewModel = null
+                            viewModelStore.clear()
                             isAuthenticated = false
-                            showLockScreen = false
+                            biometricUnlocked = false
                             val message = if (result is Result.Error) {
                                 "Signed out here, but other devices may still be signed in"
                             } else {
@@ -254,7 +285,7 @@ class MainActivity : FragmentActivity() {
             biometricAuthManager.authenticateForAppUnlock(
                 activity = this,
                 onSuccess = { isAuthenticated = true },
-                onCancel = { finish() }
+                onCancel = { }
             )
         }
 
@@ -368,6 +399,7 @@ fun BYSELApp(
     var previousTab by remember { mutableIntStateOf(0) }
     // Trades suggested by the AI assistant are confirmed here before they reach the broker.
     var pendingAiTrade by remember { mutableStateOf<AiTradeRequest?>(null) }
+    var pendingOpenAddFunds by remember { mutableStateOf(false) }
     var lastBackPressAt by remember { mutableLongStateOf(0L) }
     // Default 2s live refresh while market is open. Migrate older 30–60s prefs down.
     var heatmapInterval by remember {
@@ -752,6 +784,7 @@ fun BYSELApp(
                                         quotes = quotes,
                                         isLoading = isLoading,
                                         error = error,
+                                        walletBalance = walletBalance,
                                         onRefresh = { viewModel.refreshQuotes(force = true) },
                                         onTradeClick = { symbol ->
                                             previousTab = selectedTab
@@ -770,8 +803,22 @@ fun BYSELApp(
                                             previousTab = selectedTab
                                             selectedTab = 21
                                         },
+                                        onAddPracticeFunds = {
+                                            selectedTab = 2
+                                            pendingOpenAddFunds = true
+                                        },
                                         onPaperBuy = { symbol, qty ->
-                                            viewModel.placeOrder(symbol, qty, "BUY")
+                                            if (walletBalance <= 0.0) {
+                                                selectedTab = 2
+                                                pendingOpenAddFunds = true
+                                                Toast.makeText(
+                                                    context,
+                                                    "Add practice credit before Paper Buy",
+                                                    Toast.LENGTH_SHORT,
+                                                ).show()
+                                            } else {
+                                                viewModel.placeOrder(symbol, qty, "BUY")
+                                            }
                                         },
                                         onPracticeAlert = { symbol, price, alertType ->
                                             viewModel.createAlert(symbol, price, alertType)
@@ -823,6 +870,8 @@ fun BYSELApp(
                                         error = error,
                                         walletBalance = walletBalance,
                                         marketStatus = marketStatus,
+                                        openAddFundsRequest = pendingOpenAddFunds,
+                                        onOpenAddFundsConsumed = { pendingOpenAddFunds = false },
                                         onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
                                         onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") },
                                         onRefresh = {
@@ -830,7 +879,7 @@ fun BYSELApp(
                                             viewModel.refreshWallet()
                                             viewModel.refreshMarketStatus()
                                         },
-                                        onAddFunds = { amount, upiProvider -> onUpiPay(amount, upiProvider) },
+                                        onAddFunds = { amount, _ -> viewModel.addFunds(amount) },
                                         onAddPracticeCredit = { amount -> viewModel.addFunds(amount) },
                                         onErrorDismiss = { viewModel.clearError() },
                                         onTraceSupportLookup = { traceId ->

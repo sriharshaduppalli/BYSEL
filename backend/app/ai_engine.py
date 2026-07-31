@@ -2257,7 +2257,9 @@ def ai_assistant(query: str, db=None) -> Dict:
         # Sector / theme questions must not inherit the currently selected quote.
         _theme_markers = (
             "stocks", "stock", "sector", "defence", "defense", "pharma", "bank",
-            "auto", "fmcg", "infra", "psu", "realty", "metal", "energy", "it ",
+            "auto", "fmcg", "infra", "psu", "realty", "metal", "energy",
+            # Avoid bare "it " — it matches English "is it …" and drops context symbols.
+            "it stocks", "it sector", "nifty it", "indian it",
             "best", "top", "screen", "list", "recommend",
         )
         is_theme_query = any(m in query_lower for m in _theme_markers)

@@ -312,6 +312,8 @@ fun DashboardScreen(
     onPracticeAlert: ((String, Double, String) -> Unit)? = null,
     lastExecutedOrder: OrderResponse? = null,
     onPracticeReviewSubmit: ((symbol: String, qty: Int, price: Double, note: String, setSl: Boolean, followedPlan: Boolean) -> Unit)? = null,
+    walletBalance: Double = 0.0,
+    onAddPracticeFunds: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val dashboardViewModel: DashboardViewModel = viewModel()
@@ -415,8 +417,12 @@ fun DashboardScreen(
             onSmartMoneyClick = onSmartMoneyClick,
             onPaperBuy = onPaperBuy?.let { buy ->
                 { symbol, qty ->
-                    pendingPracticeBuy = symbol to qty
-                    buy(symbol, qty)
+                    if (walletBalance <= 0.0 && onAddPracticeFunds != null) {
+                        onAddPracticeFunds()
+                    } else {
+                        pendingPracticeBuy = symbol to qty
+                        buy(symbol, qty)
+                    }
                 }
             },
             onPracticeAlert = onPracticeAlert?.let { alert ->
@@ -433,6 +439,8 @@ fun DashboardScreen(
                     practiceReview = PracticeReviewTarget(symbol, qty, price)
                 }
             },
+            walletBalance = walletBalance,
+            onAddPracticeFunds = onAddPracticeFunds,
         )
     }
 
@@ -496,6 +504,8 @@ fun DashboardContent(
     onPracticeAlert: ((String, Double, String) -> Unit)? = null,
     practiceHabit: PracticeHabitStore.DayState = PracticeHabitStore.DayState(dateKey = ""),
     onOpenPracticeReview: (() -> Unit)? = null,
+    walletBalance: Double = 0.0,
+    onAddPracticeFunds: (() -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
     val scope = rememberCoroutineScope()
@@ -732,6 +742,8 @@ fun DashboardContent(
                 onOpenSymbol = onTradeClick,
                 onPaperBuy = onPaperBuy,
                 onPracticeAlert = onPracticeAlert,
+                needsPracticeCredit = walletBalance <= 0.0,
+                onAddPracticeFunds = onAddPracticeFunds,
             )
         }
 
@@ -2004,6 +2016,8 @@ private fun PracticeIdeasSection(
     onOpenSymbol: (String) -> Unit,
     onPaperBuy: ((String, Int) -> Unit)?,
     onPracticeAlert: ((String, Double, String) -> Unit)?,
+    needsPracticeCredit: Boolean = false,
+    onAddPracticeFunds: (() -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
     Column(
@@ -2040,6 +2054,41 @@ private fun PracticeIdeasSection(
                     .background(theme.primary.copy(alpha = 0.15f))
                     .padding(horizontal = 8.dp, vertical = 4.dp),
             )
+        }
+
+        if (needsPracticeCredit && onAddPracticeFunds != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(theme.primary.copy(alpha = 0.12f))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Add practice credit to start",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = theme.text,
+                    )
+                    Text(
+                        text = "Paper wallet is empty — fund simulation cash before Paper Buy.",
+                        fontSize = 11.sp,
+                        color = theme.textSecondary,
+                    )
+                }
+                Button(
+                    onClick = onAddPracticeFunds,
+                    modifier = Modifier.height(34.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = theme.primary),
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    Text("Add credit", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
 
         when {

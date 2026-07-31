@@ -29,7 +29,7 @@ export const metadata: Metadata = {
     template: "%s | BYSEL Trader",
   },
   description:
-    "BYSEL Trader: Practice Ideas, Idea → Trade → Review habit loop, instant practice credit, after-hours paper fills, AI coaching, and NSE heatmap. Educational simulation — not a SEBI-registered broker.",
+    "BYSEL Trader: Practice Ideas, Idea → Trade → Review habit loop, instant practice credit, after-hours paper fills, AI coaching, and NSE heatmap. Sign in once with email or OTP and stay signed in. Educational simulation — not a SEBI-registered broker.",
   keywords: [
     "BYSEL",
     "paper trading",

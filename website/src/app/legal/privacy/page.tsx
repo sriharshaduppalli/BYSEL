@@ -22,7 +22,7 @@ export default function PrivacyPolicy() {
             and improvement.
           </p>
           <p className="mini-muted" style={{ marginTop: "0.5rem" }}>
-            Last updated: April 4, 2026 &middot; Effective immediately
+            Last updated: July 31, 2026 &middot; Effective immediately
           </p>
 
           <div className="legal-stack" style={{ marginTop: "1rem" }}>
@@ -31,7 +31,8 @@ export default function PrivacyPolicy() {
 
               <h3 style={{ fontSize: "0.95rem", marginTop: "0.7rem" }}>Account Information</h3>
               <ul className="list-tight">
-                <li>Phone number for OTP-based account authentication</li>
+                <li>Username and email for password-based account authentication</li>
+                <li>Phone number when you choose OTP-based sign-in</li>
                 <li>Display name (optional, user-provided)</li>
               </ul>
 
@@ -54,6 +55,7 @@ export default function PrivacyPolicy() {
                 <li>Real brokerage account credentials or financial information</li>
                 <li>Contacts, photos, files, or other personal content from your device</li>
                 <li>Precise location (GPS) data</li>
+                <li>Biometric images or templates — optional fingerprint/face unlock uses your device OS APIs only</li>
               </ul>
             </article>
 
@@ -61,7 +63,7 @@ export default function PrivacyPolicy() {
               <h2 className="feature-title">2. How We Use Your Data</h2>
               <ul className="list-tight">
                 <li>Deliver core product functionality — simulations, AI analysis, and portfolio tracking</li>
-                <li>Authenticate your account via phone number OTP verification</li>
+                <li>Authenticate your account via email/password and/or phone OTP, and maintain a signed-in session until you Sign out</li>
                 <li>Provide personalized AI-powered insights and trading education</li>
                 <li>Monitor platform reliability and prevent misuse</li>
                 <li>Improve app performance, features, and user experience</li>
@@ -75,7 +77,7 @@ export default function PrivacyPolicy() {
                 We do not sell or rent your personal data. We share data only in these limited cases:
               </p>
               <ul className="list-tight">
-                <li><strong>SMS delivery providers:</strong> Your phone number is shared with our SMS
+                <li><strong>SMS delivery providers:</strong> When you use phone OTP, your phone number is shared with our SMS
                   service provider solely for OTP delivery</li>
                 <li><strong>Cloud infrastructure:</strong> Data is stored on secure cloud servers for
                   app operation</li>
@@ -87,7 +89,10 @@ export default function PrivacyPolicy() {
               <h2 className="feature-title">4. Data Storage and Security</h2>
               <ul className="list-tight">
                 <li>Data is stored on encrypted servers with industry-standard security measures</li>
-                <li>Authentication uses secure OTP verification — we do not store passwords</li>
+                <li>Passwords are stored only as secure one-way hashes — never in plain text</li>
+                <li>Phone OTP verification is available as an alternate sign-in method</li>
+                <li>Session tokens are used to keep you signed in; they can be revoked when you Sign out or on security events</li>
+                <li>Optional biometric lock stays on-device and does not send biometric data to BYSEL</li>
                 <li>Access to user data is restricted to authorized personnel only</li>
                 <li>We conduct regular security reviews of our infrastructure</li>
               </ul>

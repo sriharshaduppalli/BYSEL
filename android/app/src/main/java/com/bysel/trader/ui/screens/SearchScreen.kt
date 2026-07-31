@@ -100,10 +100,16 @@ fun SearchScreen(
                 keywords = listOf("home", "dashboard", "market", "pulse"),
             ),
             SearchShortcut(
+                title = "AI Assistant",
+                caption = "Ask NSE questions and act with paper Buy / Alert",
+                tab = 1,
+                keywords = listOf("ai", "assistant", "chat", "ask", "coach"),
+            ),
+            SearchShortcut(
                 title = "Trade Hub",
                 caption = "Spot, advanced orders, options, and futures radar",
                 tab = 2,
-                keywords = listOf("trade", "spot", "orders", "futures", "options"),
+                keywords = listOf("trade", "spot", "orders", "futures", "options", "practice credit", "wallet"),
             ),
             SearchShortcut(
                 title = "Portfolio",
@@ -118,6 +124,12 @@ fun SearchScreen(
                 keywords = listOf("heatmap", "sector", "breath", "breadth", "leadership", "market map", "tqi"),
             ),
             SearchShortcut(
+                title = "Settings",
+                caption = "Theme, biometric lock, sessions, and account",
+                tab = 8,
+                keywords = listOf("settings", "theme", "biometric", "password", "profile", "logout"),
+            ),
+            SearchShortcut(
                 title = "Signal Lab",
                 caption = "Filter breakouts, volume spikes, dividend, and upside buckets",
                 tab = 20,
@@ -130,10 +142,70 @@ fun SearchScreen(
                 keywords = listOf("smart money", "investor", "portfolio", "legendary", "jhunjhunwala", "damani", "holdings"),
             ),
             SearchShortcut(
+                title = "Risk Lab",
+                caption = "VaR, Monte Carlo, and portfolio risk drills",
+                tab = 22,
+                keywords = listOf("risk", "var", "monte carlo", "drawdown"),
+            ),
+            SearchShortcut(
+                title = "Trade Journal",
+                caption = "Review notes and practice feedback",
+                tab = 24,
+                keywords = listOf("journal", "review", "notes", "practice"),
+            ),
+            SearchShortcut(
+                title = "Watchlist",
+                caption = "Pinned symbols and quick scan",
+                tab = 25,
+                keywords = listOf("watchlist", "watch", "pinned"),
+            ),
+            SearchShortcut(
+                title = "Earnings Calendar",
+                caption = "Upcoming results for watchlist names",
+                tab = 23,
+                keywords = listOf("earnings", "results", "calendar"),
+            ),
+            SearchShortcut(
+                title = "Market Calendar",
+                caption = "NSE / BSE holidays and session days",
+                tab = 26,
+                keywords = listOf("holiday", "calendar", "market closed", "nse", "bse"),
+            ),
+            SearchShortcut(
                 title = "Alerts",
                 caption = "Price triggers and monitored setups",
                 tab = 7,
                 keywords = listOf("alert", "trigger", "watch", "price"),
+            ),
+            SearchShortcut(
+                title = "Achievements",
+                caption = "Practice milestones and badges",
+                tab = 10,
+                keywords = listOf("achievements", "badges", "milestones"),
+            ),
+            SearchShortcut(
+                title = "Mutual Funds",
+                caption = "Explore mutual fund ideas (educational)",
+                tab = 11,
+                keywords = listOf("mutual funds", "mf", "funds"),
+            ),
+            SearchShortcut(
+                title = "IPO",
+                caption = "IPO listings and applications",
+                tab = 12,
+                keywords = listOf("ipo", "listing", "offer"),
+            ),
+            SearchShortcut(
+                title = "ETF",
+                caption = "ETF explorer for practice research",
+                tab = 13,
+                keywords = listOf("etf", "index fund"),
+            ),
+            SearchShortcut(
+                title = "SIP Plans",
+                caption = "SIP calculators and plan explorers",
+                tab = 14,
+                keywords = listOf("sip", "systematic", "investment"),
             ),
             SearchShortcut(
                 title = "Advanced Orders",

@@ -78,7 +78,8 @@ export default function Home() {
             <h1 className="page-title">Idea → paper trade → review. Indian-market practice that builds process.</h1>
             <p className="lead">
               Try the live AI demo and sector heatmap here — then open Android for Practice Ideas, instant
-              practice credit, after-hours paper fills, and the daily review habit.
+              practice credit, after-hours paper fills, and the daily review habit. Create an account once;
+              you stay signed in for everyday practice.
             </p>
 
             <div className="btn-row">

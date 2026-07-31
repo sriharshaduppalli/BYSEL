@@ -126,20 +126,20 @@ object AuthTokenRefresher {
         if (code != 401 && code != 403) return false
         if (isBenignRotation(detail)) return false
         val normalized = detail.orEmpty().lowercase()
-        // Only wipe local session on definitive server revoke/expiry signals.
-        // Unknown 401s (including race leftovers) must not force sign-out.
-        return normalized.contains("expired") ||
-            normalized.contains("revoked") ||
-            normalized.contains("reuse detected") ||
+        // Stay signed in through cold starts, races, and flaky 401s.
+        // Only wipe when the server explicitly ended this session family.
+        return normalized.contains("reuse detected") ||
             normalized.contains("session invalidated") ||
-            normalized.contains("invalid refresh") ||
-            normalized.contains("invalid credentials")
+            normalized.contains("refresh token expired") ||
+            normalized.contains("refresh token revoked") ||
+            normalized.contains("logged out from all")
     }
 
     private fun isBenignRotation(detail: String?): Boolean {
         val normalized = detail.orEmpty().lowercase()
         return normalized.contains("already rotated") ||
-            normalized.contains("replay")
+            normalized.contains("replay") ||
+            normalized.contains("recovered")
     }
 
     private fun extractErrorDetail(httpException: HttpException): String? {
