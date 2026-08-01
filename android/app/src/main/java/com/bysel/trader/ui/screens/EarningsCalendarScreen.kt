@@ -43,7 +43,7 @@ fun EarningsCalendarScreen(
             } catch (_: Exception) {
                 null
             }
-            if (data == null) errorMsg = "Could not load earnings data."
+            if (data == null) errorMsg = "Could not load earnings data. Check network and retry."
             isLoading = false
         }
     }
@@ -69,53 +69,57 @@ fun EarningsCalendarScreen(
                 Text("Earnings Calendar", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = appTheme.text)
                 Text("Upcoming quarterly results", fontSize = 12.sp, color = appTheme.textSecondary)
             }
-            IconButton(onClick = { load() }) {
+            IconButton(onClick = { load() }, enabled = !isLoading) {
                 Icon(Icons.Filled.Refresh, contentDescription = "Refresh", tint = appTheme.primary)
             }
         }
 
-        if (isLoading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = appTheme.primary)
-            }
-            return@Column
-        }
-
-        if (errorMsg != null) {
-            Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Filled.CalendarMonth, contentDescription = null, tint = appTheme.textSecondary, modifier = Modifier.size(48.dp))
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(errorMsg!!, color = appTheme.textSecondary, fontSize = 14.sp)
+        when {
+            isLoading -> {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = appTheme.primary)
                 }
             }
-            return@Column
-        }
-
-        val entries = data?.earnings ?: emptyList()
-        if (entries.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No upcoming earnings found.", color = appTheme.textSecondary, fontSize = 14.sp)
+            errorMsg != null -> {
+                Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Filled.CalendarMonth,
+                            contentDescription = null,
+                            tint = appTheme.textSecondary,
+                            modifier = Modifier.size(48.dp),
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(errorMsg.orEmpty(), color = appTheme.textSecondary, fontSize = 14.sp)
+                    }
+                }
             }
-            return@Column
-        }
-
-        LazyColumn(
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            item {
-                Text(
-                    "${entries.size} companies — next 30 days",
-                    fontSize = 12.sp,
-                    color = appTheme.textSecondary,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
+            else -> {
+                val entries = data?.resolvedEntries().orEmpty()
+                if (entries.isEmpty()) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("No upcoming earnings found.", color = appTheme.textSecondary, fontSize = 14.sp)
+                    }
+                } else {
+                    LazyColumn(
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        item {
+                            Text(
+                                "${entries.size} companies tracked",
+                                fontSize = 12.sp,
+                                color = appTheme.textSecondary,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                        }
+                        items(entries, key = { it.symbol }) { entry ->
+                            EarningsCard(entry = entry, appTheme = appTheme)
+                        }
+                        item { Spacer(modifier = Modifier.height(24.dp)) }
+                    }
+                }
             }
-            items(entries) { entry ->
-                EarningsCard(entry = entry, appTheme = appTheme)
-            }
-            item { Spacer(modifier = Modifier.height(24.dp)) }
         }
     }
 }
@@ -125,6 +129,12 @@ private fun EarningsCard(
     entry: EarningsEntry,
     appTheme: com.bysel.trader.ui.theme.AppTheme
 ) {
+    val dateLabel = entry.displayDate()
+    val epsEstimate = entry.displayEpsEstimate()
+    val epsActual = entry.displayEpsActual()
+    val trailingPe = entry.displayTrailingPe()
+    val forwardPe = entry.displayForwardPe()
+
     Card(
         colors = CardDefaults.cardColors(containerColor = appTheme.card),
         shape = RoundedCornerShape(14.dp),
@@ -137,14 +147,19 @@ private fun EarningsCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(entry.symbol, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = appTheme.text)
-                entry.earningsDate?.let { date ->
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(entry.symbol, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = appTheme.text)
+                    entry.name?.takeIf { it.isNotBlank() }?.let { company ->
+                        Text(company, fontSize = 11.sp, color = appTheme.textSecondary, maxLines = 1)
+                    }
+                }
+                if (!dateLabel.isNullOrBlank()) {
                     Surface(
                         color = appTheme.primary.copy(alpha = 0.15f),
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
-                            date.take(10),
+                            dateLabel,
                             fontSize = 11.sp,
                             color = appTheme.primary,
                             fontWeight = FontWeight.SemiBold,
@@ -160,33 +175,36 @@ private fun EarningsCard(
 
             Row(modifier = Modifier.fillMaxWidth()) {
                 EarningsMetric(
-                    label = "EPS Est.",
-                    value = entry.epsEstimate?.let { String.format("%.2f", it) } ?: "—",
+                    label = "EPS Fwd",
+                    value = epsEstimate?.let { String.format("%.2f", it) } ?: "—",
                     color = appTheme.textSecondary,
                     modifier = Modifier.weight(1f)
                 )
                 EarningsMetric(
-                    label = "EPS Actual",
-                    value = entry.epsActual?.let { String.format("%.2f", it) } ?: "—",
-                    color = when {
-                        entry.epsActual == null || entry.epsEstimate == null -> appTheme.textSecondary
-                        entry.epsActual >= entry.epsEstimate -> Color(0xFF4CAF50)
-                        else -> Color(0xFFE53935)
-                    },
+                    label = "EPS Trail",
+                    value = epsActual?.let { String.format("%.2f", it) } ?: "—",
+                    color = appTheme.textSecondary,
                     modifier = Modifier.weight(1f)
                 )
                 EarningsMetric(
                     label = "Trailing P/E",
-                    value = entry.trailingPE?.let { String.format("%.1f", it) } ?: "—",
+                    value = trailingPe?.let { String.format("%.1f", it) } ?: "—",
                     color = appTheme.textSecondary,
                     modifier = Modifier.weight(1f)
                 )
                 EarningsMetric(
-                    label = "Forward P/E",
-                    value = entry.forwardPE?.let { String.format("%.1f", it) } ?: "—",
+                    label = "Rev growth",
+                    value = entry.revenueGrowth?.let { String.format("%.1f%%", it) }
+                        ?: forwardPe?.let { String.format("%.1f", it) }
+                        ?: "—",
                     color = appTheme.textSecondary,
                     modifier = Modifier.weight(1f)
                 )
+            }
+
+            entry.sector?.takeIf { it.isNotBlank() }?.let { sector ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(sector, fontSize = 11.sp, color = appTheme.textSecondary)
             }
         }
     }

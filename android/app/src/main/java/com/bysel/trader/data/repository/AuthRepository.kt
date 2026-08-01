@@ -107,6 +107,12 @@ class AuthRepository(
                 userId = response.user_id,
                 accessTokenTtlSeconds = response.accessTtlSeconds(),
             )
+            AuthSessionManager.saveProfileIdentity(
+                username = normalizedUsername,
+                email = normalizedEmail,
+                userId = response.user_id,
+            )
+            refreshCachedProfile()
             Result.Success(response)
         } catch (e: Exception) {
             Result.Error(toAuthErrorMessage(e, "Registration failed"))
@@ -132,6 +138,20 @@ class AuthRepository(
                 userId = response.user_id,
                 accessTokenTtlSeconds = response.accessTtlSeconds(),
             )
+            if (normalizedUsername.contains("@")) {
+                AuthSessionManager.saveProfileIdentity(
+                    username = AuthSessionManager.getCachedUsername(),
+                    email = normalizedUsername,
+                    userId = response.user_id,
+                )
+            } else {
+                AuthSessionManager.saveProfileIdentity(
+                    username = normalizedUsername,
+                    email = AuthSessionManager.getCachedEmail(),
+                    userId = response.user_id,
+                )
+            }
+            refreshCachedProfile()
             Result.Success(response)
         } catch (e: Exception) {
             Result.Error(toAuthErrorMessage(e, "Login failed"))
@@ -289,6 +309,7 @@ class AuthRepository(
                 userId = response.user_id,
                 accessTokenTtlSeconds = response.accessTtlSeconds(),
             )
+            refreshCachedProfile()
             Result.Success(response)
         } catch (e: Exception) {
             Result.Error(toAuthErrorMessage(e, "OTP verification failed"))
@@ -309,6 +330,7 @@ class AuthRepository(
                 userId = response.user_id,
                 accessTokenTtlSeconds = response.accessTtlSeconds(),
             )
+            refreshCachedProfile()
             Result.Success(response)
         } catch (e: Exception) {
             Result.Error(toAuthErrorMessage(e, "Phone authentication failed"))
@@ -344,12 +366,16 @@ class AuthRepository(
 
     suspend fun getProfile(): Result<UserProfile> {
         return try {
-            Result.Success(apiService.getProfile())
+            val profile = apiService.getProfile()
+            AuthSessionManager.saveProfileIdentity(profile.username, profile.email, profile.user_id)
+            Result.Success(profile)
         } catch (primary: Exception) {
             // Older local backends only expose /auth/profile.
             if (primary is HttpException && primary.code() == 404) {
                 try {
-                    Result.Success(apiService.getProfileLegacy())
+                    val profile = apiService.getProfileLegacy()
+                    AuthSessionManager.saveProfileIdentity(profile.username, profile.email, profile.user_id)
+                    Result.Success(profile)
                 } catch (e: Exception) {
                     Result.Error(toAuthErrorMessage(e, "Failed to load profile"))
                 }
@@ -374,11 +400,15 @@ class AuthRepository(
         )
 
         return try {
-            Result.Success(apiService.updateProfile(body))
+            val profile = apiService.updateProfile(body)
+            AuthSessionManager.saveProfileIdentity(profile.username, profile.email, profile.user_id)
+            Result.Success(profile)
         } catch (primary: Exception) {
             if (primary is HttpException && primary.code() == 404) {
                 try {
-                    Result.Success(apiService.updateProfileLegacy(body))
+                    val profile = apiService.updateProfileLegacy(body)
+                    AuthSessionManager.saveProfileIdentity(profile.username, profile.email, profile.user_id)
+                    Result.Success(profile)
                 } catch (e: Exception) {
                     Result.Error(toAuthErrorMessage(e, "Failed to update profile"))
                 }
@@ -386,5 +416,9 @@ class AuthRepository(
                 Result.Error(toAuthErrorMessage(primary, "Failed to update profile"))
             }
         }
+    }
+
+    private suspend fun refreshCachedProfile() {
+        runCatching { getProfile() }
     }
 }

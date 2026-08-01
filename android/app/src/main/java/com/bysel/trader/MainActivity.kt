@@ -197,8 +197,9 @@ class MainActivity : FragmentActivity() {
             if (!isLoggedIn) {
                 AuthScreen(
                     onAuthenticated = {
-                        isAuthenticated = !biometricAuthManager.isBiometricEnabled()
-                        biometricUnlocked = !biometricAuthManager.isBiometricEnabled()
+                        // Successful login/register unlocks this session; biometric re-locks on background.
+                        isAuthenticated = true
+                        biometricUnlocked = true
                     }
                 )
             } else if (showLockScreen) {

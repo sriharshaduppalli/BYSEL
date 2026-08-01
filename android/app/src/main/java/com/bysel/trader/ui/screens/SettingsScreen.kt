@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import com.bysel.trader.BuildConfig
+import com.bysel.trader.data.auth.AuthSessionManager
 import com.bysel.trader.data.models.AuthSessionItem
 import com.bysel.trader.data.repository.AuthRepository
 import com.bysel.trader.data.repository.Result
@@ -381,10 +382,11 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(12.dp))
         }
         item {
+            val identity = AuthSessionManager.getCachedIdentity()
             SettingClickItem(
                 icon = Icons.Filled.Person,
                 title = "Profile",
-                subtitle = "View and edit profile",
+                subtitle = identity.displayLabel(),
                 onClick = { showProfileDialog = true }
             )
         }
@@ -1061,16 +1063,22 @@ fun ProfileDialog(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var successMessage by remember { mutableStateOf<String?>(null) }
 
-    var username by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf(AuthSessionManager.getCachedUsername().orEmpty()) }
+    var email by remember { mutableStateOf(AuthSessionManager.getCachedEmail().orEmpty()) }
     var mobileNumber by remember { mutableStateOf("") }
     var createdAt by remember { mutableStateOf("") }
+    var userId by remember { mutableStateOf(AuthSessionManager.getUserId()) }
 
     fun loadProfile() {
         scope.launch {
             loading = true
             errorMessage = null
             successMessage = null
+            // Keep last-known identity visible while refreshing.
+            val cached = AuthSessionManager.getCachedIdentity()
+            if (username.isBlank()) username = cached.username.orEmpty()
+            if (email.isBlank()) email = cached.email.orEmpty()
+            userId = cached.userId
             when (val result = authRepository.getProfile()) {
                 is Result.Success -> {
                     val profile = result.data
@@ -1078,6 +1086,7 @@ fun ProfileDialog(
                     email = profile.email
                     mobileNumber = profile.mobileNumber.orEmpty()
                     createdAt = profile.createdAt.orEmpty()
+                    userId = profile.user_id
                 }
                 is Result.Error -> {
                     errorMessage = result.message
@@ -1113,6 +1122,14 @@ fun ProfileDialog(
                         .heightIn(max = 420.dp)
                         .verticalScroll(rememberScrollState())
                 ) {
+                    if (userId != null) {
+                        Text(
+                            text = "Account ID #$userId",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 12.sp,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                     if (!errorMessage.isNullOrBlank() && username.isBlank() && email.isBlank()) {
                         Text(
                             text = errorMessage ?: "",

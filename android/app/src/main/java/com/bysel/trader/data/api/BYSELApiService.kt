@@ -501,36 +501,94 @@ data class ChartPatternsResponse(
 )
 
 data class PortfolioRiskMetrics(
-    val var95: Double,
-    val var99: Double,
-    val maxDrawdown: Double,
-    val sharpeRatio: Double,
-    val annualizedReturn: Double,
-    val annualizedVolatility: Double,
+    val var95: Double = 0.0,
+    val var99: Double = 0.0,
+    val maxDrawdown: Double = 0.0,
+    val sharpeRatio: Double = 0.0,
+    val annualizedReturn: Double = 0.0,
+    val annualizedVolatility: Double = 0.0,
+)
+
+data class MonteCarloResult(
+    val horizonDays: Int = 30,
+    val simulations: Int = 500,
+    val p5: Double = 0.0,
+    val p50: Double = 0.0,
+    val p95: Double = 0.0,
 )
 
 data class PortfolioRiskResponse(
-    val symbols: List<String>,
-    val weights: List<Double>,
-    val metrics: PortfolioRiskMetrics,
-    val monteCarloMedian: Double,
-    val monteCarloP5: Double,
-    val monteCarloP95: Double,
-    val correlationMatrix: List<List<Double>>,
-)
+    val symbols: List<String> = emptyList(),
+    val weights: List<Double> = emptyList(),
+    // Nested shape (preferred). Flat fields below keep older payloads parseable.
+    val metrics: PortfolioRiskMetrics? = null,
+    val var95: Double? = null,
+    val var99: Double? = null,
+    val maxDrawdown: Double? = null,
+    val sharpeRatio: Double? = null,
+    val annualizedReturn: Double? = null,
+    val annualizedVolatility: Double? = null,
+    val monteCarlo: MonteCarloResult? = null,
+    val monteCarloMedian: Double? = null,
+    val monteCarloP5: Double? = null,
+    val monteCarloP95: Double? = null,
+    val correlationMatrix: List<List<Double>> = emptyList(),
+    val riskLevel: String? = null,
+) {
+    fun resolvedMetrics(): PortfolioRiskMetrics = metrics ?: PortfolioRiskMetrics(
+        var95 = var95 ?: 0.0,
+        var99 = var99 ?: 0.0,
+        maxDrawdown = maxDrawdown ?: 0.0,
+        sharpeRatio = sharpeRatio ?: 0.0,
+        annualizedReturn = annualizedReturn ?: 0.0,
+        annualizedVolatility = annualizedVolatility ?: 0.0,
+    )
+
+    fun resolvedMonteCarloP5(): Double = monteCarlo?.p5 ?: monteCarloP5 ?: 0.0
+    fun resolvedMonteCarloMedian(): Double = monteCarlo?.p50 ?: monteCarloMedian ?: 0.0
+    fun resolvedMonteCarloP95(): Double = monteCarlo?.p95 ?: monteCarloP95 ?: 0.0
+}
 
 data class EarningsEntry(
-    val symbol: String,
-    val earningsDate: String?,
-    val epsEstimate: Double?,
-    val epsActual: Double?,
-    val revenueEstimate: Long?,
-    val trailingPE: Double?,
-    val forwardPE: Double?,
-)
+    val symbol: String = "",
+    val name: String? = null,
+    // Backend (ai_v2) fields
+    val nextEarningsDate: String? = null,
+    val epsTrailing: Double? = null,
+    val epsForward: Double? = null,
+    val revenueGrowth: Double? = null,
+    val pe: Double? = null,
+    val sector: String? = null,
+    // Legacy / alternate field names
+    val earningsDate: String? = null,
+    val epsEstimate: Double? = null,
+    val epsActual: Double? = null,
+    val revenueEstimate: Long? = null,
+    val trailingPE: Double? = null,
+    val forwardPE: Double? = null,
+) {
+    fun displayDate(): String? {
+        val raw = (nextEarningsDate ?: earningsDate)?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val match = Regex("""datetime\.date\((\d+),\s*(\d+),\s*(\d+)\)""").find(raw)
+        if (match != null) {
+            val (year, month, day) = match.destructured
+            return String.format("%s-%02d-%02d", year, month.toInt(), day.toInt())
+        }
+        return raw.take(10)
+    }
+
+    fun displayEpsEstimate(): Double? = epsForward ?: epsEstimate
+    fun displayEpsActual(): Double? = epsTrailing ?: epsActual
+    fun displayTrailingPe(): Double? = pe ?: trailingPE
+    fun displayForwardPe(): Double? = forwardPE
+}
 
 data class EarningsCalendarResponse(
-    val earnings: List<EarningsEntry>,
-    val count: Int,
-    val generatedAt: String,
-)
+    // Backend returns `items`; older clients expected `earnings`.
+    val items: List<EarningsEntry>? = null,
+    val earnings: List<EarningsEntry>? = null,
+    val count: Int = 0,
+    val generatedAt: String = "",
+) {
+    fun resolvedEntries(): List<EarningsEntry> = items ?: earnings ?: emptyList()
+}

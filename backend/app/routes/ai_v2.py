@@ -658,13 +658,31 @@ async def get_portfolio_risk(
         mc_50th = mc_final[len(mc_final) // 2]
         mc_95th = mc_final[int(0.95 * len(mc_final))]
 
+        # Annualised return / vol (for Risk Lab portfolio performance card)
+        mean_daily = float(portfolio_returns.mean()) if len(portfolio_returns) else 0.0
+        std_daily = float(portfolio_returns.std()) if len(portfolio_returns) else 0.0
+        annualized_return = (1.0 + mean_daily) ** 252 - 1.0
+        annualized_vol = std_daily * float(np.sqrt(252))
+
         return {
             "symbols": symbols_in,
             "weights": w.tolist(),
+            # Nested metrics (Android Risk Lab preferred shape)
+            "metrics": {
+                "var95": round(var_95 * 100, 2),
+                "var99": round(var_99 * 100, 2),
+                "maxDrawdown": round(max_drawdown * 100, 2),
+                "sharpeRatio": round(sharpe, 2),
+                "annualizedReturn": round(annualized_return * 100, 2),
+                "annualizedVolatility": round(annualized_vol * 100, 2),
+            },
+            # Flat fields kept for older clients / debugging
             "var95": round(var_95 * 100, 2),
             "var99": round(var_99 * 100, 2),
             "maxDrawdown": round(max_drawdown * 100, 2),
             "sharpeRatio": round(sharpe, 2),
+            "annualizedReturn": round(annualized_return * 100, 2),
+            "annualizedVolatility": round(annualized_vol * 100, 2),
             "correlationMatrix": corr,
             "monteCarlo": {
                 "horizonDays": horizon_days,
@@ -673,6 +691,9 @@ async def get_portfolio_risk(
                 "p50": round(mc_50th * 100, 2),
                 "p95": round(mc_95th * 100, 2),
             },
+            "monteCarloP5": round(mc_5th * 100, 2),
+            "monteCarloMedian": round(mc_50th * 100, 2),
+            "monteCarloP95": round(mc_95th * 100, 2),
             "riskLevel": "Low" if var_95 > -0.01 else "Medium" if var_95 > -0.025 else "High",
         }
     except HTTPException:
@@ -710,11 +731,39 @@ async def get_earnings_calendar(symbols: str = ""):
                     try:
                         if hasattr(cal, "columns") and "Earnings Date" in cal.columns:
                             ed = cal["Earnings Date"].iloc[0]
-                            next_earnings = str(ed.date()) if hasattr(ed, "date") else str(ed)
+                            if hasattr(ed, "date"):
+                                next_earnings = ed.date().isoformat()
+                            else:
+                                next_earnings = str(ed)[:10]
                         elif isinstance(cal, dict) and "Earnings Date" in cal:
-                            next_earnings = str(cal["Earnings Date"])
+                            raw = cal["Earnings Date"]
+                            if isinstance(raw, (list, tuple)) and raw:
+                                raw = raw[0]
+                            if hasattr(raw, "isoformat"):
+                                next_earnings = raw.isoformat()[:10]
+                            elif hasattr(raw, "date"):
+                                next_earnings = raw.date().isoformat()
+                            else:
+                                next_earnings = str(raw)[:10]
                     except Exception:
                         pass
+
+                # Also try info fields when calendar is sparse.
+                if not next_earnings:
+                    for key in ("earningsTimestamp", "earningsDate"):
+                        raw = info.get(key)
+                        if raw is None:
+                            continue
+                        try:
+                            if isinstance(raw, (list, tuple)) and raw:
+                                raw = raw[0]
+                            if isinstance(raw, (int, float)):
+                                next_earnings = date.fromtimestamp(int(raw)).isoformat()
+                            else:
+                                next_earnings = str(raw)[:10]
+                            break
+                        except Exception:
+                            continue
 
                 eps_trailing = info.get("trailingEps")
                 eps_forward = info.get("forwardEps")

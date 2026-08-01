@@ -661,6 +661,9 @@ fun AuthScreen(
             onClick = {
                 if (loading) return@TextButton
                 isLoginMode = !isLoginMode
+                isOtpMode = false
+                otpSent = false
+                otpCode = ""
                 message = null
                 messageIsError = true
                 passwordVisible = false
