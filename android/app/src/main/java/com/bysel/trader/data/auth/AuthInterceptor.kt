@@ -35,8 +35,12 @@ class AuthInterceptor : Interceptor {
             ?.takeIf { it.isNotBlank() }
             ?.let { builder.header("Authorization", "Bearer $it") }
 
-        AuthSessionManager.getUserId()
-            ?.let { builder.header("user_id", it.toString()) }
+        // FastAPI converts underscore headers to hyphen by default, so send both
+        // forms until all trading routes are JWT-only.
+        AuthSessionManager.getUserId()?.let { uid ->
+            builder.header("user_id", uid.toString())
+            builder.header("user-id", uid.toString())
+        }
 
         return chain.proceed(builder.build())
     }

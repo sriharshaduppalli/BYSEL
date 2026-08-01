@@ -21,7 +21,9 @@ def get_db():
 
 def get_current_user(
     authorization: str | None = Header(default=None, alias="Authorization"),
-    user_id: int | None = Header(default=None),
+    # Accept both FastAPI-normalized "user-id" and literal "user_id" from Android.
+    user_id: int | None = Header(default=None, alias="user-id"),
+    user_id_underscore: int | None = Header(default=None, alias="user_id", convert_underscores=False),
     db: Session = Depends(get_db)
 ):
     resolved_user_id: int | None = None
@@ -30,8 +32,8 @@ def get_current_user(
         token = authorization.split(" ", 1)[1].strip()
         user = validate_access_token_and_get_user(token, db)
         resolved_user_id = int(user.id)
-    elif ALLOW_USER_ID_HEADER_FALLBACK and user_id is not None:
-        resolved_user_id = user_id
+    elif ALLOW_USER_ID_HEADER_FALLBACK:
+        resolved_user_id = user_id if user_id is not None else user_id_underscore
 
     if resolved_user_id is None:
         raise HTTPException(status_code=401, detail="Missing authentication")
