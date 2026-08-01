@@ -42,6 +42,21 @@ def _register_and_get_access_token(prefix: str) -> str:
     return register_response.json()["access_token"]
 
 
+def _register_trading_user(prefix: str, balance: float = 1_000_000.0) -> tuple[int, dict]:
+    """Register a user, seed wallet, return (user_id, auth headers)."""
+    username, email, password = _unique_user(prefix)
+    register_response = client.post(
+        "/auth/register",
+        json={"username": username, "email": email, "password": password},
+    )
+    assert register_response.status_code == 200
+    payload = register_response.json()
+    user_id = int(payload["user_id"])
+    _seed_trading_wallet(user_id=user_id, balance=balance)
+    headers = {"Authorization": f"Bearer {payload['access_token']}"}
+    return user_id, headers
+
+
 def _seed_trading_wallet(user_id: int = 1, balance: float = 1_000_000.0) -> None:
     db = SessionLocal()
     try:
@@ -163,13 +178,13 @@ def test_send_and_verify_otp_auth_flow(monkeypatch):
 
 
 def test_slo_metrics_endpoint_returns_latency_error_and_success_rates(monkeypatch):
-    _seed_trading_wallet(user_id=1, balance=100_000.0)
+    _user_id, auth = _register_trading_user("slo_user", balance=100_000.0)
     _mock_live_market(monkeypatch, price=100.0)
 
     order_response = client.post(
         "/order",
         json={"symbol": "SLOTEST", "qty": 1, "side": "BUY"},
-        headers={"X-Trace-Id": "trc-slo-order-001"},
+        headers={**auth, "X-Trace-Id": "trc-slo-order-001"},
     )
     assert order_response.status_code == 200
 
@@ -254,7 +269,7 @@ def test_get_holdings_empty():
 
 def test_place_order(monkeypatch):
     """Test placing an order"""
-    _seed_trading_wallet(user_id=1)
+    _user_id, auth = _register_trading_user("place_order")
     _mock_live_market(monkeypatch, price=100.0)
 
     order_data = {
@@ -262,7 +277,7 @@ def test_place_order(monkeypatch):
         "qty": 1,
         "side": "BUY"
     }
-    response = client.post("/order", json=order_data)
+    response = client.post("/order", json=order_data, headers=auth)
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
@@ -271,12 +286,12 @@ def test_place_order(monkeypatch):
 
 
 def test_place_order_is_idempotent(monkeypatch):
-    _seed_trading_wallet()
+    _user_id, auth = _register_trading_user("order_idem")
     _mock_live_market(monkeypatch, price=250.0)
 
     order_data = {"symbol": "INFY", "qty": 2, "side": "BUY"}
     idem_key = f"test-order-key-001-{time.time_ns()}"
-    headers = {"X-Idempotency-Key": idem_key, "X-Trace-Id": "trace-test-001"}
+    headers = {**auth, "X-Idempotency-Key": idem_key, "X-Trace-Id": "trace-test-001"}
 
     first = client.post("/order", json=order_data, headers=headers)
     second = client.post("/order", json=order_data, headers=headers)
@@ -295,11 +310,11 @@ def test_place_order_is_idempotent(monkeypatch):
 
 
 def test_place_order_reused_idempotency_key_with_different_payload_is_rejected(monkeypatch):
-    _seed_trading_wallet()
+    _user_id, auth = _register_trading_user("order_idem_conflict")
     _mock_live_market(monkeypatch, price=250.0)
 
     idem_key = f"test-order-key-002-{time.time_ns()}"
-    headers = {"X-Idempotency-Key": idem_key, "X-Trace-Id": "trace-test-002"}
+    headers = {**auth, "X-Idempotency-Key": idem_key, "X-Trace-Id": "trace-test-002"}
     first_order = {"symbol": "INFY", "qty": 2, "side": "BUY"}
     conflicting_order = {"symbol": "INFY", "qty": 3, "side": "BUY"}
 
@@ -319,11 +334,11 @@ def test_place_order_reused_idempotency_key_with_different_payload_is_rejected(m
 
 
 def test_place_order_handles_integrity_race_by_returning_existing_order(monkeypatch):
-    _seed_trading_wallet()
+    _user_id, auth = _register_trading_user("order_race")
     _mock_live_market(monkeypatch, price=250.0)
 
     idem_key = f"test-order-race-key-{time.time_ns()}"
-    headers = {"X-Idempotency-Key": idem_key, "X-Trace-Id": "trace-test-race-001"}
+    headers = {**auth, "X-Idempotency-Key": idem_key, "X-Trace-Id": "trace-test-race-001"}
     order_data = {"symbol": "INFY", "qty": 2, "side": "BUY"}
 
     def _simulate_race(*args, **kwargs):
@@ -372,7 +387,7 @@ def test_place_order_handles_integrity_race_by_returning_existing_order(monkeypa
 
 
 def test_invalid_order_transition_returns_deterministic_error_code(monkeypatch):
-    _seed_trading_wallet()
+    _user_id, auth = _register_trading_user("order_transition")
     _mock_live_market(monkeypatch, price=250.0)
 
     def _force_invalid_transition(order_db, next_status):
@@ -385,7 +400,7 @@ def test_invalid_order_transition_returns_deterministic_error_code(monkeypatch):
 
     monkeypatch.setattr("app.routes.trading._transition_order_status", _force_invalid_transition)
 
-    response = client.post("/order", json={"symbol": "INFY", "qty": 1, "side": "BUY"})
+    response = client.post("/order", json={"symbol": "INFY", "qty": 1, "side": "BUY"}, headers=auth)
     assert response.status_code == 200
 
     payload = response.json()
@@ -395,7 +410,7 @@ def test_invalid_order_transition_returns_deterministic_error_code(monkeypatch):
 
 
 def test_advanced_order_retries_return_same_order_id(monkeypatch):
-    _seed_trading_wallet()
+    _user_id, auth = _register_trading_user("advanced_retry")
     _mock_live_market(monkeypatch, price=300.0)
 
     payload = {
@@ -406,7 +421,7 @@ def test_advanced_order_retries_return_same_order_id(monkeypatch):
         "validity": "DAY",
     }
     idem_key = f"test-advanced-key-{time.time_ns()}"
-    headers = {"X-Idempotency-Key": idem_key, "X-Trace-Id": "trace-test-advanced-001"}
+    headers = {**auth, "X-Idempotency-Key": idem_key, "X-Trace-Id": "trace-test-advanced-001"}
 
     first = client.post("/orders/advanced", json=payload, headers=headers)
     second = client.post("/orders/advanced", json=payload, headers=headers)
@@ -495,7 +510,7 @@ def test_otp_flow(monkeypatch):
 
 
 def test_basket_execution_with_idempotency_key_is_retry_safe(monkeypatch):
-    _seed_trading_wallet()
+    _user_id, auth = _register_trading_user("basket_retry")
     _mock_live_market(monkeypatch, price=150.0)
 
     symbol_a = f"BASKA{int(time.time())}"
@@ -508,12 +523,12 @@ def test_basket_execution_with_idempotency_key_is_retry_safe(monkeypatch):
             {"symbol": symbol_b, "qty": 2, "side": "BUY", "orderType": "MARKET", "validity": "DAY"},
         ],
     }
-    created = client.post("/orders/baskets", json=create_payload)
+    created = client.post("/orders/baskets", json=create_payload, headers=auth)
     assert created.status_code == 200
     basket_id = created.json()["basketId"]
 
     idem_key = f"test-basket-key-{time.time_ns()}"
-    headers = {"X-Idempotency-Key": idem_key, "X-Trace-Id": "trace-test-basket-001"}
+    headers = {**auth, "X-Idempotency-Key": idem_key, "X-Trace-Id": "trace-test-basket-001"}
 
     first = client.post(f"/orders/baskets/{basket_id}/execute", headers=headers)
     second = client.post(f"/orders/baskets/{basket_id}/execute", headers=headers)
@@ -546,7 +561,7 @@ def test_basket_execution_with_idempotency_key_is_retry_safe(monkeypatch):
 
 
 def test_pre_trade_estimate_returns_server_charge_breakdown(monkeypatch):
-    _seed_trading_wallet(user_id=1, balance=100_000.0)
+    _user_id, auth = _register_trading_user("pretrade_ok", balance=100_000.0)
     _mock_live_market(monkeypatch, price=100.0)
 
     payload = {
@@ -559,7 +574,7 @@ def test_pre_trade_estimate_returns_server_charge_breakdown(monkeypatch):
         }
     }
 
-    response = client.post("/orders/pre-trade-estimate", json=payload)
+    response = client.post("/orders/pre-trade-estimate", json=payload, headers=auth)
     assert response.status_code == 200
 
     data = response.json()
@@ -573,7 +588,7 @@ def test_pre_trade_estimate_returns_server_charge_breakdown(monkeypatch):
 
 
 def test_pre_trade_estimate_flags_insufficient_funds(monkeypatch):
-    _seed_trading_wallet(user_id=1, balance=100.0)
+    _user_id, auth = _register_trading_user("pretrade_poor", balance=100.0)
     _mock_live_market(monkeypatch, price=1_000.0)
 
     payload = {
@@ -586,7 +601,7 @@ def test_pre_trade_estimate_flags_insufficient_funds(monkeypatch):
         }
     }
 
-    response = client.post("/orders/pre-trade-estimate", json=payload)
+    response = client.post("/orders/pre-trade-estimate", json=payload, headers=auth)
     assert response.status_code == 200
 
     data = response.json()
@@ -596,7 +611,7 @@ def test_pre_trade_estimate_flags_insufficient_funds(monkeypatch):
 
 
 def test_order_trace_lookup_returns_latest_order(monkeypatch):
-    _seed_trading_wallet(user_id=1, balance=100_000.0)
+    _user_id, auth = _register_trading_user("trace_lookup", balance=100_000.0)
     _mock_live_market(monkeypatch, price=250.0)
 
     trace_id = "trc-support-lookup-001"
@@ -605,12 +620,16 @@ def test_order_trace_lookup_returns_latest_order(monkeypatch):
         "qty": 1,
         "side": "BUY",
     }
-    placed = client.post("/order", json=order_payload, headers={"X-Trace-Id": trace_id})
+    placed = client.post(
+        "/order",
+        json=order_payload,
+        headers={**auth, "X-Trace-Id": trace_id},
+    )
     assert placed.status_code == 200
     placed_data = placed.json()
     assert placed_data["status"] == "ok"
 
-    lookup = client.get(f"/orders/trace/{trace_id}")
+    lookup = client.get(f"/orders/trace/{trace_id}", headers=auth)
     assert lookup.status_code == 200
     data = lookup.json()
     assert data["traceId"] == trace_id
@@ -621,19 +640,64 @@ def test_order_trace_lookup_returns_latest_order(monkeypatch):
 
 
 def test_order_trace_lookup_not_found():
-    response = client.get("/orders/trace/trc-support-missing-001")
+    _user_id, auth = _register_trading_user("trace_missing")
+    response = client.get("/orders/trace/trc-support-missing-001", headers=auth)
     assert response.status_code == 404
 
 
 def test_place_order_invalid_side_has_deterministic_error_code():
+    _user_id, auth = _register_trading_user("invalid_side", balance=1_000.0)
     order_data = {"symbol": "TCS", "qty": 1, "side": "HOLD"}
 
-    response = client.post("/order", json=order_data)
+    response = client.post("/order", json=order_data, headers=auth)
     assert response.status_code == 200
 
     payload = response.json()
     assert payload["status"] == "error"
     assert payload["errorCode"] == "INVALID_SIDE"
+
+
+def test_paper_credit_and_buy_debit_same_authenticated_user(monkeypatch):
+    """Regression: credit + BUY must hit JWT user (not default user 1)."""
+    username, email, password = _unique_user("paper_wallet")
+    register_response = client.post(
+        "/auth/register",
+        json={"username": username, "email": email, "password": password},
+    )
+    assert register_response.status_code == 200
+    payload = register_response.json()
+    user_id = int(payload["user_id"])
+    assert user_id != 1
+    auth = {"Authorization": f"Bearer {payload['access_token']}"}
+
+    credit = client.post("/wallet/add", json={"amount": 50_000.0}, headers=auth)
+    assert credit.status_code == 200
+    assert credit.json()["status"] == "ok"
+    assert credit.json()["balance"] == 50_000.0
+
+    wallet_before = client.get("/wallet", headers=auth)
+    assert wallet_before.status_code == 200
+    assert wallet_before.json()["balance"] == 50_000.0
+
+    _mock_live_market(monkeypatch, price=100.0)
+    buy = client.post(
+        "/order",
+        json={"symbol": "PAPERWAL", "qty": 10, "side": "BUY"},
+        headers=auth,
+    )
+    assert buy.status_code == 200
+    buy_data = buy.json()
+    assert buy_data["status"] == "ok"
+
+    wallet_after = client.get("/wallet", headers=auth)
+    assert wallet_after.status_code == 200
+    assert wallet_after.json()["balance"] == 49_000.0
+
+    holdings = client.get("/holdings", headers=auth)
+    assert holdings.status_code == 200
+    holding = next((h for h in holdings.json() if h["symbol"] == "PAPERWAL"), None)
+    assert holding is not None
+    assert holding["qty"] == 10
 
 
 def test_sip_plans_require_authentication():

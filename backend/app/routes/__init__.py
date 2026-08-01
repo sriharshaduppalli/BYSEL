@@ -1284,46 +1284,46 @@ async def get_holding_endpoint(symbol: str, user=Depends(get_current_user)):
 @router.post("/order", response_model=OrderResponse)
 async def place_order_endpoint(
     order: Order,
-    user_id: int = Header(1),
     x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
     x_trace_id: str | None = Header(default=None, alias="X-Trace-Id"),
     db: Session = Depends(get_db),
+    user=Depends(get_current_user),
 ):
-    """Place a buy or sell order at live market price."""
-    return place_order(db, order, user_id=user_id, idempotency_key=x_idempotency_key, trace_id=x_trace_id)
+    """Place a buy or sell order at live market price for the authenticated user."""
+    return place_order(db, order, user_id=user.id, idempotency_key=x_idempotency_key, trace_id=x_trace_id)
 
 
 @router.post("/trade/buy", response_model=OrderResponse)
 async def buy_stock_endpoint(
     order: Order,
-    user_id: int = Header(1),
     x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
     x_trace_id: str | None = Header(default=None, alias="X-Trace-Id"),
     db: Session = Depends(get_db),
+    user=Depends(get_current_user),
 ):
-    """Buy stock at live market price."""
+    """Buy stock at live market price for the authenticated user."""
     order.side = "BUY"
-    return place_order(db, order, user_id=user_id, idempotency_key=x_idempotency_key, trace_id=x_trace_id)
+    return place_order(db, order, user_id=user.id, idempotency_key=x_idempotency_key, trace_id=x_trace_id)
 
 
 @router.post("/trade/sell", response_model=OrderResponse)
 async def sell_stock_endpoint(
     order: Order,
-    user_id: int = Header(1),
     x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
     x_trace_id: str | None = Header(default=None, alias="X-Trace-Id"),
     db: Session = Depends(get_db),
+    user=Depends(get_current_user),
 ):
-    """Sell stock at live market price."""
+    """Sell stock at live market price for the authenticated user."""
     order.side = "SELL"
-    return place_order(db, order, user_id=user_id, idempotency_key=x_idempotency_key, trace_id=x_trace_id)
+    return place_order(db, order, user_id=user.id, idempotency_key=x_idempotency_key, trace_id=x_trace_id)
 
 
 @router.post("/orders/pre-trade-estimate", response_model=PreTradeEstimateResponse)
 async def pre_trade_estimate_endpoint(
     payload: PreTradeEstimateRequest,
     db: Session = Depends(get_db),
-    user_id: int = Header(1),
+    user=Depends(get_current_user),
 ):
     quote = fetch_quote(payload.order.symbol.upper())
     live_price = float(quote.get("last") or 0.0)
@@ -1331,7 +1331,7 @@ async def pre_trade_estimate_endpoint(
         raise HTTPException(status_code=503, detail=f"Could not fetch live price for {payload.order.symbol.upper()}")
 
     market = is_market_open()
-    wallet_balance = payload.walletBalance if payload.walletBalance is not None else get_wallet(db, user_id).balance
+    wallet_balance = payload.walletBalance if payload.walletBalance is not None else get_wallet(db, user.id).balance
     market_open = payload.marketOpen if payload.marketOpen is not None else market.isOpen
 
     estimate = build_pretrade_estimate(
@@ -1374,9 +1374,14 @@ async def pre_trade_estimate_endpoint(
 
 
 @router.get("/trades/history", response_model=list[TradeHistory])
-async def get_trade_history_endpoint(db: Session = Depends(get_db)):
-    """Get all trade history."""
-    orders = db.query(OrderModel).order_by(OrderModel.created_at.desc()).all()
+async def get_trade_history_endpoint(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Get trade history for the authenticated user."""
+    orders = (
+        db.query(OrderModel)
+        .filter(OrderModel.user_id == user.id)
+        .order_by(OrderModel.created_at.desc())
+        .all()
+    )
     return [TradeHistory(
         id=o.id,
         symbol=o.symbol,
@@ -1389,10 +1394,15 @@ async def get_trade_history_endpoint(db: Session = Depends(get_db)):
 
 
 @router.get("/trades/history/{symbol}", response_model=list[TradeHistory])
-async def get_trade_history_for_symbol(symbol: str, db: Session = Depends(get_db)):
-    """Get trade history for a specific symbol."""
+async def get_trade_history_for_symbol(
+    symbol: str,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Get trade history for a specific symbol for the authenticated user."""
     orders = db.query(OrderModel).filter(
-        OrderModel.symbol == symbol.upper()
+        OrderModel.user_id == user.id,
+        OrderModel.symbol == symbol.upper(),
     ).order_by(OrderModel.created_at.desc()).all()
     return [TradeHistory(
         id=o.id,
@@ -1409,7 +1419,7 @@ async def get_trade_history_for_symbol(symbol: str, db: Session = Depends(get_db
 async def get_order_by_trace_endpoint(
     trace_id: str,
     db: Session = Depends(get_db),
-    user_id: int = Header(1),
+    user=Depends(get_current_user),
 ):
     normalized_trace = trace_id.strip()
     if not normalized_trace:
@@ -1417,7 +1427,7 @@ async def get_order_by_trace_endpoint(
 
     order = (
         db.query(OrderModel)
-        .filter(OrderModel.trace_id == normalized_trace, OrderModel.user_id == user_id)
+        .filter(OrderModel.trace_id == normalized_trace, OrderModel.user_id == user.id)
         .order_by(OrderModel.id.desc())
         .first()
     )
@@ -1455,12 +1465,12 @@ async def get_order_by_trace_endpoint(
 # ==================== PORTFOLIO ====================
 
 @router.get("/portfolio", response_model=PortfolioSummary)
-async def get_portfolio_endpoint(user_id: int = Header(1)):
-    """Get portfolio summary with live values."""
+async def get_portfolio_endpoint(user=Depends(get_current_user)):
+    """Get portfolio summary with live values for the authenticated user."""
     try:
-        holdings = await asyncio.to_thread(_holdings_in_thread, user_id)
+        holdings = await asyncio.to_thread(_holdings_in_thread, user.id)
     except Exception as exc:
-        logger.error("portfolio_endpoint_failed user_id=%s reason=%s", user_id, exc)
+        logger.error("portfolio_endpoint_failed user_id=%s reason=%s", user.id, exc)
         raise HTTPException(status_code=503, detail="Portfolio temporarily unavailable") from exc
 
     total_value = sum(h.last * h.qty for h in holdings)
@@ -1478,12 +1488,12 @@ async def get_portfolio_endpoint(user_id: int = Header(1)):
 
 
 @router.get("/portfolio/value", response_model=PortfolioValue)
-async def get_portfolio_value_endpoint(user_id: int = Header(1)):
-    """Get portfolio current value with live prices."""
+async def get_portfolio_value_endpoint(user=Depends(get_current_user)):
+    """Get portfolio current value with live prices for the authenticated user."""
     try:
-        holdings = await asyncio.to_thread(_holdings_in_thread, user_id)
+        holdings = await asyncio.to_thread(_holdings_in_thread, user.id)
     except Exception as exc:
-        logger.error("portfolio_value_endpoint_failed user_id=%s reason=%s", user_id, exc)
+        logger.error("portfolio_value_endpoint_failed user_id=%s reason=%s", user.id, exc)
         raise HTTPException(status_code=503, detail="Portfolio temporarily unavailable") from exc
 
     total_value = sum(h.last * h.qty for h in holdings)
@@ -1500,12 +1510,16 @@ async def get_portfolio_value_endpoint(user_id: int = Header(1)):
 
 
 @router.get("/portfolio/export")
-async def export_portfolio_endpoint(fmt: str = "csv", db: Session = Depends(get_db), user_id: int = Header(1)):
+async def export_portfolio_endpoint(
+    fmt: str = "csv",
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
     """Export portfolio as CSV. Usage: /portfolio/export?fmt=csv"""
     from fastapi.responses import StreamingResponse
     import io, csv as csvmod
 
-    holdings = get_holdings(db, user_id)
+    holdings = get_holdings(db, user.id)
 
     if fmt == "csv":
         output = io.StringIO()
@@ -2824,14 +2838,14 @@ async def get_etfs_endpoint(
 async def place_advanced_order_endpoint(
     order: Order,
     db: Session = Depends(get_db),
-    user_id: int = Header(1),
+    user=Depends(get_current_user),
     x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
     x_trace_id: str | None = Header(default=None, alias="X-Trace-Id"),
 ):
     market = is_market_open()
     quote = fetch_quote(order.symbol.upper())
     live_price = float(quote.get("last") or 0.0)
-    wallet_balance = get_wallet(db, user_id).balance
+    wallet_balance = get_wallet(db, user.id).balance
     signal_data = build_pretrade_signal(
         order=order,
         live_price=live_price,
@@ -2842,7 +2856,7 @@ async def place_advanced_order_endpoint(
     response = place_order(
         db,
         order,
-        user_id=user_id,
+        user_id=user.id,
         idempotency_key=x_idempotency_key,
         trace_id=x_trace_id,
     )
@@ -2866,7 +2880,7 @@ async def place_advanced_order_endpoint(
 async def create_trigger_order_endpoint(
     order: Order,
     db: Session = Depends(get_db),
-    user_id: int = Header(1),
+    user=Depends(get_current_user),
 ):
     order_type = (order.orderType or "").strip().upper()
     validity = (order.validity or "DAY").strip().upper()
@@ -2876,7 +2890,7 @@ async def create_trigger_order_endpoint(
         raise HTTPException(status_code=400, detail="validity must be DAY, IOC or GTC")
 
     trigger = TriggerOrderModel(
-        user_id=user_id,
+        user_id=user.id,
         symbol=order.symbol.upper(),
         quantity=order.qty,
         side=order.side.upper(),
@@ -2906,10 +2920,10 @@ async def create_trigger_order_endpoint(
 
 
 @router.get("/orders/triggers", response_model=list[TriggerOrderSummary])
-async def get_trigger_orders_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
+async def get_trigger_orders_endpoint(db: Session = Depends(get_db), user=Depends(get_current_user)):
     rows = (
         db.query(TriggerOrderModel)
-        .filter(TriggerOrderModel.user_id == user_id)
+        .filter(TriggerOrderModel.user_id == user.id)
         .order_by(TriggerOrderModel.created_at.desc())
         .all()
     )
@@ -2934,10 +2948,10 @@ async def get_trigger_orders_endpoint(db: Session = Depends(get_db), user_id: in
 async def evaluate_trigger_orders_endpoint(
     symbols: str | None = Query(None),
     db: Session = Depends(get_db),
-    user_id: int = Header(1),
+    user=Depends(get_current_user),
 ):
     symbol_list = [item.strip().upper() for item in (symbols or "").split(",") if item.strip()]
-    processed = evaluate_pending_triggers(db=db, user_id=user_id, symbols=symbol_list)
+    processed = evaluate_pending_triggers(db=db, user_id=user.id, symbols=symbol_list)
     return {
         "status": "ok",
         "processedCount": len(processed),
@@ -2949,13 +2963,13 @@ async def evaluate_trigger_orders_endpoint(
 async def create_basket_order_endpoint(
     request: BasketOrderRequest,
     db: Session = Depends(get_db),
-    user_id: int = Header(1),
+    user=Depends(get_current_user),
 ):
     if not request.legs:
         raise HTTPException(status_code=400, detail="Basket must contain at least one leg")
 
     basket = BasketOrderModel(
-        user_id=user_id,
+        user_id=user.id,
         name=request.name.strip() or "Untitled Basket",
         status="DRAFT",
     )
@@ -2989,10 +3003,10 @@ async def create_basket_order_endpoint(
 
 
 @router.get("/orders/baskets", response_model=list[BasketOrderResponse])
-async def get_baskets_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
+async def get_baskets_endpoint(db: Session = Depends(get_db), user=Depends(get_current_user)):
     rows = (
         db.query(BasketOrderModel)
-        .filter(BasketOrderModel.user_id == user_id)
+        .filter(BasketOrderModel.user_id == user.id)
         .order_by(BasketOrderModel.created_at.desc())
         .all()
     )
@@ -3012,11 +3026,11 @@ async def get_baskets_endpoint(db: Session = Depends(get_db), user_id: int = Hea
 async def execute_basket_endpoint(
     basket_id: int,
     db: Session = Depends(get_db),
-    user_id: int = Header(1),
+    user=Depends(get_current_user),
     x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
     x_trace_id: str | None = Header(default=None, alias="X-Trace-Id"),
 ):
-    basket = db.query(BasketOrderModel).filter(BasketOrderModel.id == basket_id, BasketOrderModel.user_id == user_id).first()
+    basket = db.query(BasketOrderModel).filter(BasketOrderModel.id == basket_id, BasketOrderModel.user_id == user.id).first()
     if not basket:
         raise HTTPException(status_code=404, detail=f"Basket '{basket_id}' not found")
 
@@ -3051,7 +3065,7 @@ async def execute_basket_endpoint(
                 triggerPrice=leg.trigger_price,
                 tag=leg.tag,
             ),
-            user_id=user_id,
+            user_id=user.id,
             idempotency_key=leg_idempotency_key,
             trace_id=leg_trace_id,
         )
@@ -3264,12 +3278,12 @@ async def link_goal_investments_endpoint(
 async def copilot_pre_trade_endpoint(
     payload: CopilotPreTradeRequest,
     db: Session = Depends(get_db),
-    user_id: int = Header(1),
+    user=Depends(get_current_user),
 ):
     quote = fetch_quote(payload.order.symbol.upper())
     live_price = float(quote.get("last") or 0.0)
     market = is_market_open()
-    wallet_balance = payload.walletBalance if payload.walletBalance is not None else get_wallet(db, user_id).balance
+    wallet_balance = payload.walletBalance if payload.walletBalance is not None else get_wallet(db, user.id).balance
     signal = build_pretrade_signal(
         order=payload.order,
         live_price=live_price,
@@ -3312,8 +3326,8 @@ async def copilot_post_trade_endpoint(payload: CopilotPostTradeRequest, db: Sess
 
 
 @router.get("/ai/copilot/portfolio-actions", response_model=CopilotPortfolioActionsResponse)
-async def copilot_portfolio_actions_endpoint(db: Session = Depends(get_db), user_id: int = Header(1)):
-    holdings = get_holdings(db, user_id)
+async def copilot_portfolio_actions_endpoint(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    holdings = get_holdings(db, user.id)
     if not holdings:
         return CopilotPortfolioActionsResponse(
             actions=["Start with staggered entries in 2-3 diversified large-cap names.", "Create one downside alert before first trade."],
