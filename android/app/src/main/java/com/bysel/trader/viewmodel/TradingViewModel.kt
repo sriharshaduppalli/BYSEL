@@ -969,6 +969,11 @@ class TradingViewModel(
                 refreshHoldings()
             }
 
+            // Wake Render and refresh heatmap snapshot on resume so it does not
+            // look "stuck" until the developer machine or a manual retry warms the server.
+            warmAiBackend()
+            loadMarketHeatmap(force = true)
+
             if (_fastRefreshEnabled.value) {
                 startFastRefresh(symbols = trackedSymbols())
             }
@@ -2253,8 +2258,14 @@ class TradingViewModel(
                 is Result.Success -> {
                     _marketHeatmap.value = r.data
                     lastHeatmapRefreshAt = System.currentTimeMillis()
+                    _error.value = null
                 }
-                is Result.Error -> _error.value = r.message
+                is Result.Error -> {
+                    // Keep last good heatmap if we have one; surface a clear wake-up hint.
+                    if (_marketHeatmap.value == null) {
+                        _error.value = r.message
+                    }
+                }
                 else -> {}
             }
             _heatmapLoading.value = false
@@ -2523,14 +2534,28 @@ class TradingViewModel(
         try { com.bysel.trader.data.api.RetrofitClient.apiService.getChartPatterns(symbol) } catch (_: Exception) { null }
 
     suspend fun fetchPortfolioRisk(): com.bysel.trader.data.api.PortfolioRiskResponse? {
-        val symbols = holdings.value.joinToString(",") { it.symbol }
-        if (symbols.isBlank()) return null
-        return try { com.bysel.trader.data.api.RetrofitClient.apiService.getPortfolioRisk(symbols) } catch (_: Exception) { null }
+        val held = holdings.value.mapNotNull { it.symbol.takeIf { symbol -> symbol.isNotBlank() } }
+        val symbols = held.ifEmpty {
+            // Demo basket so Risk Lab still opens with educational metrics when wallet is empty.
+            listOf("RELIANCE", "TCS", "INFY")
+        }.joinToString(",")
+        return try {
+            com.bysel.trader.data.api.RetrofitClient.apiService.getPortfolioRisk(symbols)
+        } catch (_: Exception) {
+            null
+        }
     }
 
     suspend fun fetchEarningsCalendar(): com.bysel.trader.data.api.EarningsCalendarResponse? {
-        val symbols = watchlist.value.take(12).joinToString(",")
-        return try { com.bysel.trader.data.api.RetrofitClient.apiService.getEarningsCalendar(symbols) } catch (_: Exception) { null }
+        val symbols = watchlist.value
+            .mapNotNull { it.takeIf { symbol -> symbol.isNotBlank() } }
+            .take(12)
+            .joinToString(",")
+        return try {
+            com.bysel.trader.data.api.RetrofitClient.apiService.getEarningsCalendar(symbols)
+        } catch (_: Exception) {
+            null
+        }
     }
 
     suspend fun fetchJournalEntries(): List<Map<String, Any>> {

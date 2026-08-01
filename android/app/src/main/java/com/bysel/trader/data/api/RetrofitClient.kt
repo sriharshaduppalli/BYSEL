@@ -54,10 +54,11 @@ object RetrofitClient {
             .addInterceptor(HttpLoggingInterceptor().apply {
                 level = loggingLevel
             })
-            // Market/trading calls should fail fast; AI uses [aiHttpClient] instead.
-            .callTimeout(25, TimeUnit.SECONDS)
+            // Market/trading + heatmap share this client. Render free-tier cold starts
+            // often exceed 25s, so keep enough headroom for heatmap wake-ups.
+            .callTimeout(60, TimeUnit.SECONDS)
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
 
         // Pinning is optional until release pins are provided via BuildConfig env values.
