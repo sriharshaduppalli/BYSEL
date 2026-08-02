@@ -96,11 +96,7 @@ fun AiAssistantScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(Color(0xFF1A237E), Color(0xFF7C4DFF))
-                    )
-                )
+                .background(Brush.horizontalGradient(colors = appTheme.headerGradientColors))
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
@@ -110,13 +106,13 @@ fun AiAssistantScreen(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.2f)),
+                        .background(appTheme.onPrimary.copy(alpha = 0.18f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         Icons.Filled.Psychology,
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = appTheme.onPrimary,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -124,13 +120,13 @@ fun AiAssistantScreen(
                 Column {
                     Text(
                         "BYSEL AI Assistant",
-                        color = Color.White,
+                        color = appTheme.onPrimary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp
                     )
                     Text(
                         "Your smart stock advisor",
-                        color = Color.White.copy(alpha = 0.78f),
+                        color = appTheme.onPrimary.copy(alpha = 0.82f),
                         fontSize = 12.sp
                     )
                 }
@@ -140,7 +136,7 @@ fun AiAssistantScreen(
                     Icon(
                         Icons.Filled.DeleteSweep,
                         contentDescription = "Clear chat",
-                        tint = Color.White.copy(alpha = 0.78f)
+                        tint = appTheme.onPrimary.copy(alpha = 0.82f)
                     )
                 }
             }
@@ -150,14 +146,14 @@ fun AiAssistantScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFFFFF3E0))
+                .background(appTheme.tintedSurface(appTheme.primary))
                 .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "📊 Simulation Mode — Paper trading with real market data. No real money involved.",
+                text = "Simulation Mode — Paper trading with real market data. No real money involved.",
                 fontSize = 11.sp,
-                color = Color(0xFF9E6B00),
+                color = appTheme.text,
                 lineHeight = 14.sp
             )
         }
@@ -168,17 +164,17 @@ fun AiAssistantScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFFE8F5E9))
+                        .background(appTheme.tintedSurface(appTheme.positive))
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("On-device AI available", fontWeight = FontWeight.Medium, fontSize = 12.sp, color = Color(0xFF1B5E20))
-                        Text("Download Gemma 2B (~1.4GB) for offline AI — no server needed", fontSize = 11.sp, color = Color(0xFF2E7D32))
+                        Text("On-device AI available", fontWeight = FontWeight.Medium, fontSize = 12.sp, color = appTheme.positive)
+                        Text("Download Gemma 2B (~1.4GB) for offline AI — no server needed", fontSize = 11.sp, color = appTheme.textSecondary)
                     }
                     TextButton(onClick = onDownloadModel) {
-                        Text("Download", fontSize = 12.sp, color = Color(0xFF1B5E20))
+                        Text("Download", fontSize = 12.sp, color = appTheme.positive)
                     }
                 }
             }
@@ -186,14 +182,15 @@ fun AiAssistantScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFFE3F2FD))
+                        .background(appTheme.tintedSurface(appTheme.primary))
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    Text("Downloading AI model… ${onDeviceLlmState.progressPct}%", fontSize = 12.sp, color = Color(0xFF0D47A1))
+                    Text("Downloading AI model… ${onDeviceLlmState.progressPct}%", fontSize = 12.sp, color = appTheme.primary)
                     LinearProgressIndicator(
                         progress = { onDeviceLlmState.progressPct / 100f },
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        color = Color(0xFF1565C0),
+                        color = appTheme.primary,
+                        trackColor = appTheme.mutedSurface,
                     )
                 }
             }
@@ -201,38 +198,43 @@ fun AiAssistantScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFFE3F2FD))
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .background(appTheme.tintedSurface(appTheme.primary))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = appTheme.primary,
+                    )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Loading AI model into memory…", fontSize = 12.sp, color = Color(0xFF0D47A1))
+                    Text("Loading AI model into memory…", fontSize = 12.sp, color = appTheme.primary)
                 }
             }
             is LlmDownloadState.Ready -> {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFFE8F5E9))
+                        .background(appTheme.tintedSurface(appTheme.positive))
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(14.dp))
+                    Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = appTheme.positive, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("On-device AI active — responses are fully offline", fontSize = 11.sp, color = Color(0xFF1B5E20))
+                    Text("On-device AI active — responses are fully offline", fontSize = 11.sp, color = appTheme.positive)
                 }
             }
             is LlmDownloadState.Error -> {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFFFFEBEE))
+                        .background(appTheme.tintedSurface(appTheme.negative))
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("AI model error: ${onDeviceLlmState.message.take(60)}", fontSize = 11.sp, color = Color(0xFFB71C1C), modifier = Modifier.weight(1f))
-                    TextButton(onClick = onDownloadModel) { Text("Retry", fontSize = 11.sp, color = Color(0xFFB71C1C)) }
+                    Text("AI model error: ${onDeviceLlmState.message.take(60)}", fontSize = 11.sp, color = appTheme.negative, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onDownloadModel) { Text("Retry", fontSize = 11.sp, color = appTheme.negative) }
                 }
             }
         }
@@ -337,13 +339,15 @@ fun AiAssistantScreen(
                 modifier = Modifier.size(48.dp),
                 colors = IconButtonDefaults.filledIconButtonColors(
                     containerColor = appTheme.primary,
-                    disabledContainerColor = appTheme.textSecondary.copy(alpha = 0.35f)
+                    contentColor = appTheme.onPrimary,
+                    disabledContainerColor = appTheme.textSecondary.copy(alpha = 0.35f),
+                    disabledContentColor = appTheme.textSecondary,
                 )
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.Send,
                     contentDescription = "Send",
-                    tint = Color.White
+                    tint = appTheme.onPrimary
                 )
             }
             }
@@ -661,6 +665,7 @@ private fun WelcomeContent(
     onSuggestionClick: (String) -> Unit,
     suggestions: List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>>,
 ) {
+    val theme = LocalAppTheme.current
     Column(
         modifier = modifier
             .verticalScroll(rememberScrollState())
@@ -673,17 +678,13 @@ private fun WelcomeContent(
             modifier = Modifier
                 .size(80.dp)
                 .clip(CircleShape)
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(Color(0xFF7C4DFF), Color(0xFF1A237E))
-                    )
-                ),
+                .background(Brush.radialGradient(colors = theme.headerGradientColors)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 Icons.Filled.Psychology,
                 contentDescription = null,
-                tint = LocalAppTheme.current.text,
+                tint = theme.onPrimary,
                 modifier = Modifier.size(48.dp)
             )
         }
@@ -692,7 +693,7 @@ private fun WelcomeContent(
 
         Text(
             "Hi! I'm your AI Stock Assistant",
-            color = LocalAppTheme.current.text,
+            color = theme.text,
             fontWeight = FontWeight.Bold,
             fontSize = 20.sp,
             textAlign = TextAlign.Center
@@ -700,7 +701,7 @@ private fun WelcomeContent(
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             "Ask me anything about Indian stocks.\nI can analyze, predict, and compare stocks for you.",
-            color = LocalAppTheme.current.textSecondary,
+            color = theme.textSecondary,
             fontSize = 14.sp,
             textAlign = TextAlign.Center,
             lineHeight = 20.sp
@@ -708,7 +709,7 @@ private fun WelcomeContent(
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             "Or type your own question in the box below.",
-            color = LocalAppTheme.current.textSecondary,
+            color = theme.textSecondary,
             fontSize = 12.sp,
             textAlign = TextAlign.Center
         )
@@ -717,7 +718,7 @@ private fun WelcomeContent(
 
         Text(
             "Try asking:",
-            color = Color(0xFF7C4DFF),
+            color = theme.primary,
             fontWeight = FontWeight.SemiBold,
             fontSize = 14.sp
         )
@@ -883,7 +884,7 @@ private fun ChatBubble(
         ) {
             Text(
                 text = message.text,
-                color = if (message.isUser) Color.White else LocalAppTheme.current.text,
+                color = if (message.isUser) LocalAppTheme.current.onPrimary else LocalAppTheme.current.text,
                 fontSize = 14.sp,
                 modifier = Modifier.padding(12.dp),
                 lineHeight = 20.sp
@@ -895,7 +896,7 @@ private fun ChatBubble(
             Text(
                 text = "✦ Gemini",
                 fontSize = 10.sp,
-                color = Color(0xFF7C4DFF).copy(alpha = 0.7f),
+                color = LocalAppTheme.current.primary.copy(alpha = 0.75f),
                 modifier = Modifier.padding(start = 8.dp, top = 2.dp)
             )
         }
@@ -995,11 +996,14 @@ private fun ChatBubble(
                 if (onTradeAction != null && !isBearish) {
                     Button(
                         onClick = { onTradeAction.invoke(actionSymbol, "BUY", null) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C853)),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = LocalAppTheme.current.positive,
+                            contentColor = Color.White,
+                        ),
                         modifier = Modifier.height(32.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                     ) {
-                        Text("Buy $actionSymbol", fontSize = 11.sp, color = Color.White)
+                        Text("Buy $actionSymbol", fontSize = 11.sp)
                     }
                 }
                 if (onAlertAction != null) {
@@ -1032,21 +1036,27 @@ private fun ChatBubble(
                         TradeIntentParser.Action.BUY -> {
                             Button(
                                 onClick = { onTradeAction?.invoke(intent.symbol, "BUY", intent.quantity) },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C853)),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = LocalAppTheme.current.positive,
+                                    contentColor = Color.White,
+                                ),
                                 modifier = Modifier.height(32.dp),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                             ) {
-                                Text(intent.displayText, fontSize = 11.sp, color = Color.White)
+                                Text(intent.displayText, fontSize = 11.sp)
                             }
                         }
                         TradeIntentParser.Action.SELL -> {
                             Button(
                                 onClick = { onTradeAction?.invoke(intent.symbol, "SELL", intent.quantity) },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = LocalAppTheme.current.negative,
+                                    contentColor = Color.White,
+                                ),
                                 modifier = Modifier.height(32.dp),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                             ) {
-                                Text(intent.displayText, fontSize = 11.sp, color = Color.White)
+                                Text(intent.displayText, fontSize = 11.sp)
                             }
                         }
                         TradeIntentParser.Action.ALERT -> {

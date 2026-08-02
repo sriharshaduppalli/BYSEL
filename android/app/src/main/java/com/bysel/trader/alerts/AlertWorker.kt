@@ -35,10 +35,24 @@ class AlertWorker(appContext: Context, params: WorkerParameters) : CoroutineWork
             for (a in alerts) {
                 val price = priceBySymbol[a.symbol] ?: continue
                 try {
+                    var triggered = false
                     when (a.alertType.uppercase()) {
-                        "ABOVE" -> if (price >= a.thresholdPrice) alertsManager.sendPriceAlert(a, price)
-                        "BELOW" -> if (price <= a.thresholdPrice) alertsManager.sendPriceAlert(a, price)
+                        "ABOVE" -> if (price >= a.thresholdPrice) {
+                            alertsManager.sendPriceAlert(a, price)
+                            triggered = true
+                        }
+                        "BELOW" -> if (price <= a.thresholdPrice) {
+                            alertsManager.sendPriceAlert(a, price)
+                            triggered = true
+                        }
                         else -> {}
+                    }
+                    if (triggered) {
+                        try {
+                            repo.deactivateAlert(a.id)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to deactivate alert ${a.id}", e)
+                        }
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "Error checking alert ${a.id} ${a.symbol}", e)

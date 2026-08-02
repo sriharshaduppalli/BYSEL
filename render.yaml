@@ -15,5 +15,28 @@ services:
         value: "250"
       - key: NEWS_CACHE_MAX_SYMBOLS
         value: "80"
+      # Password reset email (prefer Resend — set the secret in Render Dashboard)
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        value: "BYSEL <onboarding@resend.dev>"
+      - key: BYSEL_SUPPORT_EMAIL
+        value: "support@byseltrader.com"
+      # Optional SMTP fallback (leave unset when using Resend only)
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false
+      - key: SMTP_USE_TLS
+        value: "true"
+      # Never enable debug reset codes in production
+      - key: AUTH_PASSWORD_RESET_DEBUG_RESPONSE
+        value: "false"
     plan: free
     healthCheckPath: /health

@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.SentimentBreakdown
 import com.bysel.trader.data.models.QueryUnderstanding
+import com.bysel.trader.ui.theme.LocalAppTheme
 
 /**
  * Enhanced AI Analysis UI Components - Level 2
@@ -201,11 +202,14 @@ fun ProfitSignalCard(
                     if (onBuy != null) {
                         Button(
                             onClick = onBuy,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C853)),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = LocalAppTheme.current.positive,
+                                contentColor = Color.White,
+                            ),
                             modifier = Modifier.weight(1f).height(34.dp),
                             contentPadding = PaddingValues(0.dp)
                         ) {
-                            Text("Buy ${signal.symbol}", fontSize = 12.sp, color = Color.White)
+                            Text("Buy ${signal.symbol}", fontSize = 12.sp)
                         }
                     }
                     if (onSetAlert != null) {
@@ -401,7 +405,7 @@ private fun ConfidenceFactorRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White, RoundedCornerShape(8.dp))
+            .background(LocalAppTheme.current.surface, RoundedCornerShape(8.dp))
             .padding(8.dp)
     ) {
         Row(
@@ -412,13 +416,14 @@ private fun ConfidenceFactorRow(
             Text(
                 text = name.replace(Regex("([A-Z])"), " $1").trim(),
                 fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Medium,
+                color = LocalAppTheme.current.text,
             )
             Text(
                 text = "${score.toInt()}%",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF0066CC)
+                color = LocalAppTheme.current.primary
             )
         }
         
@@ -426,7 +431,7 @@ private fun ConfidenceFactorRow(
             Text(
                 text = reasoning,
                 fontSize = 10.sp,
-                color = Color(0xFF666666),
+                color = LocalAppTheme.current.textSecondary,
                 modifier = Modifier.padding(top = 4.dp)
             )
         }
@@ -594,22 +599,28 @@ fun EventRiskCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.White, RoundedCornerShape(8.dp))
+                    .background(LocalAppTheme.current.surface, RoundedCornerShape(8.dp))
                     .padding(8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column {
-                    Text("Base Confidence", fontSize = 11.sp, color = Color(0xFF666666))
-                    Text("${baseConfidence.toInt()}%", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text("Base Confidence", fontSize = 11.sp, color = LocalAppTheme.current.textSecondary)
+                    Text("${baseConfidence.toInt()}%", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = LocalAppTheme.current.text)
                 }
                 Icon(
                     imageVector = Icons.Default.ArrowForward,
                     contentDescription = null,
+                    tint = LocalAppTheme.current.textSecondary,
                     modifier = Modifier.align(Alignment.CenterVertically)
                 )
                 Column(horizontalAlignment = Alignment.End) {
-                    Text("Adjusted", fontSize = 11.sp, color = Color(0xFF666666))
-                    Text("${adjustedConfidence.toInt()}%", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text("Adjusted", fontSize = 11.sp, color = LocalAppTheme.current.textSecondary)
+                    Text(
+                        "${adjustedConfidence.toInt()}%",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = LocalAppTheme.current.text,
+                    )
                 }
             }
             

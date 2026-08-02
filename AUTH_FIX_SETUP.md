@@ -302,7 +302,15 @@ LOGIN_LOCKOUT_DURATION_SECONDS=300   # Lockout duration
 ACCESS_TOKEN_TTL_SECONDS=900         # 15 minutes
 REFRESH_TOKEN_TTL_SECONDS=2592000    # 30 days
 MAX_ACTIVE_SESSIONS_PER_USER=5       # Max concurrent logins
+
+# Password reset email (Resend preferred — see docs/EMAIL_RESET_SETUP.md)
+RESEND_API_KEY=re_xxx
+RESEND_FROM_EMAIL=BYSEL <onboarding@resend.dev>
+BYSEL_SUPPORT_EMAIL=support@byseltrader.com
+AUTH_PASSWORD_RESET_DEBUG_RESPONSE=false
 ```
+
+> Full Render / Resend / SMTP steps: [`docs/EMAIL_RESET_SETUP.md`](docs/EMAIL_RESET_SETUP.md)
 
 ---
 

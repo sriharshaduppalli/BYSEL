@@ -1,5 +1,6 @@
 package com.bysel.trader.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,6 +17,8 @@ import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.Quote
@@ -278,62 +282,89 @@ fun PortfolioScreen(
                 .fillMaxSize()
                 .background(LocalAppTheme.current.surface)
         ) {
+            val theme = LocalAppTheme.current
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "Portfolio",
                         fontSize = 28.sp,
                         fontWeight = FontWeight.Bold,
-                        color = LocalAppTheme.current.text
+                        color = theme.text,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = "Paper Practice · Simulated holdings",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
-                        color = LocalAppTheme.current.primary,
-                        modifier = Modifier.padding(top = 2.dp)
+                        color = theme.primary,
+                        modifier = Modifier.padding(top = 2.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val ctx = androidx.compose.ui.platform.LocalContext.current
-                    OutlinedButton(
-                        onClick = {
-                            // Build CSV in-memory and share via intent
-                            val sb = StringBuilder()
-                            sb.appendLine("Symbol,Qty,Avg Price,Current Price,Value,P&L,P&L %")
-                            holdings.forEach { h ->
-                                val value = h.last * h.qty
-                                val invested = h.avgPrice * h.qty
-                                val pnl = value - invested
-                                val pct = if (invested > 0) "%.2f".format(pnl / invested * 100) else "0.00"
-                                sb.appendLine("${h.symbol},${h.qty},${"%.2f".format(h.avgPrice)},${"%.2f".format(h.last)},${"%.2f".format(value)},${"%.2f".format(pnl)},$pct")
-                            }
-                            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(android.content.Intent.EXTRA_SUBJECT, "BYSEL Portfolio Export")
-                                putExtra(android.content.Intent.EXTRA_TEXT, sb.toString())
-                            }
-                            ctx.startActivity(android.content.Intent.createChooser(intent, "Share Portfolio"))
-                        },
-                        modifier = Modifier.height(40.dp),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text("Export", fontSize = 12.sp)
-                    }
-                    Button(
-                        onClick = onRefresh,
-                        modifier = Modifier.height(40.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text("Refresh", fontSize = 12.sp)
-                    }
+                Spacer(modifier = Modifier.width(8.dp))
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                OutlinedButton(
+                    onClick = {
+                        val sb = StringBuilder()
+                        sb.appendLine("Symbol,Qty,Avg Price,Current Price,Value,P&L,P&L %")
+                        holdings.forEach { h ->
+                            val value = h.last * h.qty
+                            val invested = h.avgPrice * h.qty
+                            val pnl = value - invested
+                            val pct = if (invested > 0) "%.2f".format(pnl / invested * 100) else "0.00"
+                            sb.appendLine(
+                                "${h.symbol},${h.qty},${"%.2f".format(h.avgPrice)},${"%.2f".format(h.last)}," +
+                                    "${"%.2f".format(value)},${"%.2f".format(pnl)},$pct",
+                            )
+                        }
+                        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(android.content.Intent.EXTRA_SUBJECT, "BYSEL Portfolio Export")
+                            putExtra(android.content.Intent.EXTRA_TEXT, sb.toString())
+                        }
+                        ctx.startActivity(android.content.Intent.createChooser(intent, "Share Portfolio"))
+                    },
+                    modifier = Modifier.height(40.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = theme.primary),
+                    border = BorderStroke(1.dp, theme.primary),
+                ) {
+                    Icon(
+                        Icons.Filled.Share,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = theme.primary,
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Export", fontSize = 12.sp, color = theme.primary)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(
+                    onClick = onRefresh,
+                    modifier = Modifier.height(40.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = theme.primary,
+                        contentColor = theme.onPrimary,
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = theme.onPrimary,
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Refresh", fontSize = 12.sp, color = theme.onPrimary)
                 }
             }
 
@@ -364,7 +395,7 @@ fun PortfolioScreen(
                         Icon(
                             Icons.Filled.Add,
                             contentDescription = null,
-                            tint = Color(0xFF2A2A2A),
+                            tint = LocalAppTheme.current.textSecondary,
                             modifier = Modifier.size(64.dp)
                         )
                         Text(
@@ -376,7 +407,7 @@ fun PortfolioScreen(
                         Text(
                             text = "Start trading to build your portfolio",
                             fontSize = 12.sp,
-                            color = Color(0xFF666666),
+                            color = LocalAppTheme.current.textSecondary,
                             modifier = Modifier.padding(top = 8.dp)
                         )
                         Spacer(modifier = Modifier.height(16.dp))
@@ -513,7 +544,7 @@ fun UpgradedPortfolioHoldingItem(
 
             HorizontalDivider(
                 modifier = Modifier.padding(vertical = 12.dp),
-                color = Color(0xFF2A2A2A)
+                color = theme.textSecondary.copy(alpha = 0.25f)
             )
 
             Row(
@@ -573,7 +604,10 @@ fun UpgradedPortfolioHoldingItem(
                     modifier = Modifier
                         .weight(1f)
                         .height(36.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00B050)),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = LocalAppTheme.current.positive,
+                        contentColor = Color.White,
+                    ),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text("Buy", fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -640,7 +674,7 @@ fun PortfolioHealthCard(
             .fillMaxWidth()
             .padding(8.dp),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E))
+        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)
     ) {
         if (isLoading && health == null) {
             Box(
@@ -651,7 +685,7 @@ fun PortfolioHealthCard(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(
-                        color = Color(0xFF7C4DFF),
+                        color = LocalAppTheme.current.primary,
                         modifier = Modifier.size(32.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -670,7 +704,7 @@ fun PortfolioHealthCard(
                         Icon(
                             Icons.Filled.HealthAndSafety,
                             contentDescription = null,
-                            tint = Color(0xFF7C4DFF),
+                            tint = LocalAppTheme.current.primary,
                             modifier = Modifier.size(24.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -682,11 +716,12 @@ fun PortfolioHealthCard(
                         )
                     }
                     // Grade badge
+                    val theme = LocalAppTheme.current
                     val gradeColor = when {
-                        health.overallScore >= 75 -> Color(0xFF00C853)
+                        health.overallScore >= 75 -> theme.positive
                         health.overallScore >= 55 -> Color(0xFFFFB300)
                         health.overallScore >= 35 -> Color(0xFFFF9100)
-                        else -> Color(0xFFE53935)
+                        else -> theme.negative
                     }
                     Box(
                         modifier = Modifier
@@ -786,11 +821,11 @@ fun PortfolioHealthCard(
                 // Suggestions (show first 3)
                 if (health.suggestions.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider(color = Color(0xFF333333))
+                    HorizontalDivider(color = LocalAppTheme.current.textSecondary.copy(alpha = 0.25f))
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         "Suggestions",
-                        color = Color(0xFF7C4DFF),
+                        color = LocalAppTheme.current.primary,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 12.sp
                     )

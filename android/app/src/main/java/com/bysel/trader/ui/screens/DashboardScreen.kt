@@ -2471,7 +2471,7 @@ fun PortfolioSummaryCard(holdings: List<Holding>) {
 
             HorizontalDivider(
                 modifier = Modifier.padding(vertical = 16.dp),
-                color = Color(0xFF2A2A2A)
+                color = LocalAppTheme.current.textSecondary.copy(alpha = 0.25f)
             )
 
             Text(

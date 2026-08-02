@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -198,7 +199,7 @@ fun HeatmapScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = Color(0xFF7C4DFF))
+                    CircularProgressIndicator(color = LocalAppTheme.current.primary)
                     Spacer(modifier = Modifier.height(16.dp))
                     Text("Loading market data...", color = LocalAppTheme.current.textSecondary, fontSize = 14.sp)
                 }
@@ -261,10 +262,11 @@ private fun MarketStatusBanner(marketOpen: Boolean, staleReason: String? = null)
     val dow = ist.get(Calendar.DAY_OF_WEEK)
     val isWeekend = dow == Calendar.SATURDAY || dow == Calendar.SUNDAY
 
+    val theme = LocalAppTheme.current
     val (bgColor, icon, message) = when {
         marketOpen -> Triple(Color(0xFF1B5E20), Icons.Filled.TrendingUp, "Market Open  •  Live quotes (server refreshes ~30s)")
         isWeekend -> Triple(
-            Color(0xFF1A1A2E),
+            theme.card,
             Icons.Filled.Weekend,
             staleReason ?: "Weekend  •  Market closed  •  Showing last session data",
         )
@@ -282,9 +284,10 @@ private fun MarketStatusBanner(marketOpen: Boolean, staleReason: String? = null)
             .padding(horizontal = 16.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(14.dp))
+        val contentColor = if (bgColor.luminance() > 0.5f) theme.text else Color.White.copy(alpha = 0.9f)
+        Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(14.dp))
         Spacer(modifier = Modifier.width(6.dp))
-        Text(message, color = Color.White.copy(alpha = 0.9f), fontSize = 11.sp)
+        Text(message, color = contentColor, fontSize = 11.sp)
     }
 }
 

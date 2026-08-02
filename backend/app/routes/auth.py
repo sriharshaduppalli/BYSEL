@@ -107,6 +107,11 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", SUPPORT_EMAIL).strip() or SUPPORT_EMAIL
 SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
+# Resend free tier can send from onboarding@resend.dev until a domain is verified.
+RESEND_FROM_EMAIL = os.getenv(
+    "RESEND_FROM_EMAIL",
+    os.getenv("SMTP_FROM_EMAIL", "BYSEL <onboarding@resend.dev>"),
+).strip() or "BYSEL <onboarding@resend.dev>"
 PASSWORD_RESET_DEBUG_RESPONSE_ENABLED = os.getenv(
     "AUTH_PASSWORD_RESET_DEBUG_RESPONSE",
     "false"
@@ -326,36 +331,91 @@ def _smtp_password_reset_configured() -> bool:
     return bool(SMTP_HOST and SMTP_FROM_EMAIL)
 
 
+def _password_reset_email_configured() -> bool:
+    """True when either Resend API or SMTP can deliver reset emails."""
+    return bool(RESEND_API_KEY) or _smtp_password_reset_configured()
+
+
+def _resend_from_address() -> str:
+    # Prefer explicit Resend from; fall back to SMTP_FROM_EMAIL only when it looks usable.
+    configured = RESEND_FROM_EMAIL.strip()
+    if configured and "onboarding@resend.dev" not in configured.lower():
+        return configured
+    if SMTP_FROM_EMAIL and SMTP_FROM_EMAIL != SUPPORT_EMAIL and "@" in SMTP_FROM_EMAIL:
+        return SMTP_FROM_EMAIL if "<" in SMTP_FROM_EMAIL else f"BYSEL <{SMTP_FROM_EMAIL}>"
+    return "BYSEL <onboarding@resend.dev>"
+
+
 def _send_password_reset_email_resend(recipient_email: str, username: str, reset_code: str) -> bool:
     """Send password reset email via Resend API (https://resend.com — free tier: 100 emails/day)."""
     if not RESEND_API_KEY:
         return False
     minutes = max(1, PASSWORD_RESET_TOKEN_TTL_SECONDS // 60)
-    from_addr = SMTP_FROM_EMAIL if SMTP_FROM_EMAIL != SUPPORT_EMAIL else "BYSEL <onboarding@resend.dev>"
-    body = "\n".join([
+    from_addr = _resend_from_address()
+    text_body = "\n".join([
         f"Hi {username},",
         "",
         f"Your BYSEL password reset code is: {reset_code}",
         f"This code expires in {minutes} minute(s).",
         "",
+        "Enter this code in the BYSEL app to set a new password.",
         "If you did not request this, you can safely ignore this email.",
         "",
         "— BYSEL Team",
     ])
+    html_body = f"""\
+<html><body style="font-family:Arial,sans-serif;line-height:1.5;color:#111">
+  <p>Hi {username},</p>
+  <p>Your BYSEL password reset code is:</p>
+  <p style="font-size:28px;font-weight:700;letter-spacing:2px">{reset_code}</p>
+  <p>This code expires in {minutes} minute(s). Enter it in the BYSEL app to set a new password.</p>
+  <p style="color:#555">If you did not request this, you can safely ignore this email.</p>
+  <p>— BYSEL Team</p>
+</body></html>
+"""
     payload = json.dumps({
         "from": from_addr,
         "to": [recipient_email],
         "subject": "BYSEL Password Reset Code",
-        "text": body,
+        "text": text_body,
+        "html": html_body,
     }).encode()
     req = urllib.request.Request(
         "https://api.resend.com/emails",
         data=payload,
-        headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
     )
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
-            return resp.status == 200
+            body = resp.read().decode("utf-8", errors="replace")
+            ok = resp.status in (200, 201)
+            if ok:
+                logger.info(
+                    "auth.password_reset.resend_ok email=%s from=%s",
+                    _mask_identifier(recipient_email),
+                    from_addr,
+                )
+            else:
+                logger.warning(
+                    "auth.password_reset.resend_unexpected_status email=%s status=%s body=%s",
+                    _mask_identifier(recipient_email),
+                    resp.status,
+                    body[:300],
+                )
+            return ok
+    except urllib.error.HTTPError as exc:
+        err_body = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+        logger.exception(
+            "auth.password_reset.resend_failed email=%s status=%s body=%s",
+            _mask_identifier(recipient_email),
+            exc.code,
+            err_body[:400],
+        )
+        return False
     except Exception as exc:
         logger.exception(
             "auth.password_reset.resend_failed email=%s reason=%s",
@@ -1379,7 +1439,7 @@ def request_password_reset(body: PasswordResetRequest):
     generic_message = "If an account exists, you will receive a password reset code shortly."
     support_message = f"Password reset is currently unavailable in-app. Contact {SUPPORT_EMAIL}."
 
-    if not _smtp_password_reset_configured() and not PASSWORD_RESET_DEBUG_RESPONSE_ENABLED:
+    if not _password_reset_email_configured() and not PASSWORD_RESET_DEBUG_RESPONSE_ENABLED:
         _metric_inc("password_reset.request_support_only")
         return PasswordResetRequestResponse(
             status="ok",
@@ -1536,12 +1596,17 @@ def change_password(
 ):
     user_id = _get_user_id_from_authorization(authorization)
 
-    current_password = str(body.currentPassword)
-    new_password = str(body.newPassword)
-    if len(new_password) < 6:
+    raw_current = str(body.currentPassword or "")
+    raw_new = str(body.newPassword or "")
+    if len(raw_new) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
-    if len(new_password) > 72:
+    if len(raw_new) > 72:
         raise HTTPException(status_code=400, detail="Password must be 72 characters or less.")
+    if len(raw_current) > 72:
+        raise HTTPException(status_code=400, detail="Current password must be 72 characters or less.")
+    # Match login/register hashing: bcrypt operates on the same truncated form.
+    current_password = raw_current[:72]
+    new_password = raw_new[:72]
     if current_password == new_password:
         raise HTTPException(status_code=400, detail="New password must be different from current password")
 
@@ -1573,6 +1638,10 @@ def change_password(
             PasswordResetTokenModel.revoked_at.is_(None),
         ).update({"revoked_at": now}, synchronize_session=False)
 
+        # Persist password + token_version before issuing the replacement session.
+        db.commit()
+        db.refresh(db_user)
+
         access_token, refresh_token = _create_auth_tokens(
             user_id=user_id,
             token_version=next_token_version,
@@ -1587,6 +1656,13 @@ def change_password(
             access_token=access_token,
             refresh_token=refresh_token,
         )
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        logger.exception("auth.password_change.failed user_id=%s reason=%s", user_id, str(exc))
+        raise HTTPException(status_code=500, detail="Password update failed. Please try again.")
     finally:
         db.close()
 

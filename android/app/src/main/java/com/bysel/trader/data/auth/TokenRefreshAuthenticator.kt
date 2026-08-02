@@ -4,6 +4,7 @@ import okhttp3.Authenticator
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.Route
+import org.json.JSONObject
 
 class TokenRefreshAuthenticator : Authenticator {
     private val publicAuthPaths = setOf(
@@ -24,6 +25,10 @@ class TokenRefreshAuthenticator : Authenticator {
         if (path in publicAuthPaths) return null
         if (responseCount(response) >= 2) return null
 
+        // Wrong-password / credential failures are also 401. Refreshing the access token
+        // would mask the real error and retry a doomed request.
+        if (isCredentialFailure(response)) return null
+
         val failedAccessToken = response.request.header("Authorization")
             ?.removePrefix("Bearer ")
             ?.trim()
@@ -38,6 +43,22 @@ class TokenRefreshAuthenticator : Authenticator {
             ?: return null
 
         return rebuildWithAuth(response.request, refreshedAccess)
+    }
+
+    private fun isCredentialFailure(response: Response): Boolean {
+        if (response.code != 401) return false
+        val path = response.request.url.encodedPath
+        if (path != "/auth/change-password" && path != "/auth/delete-account") {
+            return false
+        }
+        val detail = runCatching {
+            response.peekBody(2_048).string()
+                .let { JSONObject(it).optString("detail") }
+                .lowercase()
+        }.getOrNull().orEmpty()
+        return detail.contains("password") ||
+            detail.contains("credential") ||
+            detail.contains("incorrect")
     }
 
     private fun rebuildWithAuth(request: Request, accessToken: String): Request {

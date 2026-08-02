@@ -30,10 +30,24 @@ import com.bysel.trader.data.repository.Result
 import com.bysel.trader.security.BiometricAuthManager
 import com.bysel.trader.security.BiometricStatus
 import com.bysel.trader.security.getMessage
+import com.bysel.trader.ui.theme.DEFAULT_THEME_ID
 import com.bysel.trader.ui.theme.allThemes
 import com.bysel.trader.ui.theme.getTheme
+import com.bysel.trader.ui.theme.isLightThemeId
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.normalizeThemeId
+import com.bysel.trader.alerts.AlertsManager
 import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalContext
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import android.Manifest
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 
 @Composable
 fun SettingsScreen(
@@ -42,17 +56,23 @@ fun SettingsScreen(
     biometricAuthManager: BiometricAuthManager? = null,
     onLogout: () -> Unit = {},
     onLogoutAllDevices: () -> Unit = {},
+    onOpenPriceAlerts: () -> Unit = {},
     heatmapInterval: Int = 2000,
     onHeatmapIntervalChange: (Int) -> Unit = {}
 ) {
     val authRepository = remember { AuthRepository() }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("bysel_settings", Context.MODE_PRIVATE) }
+    val alertsManager = remember { AlertsManager(context) }
 
-    var darkMode by remember { mutableStateOf(currentTheme.lowercase() != "light") }
+    var selectedTheme by remember(currentTheme) { mutableStateOf(normalizeThemeId(currentTheme)) }
+    var darkMode by remember(selectedTheme) { mutableStateOf(!isLightThemeId(selectedTheme)) }
     var showThemeDialog by remember { mutableStateOf(false) }
+    var showNotificationsDialog by remember { mutableStateOf(false) }
+    var notificationStatusTick by remember { mutableIntStateOf(0) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var legalDocument by remember { mutableStateOf<com.bysel.trader.ui.components.LegalDocument?>(null) }
-    var selectedTheme by remember { mutableStateOf(currentTheme) }
     var showProfileDialog by remember { mutableStateOf(false) }
     var showSecurityDialog by remember { mutableStateOf(false) }
     var showFeedbackDialog by remember { mutableStateOf(false) }
@@ -98,11 +118,59 @@ fun SettingsScreen(
         ThemeSelectionDialog(
             selectedTheme = selectedTheme,
             onThemeSelected = { theme ->
-                selectedTheme = theme
-                onThemeChange(theme)
+                val normalized = normalizeThemeId(theme)
+                selectedTheme = normalized
+                darkMode = !isLightThemeId(normalized)
+                onThemeChange(normalized)
                 showThemeDialog = false
             },
             onDismiss = { showThemeDialog = false }
+        )
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        notificationStatusTick++
+        Toast.makeText(
+            context,
+            if (granted) "Notification permission granted" else "Notification permission denied",
+            Toast.LENGTH_SHORT,
+        ).show()
+    }
+
+    if (showNotificationsDialog) {
+        // Re-read status whenever permission / toggles change.
+        notificationStatusTick
+        NotificationsSettingsDialog(
+            alertsManager = alertsManager,
+            onDismiss = { showNotificationsDialog = false },
+            onManageAlerts = {
+                showNotificationsDialog = false
+                onOpenPriceAlerts()
+            },
+            onRequestPermission = {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    notificationStatusTick++
+                }
+            },
+            onOpenSystemSettings = {
+                val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    putExtra("android.provider.extra.APP_PACKAGE", context.packageName)
+                }
+                runCatching { context.startActivity(intent) }.onFailure {
+                    context.startActivity(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", context.packageName, null)
+                        }
+                    )
+                }
+                notificationStatusTick++
+            },
+            onStatusChanged = { notificationStatusTick++ },
         )
     }
     if (showAboutDialog) {
@@ -342,15 +410,22 @@ fun SettingsScreen(
             SettingItem(
                 icon = Icons.Filled.Brightness4,
                 title = "Dark Mode",
-                subtitle = if (darkMode) "Enabled" else "Disabled",
+                subtitle = if (darkMode) "Enabled" else "Disabled (Light)",
                 value = darkMode,
                 onValueChange = { enabled ->
                     darkMode = enabled
                     if (!enabled) {
-                        onThemeChange("light")
+                        if (!isLightThemeId(selectedTheme)) {
+                            prefs.edit().putString("lastDarkTheme", selectedTheme).apply()
+                        }
+                        selectedTheme = "Light"
+                        onThemeChange("Light")
                     } else {
-                        // Restore to default dark theme if currently on light
-                        if (selectedTheme.lowercase() == "light") onThemeChange("default")
+                        val restored = normalizeThemeId(
+                            prefs.getString("lastDarkTheme", DEFAULT_THEME_ID)
+                        ).let { if (isLightThemeId(it)) DEFAULT_THEME_ID else it }
+                        selectedTheme = restored
+                        onThemeChange(restored)
                     }
                 }
             )
@@ -369,11 +444,13 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(12.dp))
         }
         item {
+            // Force subtitle refresh when permission/toggle changes.
+            notificationStatusTick
             SettingClickItem(
                 icon = Icons.Filled.Notifications,
                 title = "Notifications",
-                subtitle = "In-app price alerts only · push delivery coming soon",
-                onClick = { }
+                subtitle = alertsManager.notificationStatusLabel(),
+                onClick = { showNotificationsDialog = true }
             )
         }
         item {
@@ -419,7 +496,7 @@ fun SettingsScreen(
             SettingClickItem(
                 icon = Icons.Filled.Lock,
                 title = "Security",
-                subtitle = "Change password and privacy settings",
+                subtitle = "Change account password",
                 onClick = { showSecurityDialog = true }
             )
         }
@@ -717,6 +794,112 @@ fun WebsiteDialog(onDismiss: () -> Unit) {
 }
 
 @Composable
+private fun NotificationsSettingsDialog(
+    alertsManager: AlertsManager,
+    onDismiss: () -> Unit,
+    onManageAlerts: () -> Unit,
+    onRequestPermission: () -> Unit,
+    onOpenSystemSettings: () -> Unit,
+    onStatusChanged: () -> Unit,
+) {
+    val theme = LocalAppTheme.current
+    val context = LocalContext.current
+    var priceAlertsEnabled by remember {
+        mutableStateOf(alertsManager.arePriceAlertNotificationsEnabled())
+    }
+    val permissionGranted = alertsManager.hasPostNotificationPermission()
+    val systemEnabled = alertsManager.areSystemNotificationsEnabled()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = theme.card,
+        title = {
+            Text(
+                "Notifications",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = theme.text,
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(
+                    text = alertsManager.notificationStatusLabel(),
+                    fontSize = 13.sp,
+                    color = if (alertsManager.canDeliverNotifications()) theme.positive else theme.negative,
+                )
+                Text(
+                    text = "Price alerts can notify you when a stock crosses your target. " +
+                        "Server push for remote delivery is not required for on-device alerts.",
+                    fontSize = 12.sp,
+                    color = theme.textSecondary,
+                )
+
+                SettingItem(
+                    icon = Icons.Filled.NotificationsActive,
+                    title = "Price alert banners",
+                    subtitle = if (priceAlertsEnabled) "Enabled" else "Disabled",
+                    value = priceAlertsEnabled,
+                    onValueChange = { enabled ->
+                        priceAlertsEnabled = enabled
+                        alertsManager.setPriceAlertNotificationsEnabled(enabled)
+                        onStatusChanged()
+                    },
+                )
+
+                if (!permissionGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    Button(
+                        onClick = onRequestPermission,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = theme.primary),
+                    ) {
+                        Text("Allow notification permission")
+                    }
+                }
+
+                if (permissionGranted && !systemEnabled) {
+                    Button(
+                        onClick = onOpenSystemSettings,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = theme.primary),
+                    ) {
+                        Text("Open system notification settings")
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        val ok = alertsManager.sendTestNotification()
+                        Toast.makeText(
+                            context,
+                            if (ok) "Test notification sent" else "Enable notification permission first",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                        onStatusChanged()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Send test notification", color = theme.primary)
+                }
+
+                Button(
+                    onClick = onManageAlerts,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = theme.primary),
+                ) {
+                    Text("Manage price alerts")
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close", color = theme.primary)
+            }
+        },
+    )
+}
+
+@Composable
 fun ThemeSelectionDialog(
     selectedTheme: String,
     onThemeSelected: (String) -> Unit,
@@ -740,7 +923,8 @@ fun ThemeSelectionDialog(
                     .padding(vertical = 16.dp)
             ) {
                 allThemes.forEach { themeName ->
-                    val theme = getTheme(themeName.lowercase())
+                    val theme = getTheme(themeName)
+                    val isSelected = selectedTheme.equals(themeName, ignoreCase = true)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -762,21 +946,28 @@ fun ThemeSelectionDialog(
                                 modifier = Modifier.padding(start = 12.dp)
                             ) {
                                 Text(
-                                    text = theme.name,
+                                    text = themeName,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = LocalAppTheme.current.text
                                 )
+                                if (themeName == "Dynamic") {
+                                    Text(
+                                        text = "Follows system Material You colors",
+                                        fontSize = 11.sp,
+                                        color = LocalAppTheme.current.textSecondary
+                                    )
+                                }
                                 Box(
                                     modifier = Modifier
+                                        .padding(top = 4.dp)
                                         .height(4.dp)
                                         .fillMaxWidth(0.3f)
                                         .background(theme.positive, RoundedCornerShape(2.dp))
-                                        .padding(top = 4.dp)
                                 )
                             }
                         }
-                        if (selectedTheme == themeName) {
+                        if (isSelected) {
                             Icon(
                                 Icons.Filled.Check,
                                 contentDescription = "Selected",
@@ -862,8 +1053,10 @@ fun SettingItem(
                 enabled = enabled,
                 modifier = Modifier.size(48.dp),
                 colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color(0xFF00B050),
-                    checkedTrackColor = Color(0xFF1B5E20)
+                    checkedThumbColor = LocalAppTheme.current.onPrimary,
+                    checkedTrackColor = LocalAppTheme.current.primary,
+                    uncheckedThumbColor = LocalAppTheme.current.textSecondary,
+                    uncheckedTrackColor = LocalAppTheme.current.mutedSurface,
                 )
             )
         }
@@ -1291,6 +1484,7 @@ fun SecurityDialog(
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val theme = LocalAppTheme.current
     var currentPassword by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
@@ -1306,18 +1500,47 @@ fun SecurityDialog(
         isError = false
     }
 
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = theme.text,
+        unfocusedTextColor = theme.text,
+        disabledTextColor = theme.textSecondary,
+        focusedContainerColor = Color.Transparent,
+        unfocusedContainerColor = Color.Transparent,
+        disabledContainerColor = Color.Transparent,
+        focusedBorderColor = theme.primary,
+        unfocusedBorderColor = theme.textSecondary.copy(alpha = 0.6f),
+        focusedLabelColor = theme.primary,
+        unfocusedLabelColor = theme.textSecondary,
+        cursorColor = theme.primary,
+        focusedTrailingIconColor = theme.textSecondary,
+        unfocusedTrailingIconColor = theme.textSecondary,
+    )
+
     AlertDialog(
         onDismissRequest = {
             if (!loading) onDismiss()
         },
-        containerColor = LocalAppTheme.current.card,
-        title = { Text("Security", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = LocalAppTheme.current.text) },
+        containerColor = theme.card,
+        title = {
+            Text(
+                "Change password",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = theme.text,
+            )
+        },
         text = {
-            Column {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+            ) {
                 Text(
-                    "Update your password for this account. Existing sessions on other devices will be signed out.",
-                    fontSize = 14.sp,
-                    color = LocalAppTheme.current.text
+                    "Enter your current password, then choose a new one (min 6 characters). " +
+                        "Other devices will be signed out; this device stays signed in.",
+                    fontSize = 13.sp,
+                    color = theme.textSecondary,
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(
@@ -1326,7 +1549,7 @@ fun SecurityDialog(
                         currentPassword = it
                         resetMessage()
                     },
-                    label = { Text("Current Password") },
+                    label = { Text("Current password") },
                     singleLine = true,
                     enabled = !loading,
                     visualTransformation = if (currentPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
@@ -1334,24 +1557,12 @@ fun SecurityDialog(
                         IconButton(onClick = { currentPasswordVisible = !currentPasswordVisible }) {
                             Icon(
                                 imageVector = if (currentPasswordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                contentDescription = if (currentPasswordVisible) "Hide current password" else "Show current password"
+                                contentDescription = if (currentPasswordVisible) "Hide current password" else "Show current password",
                             )
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = LocalAppTheme.current.text,
-                        unfocusedTextColor = LocalAppTheme.current.text,
-                        disabledTextColor = LocalAppTheme.current.textSecondary,
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        disabledContainerColor = Color.Transparent,
-                        focusedBorderColor = LocalAppTheme.current.primary,
-                        unfocusedBorderColor = LocalAppTheme.current.textSecondary.copy(alpha = 0.6f),
-                        focusedLabelColor = LocalAppTheme.current.primary,
-                        unfocusedLabelColor = LocalAppTheme.current.textSecondary,
-                        cursorColor = LocalAppTheme.current.primary,
-                    )
+                    colors = fieldColors,
                 )
                 Spacer(modifier = Modifier.height(10.dp))
                 OutlinedTextField(
@@ -1360,7 +1571,7 @@ fun SecurityDialog(
                         newPassword = it
                         resetMessage()
                     },
-                    label = { Text("New Password") },
+                    label = { Text("New password") },
                     singleLine = true,
                     enabled = !loading,
                     visualTransformation = if (newPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
@@ -1368,24 +1579,12 @@ fun SecurityDialog(
                         IconButton(onClick = { newPasswordVisible = !newPasswordVisible }) {
                             Icon(
                                 imageVector = if (newPasswordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                contentDescription = if (newPasswordVisible) "Hide new password" else "Show new password"
+                                contentDescription = if (newPasswordVisible) "Hide new password" else "Show new password",
                             )
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = LocalAppTheme.current.text,
-                        unfocusedTextColor = LocalAppTheme.current.text,
-                        disabledTextColor = LocalAppTheme.current.textSecondary,
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        disabledContainerColor = Color.Transparent,
-                        focusedBorderColor = LocalAppTheme.current.primary,
-                        unfocusedBorderColor = LocalAppTheme.current.textSecondary.copy(alpha = 0.6f),
-                        focusedLabelColor = LocalAppTheme.current.primary,
-                        unfocusedLabelColor = LocalAppTheme.current.textSecondary,
-                        cursorColor = LocalAppTheme.current.primary,
-                    )
+                    colors = fieldColors,
                 )
                 Spacer(modifier = Modifier.height(10.dp))
                 OutlinedTextField(
@@ -1394,7 +1593,7 @@ fun SecurityDialog(
                         confirmPassword = it
                         resetMessage()
                     },
-                    label = { Text("Confirm New Password") },
+                    label = { Text("Confirm new password") },
                     singleLine = true,
                     enabled = !loading,
                     visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
@@ -1402,31 +1601,19 @@ fun SecurityDialog(
                         IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
                             Icon(
                                 imageVector = if (confirmPasswordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                contentDescription = if (confirmPasswordVisible) "Hide confirmation password" else "Show confirmation password"
+                                contentDescription = if (confirmPasswordVisible) "Hide confirmation password" else "Show confirmation password",
                             )
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = LocalAppTheme.current.text,
-                        unfocusedTextColor = LocalAppTheme.current.text,
-                        disabledTextColor = LocalAppTheme.current.textSecondary,
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        disabledContainerColor = Color.Transparent,
-                        focusedBorderColor = LocalAppTheme.current.primary,
-                        unfocusedBorderColor = LocalAppTheme.current.textSecondary.copy(alpha = 0.6f),
-                        focusedLabelColor = LocalAppTheme.current.primary,
-                        unfocusedLabelColor = LocalAppTheme.current.textSecondary,
-                        cursorColor = LocalAppTheme.current.primary,
-                    )
+                    colors = fieldColors,
                 )
                 if (!message.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         text = message.orEmpty(),
                         fontSize = 12.sp,
-                        color = if (isError) LocalAppTheme.current.negative else LocalAppTheme.current.positive,
+                        color = if (isError) theme.negative else theme.positive,
                     )
                 }
             }
@@ -1435,20 +1622,27 @@ fun SecurityDialog(
             Button(
                 onClick = {
                     if (loading) return@Button
+                    val current = currentPassword.trim()
+                    val next = newPassword.trim()
+                    val confirm = confirmPassword.trim()
                     when {
-                        currentPassword.isBlank() -> {
+                        current.isBlank() -> {
                             isError = true
                             message = "Current password is required"
                         }
-                        newPassword.length < 6 -> {
+                        next.length < 6 -> {
                             isError = true
                             message = "New password must be at least 6 characters"
                         }
-                        newPassword != confirmPassword -> {
+                        next.length > 72 -> {
+                            isError = true
+                            message = "New password must be 72 characters or less"
+                        }
+                        next != confirm -> {
                             isError = true
                             message = "New passwords do not match"
                         }
-                        currentPassword == newPassword -> {
+                        current == next -> {
                             isError = true
                             message = "New password must be different from current password"
                         }
@@ -1456,10 +1650,10 @@ fun SecurityDialog(
                             loading = true
                             resetMessage()
                             scope.launch {
-                                when (val result = authRepository.changePassword(currentPassword, newPassword)) {
+                                when (val result = authRepository.changePassword(current, next)) {
                                     is Result.Success -> {
                                         isError = false
-                                        message = "Password updated successfully."
+                                        message = "Password updated. You can keep using the app on this device."
                                         currentPassword = ""
                                         newPassword = ""
                                         confirmPassword = ""
@@ -1476,23 +1670,27 @@ fun SecurityDialog(
                     }
                 },
                 enabled = !loading,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = theme.primary,
+                    contentColor = theme.onPrimary,
+                ),
             ) {
                 if (loading) {
                     CircularProgressIndicator(
-                        color = Color.White,
+                        color = theme.onPrimary,
                         strokeWidth = 2.dp,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(18.dp),
                     )
                 } else {
-                    Text("Update Password")
+                    Text("Update password")
                 }
             }
         },
         dismissButton = {
             TextButton(onClick = { if (!loading) onDismiss() }) {
-                Text("Close", color = LocalAppTheme.current.primary)
+                Text("Close", color = theme.primary)
             }
-        }
+        },
     )
 }
 

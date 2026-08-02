@@ -51,16 +51,20 @@ import com.bysel.trader.data.repository.AuthRepository
 import com.bysel.trader.data.repository.Result
 import com.bysel.trader.data.repository.TradingRepository
 import com.bysel.trader.ui.screens.*
+import com.bysel.trader.ui.theme.DEFAULT_THEME_ID
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.theme.getTheme
 import com.bysel.trader.ui.theme.getMaterialColorScheme
+import com.bysel.trader.ui.theme.isDynamicThemeId
+import com.bysel.trader.ui.theme.isLightThemeId
+import com.bysel.trader.ui.theme.normalizeThemeId
+import com.bysel.trader.ui.theme.toAppTheme
 import com.google.android.play.core.appupdate.AppUpdateManager
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.install.model.AppUpdateType
 import com.google.android.play.core.install.model.UpdateAvailability
 import com.google.android.play.core.review.ReviewManager
 import com.google.android.play.core.review.ReviewManagerFactory
-import com.bysel.trader.ui.theme.toMaterialColorScheme
 import com.bysel.trader.viewmodel.TradingViewModel
 import com.bysel.trader.viewmodel.TradingViewModelFactory
 import com.bysel.trader.ai.LlmDownloadState
@@ -386,8 +390,18 @@ fun BYSELApp(
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("bysel_settings", Context.MODE_PRIVATE) }
-    var currentThemeName by remember { mutableStateOf(prefs.getString("theme", "Default") ?: "Default") }
-    val appTheme = remember(currentThemeName) { getTheme(currentThemeName.lowercase()) }
+    var currentThemeName by remember {
+        val normalized = normalizeThemeId(prefs.getString("theme", DEFAULT_THEME_ID))
+        if (prefs.getString("theme", null) != normalized) {
+            prefs.edit().putString("theme", normalized).apply()
+        }
+        mutableStateOf(normalized)
+    }
+    val materialScheme = remember(currentThemeName) { getMaterialColorScheme(currentThemeName, context) }
+    val appTheme = remember(currentThemeName, materialScheme) {
+        if (isDynamicThemeId(currentThemeName)) materialScheme.toAppTheme("Dynamic")
+        else getTheme(currentThemeName)
+    }
 
     // Play Core managers for modern app lifecycle
     val appUpdateManager = remember { AppUpdateManagerFactory.create(context) }
@@ -545,7 +559,7 @@ fun BYSELApp(
         }
     }
     CompositionLocalProvider(LocalAppTheme provides appTheme) {
-        MaterialTheme(colorScheme = getMaterialColorScheme(currentThemeName, context)) {
+        MaterialTheme(colorScheme = materialScheme) {
             pendingAiTrade?.let { trade ->
                 val livePrice = quotes.firstOrNull { it.symbol == trade.symbol }?.last
                 val estimate = livePrice?.let { it * trade.quantity }
@@ -1046,8 +1060,12 @@ fun BYSELApp(
                                     currentTheme = currentThemeName,
                                     biometricAuthManager = biometricAuthManager,
                                     onThemeChange = { theme ->
-                                        currentThemeName = theme
-                                        prefs.edit().putString("theme", theme).apply()
+                                        val normalized = normalizeThemeId(theme)
+                                        if (!isLightThemeId(normalized)) {
+                                            prefs.edit().putString("lastDarkTheme", normalized).apply()
+                                        }
+                                        currentThemeName = normalized
+                                        prefs.edit().putString("theme", normalized).apply()
                                     },
                                     heatmapInterval = heatmapInterval,
                                     onHeatmapIntervalChange = { interval ->
@@ -1056,7 +1074,11 @@ fun BYSELApp(
                                         prefs.edit().putInt("heatmapInterval", clamped).apply()
                                     },
                                     onLogout = onLogout,
-                                    onLogoutAllDevices = onLogoutAllDevices
+                                    onLogoutAllDevices = onLogoutAllDevices,
+                                    onOpenPriceAlerts = {
+                                        previousTab = selectedTab
+                                        selectedTab = 7
+                                    },
                                 )
                                 9 -> {
                                     if (detailLoading) {

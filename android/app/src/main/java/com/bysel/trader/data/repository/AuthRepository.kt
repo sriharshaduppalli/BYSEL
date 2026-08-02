@@ -211,13 +211,33 @@ class AuthRepository(
     }
 
     suspend fun changePassword(currentPassword: String, newPassword: String): Result<AuthResponse> {
+        val normalizedCurrent = currentPassword.trim()
+        val normalizedNew = newPassword.trim()
+        if (AuthSessionManager.getAccessToken().isNullOrBlank()) {
+            return Result.Error("Session expired. Sign out and sign in again, then change your password.")
+        }
+        if (normalizedCurrent.isBlank()) {
+            return Result.Error("Current password is required")
+        }
+        if (normalizedNew.length < 6) {
+            return Result.Error("New password must be at least 6 characters")
+        }
+        if (normalizedNew.length > 72) {
+            return Result.Error("New password must be 72 characters or less")
+        }
+        if (normalizedCurrent == normalizedNew) {
+            return Result.Error("New password must be different from current password")
+        }
         return try {
             val response = apiService.changePassword(
                 ChangePasswordRequest(
-                    currentPassword = currentPassword,
-                    newPassword = newPassword,
+                    currentPassword = normalizedCurrent,
+                    newPassword = normalizedNew,
                 )
             )
+            if (response.access_token.isBlank() || response.refresh_token.isBlank()) {
+                return Result.Error("Password updated, but session tokens were missing. Please sign in again.")
+            }
             AuthSessionManager.saveSession(
                 accessToken = response.access_token,
                 refreshToken = response.refresh_token,
@@ -226,7 +246,22 @@ class AuthRepository(
             )
             Result.Success(response)
         } catch (e: Exception) {
-            Result.Error(toAuthErrorMessage(e, "Password update failed"))
+            val message = toAuthErrorMessage(e, "Password update failed")
+            val email = AuthSessionManager.getCachedEmail().orEmpty()
+            val phoneHint = email.endsWith("@bysel.com", ignoreCase = true) ||
+                !AuthSessionManager.getCachedMobileNumber().isNullOrBlank()
+            if (
+                phoneHint &&
+                message.contains("current password", ignoreCase = true)
+            ) {
+                Result.Error(
+                    "This account was created with phone OTP, so there is no email/password login yet. " +
+                        "Add a real email in Profile, then use Forgot password on the login screen once email reset is enabled — " +
+                        "or keep using OTP sign-in."
+                )
+            } else {
+                Result.Error(message)
+            }
         }
     }
 

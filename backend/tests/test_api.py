@@ -1090,6 +1090,7 @@ def test_password_reset_can_update_password(monkeypatch):
 def test_password_reset_request_falls_back_to_support_when_delivery_unavailable(monkeypatch):
     monkeypatch.setattr(auth_routes, "PASSWORD_RESET_DEBUG_RESPONSE_ENABLED", False)
     monkeypatch.setattr(auth_routes, "SMTP_HOST", "")
+    monkeypatch.setattr(auth_routes, "RESEND_API_KEY", "")
 
     response = client.post(
         "/auth/password-reset/request",
@@ -1101,6 +1102,55 @@ def test_password_reset_request_falls_back_to_support_when_delivery_unavailable(
     assert payload["status"] == "ok"
     assert payload["delivery"] == "support"
     assert "support" in payload["message"].lower()
+
+
+def test_password_reset_uses_resend_when_api_key_configured(monkeypatch):
+    """RESEND_API_KEY alone must enable email delivery (no SMTP required)."""
+    monkeypatch.setattr(auth_routes, "PASSWORD_RESET_DEBUG_RESPONSE_ENABLED", False)
+    monkeypatch.setattr(auth_routes, "SMTP_HOST", "")
+    monkeypatch.setattr(auth_routes, "RESEND_API_KEY", "re_test_key")
+    monkeypatch.setattr(auth_routes, "RESEND_FROM_EMAIL", "BYSEL <onboarding@resend.dev>")
+
+    sent = {}
+
+    def _fake_resend(email, username, reset_code):
+        sent["email"] = email
+        sent["username"] = username
+        sent["code"] = reset_code
+        return True
+
+    monkeypatch.setattr(auth_routes, "_send_password_reset_email_resend", _fake_resend)
+
+    username, email, password = _unique_user("resend_reset_user")
+    register_response = client.post(
+        "/auth/register",
+        json={"username": username, "email": email, "password": password},
+    )
+    assert register_response.status_code == 200
+
+    request_response = client.post(
+        "/auth/password-reset/request",
+        json={"identifier": email},
+    )
+    assert request_response.status_code == 200
+    payload = request_response.json()
+    assert payload["status"] == "ok"
+    assert payload["delivery"] == "email"
+    assert sent.get("email") == email
+    assert sent.get("code")
+    assert len(sent["code"]) >= 6
+
+    confirm_response = client.post(
+        "/auth/password-reset/confirm",
+        json={"token": sent["code"], "newPassword": "freshPass99"},
+    )
+    assert confirm_response.status_code == 200
+
+    login_response = client.post(
+        "/auth/login",
+        json={"username": email, "password": "freshPass99"},
+    )
+    assert login_response.status_code == 200
 
 
 def test_change_password_rotates_current_session_and_invalidates_old_access_token():

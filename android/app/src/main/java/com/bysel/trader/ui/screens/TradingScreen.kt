@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.ui.format.formatInr
@@ -503,7 +504,7 @@ private fun SpotTradingWorkspace(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 4.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E)),
+            colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
             shape = RoundedCornerShape(10.dp)
         ) {
             Row(
@@ -517,7 +518,7 @@ private fun SpotTradingWorkspace(
                     Icon(
                         Icons.Filled.AccountBalanceWallet,
                         contentDescription = null,
-                        tint = Color(0xFF7C4DFF),
+                        tint = LocalAppTheme.current.primary,
                         modifier = Modifier.size(22.dp)
                     )
                     Column(modifier = Modifier.padding(start = 10.dp)) {
@@ -544,7 +545,10 @@ private fun SpotTradingWorkspace(
                 }
                 Button(
                     onClick = onShowAddFunds,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF)),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = LocalAppTheme.current.primary,
+                        contentColor = LocalAppTheme.current.onPrimary,
+                    ),
                     modifier = Modifier.height(34.dp),
                     contentPadding = PaddingValues(horizontal = 14.dp)
                 ) {
@@ -704,28 +708,30 @@ private fun SpotTradingWorkspace(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.Top,
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = if (marketStatus.isOpen) "\u2B24" else "\u2B24",
-                            fontSize = 10.sp,
-                            color = if (marketStatus.isOpen) LocalAppTheme.current.positive else LocalAppTheme.current.primary,
-                            modifier = Modifier.padding(end = 8.dp)
-                        )
-                        Text(
-                            text = if (marketStatus.isOpen) {
-                                marketStatus.message
-                            } else {
-                                "NSE closed · paper trading still available"
-                            },
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (marketStatus.isOpen) LocalAppTheme.current.positive else LocalAppTheme.current.text
-                        )
-                    }
+                    Text(
+                        text = "\u2B24",
+                        fontSize = 10.sp,
+                        color = if (marketStatus.isOpen) LocalAppTheme.current.positive else LocalAppTheme.current.primary,
+                        modifier = Modifier.padding(end = 8.dp, top = 3.dp),
+                    )
+                    Text(
+                        text = if (marketStatus.isOpen) {
+                            marketStatus.message
+                        } else {
+                            "NSE closed · Paper trading still available"
+                        },
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (marketStatus.isOpen) LocalAppTheme.current.positive else LocalAppTheme.current.text,
+                        modifier = Modifier.weight(1f),
+                        softWrap = true,
+                        maxLines = 3,
+                        overflow = TextOverflow.Clip,
+                        lineHeight = 18.sp,
+                    )
                 }
             }
         }
@@ -1125,7 +1131,7 @@ fun TradingQuoteCard(quote: Quote, onClick: () -> Unit) {
                     modifier = Modifier
                         .weight(1f)
                         .height(40.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00B050))
+                    colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.positive)
                 ) {
                     Text("Buy", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
@@ -1429,11 +1435,18 @@ private fun TradeBottomSheetContent(
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Text(
-                    text = "NSE closed · paper fills use last session price. ${marketStatus?.message.orEmpty()}".trim(),
+                    text = "NSE closed · Paper fills use last session price." +
+                        (marketStatus?.message?.takeIf { it.isNotBlank() }?.let { " $it" } ?: ""),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = LocalAppTheme.current.text,
-                    modifier = Modifier.padding(10.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(10.dp),
+                    softWrap = true,
+                    maxLines = 4,
+                    overflow = TextOverflow.Clip,
+                    lineHeight = 16.sp,
                 )
             }
         }
@@ -1447,7 +1460,12 @@ private fun TradeBottomSheetContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.AccountBalanceWallet, contentDescription = null, tint = Color(0xFF7C4DFF), modifier = Modifier.size(16.dp))
+                Icon(
+                    Icons.Filled.AccountBalanceWallet,
+                    contentDescription = null,
+                    tint = LocalAppTheme.current.primary,
+                    modifier = Modifier.size(16.dp),
+                )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text("Wallet", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
             }
@@ -1455,7 +1473,7 @@ private fun TradeBottomSheetContent(
                 formatCurrency(walletBalance),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF7C4DFF)
+                color = LocalAppTheme.current.primary,
             )
         }
 
@@ -1540,7 +1558,8 @@ private fun TradeBottomSheetContent(
                 onClick = { tradeType = "BUY" },
                 modifier = Modifier.weight(1f).height(42.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (tradeType == "BUY") Color(0xFF00B050) else Color(0xFF2A2A2A)
+                    containerColor = if (tradeType == "BUY") LocalAppTheme.current.positive else LocalAppTheme.current.mutedSurface,
+                    contentColor = if (tradeType == "BUY") Color.White else LocalAppTheme.current.text
                 ),
                 shape = RoundedCornerShape(10.dp)
             ) { Text("Buy", fontWeight = FontWeight.Bold) }
@@ -1548,7 +1567,8 @@ private fun TradeBottomSheetContent(
                 onClick = { tradeType = "SELL" },
                 modifier = Modifier.weight(1f).height(42.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (tradeType == "SELL") LocalAppTheme.current.negative else Color(0xFF2A2A2A)
+                    containerColor = if (tradeType == "SELL") LocalAppTheme.current.negative else LocalAppTheme.current.mutedSurface,
+                    contentColor = if (tradeType == "SELL") Color.White else LocalAppTheme.current.text
                 ),
                 shape = RoundedCornerShape(10.dp)
             ) { Text("Sell", fontWeight = FontWeight.Bold) }
@@ -1565,7 +1585,8 @@ private fun TradeBottomSheetContent(
                     onClick = { orderType = otype },
                     label = { Text(otype.lowercase().replaceFirstChar { it.uppercase() }) },
                     colors = AssistChipDefaults.assistChipColors(
-                        containerColor = if (orderType == otype) LocalAppTheme.current.primary.copy(alpha = 0.25f) else Color(0xFF2A2A2A)
+                        containerColor = if (orderType == otype) LocalAppTheme.current.primary.copy(alpha = 0.25f) else LocalAppTheme.current.mutedSurface,
+                        labelColor = LocalAppTheme.current.text
                     )
                 )
             }
@@ -1597,7 +1618,10 @@ private fun TradeBottomSheetContent(
                 AssistChip(
                     onClick = { quantity = quickQty.toString() },
                     label = { Text("$quickQty") },
-                    colors = AssistChipDefaults.assistChipColors(containerColor = Color(0xFF2A2A2A))
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = LocalAppTheme.current.mutedSurface,
+                        labelColor = LocalAppTheme.current.text
+                    )
                 )
             }
         }
@@ -1873,8 +1897,10 @@ private fun TradeBottomSheetContent(
                 enabled = qty > 0 && !limitInvalid && !limitDeviationHardBlock && !copilotBlocksTrade && !orderExecutionLoading && (tradeType == "SELL" || canAfford),
                 modifier = Modifier.weight(2f).height(48.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (tradeType == "BUY") Color(0xFF00B050) else LocalAppTheme.current.negative,
-                    disabledContainerColor = Color(0xFF2A2A2A)
+                    containerColor = if (tradeType == "BUY") LocalAppTheme.current.positive else LocalAppTheme.current.negative,
+                    contentColor = Color.White,
+                    disabledContainerColor = LocalAppTheme.current.mutedSurface,
+                    disabledContentColor = LocalAppTheme.current.textSecondary
                 ),
                 shape = RoundedCornerShape(12.dp)
             ) {
@@ -1903,7 +1929,7 @@ private fun TradeBottomSheetContent(
                 Text(
                     "Confirm $tradeType Order",
                     fontWeight = FontWeight.Bold,
-                    color = if (tradeType == "BUY") Color(0xFF00B050) else LocalAppTheme.current.negative
+                    color = if (tradeType == "BUY") LocalAppTheme.current.positive else LocalAppTheme.current.negative
                 )
             },
             text = {
@@ -1925,7 +1951,7 @@ private fun TradeBottomSheetContent(
                         if (tradeType == "BUY") onBuy(qty) else onSell(qty)
                     },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (tradeType == "BUY") Color(0xFF00B050) else LocalAppTheme.current.negative
+                        containerColor = if (tradeType == "BUY") LocalAppTheme.current.positive else LocalAppTheme.current.negative
                     )
                 ) {
                     Text("Confirm $tradeType")
@@ -2126,7 +2152,10 @@ fun AddFundsDialog(
                         Button(
                             onClick = { amount = preset.toInt().toString() },
                             modifier = Modifier.weight(1f).height(34.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A2A2A)),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = LocalAppTheme.current.mutedSurface,
+                                contentColor = LocalAppTheme.current.text
+                            ),
                             contentPadding = PaddingValues(horizontal = 4.dp)
                         ) {
                             Text("\u20B9${preset.toInt()/1000}K", fontSize = 10.sp)
