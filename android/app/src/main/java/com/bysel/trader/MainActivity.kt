@@ -948,11 +948,6 @@ fun BYSELApp(
                                             viewModel.fetchAndSelectQuote(symbol)
                                             selectedTab = 9
                                         },
-                                        searchResults = searchResults,
-                                        isSearching = isSearching,
-                                        onSearchQuery = { query -> viewModel.searchStocks(query) },
-                                        onClearSearch = { viewModel.clearSearchResults() },
-                                        onAddToWatchlist = { symbol -> viewModel.addToWatchlist(symbol) },
                                     )
                                 }
                             }

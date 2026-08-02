@@ -33,9 +33,7 @@ import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.HeatmapSector
 import com.bysel.trader.data.models.HeatmapStock
 import com.bysel.trader.data.models.MarketHeatmap
-import com.bysel.trader.data.models.StockSearchResult
 import com.bysel.trader.ui.components.PullToRefreshBox
-import com.bysel.trader.ui.components.appOutlinedTextFieldColors
 import com.bysel.trader.ui.theme.LocalAppTheme
 import java.util.Calendar
 import java.util.TimeZone
@@ -133,15 +131,9 @@ fun HeatmapScreen(
     onStockClick: (String) -> Unit,
     heatmapInterval: Int = 1000,
     isActive: Boolean = true,
-    searchResults: List<StockSearchResult> = emptyList(),
-    isSearching: Boolean = false,
-    onSearchQuery: (String) -> Unit = {},
-    onClearSearch: () -> Unit = {},
-    onAddToWatchlist: ((String) -> Unit)? = null,
 ) {
     var marketOpen by remember { mutableStateOf(isNseMarketOpen()) }
     val breathHistory = remember { mutableStateListOf<BreathSample>() }
-    var searchQuery by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         if (heatmap == null) onRefresh()
@@ -200,112 +192,6 @@ fun HeatmapScreen(
             marketOpen = marketOpen,
             staleReason = heatmap?.staleReason ?: heatmap?.moodDescription?.takeIf { heatmap.isStale },
         )
-
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = {
-                searchQuery = it
-                if (it.isBlank()) onClearSearch() else onSearchQuery(it)
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            singleLine = true,
-            placeholder = { Text("Search full NSE catalog (not only heatmap tiles)") },
-            leadingIcon = {
-                Icon(Icons.Filled.Search, contentDescription = null, tint = LocalAppTheme.current.primary)
-            },
-            trailingIcon = {
-                if (searchQuery.isNotBlank()) {
-                    IconButton(onClick = {
-                        searchQuery = ""
-                        onClearSearch()
-                    }) {
-                        Icon(Icons.Filled.Close, contentDescription = "Clear")
-                    }
-                }
-            },
-            colors = appOutlinedTextFieldColors(containerColor = LocalAppTheme.current.card),
-            shape = RoundedCornerShape(12.dp),
-        )
-
-        if (searchQuery.isNotBlank()) {
-            when {
-                isSearching && searchResults.isEmpty() -> {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = LocalAppTheme.current.primary,
-                        )
-                        Text("Searching full NSE catalog…", color = LocalAppTheme.current.textSecondary, fontSize = 13.sp)
-                    }
-                }
-                searchResults.isEmpty() -> {
-                    Text(
-                        text = "No matches in the listed universe. Try another ticker or company name.",
-                        color = LocalAppTheme.current.textSecondary,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
-                }
-                else -> {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f, fill = false)
-                            .heightIn(max = 280.dp)
-                            .padding(horizontal = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        items(searchResults.take(20), key = { it.symbol }) { result ->
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
-                                shape = RoundedCornerShape(12.dp),
-                                onClick = { onStockClick(result.symbol) },
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(result.symbol, fontWeight = FontWeight.Bold, color = LocalAppTheme.current.text)
-                                        Text(
-                                            result.name,
-                                            fontSize = 12.sp,
-                                            color = LocalAppTheme.current.textSecondary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    }
-                                    if (onAddToWatchlist != null) {
-                                        TextButton(onClick = { onAddToWatchlist(result.symbol) }) {
-                                            Text("Watch")
-                                        }
-                                    }
-                                    Button(
-                                        onClick = { onStockClick(result.symbol) },
-                                        contentPadding = PaddingValues(horizontal = 12.dp),
-                                        modifier = Modifier.height(36.dp),
-                                    ) {
-                                        Text("Open", fontSize = 12.sp)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-            }
-        }
 
         if (isLoading && heatmap == null) {
             Box(
