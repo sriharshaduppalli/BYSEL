@@ -39,10 +39,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -107,17 +107,6 @@ class MainActivity : FragmentActivity() {
 
         AuthSessionManager.init(applicationContext)
 
-        // Process-wide foreground/background: pause live quotes when leaving the app
-        // (does not fire for in-app Activities like UPI, unlike Activity.onStop).
-        (application as? ByselApplication)?.let { app ->
-            app.onAppForeground = {
-                tradingViewModel?.takeIf { AuthSessionManager.hasSession() }?.onAppForegroundResume()
-            }
-            app.onAppBackground = {
-                tradingViewModel?.onAppBackgroundPause()
-            }
-        }
-        
         // Handle app shortcuts
         val shortcutAction = intent.getStringExtra("shortcut_action")
 
@@ -295,7 +284,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onStart() {
         super.onStart()
-        // Quote stream pause/resume is owned by ProcessLifecycleOwner (ByselApplication).
+        tradingViewModel?.takeIf { AuthSessionManager.hasSession() }?.onAppForegroundResume()
     }
 
     override fun onResume() {
@@ -308,9 +297,11 @@ class MainActivity : FragmentActivity() {
                 onCancel = { }
             )
         }
+        tradingViewModel?.takeIf { AuthSessionManager.hasSession() }?.onAppForegroundResume()
     }
 
     override fun onStop() {
+        tradingViewModel?.onAppBackgroundPause()
         super.onStop()
     }
 
