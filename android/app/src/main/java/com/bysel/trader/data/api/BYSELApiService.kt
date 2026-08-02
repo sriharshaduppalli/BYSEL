@@ -273,6 +273,9 @@ interface BYSELApiService {
     @POST("/ai/ask")
     suspend fun aiAsk(@Body query: AiQuery): AiAssistantResponse
 
+    @POST("/ai/feedback")
+    suspend fun submitAiFeedback(@Body body: AiFeedbackRequest): Map<String, Any>
+
     @GET("/ai/analyze/{symbol}")
     suspend fun aiAnalyze(@Path("symbol") symbol: String): StockAnalysis
 
@@ -534,6 +537,8 @@ data class PortfolioRiskResponse(
     val monteCarloP95: Double? = null,
     val correlationMatrix: List<List<Double>> = emptyList(),
     val riskLevel: String? = null,
+    val demoBasket: Boolean = false,
+    val disclaimer: String? = null,
 ) {
     fun resolvedMetrics(): PortfolioRiskMetrics = metrics ?: PortfolioRiskMetrics(
         var95 = var95 ?: 0.0,

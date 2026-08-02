@@ -42,3 +42,25 @@ def get_current_user(
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     return user
+
+
+def get_optional_current_user(
+    authorization: str | None = Header(default=None, alias="Authorization"),
+    db: Session = Depends(get_db),
+):
+    """Return authenticated user when a Bearer token is present; otherwise None.
+
+    Used for endpoints that personalise when logged in (e.g. /ai/ask) but still
+    allow anonymous website demos.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    try:
+        token = authorization.split(" ", 1)[1].strip()
+        if not token:
+            return None
+        return validate_access_token_and_get_user(token, db)
+    except HTTPException:
+        return None
+    except Exception:
+        return None

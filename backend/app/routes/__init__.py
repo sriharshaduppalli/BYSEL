@@ -27,7 +27,7 @@ from ..database.db import (
     FamilyMemberModel,
     GoalPlanModel,
 )
-from .dependencies import get_current_user
+from .dependencies import get_current_user, get_optional_current_user
 from ..models.schemas import (
     Quote, Holding, Order, OrderResponse, Alert, AlertCreate,
     AlertResponse, HealthCheck, TradeHistory, HistoryCandle, OrderTraceLookupResponse, PortfolioSummary, PortfolioValue,
@@ -887,13 +887,17 @@ def _build_results_week_bucket(limit_per_bucket: int, generated_at: str) -> Sign
     ranked.sort(key=lambda item: item[0], reverse=True)
     return SignalLabBucketFeed(
         bucketId="results_week",
-        title="Results Week",
-        thesis="Event-driven names where earnings-week volatility and participation are elevated.",
-        proxy=False,
+        title="Momentum Movers",
+        thesis=(
+            "High-participation movers with elevated absolute moves — a proxy for "
+            "event-style volatility, not an official earnings calendar."
+        ),
+        proxy=True,
         generatedAt=generated_at,
         candidates=[candidate for _, candidate in ranked[:limit_per_bucket]],
         notes=[
-            "Bucket combines live move magnitude, participation, and analyst-upside context.",
+            "Proxy bucket: live move + volume participation (not NSE results calendar).",
+            "Use Earnings Calendar screen for actual reporting dates.",
         ],
     )
 
@@ -999,13 +1003,13 @@ def _build_institutional_conviction_bucket(limit_per_bucket: int, generated_at: 
     ranked.sort(key=lambda item: item[0], reverse=True)
     return SignalLabBucketFeed(
         bucketId="institutional_conviction",
-        title="Institutional Conviction",
-        thesis="Proxy bucket combining sector leadership, liquidity, trend, and size signals.",
+        title="Sector Leadership (proxy)",
+        thesis="Proxy bucket combining sector leadership, liquidity, trend, and size signals — not FII/DII filings.",
         proxy=True,
         generatedAt=generated_at,
         candidates=[candidate for _, candidate in ranked[:limit_per_bucket]],
         notes=[
-            "Proxy bucket, not direct FII/DII filings.",
+            "Proxy only — not official FII/DII or bulk-deal data.",
             "Use as a discovery layer before detailed thesis validation.",
         ],
     )
@@ -1623,23 +1627,32 @@ def _alert_to_schema(a) -> Alert:
 
 
 @router.get("/alerts", response_model=list[Alert], response_model_exclude_none=True)
-async def get_alerts_endpoint(db: Session = Depends(get_db)):
-    """Get all alerts."""
-    alerts = db.query(AlertModel).all()
+async def get_alerts_endpoint(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Get alerts for the authenticated user."""
+    alerts = db.query(AlertModel).filter(AlertModel.user_id == user.id).all()
     return [_alert_to_schema(a) for a in alerts]
 
 
 @router.get("/alerts/active", response_model=list[Alert], response_model_exclude_none=True)
-async def get_active_alerts_endpoint(db: Session = Depends(get_db)):
-    """Get active alerts only."""
-    alerts = db.query(AlertModel).filter(AlertModel.is_active == True).all()
+async def get_active_alerts_endpoint(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Get active alerts for the authenticated user."""
+    alerts = (
+        db.query(AlertModel)
+        .filter(AlertModel.user_id == user.id, AlertModel.is_active == True)
+        .all()
+    )
     return [_alert_to_schema(a) for a in alerts]
 
 
 @router.post("/alerts", response_model=Alert, response_model_exclude_none=True)
-async def create_alert_endpoint(alert: AlertCreate, db: Session = Depends(get_db)):
-    """Create a new price alert."""
+async def create_alert_endpoint(
+    alert: AlertCreate,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Create a new price alert for the authenticated user."""
     alert_db = AlertModel(
+        user_id=user.id,
         symbol=alert.symbol.upper(),
         threshold_price=alert.thresholdPrice,
         alert_type=alert.alertType,
@@ -1652,9 +1665,18 @@ async def create_alert_endpoint(alert: AlertCreate, db: Session = Depends(get_db
 
 
 @router.put("/alerts/{alert_id}", response_model=Alert, response_model_exclude_none=True)
-async def update_alert_endpoint(alert_id: int, alert: AlertCreate, db: Session = Depends(get_db)):
-    """Update an existing alert."""
-    alert_db = db.query(AlertModel).filter(AlertModel.id == alert_id).first()
+async def update_alert_endpoint(
+    alert_id: int,
+    alert: AlertCreate,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Update an existing alert owned by the authenticated user."""
+    alert_db = (
+        db.query(AlertModel)
+        .filter(AlertModel.id == alert_id, AlertModel.user_id == user.id)
+        .first()
+    )
     if not alert_db:
         raise HTTPException(status_code=404, detail=f"Alert {alert_id} not found")
 
@@ -1667,9 +1689,17 @@ async def update_alert_endpoint(alert_id: int, alert: AlertCreate, db: Session =
 
 
 @router.delete("/alert/{alert_id}", response_model=AlertResponse)
-async def delete_alert_endpoint(alert_id: int, db: Session = Depends(get_db)):
-    """Delete/deactivate an alert."""
-    alert_db = db.query(AlertModel).filter(AlertModel.id == alert_id).first()
+async def delete_alert_endpoint(
+    alert_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Delete/deactivate an alert owned by the authenticated user."""
+    alert_db = (
+        db.query(AlertModel)
+        .filter(AlertModel.id == alert_id, AlertModel.user_id == user.id)
+        .first()
+    )
     if not alert_db:
         raise HTTPException(status_code=404, detail=f"Alert {alert_id} not found")
 
@@ -1722,12 +1752,48 @@ class AiQuery(BaseModel):
     conversation_history: Optional[List[Dict]] = None  # last N turns: [{"role":"user"|"assistant","content":str}]
     tier: Optional[str] = "auto"  # NEW: "auto" (default) | "groq" | "indian-stock-llm" | "rule-engine"
 
+
+class AiFeedbackBody(BaseModel):
+    query: str
+    answer: str
+    helpful: bool = True
+    intent: Optional[str] = None
+
+
+@router.post("/ai/feedback")
+async def ai_feedback_endpoint(
+    body: AiFeedbackBody,
+    user=Depends(get_optional_current_user),
+):
+    """Record thumbs-up/down on an AI answer into the Indian Stock LLM learning loop."""
+    from ..llm_integration import record_chat_feedback
+
+    ok = record_chat_feedback(
+        query=body.query,
+        answer=body.answer,
+        helpful=body.helpful,
+        intent=body.intent,
+    )
+    return {
+        "status": "ok" if ok else "skipped",
+        "authenticated": user is not None,
+        "message": "Feedback recorded" if ok else "Learning loop unavailable",
+    }
+
+
 @router.post("/ai/ask")
-async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
+async def ai_ask_endpoint(
+    body: AiQuery,
+    db: Session = Depends(get_db),
+    user=Depends(get_optional_current_user),
+):
     """Natural language AI stock assistant with optional tier selection.
 
     Auto mode (default): Groq → Gemini → Indian Stock LLM → Rule Engine (with fallback)
     Explicit tier: Use only requested tier, no fallback
+
+    When a Bearer token is present, portfolio context is scoped to that user.
+    Anonymous callers (website demo) still work without personalisation.
 
     Parameters:
     - query: User's stock market question
@@ -1744,6 +1810,8 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
     from ..response_validator import ResponseValidator
     from ..stock_enricher import extract_symbol_from_query, enrich, format_news_for_prompt
 
+    auth_user_id = int(user.id) if user is not None else None
+
     def _validated(result: dict, source: str, tier_requested: str = "auto") -> dict:
         from ..groq_llm import _strip_internal_metadata
 
@@ -1759,6 +1827,13 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
             "source": source,
             "tier_requested": tier_requested,
         }
+        if result.get("confidence") is not None:
+            try:
+                user_response["confidence"] = float(result.get("confidence"))
+            except Exception:
+                pass
+        if result.get("citations"):
+            user_response["citations"] = result.get("citations")
 
         # Optionally include other user-relevant fields if present
         if "symbol" in result and result.get("symbol"):
@@ -1875,7 +1950,8 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
     # context cannot hijack the answer toward an unrelated stock.
     rule_query = normalized_query if detected_intent == "SECTOR_SCREEN" else body.query
     # Offload Yahoo/rule work; do not share the request Session across threads.
-    rule_result = await asyncio.to_thread(ai_assistant, rule_query, None)
+    # Pass user_id so personalised recommendations use the caller's holdings.
+    rule_result = await asyncio.to_thread(ai_assistant, rule_query, None, auth_user_id)
 
     async def _build_enriched_context() -> dict:
         # Resolve symbol — prefer rule-engine detection, fallback to query extraction
@@ -1899,9 +1975,9 @@ async def ai_ask_endpoint(body: AiQuery, db: Session = Depends(get_db)):
         # Extract user's current portfolio for personalized advice (symbols only —
         # skip live quote refresh so chat latency stays low).
         portfolio_context = {"total_holdings": 0, "symbols": [], "concentrations": {}}
-        if detected_intent == "PORTFOLIO":
+        if auth_user_id is not None:
             try:
-                holdings = await asyncio.to_thread(_holdings_in_thread, 1)
+                holdings = await asyncio.to_thread(_holdings_in_thread, auth_user_id)
                 if holdings:
                     portfolio_context = {
                         "total_holdings": len(holdings),
@@ -2345,10 +2421,12 @@ async def advanced_screener_endpoint(filters: Dict = None):
 # ==================== PORTFOLIO HEALTH SCORE ====================
 
 @router.get("/portfolio/health")
-async def portfolio_health_endpoint(db: Session = Depends(get_db)):
-    """Get portfolio health score (0-100) with breakdown and suggestions.
-    Analyzes diversification, risk, quality, and balance."""
-    holdings_db = db.query(HoldingModel).all()
+async def portfolio_health_endpoint(
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Get portfolio health score (0-100) for the authenticated user's holdings."""
+    holdings_db = db.query(HoldingModel).filter(HoldingModel.user_id == user.id).all()
     holdings_list = []
     for h in holdings_db:
         holdings_list.append({
@@ -2389,10 +2467,10 @@ async def signal_lab_buckets_endpoint(
     limitPerBucket: int = Query(8, ge=3, le=20),
     forceRefresh: bool = Query(False),
 ):
-    """Get curated Signal Lab phase-2 discovery buckets.
+    """Get curated Signal Lab phase-2 discovery buckets (Momentum Movers / Sector Leadership).
 
     Buckets currently include:
-    - Results Week: event-driven names with elevated move + participation
+    - Momentum Movers: high-participation names with elevated absolute moves (proxy)
     - Institutional Conviction: proxy blend of sector leadership + liquidity + trend
     """
     now = time.time()
@@ -3299,8 +3377,16 @@ async def copilot_pre_trade_endpoint(
 
 
 @router.post("/ai/copilot/post-trade-review", response_model=CopilotPostTradeResponse)
-async def copilot_post_trade_endpoint(payload: CopilotPostTradeRequest, db: Session = Depends(get_db)):
-    order = db.query(OrderModel).filter(OrderModel.id == payload.orderId).first()
+async def copilot_post_trade_endpoint(
+    payload: CopilotPostTradeRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    order = (
+        db.query(OrderModel)
+        .filter(OrderModel.id == payload.orderId, OrderModel.user_id == user.id)
+        .first()
+    )
     if not order:
         raise HTTPException(status_code=404, detail=f"Order '{payload.orderId}' not found")
 

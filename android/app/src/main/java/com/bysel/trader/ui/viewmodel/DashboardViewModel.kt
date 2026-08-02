@@ -90,6 +90,9 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     private val _practiceIdeasDisclaimer = MutableStateFlow("")
     val practiceIdeasDisclaimer: StateFlow<String> = _practiceIdeasDisclaimer.asStateFlow()
 
+    /** Last symbols used for Home news so pull-to-refresh stays personalized. */
+    private var lastNewsSymbols: List<String> = emptyList()
+
     init {
         loadPinnedStocks()
         loadPinnedWidgets()
@@ -99,10 +102,21 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         refreshPracticeIdeas()
     }
 
-    fun refreshMarketNews() {
+    /**
+     * Refresh Home market news.
+     * Prefer the caller's watchlist + holdings (capped server-side at 12);
+     * empty list falls back to liquid megacaps on the backend.
+     */
+    fun refreshMarketNews(symbols: List<String> = lastNewsSymbols) {
+        val normalized = symbols
+            .map { it.trim().uppercase() }
+            .filter { it.isNotBlank() && !it.startsWith("^") }
+            .distinct()
+            .take(12)
+        lastNewsSymbols = normalized
         viewModelScope.launch {
             _newsLoading.value = true
-            when (val response = repository.getMarketNews(limit = 10)) {
+            when (val response = repository.getMarketNews(symbols = normalized, limit = 10)) {
                 is Result.Success -> {
                     _marketNews.value = response.data.headlines
                     _newsSymbols.value = response.data.symbolsConsidered

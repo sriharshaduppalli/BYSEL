@@ -773,13 +773,12 @@ fun WebsiteDialog(onDismiss: () -> Unit) {
             Column {
                 Text("Official BYSEL website:", fontSize = 14.sp, color = LocalAppTheme.current.text)
                 Text("https://www.byseltrader.com", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
-                Text("Tap 'Open' to visit in browser.", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
+                Text("Tap 'Open' to visit in a secure in-app browser tab.", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
             }
         },
         confirmButton = {
             TextButton(onClick = {
-                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.byseltrader.com"))
-                context.startActivity(intent)
+                com.bysel.trader.util.CustomTabsLauncher.open(context, "https://www.byseltrader.com")
                 onDismiss()
             }) {
                 Text("Open", color = LocalAppTheme.current.primary)

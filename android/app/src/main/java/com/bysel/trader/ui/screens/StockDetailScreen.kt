@@ -43,6 +43,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -103,15 +104,15 @@ fun StockDetailScreen(
 ) {
     val theme = LocalAppTheme.current
     val context = LocalContext.current
-    val detailNews by viewModel.detailNews.collectAsState()
-    val detailNewsLoading by viewModel.detailNewsLoading.collectAsState()
-    val detailNewsError by viewModel.detailNewsError.collectAsState()
-    val activeAlerts by viewModel.alerts.collectAsState()
-    val preTradeEstimate by viewModel.preTradeEstimate.collectAsState()
-    val preTradeSignal by viewModel.copilotPreTradeSignal.collectAsState()
-    val copilotPortfolioActions by viewModel.copilotPortfolioActions.collectAsState()
-    val lastOrderTraceId by viewModel.lastOrderTraceId.collectAsState()
-    val marketStatus by viewModel.marketStatus.collectAsState()
+    val detailNews by viewModel.detailNews.collectAsStateWithLifecycle()
+    val detailNewsLoading by viewModel.detailNewsLoading.collectAsStateWithLifecycle()
+    val detailNewsError by viewModel.detailNewsError.collectAsStateWithLifecycle()
+    val activeAlerts by viewModel.alerts.collectAsStateWithLifecycle()
+    val preTradeEstimate by viewModel.preTradeEstimate.collectAsStateWithLifecycle()
+    val preTradeSignal by viewModel.copilotPreTradeSignal.collectAsStateWithLifecycle()
+    val copilotPortfolioActions by viewModel.copilotPortfolioActions.collectAsStateWithLifecycle()
+    val lastOrderTraceId by viewModel.lastOrderTraceId.collectAsStateWithLifecycle()
+    val marketStatus by viewModel.marketStatus.collectAsStateWithLifecycle()
 
     if (quote == null) {
         Box(

@@ -31,6 +31,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.cachedIn
 
 /**
  * Clean, minimal TradingViewModel that exposes the state and actions used
@@ -407,13 +410,24 @@ class TradingViewModel(
         refreshDetailNews(normalizedSymbol)
     }
 
-    // Paging state for quotes list
+    // Paging state for quotes list (legacy append API kept for compatibility)
     private val _pagedQuotes = MutableStateFlow<List<Quote>>(emptyList())
     val pagedQuotes: StateFlow<List<Quote>> = _pagedQuotes.asStateFlow()
     private var currentPage = 0
     private val pageSize = 50
     // Thread-safe pagination loading flag
     private val _loadingPage = MutableStateFlow(false)
+
+    /** Room-backed Paging 3 flow for the Trade quotes list. */
+    val quotesPagingFlow = Pager(
+        config = PagingConfig(
+            pageSize = pageSize,
+            prefetchDistance = 10,
+            enablePlaceholders = false,
+            initialLoadSize = pageSize,
+        ),
+        pagingSourceFactory = { repository.quotesPagingSource() },
+    ).flow.cachedIn(viewModelScope)
 
     init {
         loadAchievements()
@@ -1112,6 +1126,22 @@ class TradingViewModel(
                         } else {
                             _lastOrderTraceId.value = r.data.traceId?.trim()?.takeIf { it.isNotBlank() }
                             _lastExecutedOrder.value = r.data
+                            // Persist trade journal for the authenticated user (best-effort).
+                            launch {
+                                try {
+                                    val o = r.data.order
+                                    com.bysel.trader.data.api.RetrofitClient.apiService.logTrade(
+                                        mapOf(
+                                            "symbol" to o.symbol,
+                                            "side" to o.side,
+                                            "qty" to o.qty,
+                                            "price" to (r.data.executedPrice ?: 0.0),
+                                            "orderId" to (r.data.orderId ?: 0),
+                                            "userNote" to "auto: post-fill journal",
+                                        )
+                                    )
+                                } catch (_: Exception) { }
+                            }
                             _copilotPostTradeReview.value = null
                             _productActionMessage.value = r.data.message.takeIf { !it.isNullOrBlank() }
                                 ?: "${side.uppercase()} order executed for ${symbol.uppercase()}"
@@ -1971,7 +2001,7 @@ class TradingViewModel(
 
             // Prefer the server (better Indian-market routing). On-device Gemma is
             // a fallback when the network path fails — not the first reply.
-            when (val r = repository.aiAsk(prompt, buildConversationHistory())) {
+            when (val r = repository.aiAsk(prompt, buildConversationHistory(), tier = "auto")) {
                 is Result.Success -> {
                     lastAiSuccessAtMs = System.currentTimeMillis()
                     lastAiWarmAtMs = lastAiSuccessAtMs
@@ -1985,6 +2015,7 @@ class TradingViewModel(
                         isUser = false,
                         suggestions = r.data.suggestions,
                         source = r.data.source,
+                        confidence = r.data.confidence,
                         symbol = replySymbol,
                         signal = r.data.signal,
                         lastPrice = replyPrice,
@@ -2534,15 +2565,34 @@ class TradingViewModel(
         try { com.bysel.trader.data.api.RetrofitClient.apiService.getChartPatterns(symbol) } catch (_: Exception) { null }
 
     suspend fun fetchPortfolioRisk(): com.bysel.trader.data.api.PortfolioRiskResponse? {
-        val held = holdings.value.mapNotNull { it.symbol.takeIf { symbol -> symbol.isNotBlank() } }
-        val symbols = held.ifEmpty {
-            // Demo basket so Risk Lab still opens with educational metrics when wallet is empty.
-            listOf("RELIANCE", "TCS", "INFY")
-        }.joinToString(",")
+        val held = holdings.value.filter { it.symbol.isNotBlank() && it.qty > 0 }
+        // Empty symbols → backend demo basket + demoBasket=true disclaimer.
+        val symbols = held.joinToString(",") { it.symbol.uppercase() }
+        val totalValue = held.sumOf { it.qty * (if (it.last > 0) it.last else it.avgPrice) }
+        val weights = if (held.isNotEmpty() && totalValue > 0) {
+            held.joinToString(",") { h ->
+                val v = h.qty * (if (h.last > 0) h.last else h.avgPrice)
+                (v / totalValue).toString()
+            }
+        } else ""
         return try {
-            com.bysel.trader.data.api.RetrofitClient.apiService.getPortfolioRisk(symbols)
+            com.bysel.trader.data.api.RetrofitClient.apiService.getPortfolioRisk(symbols, weights)
         } catch (_: Exception) {
             null
+        }
+    }
+
+    fun submitAiFeedback(query: String, answer: String, helpful: Boolean) {
+        viewModelScope.launch {
+            try {
+                com.bysel.trader.data.api.RetrofitClient.aiApiService.submitAiFeedback(
+                    com.bysel.trader.data.models.AiFeedbackRequest(
+                        query = query,
+                        answer = answer,
+                        helpful = helpful,
+                    )
+                )
+            } catch (_: Exception) { }
         }
     }
 
@@ -2612,6 +2662,8 @@ data class ChatMessage(
     val timestamp: Long = System.currentTimeMillis(),
     val enhancedFeatures: EnhancedFeatures? = null,
     val source: String = "",
+    /** Optional model confidence 0–1 when returned by the backend. */
+    val confidence: Double? = null,
     /** NSE symbol attached by the backend for actionable replies (Buy / Set Alert). */
     val symbol: String? = null,
     val signal: String? = null,

@@ -33,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -67,7 +68,7 @@ private fun LoadingOrEmpty(title: String, subtitle: String, loading: Boolean) {
 
 @Composable
 private fun ActionBanner(viewModel: TradingViewModel) {
-    val msg by viewModel.productActionMessage.collectAsState()
+    val msg by viewModel.productActionMessage.collectAsStateWithLifecycle()
     if (!msg.isNullOrBlank()) {
         Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.primary.copy(alpha = 0.12f))) {
             Text(msg.orEmpty(), color = LocalAppTheme.current.text, modifier = Modifier.padding(12.dp))
@@ -179,10 +180,10 @@ private fun PreTradeSignalCard(title: String, signal: CopilotSignal) {
 
 @Composable
 fun MutualFundsScreen(viewModel: TradingViewModel) {
-    val funds by viewModel.mutualFunds.collectAsState()
-    val loading by viewModel.productsLoading.collectAsState()
-    val recommendations by viewModel.mutualFundRecommendations.collectAsState()
-    val compareResult by viewModel.mutualFundCompare.collectAsState()
+    val funds by viewModel.mutualFunds.collectAsStateWithLifecycle()
+    val loading by viewModel.productsLoading.collectAsStateWithLifecycle()
+    val recommendations by viewModel.mutualFundRecommendations.collectAsStateWithLifecycle()
+    val compareResult by viewModel.mutualFundCompare.collectAsStateWithLifecycle()
     var selected by remember { mutableStateOf<MutualFund?>(null) }
     var sipTarget by remember { mutableStateOf<MutualFund?>(null) }
     var searchQuery by remember { mutableStateOf("") }
@@ -526,8 +527,8 @@ private fun MutualFundDetailScreen(fund: MutualFund, onBack: () -> Unit, onStart
 
 @Composable
 fun IpoListingsScreen(viewModel: TradingViewModel) {
-    val ipos by viewModel.ipoListings.collectAsState()
-    val loading by viewModel.productsLoading.collectAsState()
+    val ipos by viewModel.ipoListings.collectAsStateWithLifecycle()
+    val loading by viewModel.productsLoading.collectAsStateWithLifecycle()
     var selected by remember { mutableStateOf<IPOListing?>(null) }
     var applyTarget by remember { mutableStateOf<IPOListing?>(null) }
     var selectedTab by remember { mutableStateOf(IpoListingTab.OPEN) }
@@ -680,8 +681,8 @@ private fun IpoDetailScreen(ipo: IPOListing, onBack: () -> Unit, onApply: () -> 
 
 @Composable
 fun EtfScreen(viewModel: TradingViewModel) {
-    val etfs by viewModel.etfInstruments.collectAsState()
-    val loading by viewModel.productsLoading.collectAsState()
+    val etfs by viewModel.etfInstruments.collectAsStateWithLifecycle()
+    val loading by viewModel.productsLoading.collectAsStateWithLifecycle()
     var selected by remember { mutableStateOf<ETFInstrument?>(null) }
 
     LaunchedEffect(Unit) { viewModel.loadEtfs() }
@@ -741,8 +742,8 @@ private fun EtfDetailScreen(etf: ETFInstrument, onBack: () -> Unit) {
 
 @Composable
 fun SipPlansScreen(viewModel: TradingViewModel) {
-    val plans by viewModel.sipPlans.collectAsState()
-    val loading by viewModel.productsLoading.collectAsState()
+    val plans by viewModel.sipPlans.collectAsStateWithLifecycle()
+    val loading by viewModel.productsLoading.collectAsStateWithLifecycle()
     var editTarget by remember { mutableStateOf<com.bysel.trader.data.models.SipPlan?>(null) }
 
     LaunchedEffect(Unit) { viewModel.loadSipPlans() }
@@ -791,8 +792,8 @@ fun SipPlansScreen(viewModel: TradingViewModel) {
 
 @Composable
 fun MyIpoApplicationsScreen(viewModel: TradingViewModel) {
-    val applications by viewModel.myIpoApplications.collectAsState()
-    val loading by viewModel.productsLoading.collectAsState()
+    val applications by viewModel.myIpoApplications.collectAsStateWithLifecycle()
+    val loading by viewModel.productsLoading.collectAsStateWithLifecycle()
     var statusFilter by remember { mutableStateOf("ALL") }
 
     LaunchedEffect(Unit) { viewModel.loadMyIpoApplications() }
@@ -939,13 +940,13 @@ private fun IpoApplyDialog(
 
 @Composable
 fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
-    val loading by viewModel.advancedLoading.collectAsState()
-    val advancedResponse by viewModel.advancedOrderResponse.collectAsState()
-    val triggerOrders by viewModel.triggerOrders.collectAsState()
-    val triggerEvaluation by viewModel.triggerEvaluation.collectAsState()
-    val basketOrders by viewModel.basketOrders.collectAsState()
-    val preTradeEstimate by viewModel.preTradeEstimate.collectAsState()
-    val preTradeSignal by viewModel.copilotPreTradeSignal.collectAsState()
+    val loading by viewModel.advancedLoading.collectAsStateWithLifecycle()
+    val advancedResponse by viewModel.advancedOrderResponse.collectAsStateWithLifecycle()
+    val triggerOrders by viewModel.triggerOrders.collectAsStateWithLifecycle()
+    val triggerEvaluation by viewModel.triggerEvaluation.collectAsStateWithLifecycle()
+    val basketOrders by viewModel.basketOrders.collectAsStateWithLifecycle()
+    val preTradeEstimate by viewModel.preTradeEstimate.collectAsStateWithLifecycle()
+    val preTradeSignal by viewModel.copilotPreTradeSignal.collectAsStateWithLifecycle()
 
     var symbol by remember { mutableStateOf("RELIANCE") }
     var quantityInput by remember { mutableStateOf("1") }
@@ -1314,9 +1315,9 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
 
 @Composable
 fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
-    val optionChain by viewModel.optionChain.collectAsState()
-    val strategyPreview by viewModel.strategyPreview.collectAsState()
-    val loading by viewModel.derivativesLoading.collectAsState()
+    val optionChain by viewModel.optionChain.collectAsStateWithLifecycle()
+    val strategyPreview by viewModel.strategyPreview.collectAsStateWithLifecycle()
+    val loading by viewModel.derivativesLoading.collectAsStateWithLifecycle()
 
     var symbol by remember { mutableStateOf("NIFTY") }
     var expiry by remember { mutableStateOf("2026-03-26") }
@@ -1454,9 +1455,9 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
 
 @Composable
 fun WealthOsScreen(viewModel: TradingViewModel) {
-    val dashboard by viewModel.familyDashboard.collectAsState()
-    val goals by viewModel.goalPlans.collectAsState()
-    val loading by viewModel.wealthLoading.collectAsState()
+    val dashboard by viewModel.familyDashboard.collectAsStateWithLifecycle()
+    val goals by viewModel.goalPlans.collectAsStateWithLifecycle()
+    val loading by viewModel.wealthLoading.collectAsStateWithLifecycle()
 
     var memberName by remember { mutableStateOf("") }
     var memberRelation by remember { mutableStateOf("SELF") }
@@ -1853,13 +1854,13 @@ private fun WealthMetricTile(title: String, value: String, caption: String) {
 
 @Composable
 fun CopilotCenterScreen(viewModel: TradingViewModel) {
-    val loading by viewModel.copilotLoading.collectAsState()
-    val preTradeEstimate by viewModel.preTradeEstimate.collectAsState()
-    val preTradeSignal by viewModel.copilotPreTradeSignal.collectAsState()
-    val postTradeReview by viewModel.copilotPostTradeReview.collectAsState()
-    val portfolioActions by viewModel.copilotPortfolioActions.collectAsState()
-    val orderTraceLookup by viewModel.orderTraceLookup.collectAsState()
-    val lastOrderTraceId by viewModel.lastOrderTraceId.collectAsState()
+    val loading by viewModel.copilotLoading.collectAsStateWithLifecycle()
+    val preTradeEstimate by viewModel.preTradeEstimate.collectAsStateWithLifecycle()
+    val preTradeSignal by viewModel.copilotPreTradeSignal.collectAsStateWithLifecycle()
+    val postTradeReview by viewModel.copilotPostTradeReview.collectAsStateWithLifecycle()
+    val portfolioActions by viewModel.copilotPortfolioActions.collectAsStateWithLifecycle()
+    val orderTraceLookup by viewModel.orderTraceLookup.collectAsStateWithLifecycle()
+    val lastOrderTraceId by viewModel.lastOrderTraceId.collectAsStateWithLifecycle()
     val clipboardManager = LocalClipboardManager.current
 
     var symbol by remember { mutableStateOf("RELIANCE") }

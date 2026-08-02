@@ -350,7 +350,6 @@ class FeedbackLearningPipeline:
             if item_id in existing_ids:
                 continue
             coaching = _INTENT_COACHING.get(intent, _INTENT_COACHING["general_query"])
-            # Use original-cased first TSV occurrence via query_l display.
             title = f"Frequent topic coaching: {query_l[:80]}"
             content = (
                 f"Learners often ask about «{query_l}» (intent={intent}). {coaching}"

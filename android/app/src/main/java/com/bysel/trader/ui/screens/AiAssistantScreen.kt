@@ -61,6 +61,7 @@ fun AiAssistantScreen(
     onDownloadModel: () -> Unit = {},
     likelyColdStart: Boolean = false,
     onWarmAi: () -> Unit = {},
+    onAiFeedback: ((query: String, answer: String, helpful: Boolean) -> Unit)? = null,
 ) {
     var query by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -267,7 +268,13 @@ fun AiAssistantScreen(
                         onSuggestionClick = onSuggestionClick,
                         onTradeAction = onTradeAction,
                         onAlertAction = onAlertAction,
-                        onNavigateToStock = onNavigateToStock
+                        onNavigateToStock = onNavigateToStock,
+                        onAiFeedback = onAiFeedback,
+                        priorUserQuery = chatHistory
+                            .asReversed()
+                            .firstOrNull { it.isUser && it.timestamp <= message.timestamp }
+                            ?.text
+                            .orEmpty(),
                     )
                 }
                 if (isLoading) {
@@ -826,8 +833,11 @@ private fun ChatBubble(
     onSuggestionClick: (String) -> Unit,
     onTradeAction: ((symbol: String, side: String, qty: Int?) -> Unit)? = null,
     onAlertAction: ((symbol: String, price: Double?, alertType: String) -> Unit)? = null,
-    onNavigateToStock: ((symbol: String) -> Unit)? = null
+    onNavigateToStock: ((symbol: String) -> Unit)? = null,
+    onAiFeedback: ((query: String, answer: String, helpful: Boolean) -> Unit)? = null,
+    priorUserQuery: String = "",
 ) {
+    var feedbackSent by remember(message.timestamp) { mutableStateOf<Boolean?>(null) }
     val contextSymbol = message.symbol?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
 
     // Parse trade intents from AI responses
@@ -891,25 +901,81 @@ private fun ChatBubble(
             )
         }
 
-        // Source badge for AI responses
-        if (!message.isUser && message.source == "gemini") {
+        // Source + confidence badge for AI responses
+        if (!message.isUser && message.source.isNotBlank()) {
+            val sourceLabel = when (message.source.lowercase()) {
+                "groq" -> "Groq"
+                "gemini" -> "Gemini"
+                "indian-stock-llm", "indian-stock-llm-education", "indian-stock-llm-indicator" -> "India grounded"
+                "rule-engine" -> "Rules"
+                "education" -> "Education"
+                "on-device" -> "On-device"
+                "small-talk" -> "Quick reply"
+                else -> message.source
+            }
+            val conf = message.confidence?.takeIf { it > 0.0 }?.let {
+                " · ${"%.0f".format(it.coerceIn(0.0, 1.0) * 100)}% conf"
+            }.orEmpty()
             Text(
-                text = "✦ Gemini",
+                text = "Educational · $sourceLabel$conf",
                 fontSize = 10.sp,
                 color = LocalAppTheme.current.primary.copy(alpha = 0.75f),
                 modifier = Modifier.padding(start = 8.dp, top = 2.dp)
             )
         }
 
-        // AI disclaimer for all AI responses
+        // AI disclaimer + feedback for all AI responses
         if (!message.isUser) {
             Text(
-                text = "⚠ AI analysis is for educational purposes only. Not financial advice. Always do your own research.",
+                text = "AI analysis is for educational purposes only. Not financial advice. Always do your own research.",
                 fontSize = 9.sp,
                 color = LocalAppTheme.current.textSecondary.copy(alpha = 0.6f),
                 modifier = Modifier.padding(start = 8.dp, top = 4.dp, end = 8.dp),
                 lineHeight = 12.sp
             )
+            if (onAiFeedback != null && priorUserQuery.isNotBlank()) {
+                Row(
+                    modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = if (feedbackSent != null) "Thanks for the feedback" else "Helpful?",
+                        fontSize = 10.sp,
+                        color = LocalAppTheme.current.textSecondary.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(end = 4.dp),
+                    )
+                    if (feedbackSent == null) {
+                        IconButton(
+                            onClick = {
+                                feedbackSent = true
+                                onAiFeedback(priorUserQuery, message.text, true)
+                            },
+                            modifier = Modifier.size(28.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.ThumbUp,
+                                contentDescription = "Helpful",
+                                tint = LocalAppTheme.current.primary.copy(alpha = 0.8f),
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                feedbackSent = false
+                                onAiFeedback(priorUserQuery, message.text, false)
+                            },
+                            modifier = Modifier.size(28.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.ThumbDown,
+                                contentDescription = "Not helpful",
+                                tint = LocalAppTheme.current.textSecondary.copy(alpha = 0.7f),
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         // Enhanced AI components (only for AI responses with enhanced features)

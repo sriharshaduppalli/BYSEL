@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.paging.PagingSource
 import com.bysel.trader.data.models.*
 import kotlinx.coroutines.flow.Flow
 
@@ -27,6 +28,9 @@ interface QuoteDao {
     // newest updates first; symbol provides a unique tie-breaker.
     @Query("SELECT * FROM quotes ORDER BY timestamp DESC, symbol ASC LIMIT :limit OFFSET :offset")
     fun getQuotesPaged(limit: Int, offset: Int): Flow<List<Quote>>
+
+    @Query("SELECT * FROM quotes ORDER BY timestamp DESC, symbol ASC")
+    fun quotesPagingSource(): PagingSource<Int, Quote>
 
     @Query("DELETE FROM quotes")
     suspend fun clearAll()

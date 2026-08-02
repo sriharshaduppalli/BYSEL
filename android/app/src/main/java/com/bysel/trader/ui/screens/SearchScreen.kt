@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -23,13 +22,12 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -42,21 +40,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.bysel.trader.ui.format.formatInr
-import com.bysel.trader.ui.format.formatSignedPct
-import com.bysel.trader.ui.format.formatVolumeCompact
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.SignalLabBucketFeed
 import com.bysel.trader.data.models.StockSearchResult
 import com.bysel.trader.ui.components.appOutlinedTextFieldColors
-import com.bysel.trader.ui.components.InfoChip
+import com.bysel.trader.ui.format.formatInr
+import com.bysel.trader.ui.format.formatSignedPct
+import com.bysel.trader.ui.format.formatVolumeCompact
 import com.bysel.trader.ui.theme.LocalAppTheme
 import kotlinx.coroutines.delay
 import kotlin.math.abs
@@ -64,9 +59,8 @@ import kotlin.math.abs
 private const val SEARCH_RECENTS_PREF = "bysel_search"
 private const val SEARCH_RECENTS_KEY = "recent_symbols"
 
-private data class SearchShortcut(
+private data class SearchJump(
     val title: String,
-    val caption: String,
     val tab: Int,
     val keywords: List<String>,
 )
@@ -75,7 +69,7 @@ private data class SearchShortcut(
 fun SearchScreen(
     quotes: List<Quote>,
     watchlistSymbols: List<String>,
-    backendBuckets: List<SignalLabBucketFeed>,
+    @Suppress("UNUSED_PARAMETER") backendBuckets: List<SignalLabBucketFeed>,
     searchResults: List<StockSearchResult>,
     isSearching: Boolean,
     onSearchQuery: (String) -> Unit,
@@ -83,166 +77,24 @@ fun SearchScreen(
     onQuoteClick: (Quote) -> Unit,
     onSymbolClick: (String) -> Unit,
     onRouteClick: (Int) -> Unit,
+    onAddToWatchlist: ((String) -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences(SEARCH_RECENTS_PREF, Context.MODE_PRIVATE) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
-    var showSuggestions by remember { mutableStateOf(false) }
     var recentSymbols by remember { mutableStateOf(loadRecentSymbols(prefs)) }
 
-    val shortcuts = remember {
+    val jumps = remember {
         listOf(
-            SearchShortcut(
-                title = "Home",
-                caption = "Market cockpit, movers, and portfolio pulse",
-                tab = 0,
-                keywords = listOf("home", "dashboard", "market", "pulse"),
-            ),
-            SearchShortcut(
-                title = "AI Assistant",
-                caption = "Ask NSE questions and act with paper Buy / Alert",
-                tab = 1,
-                keywords = listOf("ai", "assistant", "chat", "ask", "coach"),
-            ),
-            SearchShortcut(
-                title = "Trade Hub",
-                caption = "Spot, advanced orders, options, and futures radar",
-                tab = 2,
-                keywords = listOf("trade", "spot", "orders", "futures", "options", "practice credit", "wallet"),
-            ),
-            SearchShortcut(
-                title = "Portfolio",
-                caption = "Holdings, health score, and PnL context",
-                tab = 3,
-                keywords = listOf("portfolio", "holdings", "pnl", "returns"),
-            ),
-            SearchShortcut(
-                title = "Heatmap",
-                caption = "Sector leadership, market breath, and hot or cold pockets",
-                tab = 4,
-                keywords = listOf("heatmap", "sector", "breath", "breadth", "leadership", "market map", "tqi"),
-            ),
-            SearchShortcut(
-                title = "Settings",
-                caption = "Theme, biometric lock, sessions, and account",
-                tab = 8,
-                keywords = listOf("settings", "theme", "biometric", "password", "profile", "logout"),
-            ),
-            SearchShortcut(
-                title = "Signal Lab",
-                caption = "Filter breakouts, volume spikes, dividend, and upside buckets",
-                tab = 20,
-                keywords = listOf("signal", "screener", "breakout", "dividend", "volume", "upside", "results week", "institutional conviction"),
-            ),
-            SearchShortcut(
-                title = "Smart Money",
-                caption = "Track legendary investor disclosed holdings and strategies",
-                tab = 21,
-                keywords = listOf("smart money", "investor", "portfolio", "legendary", "jhunjhunwala", "damani", "holdings"),
-            ),
-            SearchShortcut(
-                title = "Risk Lab",
-                caption = "VaR, Monte Carlo, and portfolio risk drills",
-                tab = 22,
-                keywords = listOf("risk", "var", "monte carlo", "drawdown"),
-            ),
-            SearchShortcut(
-                title = "Trade Journal",
-                caption = "Review notes and practice feedback",
-                tab = 24,
-                keywords = listOf("journal", "review", "notes", "practice"),
-            ),
-            SearchShortcut(
-                title = "Watchlist",
-                caption = "Pinned symbols and quick scan",
-                tab = 25,
-                keywords = listOf("watchlist", "watch", "pinned"),
-            ),
-            SearchShortcut(
-                title = "Earnings Calendar",
-                caption = "Upcoming results for watchlist names",
-                tab = 23,
-                keywords = listOf("earnings", "results", "calendar"),
-            ),
-            SearchShortcut(
-                title = "Market Calendar",
-                caption = "NSE / BSE holidays and session days",
-                tab = 26,
-                keywords = listOf("holiday", "calendar", "market closed", "nse", "bse"),
-            ),
-            SearchShortcut(
-                title = "Alerts",
-                caption = "Price triggers and monitored setups",
-                tab = 7,
-                keywords = listOf("alert", "trigger", "watch", "price"),
-            ),
-            SearchShortcut(
-                title = "Achievements",
-                caption = "Practice milestones and badges",
-                tab = 10,
-                keywords = listOf("achievements", "badges", "milestones"),
-            ),
-            SearchShortcut(
-                title = "Mutual Funds",
-                caption = "Explore mutual fund ideas (educational)",
-                tab = 11,
-                keywords = listOf("mutual funds", "mf", "funds"),
-            ),
-            SearchShortcut(
-                title = "IPO",
-                caption = "IPO listings and applications",
-                tab = 12,
-                keywords = listOf("ipo", "listing", "offer"),
-            ),
-            SearchShortcut(
-                title = "ETF",
-                caption = "ETF explorer for practice research",
-                tab = 13,
-                keywords = listOf("etf", "index fund"),
-            ),
-            SearchShortcut(
-                title = "SIP Plans",
-                caption = "SIP calculators and plan explorers",
-                tab = 14,
-                keywords = listOf("sip", "systematic", "investment"),
-            ),
-            SearchShortcut(
-                title = "Advanced Orders",
-                caption = "Basket, trigger, charges, and risk checks",
-                tab = 16,
-                keywords = listOf("advanced", "basket", "trigger", "charges", "calculator", "margin"),
-            ),
-            SearchShortcut(
-                title = "Charges Calculator",
-                caption = "Estimate brokerage and net trade impact before execution",
-                tab = 16,
-                keywords = listOf("calculator", "brokerage", "charges", "cost", "impact", "estimate"),
-            ),
-            SearchShortcut(
-                title = "Derivatives",
-                caption = "Option chain, Greeks, and payoff preview",
-                tab = 17,
-                keywords = listOf("derivatives", "options", "greeks", "payoff", "chain"),
-            ),
-            SearchShortcut(
-                title = "Wealth OS",
-                caption = "Family wealth, goals, and net worth view",
-                tab = 18,
-                keywords = listOf("wealth", "goals", "family", "net worth"),
-            ),
-            SearchShortcut(
-                title = "Copilot Center",
-                caption = "Guidance, trace lookup, and trust tools",
-                tab = 19,
-                keywords = listOf("copilot", "help", "trace", "support", "trust"),
-            ),
-            SearchShortcut(
-                title = "Trust Desk",
-                caption = "Trace-based support, rejection help, and trust diagnostics",
-                tab = 19,
-                keywords = listOf("trust", "trace", "support", "error", "rejection", "diagnostics"),
-            ),
+            SearchJump("Trade", 2, listOf("trade", "spot", "wallet", "paper")),
+            SearchJump("Heatmap", 4, listOf("heatmap", "sector", "breadth", "tqi")),
+            SearchJump("Signal Lab", 20, listOf("signal", "screener", "breakout")),
+            SearchJump("Watchlist", 25, listOf("watchlist", "watch")),
+            SearchJump("AI", 1, listOf("ai", "assistant", "chat", "coach")),
+            SearchJump("Risk Lab", 22, listOf("risk", "var", "monte")),
+            SearchJump("Journal", 24, listOf("journal", "review")),
+            SearchJump("Alerts", 7, listOf("alert", "trigger", "price")),
         )
     }
 
@@ -254,70 +106,28 @@ fun SearchScreen(
     val topMovers = remember(quotes) {
         quotes.sortedByDescending { abs(it.pctChange) }.take(6)
     }
-    val signalBuckets = remember(quotes) { buildSignalLabBuckets(quotes) }
-    val upCount = remember(quotes) { quotes.count { it.pctChange >= 0.0 } }
-    val downCount = remember(quotes) { quotes.count { it.pctChange < 0.0 } }
 
     val normalizedQuery = searchQuery.trim()
-    val matchingShortcuts = remember(normalizedQuery, shortcuts) {
-        if (normalizedQuery.isBlank()) {
-            shortcuts
-        } else {
-            shortcuts.filter { shortcut ->
-                shortcut.title.contains(normalizedQuery, ignoreCase = true) ||
-                    shortcut.caption.contains(normalizedQuery, ignoreCase = true) ||
-                    shortcut.keywords.any {
-                        it.contains(normalizedQuery, ignoreCase = true) ||
-                            normalizedQuery.contains(it, ignoreCase = true)
-                    }
-            }
-        }
+    val looksLikeTicker = remember(normalizedQuery) {
+        val q = normalizedQuery.uppercase()
+        q.isNotBlank() && q.length in 1..15 && q.all { it.isLetterOrDigit() || it == '-' || it == '.' }
     }
-    val matchingSignalBuckets = remember(normalizedQuery, signalBuckets) {
-        if (normalizedQuery.isBlank()) {
-            signalBuckets
-        } else {
-            signalBuckets.filter { bucket -> signalLabMatchesQuery(normalizedQuery, bucket) }
-        }
-    }
-    val matchingBackendSignalBuckets = remember(normalizedQuery, backendBuckets) {
-        if (normalizedQuery.isBlank()) {
-            backendBuckets
-        } else {
-            backendBuckets
-                .map { bucket ->
-                    val matchingCandidates = bucket.candidates.filter { candidate ->
-                        candidate.symbol.contains(normalizedQuery, ignoreCase = true) ||
-                            candidate.companyName.contains(normalizedQuery, ignoreCase = true) ||
-                            candidate.thesis.contains(normalizedQuery, ignoreCase = true) ||
-                            candidate.tags.any { it.contains(normalizedQuery, ignoreCase = true) }
-                    }
-
-                    val bucketMatch = bucket.title.contains(normalizedQuery, ignoreCase = true) ||
-                        bucket.thesis.contains(normalizedQuery, ignoreCase = true) ||
-                        bucket.bucketId.contains(normalizedQuery, ignoreCase = true) ||
-                        bucket.notes.any { it.contains(normalizedQuery, ignoreCase = true) }
-
-                    if (bucketMatch) {
-                        bucket
-                    } else {
-                        bucket.copy(candidates = matchingCandidates)
-                    }
-                }
-                .filter { it.candidates.isNotEmpty() }
-        }
+    val matchingJumps = remember(normalizedQuery, jumps) {
+        if (normalizedQuery.isBlank()) emptyList()
+        else jumps.filter { jump ->
+            jump.title.contains(normalizedQuery, ignoreCase = true) ||
+                jump.keywords.any { it.equals(normalizedQuery, ignoreCase = true) || it.startsWith(normalizedQuery, ignoreCase = true) }
+        }.take(4)
     }
     val exactSymbolCandidate = normalizedQuery.uppercase()
-        .takeIf { it.isNotBlank() && it.length <= 15 && it.all { ch -> ch.isLetterOrDigit() || ch == '-' } }
+        .takeIf { looksLikeTicker && it.isNotBlank() }
 
     LaunchedEffect(searchQuery) {
         if (searchQuery.isBlank()) {
             onClearSearch()
-            showSuggestions = false
             return@LaunchedEffect
         }
-        showSuggestions = true
-        delay(100)
+        delay(280)
         onSearchQuery(searchQuery)
     }
 
@@ -325,7 +135,7 @@ fun SearchScreen(
         val updated = (listOf(symbol.uppercase()) + recentSymbols.filterNot { it.equals(symbol, ignoreCase = true) })
             .take(8)
         recentSymbols = updated
-        prefs.edit().putString(SEARCH_RECENTS_KEY, updated.joinToString("|")) .apply()
+        prefs.edit().putString(SEARCH_RECENTS_KEY, updated.joinToString("|")).apply()
     }
 
     fun openSymbol(symbol: String) {
@@ -338,9 +148,7 @@ fun SearchScreen(
         onQuoteClick(quote)
     }
 
-    Scaffold(
-        containerColor = theme.surface,
-    ) { paddingValues ->
+    Scaffold(containerColor = theme.surface) { paddingValues ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -351,15 +159,23 @@ fun SearchScreen(
                 end = 16.dp,
                 bottom = paddingValues.calculateBottomPadding() + 20.dp,
             ),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item {
-                SearchHeroCard(
-                    quoteCount = quotes.size,
-                    watchlistCount = watchlistSymbols.size,
-                    upCount = upCount,
-                    downCount = downCount,
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "Search Stocks",
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = theme.text,
+                    )
+                    Text(
+                        text = "Full NSE listed catalog (~2,400+). Add to watchlist or open detail.",
+                        fontSize = 13.sp,
+                        color = theme.textSecondary,
+                        lineHeight = 18.sp,
+                    )
+                }
             }
 
             item {
@@ -367,10 +183,7 @@ fun SearchScreen(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     placeholder = {
-                        Text(
-                            "Search stocks, breakouts, dividends, derivatives, wealth...",
-                            color = theme.textSecondary,
-                        )
+                        Text("Company or symbol (e.g. INFY, Reliance)", color = theme.textSecondary)
                     },
                     leadingIcon = {
                         Icon(Icons.Filled.Search, contentDescription = null, tint = theme.textSecondary)
@@ -387,17 +200,28 @@ fun SearchScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = appOutlinedTextFieldColors(containerColor = theme.card),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(14.dp),
                     singleLine = true,
                 )
             }
 
             if (normalizedQuery.isBlank()) {
+                item {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(jumps, key = { it.title }) { jump ->
+                            AssistChip(
+                                onClick = { onRouteClick(jump.tab) },
+                                label = { Text(jump.title) },
+                            )
+                        }
+                    }
+                }
+
                 if (recentSymbols.isNotEmpty()) {
                     item {
                         SearchSectionHeader(
-                            title = "Recent Views",
-                            subtitle = "Jump back into symbols you opened recently.",
+                            title = "Recent",
+                            subtitle = "Symbols you opened recently.",
                         )
                     }
                     item {
@@ -412,81 +236,47 @@ fun SearchScreen(
                     }
                 }
 
-                item {
-                    SearchSectionHeader(
-                        title = "Quick Destinations",
-                        subtitle = "Search is now a route into trade, derivatives, wealth, alerts, and support.",
-                    )
-                }
-                item {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        items(shortcuts, key = { it.title }) { shortcut ->
-                            SearchShortcutCard(shortcut = shortcut, onOpen = { onRouteClick(shortcut.tab) })
-                        }
-                    }
-                }
-
-                if (signalBuckets.isNotEmpty()) {
-                    item {
-                        SearchSectionHeader(
-                            title = "Signal Lab",
-                            subtitle = "Breakout, dividend, upside, rebound, and volume ideas pulled from the live board.",
-                        )
-                    }
-                    item {
-                        SignalLabRail(
-                            buckets = signalBuckets,
-                            onOpenQuote = { quote -> openQuote(quote) },
-                        )
-                    }
-                }
-
-                if (backendBuckets.isNotEmpty()) {
-                    item {
-                        SearchSectionHeader(
-                            title = "Signal Lab Phase-2",
-                            subtitle = "Results Week and Institutional Conviction buckets streamed from backend intelligence.",
-                        )
-                    }
-                    item {
-                        BackendSignalLabRail(
-                            buckets = backendBuckets,
-                            onOpenSymbol = { symbol -> openSymbol(symbol) },
-                        )
-                    }
-                }
-
                 if (watchlistQuotes.isNotEmpty()) {
                     item {
                         SearchSectionHeader(
-                            title = "Your Radar",
-                            subtitle = "Watchlist names and tracked symbols with the highest chance of immediate follow-through.",
+                            title = "Your watchlist",
+                            subtitle = "Tracked names with quotes on the live board.",
                         )
                     }
-                    items(watchlistQuotes, key = { it.symbol }) { quote ->
+                    items(watchlistQuotes, key = { "wl-${it.symbol}" }) { quote ->
                         DiscoveryQuoteCard(
                             quote = quote,
                             subtitle = "Watchlist",
                             onOpen = { openQuote(quote) },
+                            onWatch = null,
+                            isWatchlisted = true,
                         )
                     }
                 }
 
-                item {
-                    SearchSectionHeader(
-                        title = "Trending Now",
-                        subtitle = "The largest live movers from the current board.",
-                    )
-                }
-                items(topMovers, key = { it.symbol }) { quote ->
-                    DiscoveryQuoteCard(
-                        quote = quote,
-                        subtitle = if (quote.pctChange >= 0.0) "Momentum" else "Pressure",
-                        onOpen = { openQuote(quote) },
-                    )
+                if (topMovers.isNotEmpty()) {
+                    item {
+                        SearchSectionHeader(
+                            title = "Movers on live board",
+                            subtitle = "Largest moves among currently loaded quotes — not the full exchange.",
+                        )
+                    }
+                    items(topMovers, key = { "mv-${it.symbol}" }) { quote ->
+                        val watched = watchlistSymbols.any { it.equals(quote.symbol, ignoreCase = true) }
+                        DiscoveryQuoteCard(
+                            quote = quote,
+                            subtitle = if (quote.pctChange >= 0.0) "Gainer" else "Loser",
+                            onOpen = { openQuote(quote) },
+                            onWatch = onAddToWatchlist?.takeUnless { watched }?.let { add ->
+                                { add(quote.symbol) }
+                            },
+                            isWatchlisted = watched,
+                        )
+                    }
                 }
             } else {
-                if (isSearching) {
+                // Stock matches first — this is the primary job of Search.
+                if (isSearching && searchResults.isEmpty()) {
                     item {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -498,101 +288,100 @@ fun SearchScreen(
                                 color = theme.primary,
                             )
                             Text(
-                                text = "Searching across instruments and destinations...",
-                                fontSize = 12.sp,
+                                text = "Searching the NSE catalog…",
+                                fontSize = 13.sp,
                                 color = theme.textSecondary,
                             )
                         }
                     }
                 }
 
-                if (matchingShortcuts.isNotEmpty()) {
-                    item {
-                        SearchSectionHeader(
-                            title = "Destinations",
-                            subtitle = "Relevant app surfaces for the query you typed.",
-                        )
-                    }
-                    items(matchingShortcuts, key = { it.title }) { shortcut ->
-                        SearchShortcutRow(shortcut = shortcut, onOpen = { onRouteClick(shortcut.tab) })
-                    }
-                }
-
-                if (matchingSignalBuckets.isNotEmpty()) {
-                    item {
-                        SearchSectionHeader(
-                            title = "Signal Lab",
-                            subtitle = "Setup-style queries now route into breakout, yield, upside, and rebound buckets.",
-                        )
-                    }
-                    item {
-                        SignalLabRail(
-                            buckets = matchingSignalBuckets,
-                            onOpenQuote = { quote -> openQuote(quote) },
-                        )
-                    }
-                }
-
-                if (matchingBackendSignalBuckets.isNotEmpty()) {
-                    item {
-                        SearchSectionHeader(
-                            title = "Signal Lab Phase-2",
-                            subtitle = "Results Week and Institutional Conviction matches from backend buckets.",
-                        )
-                    }
-                    item {
-                        BackendSignalLabRail(
-                            buckets = matchingBackendSignalBuckets,
-                            onOpenSymbol = { symbol -> openSymbol(symbol) },
-                        )
-                    }
-                }
-
                 if (searchResults.isNotEmpty()) {
                     item {
                         SearchSectionHeader(
-                            title = "Instruments",
-                            subtitle = "${searchResults.size} live match${if (searchResults.size == 1) "" else "es"} ready to open.",
+                            title = "Stocks",
+                            subtitle = "${searchResults.size} match${if (searchResults.size == 1) "" else "es"} in the listed universe.",
                         )
                     }
                     items(searchResults, key = { it.symbol }) { result ->
                         val existingQuote = quotes.firstOrNull { it.symbol.equals(result.symbol, ignoreCase = true) }
+                        val alreadyWatched = watchlistSymbols.any { it.equals(result.symbol, ignoreCase = true) }
                         SearchResultCard(
                             result = result,
                             quote = existingQuote,
                             onOpen = {
                                 if (existingQuote != null) openQuote(existingQuote) else openSymbol(result.symbol)
                             },
+                            onAddToWatchlist = onAddToWatchlist?.takeUnless { alreadyWatched }?.let { add ->
+                                { add(result.symbol) }
+                            },
+                            isWatchlisted = alreadyWatched,
                         )
                     }
                 }
 
                 val showSymbolFallback = exactSymbolCandidate != null &&
-                    searchResults.none { it.symbol.equals(exactSymbolCandidate, ignoreCase = true) }
+                    searchResults.none { it.symbol.equals(exactSymbolCandidate, ignoreCase = true) } &&
+                    !isSearching
 
                 if (showSymbolFallback) {
                     val directSymbol = exactSymbolCandidate.orEmpty()
                     item {
                         SearchSectionHeader(
-                            title = "Direct Open",
-                            subtitle = "Open a symbol directly when you already know the ticker.",
+                            title = "Open ticker",
+                            subtitle = "No catalog hit yet — open this symbol directly.",
                         )
                     }
                     item {
-                        SearchShortcutRow(
-                            shortcut = SearchShortcut(
-                                title = directSymbol,
-                                caption = "Open symbol detail directly",
-                                tab = 9,
-                                keywords = emptyList(),
-                            ),
-                            actionText = "Open Symbol",
-                            onOpen = { openSymbol(directSymbol) },
-                        )
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = theme.card),
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(directSymbol, fontWeight = FontWeight.Bold, color = theme.text, fontSize = 16.sp)
+                                    Text("Open symbol detail", fontSize = 12.sp, color = theme.textSecondary)
+                                }
+                                Button(onClick = { openSymbol(directSymbol) }, shape = RoundedCornerShape(12.dp)) {
+                                    Text("Open")
+                                }
+                            }
+                        }
                     }
                 }
 
-                if (searchResults.isEmpty() && matchingShortcuts.isEmpty() && !isSearching && showSuggestions) {
+                if (matchingJumps.isNotEmpty()) {
+                    item {
+                        SearchSectionHeader(
+                            title = "App shortcuts",
+                            subtitle = "Optional jumps — stock matches stay above.",
+                        )
+                    }
+                    item {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(matchingJumps, key = { it.title }) { jump ->
+                                AssistChip(
+                                    onClick = { onRouteClick(jump.tab) },
+                                    label = { Text(jump.title) },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (
+                    searchResults.isEmpty() &&
+                    matchingJumps.isEmpty() &&
+                    !showSymbolFallback &&
+                    !isSearching
+                ) {
                     item {
                         Box(
                             modifier = Modifier
@@ -602,13 +391,13 @@ fun SearchScreen(
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    text = "No direct match for \"$normalizedQuery\"",
+                                    text = "No match for \"$normalizedQuery\"",
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = theme.text,
                                 )
                                 Text(
-                                    text = "Try a symbol, company, breakout, dividend, heatmap, wealth, or Copilot.",
+                                    text = "Try a ticker (TCS) or company name (Tata Consultancy).",
                                     fontSize = 12.sp,
                                     color = theme.textSecondary,
                                     modifier = Modifier.padding(top = 8.dp),
@@ -623,232 +412,11 @@ fun SearchScreen(
 }
 
 @Composable
-private fun SearchHeroCard(
-    quoteCount: Int,
-    watchlistCount: Int,
-    upCount: Int,
-    downCount: Int,
-) {
-    val theme = LocalAppTheme.current
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        shape = RoundedCornerShape(24.dp),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.linearGradient(
-                        listOf(
-                            theme.card,
-                            theme.primary.copy(alpha = 0.24f),
-                            theme.surface,
-                        )
-                    )
-                )
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                text = "Universal Discovery",
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Bold,
-                color = theme.text,
-            )
-            Text(
-                text = "Stocks, signals, trade routes, derivatives, wealth, and support surfaces from one entry point.",
-                fontSize = 13.sp,
-                color = theme.textSecondary,
-                lineHeight = 19.sp,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InfoChip(label = { Text("$quoteCount live quotes") })
-                InfoChip(label = { Text("$watchlistCount watchlist") })
-                InfoChip(label = { Text("$upCount up / $downCount down") })
-            }
-        }
-    }
-}
-
-@Composable
-private fun SignalLabRail(
-    buckets: List<SignalLabBucket>,
-    onOpenQuote: (Quote) -> Unit,
-) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        items(buckets, key = { it.title }) { bucket ->
-            SignalLabCard(
-                bucket = bucket,
-                onOpenQuote = onOpenQuote,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SignalLabCard(
-    bucket: SignalLabBucket,
-    onOpenQuote: (Quote) -> Unit,
-) {
-    val leadQuote = bucket.quotes.firstOrNull()
-    Card(
-        modifier = Modifier.width(280.dp),
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
-        shape = RoundedCornerShape(18.dp),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                text = bucket.title,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = LocalAppTheme.current.text,
-            )
-            Text(
-                text = bucket.thesis,
-                fontSize = 12.sp,
-                color = LocalAppTheme.current.textSecondary,
-                lineHeight = 18.sp,
-            )
-            InfoChip(
-                label = {
-                    Text("${bucket.quotes.size} live setup${if (bucket.quotes.size == 1) "" else "s"}")
-                },
-            )
-            Text(
-                text = signalLabLeadSummary(bucket),
-                fontSize = 12.sp,
-                color = LocalAppTheme.current.text,
-                lineHeight = 18.sp,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                bucket.quotes.take(3).forEach { quote ->
-                    AssistChip(
-                        onClick = { onOpenQuote(quote) },
-                        label = { Text(quote.symbol) },
-                    )
-                }
-            }
-            Button(
-                onClick = { leadQuote?.let(onOpenQuote) },
-                enabled = leadQuote != null,
-                shape = RoundedCornerShape(12.dp),
-            ) {
-                Text(if (leadQuote != null) "Open ${leadQuote.symbol}" else "Open")
-            }
-        }
-    }
-}
-
-@Composable
-private fun BackendSignalLabRail(
-    buckets: List<SignalLabBucketFeed>,
-    onOpenSymbol: (String) -> Unit,
-) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        items(buckets, key = { it.bucketId }) { bucket ->
-            BackendSignalLabCard(
-                bucket = bucket,
-                onOpenSymbol = onOpenSymbol,
-            )
-        }
-    }
-}
-
-@Composable
-private fun BackendSignalLabCard(
-    bucket: SignalLabBucketFeed,
-    onOpenSymbol: (String) -> Unit,
-) {
-    val leadCandidate = bucket.candidates.firstOrNull()
-    Card(
-        modifier = Modifier.width(300.dp),
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
-        shape = RoundedCornerShape(18.dp),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                text = bucket.title,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = LocalAppTheme.current.text,
-            )
-            Text(
-                text = bucket.thesis,
-                fontSize = 12.sp,
-                color = LocalAppTheme.current.textSecondary,
-                lineHeight = 18.sp,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InfoChip(
-                    label = {
-                        Text("${bucket.candidates.size} setup${if (bucket.candidates.size == 1) "" else "s"}")
-                    },
-                )
-                if (bucket.proxy) {
-                    InfoChip(label = { Text("Proxy") })
-                }
-            }
-
-            leadCandidate?.let { candidate ->
-                Text(
-                    text = "${candidate.symbol} ${formatSignedPercent(candidate.pctChange)} • ${candidate.confidence}% confidence",
-                    fontSize = 12.sp,
-                    color = if (candidate.pctChange >= 0.0) LocalAppTheme.current.positive else LocalAppTheme.current.negative,
-                )
-                Text(
-                    text = candidate.thesis,
-                    fontSize = 12.sp,
-                    color = LocalAppTheme.current.text,
-                    lineHeight = 18.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                bucket.candidates.take(3).forEach { candidate ->
-                    AssistChip(
-                        onClick = { onOpenSymbol(candidate.symbol) },
-                        label = { Text(candidate.symbol) },
-                    )
-                }
-            }
-
-            if (bucket.notes.isNotEmpty()) {
-                Text(
-                    text = bucket.notes.first(),
-                    fontSize = 11.sp,
-                    color = LocalAppTheme.current.textSecondary,
-                    lineHeight = 16.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-
-            Button(
-                onClick = { leadCandidate?.let { onOpenSymbol(it.symbol) } },
-                enabled = leadCandidate != null,
-                shape = RoundedCornerShape(12.dp),
-            ) {
-                Text(if (leadCandidate != null) "Open ${leadCandidate.symbol}" else "Open")
-            }
-        }
-    }
-}
-
-@Composable
 private fun SearchSectionHeader(title: String, subtitle: String) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             text = title,
-            fontSize = 20.sp,
+            fontSize = 18.sp,
             fontWeight = FontWeight.SemiBold,
             color = LocalAppTheme.current.text,
         )
@@ -856,77 +424,8 @@ private fun SearchSectionHeader(title: String, subtitle: String) {
             text = subtitle,
             fontSize = 12.sp,
             color = LocalAppTheme.current.textSecondary,
-            lineHeight = 18.sp,
+            lineHeight = 17.sp,
         )
-    }
-}
-
-@Composable
-private fun SearchShortcutCard(shortcut: SearchShortcut, onOpen: () -> Unit) {
-    Card(
-        modifier = Modifier.width(240.dp),
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
-        shape = RoundedCornerShape(18.dp),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                text = shortcut.title,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = LocalAppTheme.current.text,
-            )
-            Text(
-                text = shortcut.caption,
-                fontSize = 12.sp,
-                color = LocalAppTheme.current.textSecondary,
-                lineHeight = 18.sp,
-            )
-            FilledTonalButton(onClick = onOpen) {
-                Text("Open")
-            }
-        }
-    }
-}
-
-@Composable
-private fun SearchShortcutRow(
-    shortcut: SearchShortcut,
-    onOpen: () -> Unit,
-    actionText: String = "Open",
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
-        shape = RoundedCornerShape(16.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = shortcut.title,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = LocalAppTheme.current.text,
-                )
-                Text(
-                    text = shortcut.caption,
-                    fontSize = 12.sp,
-                    color = LocalAppTheme.current.textSecondary,
-                    lineHeight = 18.sp,
-                )
-            }
-            Button(onClick = onOpen, shape = RoundedCornerShape(12.dp)) {
-                Text(actionText)
-            }
-        }
     }
 }
 
@@ -935,16 +434,18 @@ private fun DiscoveryQuoteCard(
     quote: Quote,
     subtitle: String,
     onOpen: () -> Unit,
+    onWatch: (() -> Unit)?,
+    isWatchlisted: Boolean,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(14.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -961,32 +462,36 @@ private fun DiscoveryQuoteCard(
                     color = LocalAppTheme.current.textSecondary,
                 )
                 Text(
-                    text = formatCurrency(quote.last),
-                    fontSize = 14.sp,
-                    color = LocalAppTheme.current.text,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
-
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = formatSignedPercent(quote.pctChange),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
+                    text = "${formatInr(quote.last)} · ${formatSignedPct(quote.pctChange)}",
+                    fontSize = 13.sp,
                     color = if (quote.pctChange >= 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative,
-                )
-                Text(
-                    text = quote.volume?.let { formatCompactVolume(it) } ?: "N/A vol",
-                    fontSize = 11.sp,
-                    color = LocalAppTheme.current.textSecondary,
                     modifier = Modifier.padding(top = 4.dp),
                 )
-                Button(
-                    onClick = onOpen,
-                    modifier = Modifier.padding(top = 8.dp),
-                    shape = RoundedCornerShape(12.dp),
-                ) {
-                    Text("Open")
+                quote.volume?.let { vol ->
+                    Text(
+                        text = "Vol ${formatVolumeCompact(vol)}",
+                        fontSize = 11.sp,
+                        color = LocalAppTheme.current.textSecondary,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                when {
+                    isWatchlisted -> {
+                        Text("Watching", fontSize = 11.sp, color = LocalAppTheme.current.positive, fontWeight = FontWeight.SemiBold)
+                    }
+                    onWatch != null -> {
+                        OutlinedButton(
+                            onClick = onWatch,
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp),
+                            modifier = Modifier.height(34.dp),
+                        ) { Text("Watch", fontSize = 12.sp) }
+                    }
+                }
+                Button(onClick = onOpen, shape = RoundedCornerShape(10.dp), modifier = Modifier.height(34.dp)) {
+                    Text("Open", fontSize = 12.sp)
                 }
             }
         }
@@ -998,16 +503,18 @@ private fun SearchResultCard(
     result: StockSearchResult,
     quote: Quote?,
     onOpen: () -> Unit,
+    onAddToWatchlist: (() -> Unit)? = null,
+    isWatchlisted: Boolean = false,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(14.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -1022,24 +529,38 @@ private fun SearchResultCard(
                     text = result.name,
                     fontSize = 12.sp,
                     color = LocalAppTheme.current.textSecondary,
-                    lineHeight = 18.sp,
+                    lineHeight = 17.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 4.dp),
+                    modifier = Modifier.padding(top = 3.dp),
                 )
                 Text(
-                    text = quote?.let { "${formatCurrency(it.last)} • ${formatSignedPercent(it.pctChange)}" } ?: "Open to fetch the latest quote context",
+                    text = quote?.let { "${formatInr(it.last)} · ${formatSignedPct(it.pctChange)}" }
+                        ?: "Tap Open for live quote",
                     fontSize = 12.sp,
-                    color = quote?.let { if (it.pctChange >= 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative }
-                        ?: LocalAppTheme.current.textSecondary,
-                    modifier = Modifier.padding(top = 6.dp),
+                    color = quote?.let {
+                        if (it.pctChange >= 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
+                    } ?: LocalAppTheme.current.textSecondary,
+                    modifier = Modifier.padding(top = 5.dp),
                 )
             }
-            Button(
-                onClick = onOpen,
-                shape = RoundedCornerShape(12.dp),
-            ) {
-                Text("Open")
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                when {
+                    isWatchlisted -> {
+                        Text("Watching", fontSize = 11.sp, color = LocalAppTheme.current.positive, fontWeight = FontWeight.SemiBold)
+                    }
+                    onAddToWatchlist != null -> {
+                        OutlinedButton(
+                            onClick = onAddToWatchlist,
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp),
+                            modifier = Modifier.height(34.dp),
+                        ) { Text("Watch", fontSize = 12.sp) }
+                    }
+                }
+                Button(onClick = onOpen, shape = RoundedCornerShape(10.dp), modifier = Modifier.height(34.dp)) {
+                    Text("Open", fontSize = 12.sp)
+                }
             }
         }
     }
@@ -1053,9 +574,3 @@ private fun loadRecentSymbols(prefs: android.content.SharedPreferences): List<St
         .filter { it.isNotBlank() }
         .take(8)
 }
-
-private fun formatCurrency(value: Double): String = formatInr(value)
-
-private fun formatSignedPercent(value: Double): String = formatSignedPct(value)
-
-private fun formatCompactVolume(value: Long): String = formatVolumeCompact(value)

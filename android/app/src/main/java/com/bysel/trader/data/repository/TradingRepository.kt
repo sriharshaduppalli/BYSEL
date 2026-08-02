@@ -118,6 +118,8 @@ open class TradingRepository(private val database: BYSELDatabase) {
         return database.quoteDao().getQuotesPaged(pageSize, offset)
     }
 
+    fun quotesPagingSource() = database.quoteDao().quotesPagingSource()
+
     suspend fun getQuote(symbol: String): Result<Quote> {
         return try {
             val quote = apiService.getQuote(symbol)
@@ -468,9 +470,15 @@ open class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
-    suspend fun aiAsk(query: String, chatHistory: List<ConversationTurn>? = null): Result<AiAssistantResponse> {
+    suspend fun aiAsk(
+        query: String,
+        chatHistory: List<ConversationTurn>? = null,
+        tier: String = "auto",
+    ): Result<AiAssistantResponse> {
         return try {
-            val response = aiApiService.aiAsk(AiQuery(query = query, conversationHistory = chatHistory))
+            val response = aiApiService.aiAsk(
+                AiQuery(query = query, conversationHistory = chatHistory, tier = tier)
+            )
             Result.Success(response)
         } catch (e: Exception) {
             Result.Error(toAiErrorMessage(e, "AI request failed"))

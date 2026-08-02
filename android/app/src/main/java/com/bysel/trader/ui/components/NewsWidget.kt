@@ -53,9 +53,9 @@ fun NewsWidget(
                     color = LocalAppTheme.current.text,
                 )
                 val subtitle = if (trackedSymbols.isNotEmpty()) {
-                    "Tracking ${trackedSymbols.size} names · ${headlines.size} headlines"
+                    "Watchlist + holdings news (${trackedSymbols.size}) · ${headlines.size} headlines"
                 } else {
-                    "Latest headlines across major NSE stocks"
+                    "Headlines from liquid NSE names (not full catalog)"
                 }
                 Text(
                     text = subtitle,

@@ -210,7 +210,7 @@ fun SignalLabScreen(
                         color = theme.text,
                     )
                     Text(
-                        text = "Server buckets from live quotes (Results Week / Institutional proxy). Not a brokerage research feed.",
+                        text = "Server buckets from live quotes (Momentum Movers / Sector Leadership proxy). Not a brokerage research feed.",
                         fontSize = 11.sp,
                         color = theme.textSecondary,
                         lineHeight = 16.sp,
