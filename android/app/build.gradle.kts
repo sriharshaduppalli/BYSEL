@@ -25,19 +25,67 @@ fun bumpPatchVersion(versionName: String): String {
     return parts.joinToString(".")
 }
 
+/**
+ * Play track series (versionName major):
+ *   internal → 2.x.x
+ *   closed   → 3.x.x
+ *   open     → 4.x.x
+ *
+ * versionCode is GLOBAL and always increases (Play requirement across all tracks).
+ * Build with:  .\gradlew.bat :app:bundleRelease -Ptrack=closed
+ */
+enum class ReleaseTrack(val key: String, val major: Int, val versionNameProp: String) {
+    INTERNAL("internal", 2, "VERSION_NAME_INTERNAL"),
+    CLOSED("closed", 3, "VERSION_NAME_CLOSED"),
+    OPEN("open", 4, "VERSION_NAME_OPEN");
+
+    companion object {
+        fun from(raw: String?): ReleaseTrack {
+            val key = raw?.trim()?.lowercase().orEmpty()
+            return values().firstOrNull { it.key == key } ?: INTERNAL
+        }
+    }
+}
+
+fun ensureTrackMajor(versionName: String, major: Int): String {
+    val parts = versionName.split('.').toMutableList()
+    while (parts.size < 3) parts.add("0")
+    parts[0] = major.toString()
+    return parts.joinToString(".")
+}
+
 val versionPropsFile = rootProject.file("gradle.properties")
 val versionProps = Properties().apply {
     if (versionPropsFile.exists()) {
         versionPropsFile.inputStream().use { load(it) }
     }
 }
+
+val releaseTrack = ReleaseTrack.from(
+    (project.findProperty("track") as? String)
+        ?: versionProps.getProperty("RELEASE_TRACK")
+        ?: "internal"
+)
+
 val baseVersionCode = (versionProps.getProperty("VERSION_CODE") ?: "1").toIntOrNull() ?: 1
-val baseVersionName = versionProps.getProperty("VERSION_NAME") ?: "1.0.0"
+val legacyVersionName = versionProps.getProperty("VERSION_NAME") ?: "2.0.0"
+val baseTrackVersionName = ensureTrackMajor(
+    versionProps.getProperty(releaseTrack.versionNameProp)
+        ?: if (releaseTrack == ReleaseTrack.INTERNAL) legacyVersionName else "${releaseTrack.major}.0.0",
+    releaseTrack.major,
+)
 
 val requestedTaskNamesLower = gradle.startParameter.taskNames.joinToString(" ").lowercase()
 val isBundleReleaseRequested = requestedTaskNamesLower.contains("bundlerelease")
+// Global versionCode — must rise for every Play upload on any track.
 val configuredVersionCode = if (isBundleReleaseRequested) baseVersionCode + 1 else baseVersionCode
-val configuredVersionName = if (isBundleReleaseRequested) bumpPatchVersion(baseVersionName) else baseVersionName
+val configuredVersionName =
+    if (isBundleReleaseRequested) bumpPatchVersion(baseTrackVersionName) else baseTrackVersionName
+
+println(
+    "Release track=${releaseTrack.key} versionName=$configuredVersionName " +
+        "versionCode=$configuredVersionCode (bundleRelease bump=$isBundleReleaseRequested)"
+)
 
 android {
     namespace = "com.bysel.trader"
@@ -87,10 +135,21 @@ android {
             versionPropsFile.inputStream().use { props.load(it) }
             props.setProperty("VERSION_CODE", configuredVersionCode.toString())
             props.setProperty("VERSION_NAME", configuredVersionName)
+            props.setProperty("RELEASE_TRACK", releaseTrack.key)
+            props.setProperty(releaseTrack.versionNameProp, configuredVersionName)
+            // Keep legacy VERSION_NAME aligned with the track that was just built.
             versionPropsFile.outputStream().use { props.store(it, null) }
+
+            val aab = layout.buildDirectory.file("outputs/bundle/release/app-release.aab").get().asFile
+            val copyName = "bysel-v${configuredVersionName}-${releaseTrack.key}-release.aab"
+            val copyTarget = rootProject.file("../$copyName")
+            if (aab.exists()) {
+                aab.copyTo(copyTarget, overwrite = true)
+                println("Copied AAB → ${copyTarget.normalize().absolutePath}")
+            }
             println(
-                "Persisted VERSION_CODE: ${configuredVersionCode}, " +
-                    "VERSION_NAME: ${configuredVersionName}"
+                "Persisted track=${releaseTrack.key} VERSION_CODE=${configuredVersionCode} " +
+                    "VERSION_NAME=${configuredVersionName}"
             )
         }
     }
