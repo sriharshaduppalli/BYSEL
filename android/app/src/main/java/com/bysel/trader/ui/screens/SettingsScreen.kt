@@ -1195,8 +1195,8 @@ fun AboutDialog(
                     onClick = { onOpenLegal(com.bysel.trader.ui.components.LegalDocument.Licenses) }
                 )
                 AboutLegalRow(
-                    label = "Contact: support@byseltrader.com",
-                    onClick = { uriHandler.openUri("mailto:support@byseltrader.com") }
+                    label = "Contact: bysel.trader@gmail.com",
+                    onClick = { uriHandler.openUri("mailto:bysel.trader@gmail.com") }
                 )
             }
         },
@@ -1700,7 +1700,7 @@ fun FeedbackDialog(onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         containerColor = LocalAppTheme.current.card,
         title = { Text("Feedback", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = LocalAppTheme.current.text) },
-        text = { Column { Text("We value your feedback!", fontSize = 14.sp, color = LocalAppTheme.current.text); Text("Please email us at support@byseltrader.com", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary) } },
+        text = { Column { Text("We value your feedback!", fontSize = 14.sp, color = LocalAppTheme.current.text); Text("Please email us at bysel.trader@gmail.com", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary) } },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = LocalAppTheme.current.primary) } }
     )
 }

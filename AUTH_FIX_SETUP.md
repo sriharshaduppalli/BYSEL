@@ -306,7 +306,7 @@ MAX_ACTIVE_SESSIONS_PER_USER=5       # Max concurrent logins
 # Password reset email (Resend preferred — see docs/EMAIL_RESET_SETUP.md)
 RESEND_API_KEY=re_xxx
 RESEND_FROM_EMAIL=BYSEL <onboarding@resend.dev>
-BYSEL_SUPPORT_EMAIL=support@byseltrader.com
+BYSEL_SUPPORT_EMAIL=bysel.trader@gmail.com
 AUTH_PASSWORD_RESET_DEBUG_RESPONSE=false
 ```
 

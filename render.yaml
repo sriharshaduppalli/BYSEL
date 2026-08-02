@@ -21,7 +21,7 @@ services:
       - key: RESEND_FROM_EMAIL
         value: "BYSEL <onboarding@resend.dev>"
       - key: BYSEL_SUPPORT_EMAIL
-        value: "support@byseltrader.com"
+        value: "bysel.trader@gmail.com"
       # Optional SMTP fallback (leave unset when using Resend only)
       - key: SMTP_HOST
         sync: false

@@ -21,7 +21,7 @@ Open **bysel-backend** → **Environment** → add:
 |---|---|
 | `RESEND_API_KEY` | `re_...` (secret) |
 | `RESEND_FROM_EMAIL` | `BYSEL <onboarding@resend.dev>` (or your verified domain) |
-| `BYSEL_SUPPORT_EMAIL` | `support@byseltrader.com` |
+| `BYSEL_SUPPORT_EMAIL` | `bysel.trader@gmail.com` |
 | `AUTH_PASSWORD_RESET_DEBUG_RESPONSE` | `false` |
 
 Save → Render redeploys. No SMTP vars required when Resend is set.
