@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.window.layout.FoldingFeature
 import androidx.window.layout.WindowInfoTracker
@@ -27,21 +28,32 @@ data class WindowLayoutInfo(
 
 object WindowLayoutHelper {
     fun currentWidthDp(context: Context): Int {
-        val activity = context as? Activity ?: return 0
-        val metrics = WindowMetricsCalculator.getOrCreate().computeCurrentWindowMetrics(activity)
-        val density = context.resources.displayMetrics.density.coerceAtLeast(0.1f)
-        return (metrics.bounds.width() / density).toInt()
+        return try {
+            val activity = context as? Activity
+            if (activity != null) {
+                val metrics = WindowMetricsCalculator.getOrCreate().computeCurrentWindowMetrics(activity)
+                val density = context.resources.displayMetrics.density.coerceAtLeast(0.1f)
+                (metrics.bounds.width() / density).toInt()
+            } else {
+                context.resources.configuration.screenWidthDp
+            }
+        } catch (_: Exception) {
+            context.resources.configuration.screenWidthDp
+        }
     }
 }
 
 @Composable
 fun rememberWindowLayoutInfo(wideBreakpointDp: Int = 600): WindowLayoutInfo {
     val context = LocalContext.current
-    var info by remember {
+    val configuration = LocalConfiguration.current
+    var info by remember(configuration.screenWidthDp, wideBreakpointDp) {
+        val widthDp = configuration.screenWidthDp.takeIf { it > 0 }
+            ?: WindowLayoutHelper.currentWidthDp(context)
         mutableStateOf(
             WindowLayoutInfo(
-                widthDp = WindowLayoutHelper.currentWidthDp(context),
-                isWide = WindowLayoutHelper.currentWidthDp(context) >= wideBreakpointDp,
+                widthDp = widthDp,
+                isWide = widthDp >= wideBreakpointDp,
                 isSeparatingFold = false,
             )
         )
@@ -54,19 +66,25 @@ fun rememberWindowLayoutInfo(wideBreakpointDp: Int = 600): WindowLayoutInfo {
         } else {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
             scope.launch {
-                WindowInfoTracker.getOrCreate(activity)
-                    .windowLayoutInfo(activity)
-                    .collectLatest { layout ->
-                        val widthDp = WindowLayoutHelper.currentWidthDp(activity)
-                        val fold = layout.displayFeatures
-                            .filterIsInstance<FoldingFeature>()
-                            .any { it.isSeparating }
-                        info = WindowLayoutInfo(
-                            widthDp = widthDp,
-                            isWide = widthDp >= wideBreakpointDp,
-                            isSeparatingFold = fold,
-                        )
-                    }
+                try {
+                    WindowInfoTracker.getOrCreate(activity)
+                        .windowLayoutInfo(activity)
+                        .collectLatest { layout ->
+                            val widthDp = WindowLayoutHelper.currentWidthDp(activity)
+                                .takeIf { it > 0 }
+                                ?: activity.resources.configuration.screenWidthDp
+                            val fold = layout.displayFeatures
+                                .filterIsInstance<FoldingFeature>()
+                                .any { it.isSeparating }
+                            info = WindowLayoutInfo(
+                                widthDp = widthDp,
+                                isWide = widthDp >= wideBreakpointDp,
+                                isSeparatingFold = fold,
+                            )
+                        }
+                } catch (_: Exception) {
+                    // Window manager / sidecar can fail on some OEM builds — keep config fallback.
+                }
             }
             onDispose { scope.cancel() }
         }

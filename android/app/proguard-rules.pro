@@ -31,7 +31,18 @@
 
 # Keep other app classes that may be referenced via manifest or reflection
 -keep class com.bysel.trader.utils.** { *; }
+-keep class com.bysel.trader.util.** { *; }
 -keep class com.bysel.trader.security.** { *; }
+
+# AndroidX Startup / process lifecycle (safe even without custom Application)
+-keep class androidx.startup.** { *; }
+-keep class androidx.lifecycle.ProcessLifecycleOwner { *; }
+-keep class androidx.lifecycle.ProcessLifecycleInitializer { *; }
+
+# Credential Manager + WindowManager (Play delivery / OEM variance)
+-dontwarn androidx.credentials.**
+-dontwarn androidx.window.**
+-keep class androidx.credentials.** { *; }
 -keep class com.bysel.trader.alerts.** { *; }
 -keep class com.bysel.trader.data.auth.** { *; }
 -keep class com.bysel.trader.data.local.** { *; }
