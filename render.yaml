@@ -9,6 +9,11 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
+      # Durable user/auth storage — set Internal URL from bysel-db in Dashboard
+      - key: DATABASE_URL
+        sync: false
+      - key: AUTH_SECRET
+        sync: false
       - key: QUOTE_BATCH_SIZE
         value: "30"
       - key: QUOTE_CACHE_MAX_ENTRIES
