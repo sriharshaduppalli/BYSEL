@@ -6,9 +6,22 @@ import okhttp3.Response
 import okhttp3.Route
 
 class TokenRefreshAuthenticator : Authenticator {
+    private val publicAuthPaths = setOf(
+        "/auth/register",
+        "/auth/login",
+        "/auth/refresh",
+        "/auth/send-otp",
+        "/auth/verify-otp",
+        "/auth/firebase-phone",
+        "/auth/password-reset/request",
+        "/auth/password-reset/confirm",
+    )
+
     override fun authenticate(route: Route?, response: Response): Request? {
         val path = response.request.url.encodedPath
-        if (path.startsWith("/auth/")) return null
+        // Only skip refresh for unauthenticated auth endpoints. Protected ones like
+        // /auth/me and /auth/sessions must refresh on 401 or profile stays empty.
+        if (path in publicAuthPaths) return null
         if (responseCount(response) >= 2) return null
 
         val failedAccessToken = response.request.header("Authorization")
@@ -31,7 +44,10 @@ class TokenRefreshAuthenticator : Authenticator {
         val builder = request.newBuilder()
             .header("Authorization", "Bearer $accessToken")
 
-        AuthSessionManager.getUserId()?.let { builder.header("user_id", it.toString()) }
+        AuthSessionManager.getUserId()?.let { uid ->
+            builder.header("user_id", uid.toString())
+            builder.header("user-id", uid.toString())
+        }
         return builder.build()
     }
 

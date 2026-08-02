@@ -1065,7 +1065,7 @@ fun ProfileDialog(
 
     var username by remember { mutableStateOf(AuthSessionManager.getCachedUsername().orEmpty()) }
     var email by remember { mutableStateOf(AuthSessionManager.getCachedEmail().orEmpty()) }
-    var mobileNumber by remember { mutableStateOf("") }
+    var mobileNumber by remember { mutableStateOf(AuthSessionManager.getCachedMobileNumber().orEmpty()) }
     var createdAt by remember { mutableStateOf("") }
     var userId by remember { mutableStateOf(AuthSessionManager.getUserId()) }
 
@@ -1078,6 +1078,7 @@ fun ProfileDialog(
             val cached = AuthSessionManager.getCachedIdentity()
             if (username.isBlank()) username = cached.username.orEmpty()
             if (email.isBlank()) email = cached.email.orEmpty()
+            if (mobileNumber.isBlank()) mobileNumber = cached.mobileNumber.orEmpty()
             userId = cached.userId
             when (val result = authRepository.getProfile()) {
                 is Result.Success -> {
@@ -1087,9 +1088,17 @@ fun ProfileDialog(
                     mobileNumber = profile.mobileNumber.orEmpty()
                     createdAt = profile.createdAt.orEmpty()
                     userId = profile.user_id
+                    errorMessage = null
                 }
                 is Result.Error -> {
-                    errorMessage = result.message
+                    val msg = result.message
+                    errorMessage = when {
+                        msg.contains("Token expired", ignoreCase = true) ||
+                            msg.contains("Session expired", ignoreCase = true) ||
+                            msg.contains("Invalid token", ignoreCase = true) ->
+                            "Session expired. Sign out and sign in again to refresh your profile."
+                        else -> msg
+                    }
                 }
                 else -> Unit
             }

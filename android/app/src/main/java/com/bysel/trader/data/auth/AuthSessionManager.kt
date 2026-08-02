@@ -17,6 +17,7 @@ object AuthSessionManager {
     private const val KEY_USER_ID = "user_id"
     private const val KEY_USERNAME = "username"
     private const val KEY_EMAIL = "email"
+    private const val KEY_MOBILE = "mobile_number"
     private const val KEY_ACCESS_TOKEN_EXPIRY = "access_token_expiry_ms"
     // Proactively refresh when less than 5 minutes remain
     private const val EXPIRY_BUFFER_MS = 5 * 60 * 1000L
@@ -30,14 +31,17 @@ object AuthSessionManager {
         val userId: Int?,
         val username: String?,
         val email: String?,
+        val mobileNumber: String? = null,
     ) {
         fun displayLabel(): String {
             val name = username?.takeIf { it.isNotBlank() }
             val mail = email?.takeIf { it.isNotBlank() && !it.contains("@bysel.com", ignoreCase = true) }
+            val mobile = mobileNumber?.takeIf { it.isNotBlank() }
             return when {
                 name != null && mail != null && !name.equals(mail, ignoreCase = true) -> "$name · $mail"
                 name != null -> name
                 mail != null -> mail
+                mobile != null -> mobile
                 userId != null -> "User #$userId"
                 else -> "View and edit profile"
             }
@@ -97,11 +101,19 @@ object AuthSessionManager {
         _sessionState.value = hasSession()
     }
 
-    fun saveProfileIdentity(username: String?, email: String?, userId: Int? = null) {
+    fun saveProfileIdentity(
+        username: String?,
+        email: String?,
+        userId: Int? = null,
+        mobileNumber: String? = null,
+    ) {
         val sharedPrefs = prefs ?: return
         with(sharedPrefs.edit()) {
             if (username.isNullOrBlank()) remove(KEY_USERNAME) else putString(KEY_USERNAME, username.trim())
             if (email.isNullOrBlank()) remove(KEY_EMAIL) else putString(KEY_EMAIL, email.trim().lowercase())
+            if (mobileNumber != null) {
+                if (mobileNumber.isBlank()) remove(KEY_MOBILE) else putString(KEY_MOBILE, mobileNumber.trim())
+            }
             if (userId != null && userId > 0) putInt(KEY_USER_ID, userId)
             commit()
         }
@@ -112,12 +124,15 @@ object AuthSessionManager {
             userId = getUserId(),
             username = prefs?.getString(KEY_USERNAME, null),
             email = prefs?.getString(KEY_EMAIL, null),
+            mobileNumber = prefs?.getString(KEY_MOBILE, null),
         )
     }
 
     fun getCachedUsername(): String? = prefs?.getString(KEY_USERNAME, null)
 
     fun getCachedEmail(): String? = prefs?.getString(KEY_EMAIL, null)
+
+    fun getCachedMobileNumber(): String? = prefs?.getString(KEY_MOBILE, null)
 
     fun clearSession() {
         val sharedPrefs = prefs ?: return

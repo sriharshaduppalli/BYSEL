@@ -309,6 +309,12 @@ class AuthRepository(
                 userId = response.user_id,
                 accessTokenTtlSeconds = response.accessTtlSeconds(),
             )
+            AuthSessionManager.saveProfileIdentity(
+                username = AuthSessionManager.getCachedUsername(),
+                email = AuthSessionManager.getCachedEmail(),
+                userId = response.user_id,
+                mobileNumber = normalizedMobile,
+            )
             refreshCachedProfile()
             Result.Success(response)
         } catch (e: Exception) {
@@ -365,16 +371,52 @@ class AuthRepository(
     }
 
     suspend fun getProfile(): Result<UserProfile> {
+        // /auth/me used to skip OkHttp refresh (all /auth/* were excluded). Ensure a
+        // usable access token before the first attempt as well.
+        withContext(Dispatchers.IO) {
+            AuthTokenRefresher.refreshIfNeeded()
+        }
         return try {
             val profile = apiService.getProfile()
-            AuthSessionManager.saveProfileIdentity(profile.username, profile.email, profile.user_id)
+            AuthSessionManager.saveProfileIdentity(
+                username = profile.username,
+                email = profile.email,
+                userId = profile.user_id,
+                mobileNumber = profile.mobileNumber.orEmpty(),
+            )
             Result.Success(profile)
         } catch (primary: Exception) {
+            if (primary is HttpException && primary.code() == 401) {
+                val recovered = withContext(Dispatchers.IO) {
+                    AuthTokenRefresher.refreshBlocking(
+                        failedAccessToken = AuthSessionManager.getAccessToken(),
+                    )
+                }
+                if (!recovered.isNullOrBlank()) {
+                    return try {
+                        val profile = apiService.getProfile()
+                        AuthSessionManager.saveProfileIdentity(
+                            username = profile.username,
+                            email = profile.email,
+                            userId = profile.user_id,
+                            mobileNumber = profile.mobileNumber.orEmpty(),
+                        )
+                        Result.Success(profile)
+                    } catch (retryError: Exception) {
+                        Result.Error(toAuthErrorMessage(retryError, "Failed to load profile"))
+                    }
+                }
+            }
             // Older local backends only expose /auth/profile.
             if (primary is HttpException && primary.code() == 404) {
                 try {
                     val profile = apiService.getProfileLegacy()
-                    AuthSessionManager.saveProfileIdentity(profile.username, profile.email, profile.user_id)
+                    AuthSessionManager.saveProfileIdentity(
+                        username = profile.username,
+                        email = profile.email,
+                        userId = profile.user_id,
+                        mobileNumber = profile.mobileNumber.orEmpty(),
+                    )
                     Result.Success(profile)
                 } catch (e: Exception) {
                     Result.Error(toAuthErrorMessage(e, "Failed to load profile"))
@@ -401,13 +443,23 @@ class AuthRepository(
 
         return try {
             val profile = apiService.updateProfile(body)
-            AuthSessionManager.saveProfileIdentity(profile.username, profile.email, profile.user_id)
+            AuthSessionManager.saveProfileIdentity(
+                username = profile.username,
+                email = profile.email,
+                userId = profile.user_id,
+                mobileNumber = profile.mobileNumber.orEmpty(),
+            )
             Result.Success(profile)
         } catch (primary: Exception) {
             if (primary is HttpException && primary.code() == 404) {
                 try {
                     val profile = apiService.updateProfileLegacy(body)
-                    AuthSessionManager.saveProfileIdentity(profile.username, profile.email, profile.user_id)
+                    AuthSessionManager.saveProfileIdentity(
+                        username = profile.username,
+                        email = profile.email,
+                        userId = profile.user_id,
+                        mobileNumber = profile.mobileNumber.orEmpty(),
+                    )
                     Result.Success(profile)
                 } catch (e: Exception) {
                     Result.Error(toAuthErrorMessage(e, "Failed to update profile"))
