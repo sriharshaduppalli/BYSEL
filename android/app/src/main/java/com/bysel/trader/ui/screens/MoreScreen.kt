@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Psychology
@@ -45,6 +47,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -87,11 +93,65 @@ fun MoreScreen(
     onWatchlistClick: () -> Unit,
     onMarketCalendarClick: () -> Unit,
 ) {
+    var investExpanded by rememberSaveable { mutableStateOf(false) }
+
+    val labsEntries = listOf(
+        MoreMenuEntry(
+            icon = Icons.AutoMirrored.Filled.ShowChart,
+            title = "Signal Lab",
+            subtitle = "Breakouts, volume spikes, and yield setups",
+            gradientColors = listOf(Color(0xFF004D40), Color(0xFF26A69A)),
+            onClick = onSignalLabClick,
+        ),
+        MoreMenuEntry(
+            icon = Icons.Filled.Analytics,
+            title = "Risk Lab",
+            subtitle = "VaR, Monte Carlo & portfolio stress test",
+            gradientColors = listOf(Color(0xFFB71C1C), Color(0xFFEF5350)),
+            onClick = onRiskLabClick,
+        ),
+        MoreMenuEntry(
+            icon = Icons.Filled.AutoStories,
+            title = "Trade Journal",
+            subtitle = "Practice reviews and behavioral insights",
+            gradientColors = listOf(Color(0xFF4A148C), Color(0xFF9C27B0)),
+            onClick = onTradeJournalClick,
+        ),
+        MoreMenuEntry(
+            icon = Icons.Filled.Bookmarks,
+            title = "My Watchlist",
+            subtitle = "Sort and open every tracked symbol",
+            gradientColors = listOf(Color(0xFF00695C), Color(0xFF4DB6AC)),
+            onClick = onWatchlistClick,
+        ),
+        MoreMenuEntry(
+            icon = Icons.Filled.People,
+            title = "Smart Money",
+            subtitle = "Legendary investor disclosed holdings",
+            gradientColors = listOf(Color(0xFF1B5E20), Color(0xFF43A047)),
+            onClick = onInvestorPortfoliosClick,
+        ),
+        MoreMenuEntry(
+            icon = Icons.Filled.Psychology,
+            title = "Copilot Center",
+            subtitle = "Pre-trade and post-trade guidance",
+            gradientColors = listOf(Color(0xFF6A1B9A), Color(0xFFBA68C8)),
+            onClick = onCopilotCenterClick,
+        ),
+        MoreMenuEntry(
+            icon = Icons.Filled.CalendarMonth,
+            title = "Earnings Calendar",
+            subtitle = "Upcoming results for your watchlist",
+            gradientColors = listOf(Color(0xFF004D40), Color(0xFF00BFA5)),
+            onClick = onEarningsCalendarClick,
+        ),
+    )
+
     val utilityEntries = listOf(
         MoreMenuEntry(
             icon = Icons.Filled.Search,
             title = "Search Stocks",
-            subtitle = "Find any Indian stock quickly",
+            subtitle = "Full NSE listed catalog (~2,400+)",
             gradientColors = listOf(Color(0xFF1A237E), Color(0xFF7C4DFF)),
             onClick = onSearchClick,
         ),
@@ -103,11 +163,11 @@ fun MoreScreen(
             onClick = onAlertsClick,
         ),
         MoreMenuEntry(
-            icon = Icons.Filled.Settings,
-            title = "Settings",
-            subtitle = "Theme, privacy, and app preferences",
-            gradientColors = listOf(Color(0xFF424242), Color(0xFF757575)),
-            onClick = onSettingsClick,
+            icon = Icons.Filled.EventAvailable,
+            title = "Market Holidays",
+            subtitle = "NSE/BSE trading holidays and next session",
+            gradientColors = listOf(Color(0xFF4A148C), Color(0xFF9575CD)),
+            onClick = onMarketCalendarClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.EmojiEvents,
@@ -117,18 +177,11 @@ fun MoreScreen(
             onClick = onAchievementsClick,
         ),
         MoreMenuEntry(
-            icon = Icons.Filled.Bookmarks,
-            title = "My Watchlist",
-            subtitle = "Every tracked symbol on one screen",
-            gradientColors = listOf(Color(0xFF00695C), Color(0xFF4DB6AC)),
-            onClick = onWatchlistClick,
-        ),
-        MoreMenuEntry(
-            icon = Icons.Filled.EventAvailable,
-            title = "Market Holidays",
-            subtitle = "NSE/BSE trading holidays and next session",
-            gradientColors = listOf(Color(0xFF4A148C), Color(0xFF9575CD)),
-            onClick = onMarketCalendarClick,
+            icon = Icons.Filled.Settings,
+            title = "Settings",
+            subtitle = "Theme, privacy, and app preferences",
+            gradientColors = listOf(Color(0xFF424242), Color(0xFF757575)),
+            onClick = onSettingsClick,
         ),
     )
 
@@ -136,14 +189,14 @@ fun MoreScreen(
         MoreMenuEntry(
             icon = Icons.Filled.AccountBalance,
             title = "Mutual Funds",
-            subtitle = "Explore funds and start SIPs",
+            subtitle = "Educational explorer (not live brokerage)",
             gradientColors = listOf(Color(0xFF1565C0), Color(0xFF42A5F5)),
             onClick = onMutualFundsClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.BusinessCenter,
             title = "IPO Listings",
-            subtitle = "Upcoming, open, and listed IPOs",
+            subtitle = "Educational IPO browser",
             gradientColors = listOf(Color(0xFF6A1B9A), Color(0xFFAB47BC)),
             onClick = onIpoClick,
         ),
@@ -157,14 +210,14 @@ fun MoreScreen(
         MoreMenuEntry(
             icon = Icons.Filled.Payments,
             title = "My SIPs",
-            subtitle = "Track and manage SIP plans",
+            subtitle = "Simulated SIP plans",
             gradientColors = listOf(Color(0xFFEF6C00), Color(0xFFFFA726)),
             onClick = onSipClick,
         ),
         MoreMenuEntry(
             icon = Icons.AutoMirrored.Filled.Assignment,
             title = "My IPO Applications",
-            subtitle = "Application status and allotment",
+            subtitle = "Simulated application status",
             gradientColors = listOf(Color(0xFF455A64), Color(0xFF90A4AE)),
             onClick = onMyIpoApplicationsClick,
         ),
@@ -188,51 +241,9 @@ fun MoreScreen(
         MoreMenuEntry(
             icon = Icons.Filled.AccountBalance,
             title = "Wealth OS",
-            subtitle = "Family goals and net-worth planning",
+            subtitle = "Family goals and net-worth planning (sim)",
             gradientColors = listOf(Color(0xFF2E7D32), Color(0xFF66BB6A)),
             onClick = onWealthOsClick,
-        ),
-        MoreMenuEntry(
-            icon = Icons.AutoMirrored.Filled.ShowChart,
-            title = "Signal Lab",
-            subtitle = "Filter breakouts, volume spikes, and yield setups",
-            gradientColors = listOf(Color(0xFF004D40), Color(0xFF26A69A)),
-            onClick = onSignalLabClick,
-        ),
-        MoreMenuEntry(
-            icon = Icons.Filled.Psychology,
-            title = "Copilot Center",
-            subtitle = "Pre-trade and post-trade guidance",
-            gradientColors = listOf(Color(0xFF6A1B9A), Color(0xFFBA68C8)),
-            onClick = onCopilotCenterClick,
-        ),
-        MoreMenuEntry(
-            icon = Icons.Filled.People,
-            title = "Smart Money",
-            subtitle = "Track legendary investor disclosed holdings",
-            gradientColors = listOf(Color(0xFF1B5E20), Color(0xFF43A047)),
-            onClick = onInvestorPortfoliosClick,
-        ),
-        MoreMenuEntry(
-            icon = Icons.Filled.Analytics,
-            title = "Risk Lab",
-            subtitle = "VaR, Monte Carlo & portfolio stress test",
-            gradientColors = listOf(Color(0xFFB71C1C), Color(0xFFEF5350)),
-            onClick = onRiskLabClick,
-        ),
-        MoreMenuEntry(
-            icon = Icons.Filled.CalendarMonth,
-            title = "Earnings Calendar",
-            subtitle = "Upcoming quarterly results for watchlist",
-            gradientColors = listOf(Color(0xFF004D40), Color(0xFF00BFA5)),
-            onClick = onEarningsCalendarClick,
-        ),
-        MoreMenuEntry(
-            icon = Icons.Filled.AutoStories,
-            title = "Trade Journal",
-            subtitle = "Behavioral insights from your trade history",
-            gradientColors = listOf(Color(0xFF4A148C), Color(0xFF9C27B0)),
-            onClick = onTradeJournalClick,
         ),
     )
 
@@ -254,7 +265,7 @@ fun MoreScreen(
 
         item {
             Text(
-                text = "Faster gestures: swipe left-right between Home tabs, swipe back inside feature screens",
+                text = "Practice labs first — Invest explorers are educational, not live brokerage rails.",
                 color = LocalAppTheme.current.textSecondary,
                 fontSize = 12.sp,
             )
@@ -267,13 +278,18 @@ fun MoreScreen(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                QuickInfoChip(label = "ETF", onClick = onEtfClick)
-                QuickInfoChip(label = "F&O", onClick = onDerivativesClick)
-                QuickInfoChip(label = "SIP", onClick = onSipClick)
                 QuickInfoChip(label = "Signal Lab", onClick = onSignalLabClick)
-                QuickInfoChip(label = "AI Copilot", onClick = onCopilotCenterClick)
+                QuickInfoChip(label = "Risk Lab", onClick = onRiskLabClick)
+                QuickInfoChip(label = "Journal", onClick = onTradeJournalClick)
+                QuickInfoChip(label = "Watchlist", onClick = onWatchlistClick)
                 QuickInfoChip(label = "Smart Money", onClick = onInvestorPortfoliosClick)
+                QuickInfoChip(label = "Copilot", onClick = onCopilotCenterClick)
             }
+        }
+
+        item { SectionHeader("Practice & Labs") }
+        items(labsEntries) { entry ->
+            MoreMenuItem(entry = entry)
         }
 
         item { SectionHeader("Utility") }
@@ -281,19 +297,49 @@ fun MoreScreen(
             MoreMenuItem(entry = entry)
         }
 
-        item { SectionHeader("Invest") }
-        items(investingEntries) { entry ->
-            MoreMenuItem(entry = entry)
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { investExpanded = !investExpanded }
+                    .padding(top = 4.dp, bottom = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Invest explorers",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = LocalAppTheme.current.primary,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = if (investExpanded) "Educational MF / IPO / ETF / SIP" else "Collapsed · not live brokerage",
+                        fontSize = 11.sp,
+                        color = LocalAppTheme.current.textSecondary,
+                    )
+                }
+                Icon(
+                    imageVector = if (investExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = if (investExpanded) "Collapse" else "Expand",
+                    tint = LocalAppTheme.current.textSecondary,
+                )
+            }
+        }
+        if (investExpanded) {
+            items(investingEntries) { entry ->
+                MoreMenuItem(entry = entry)
+            }
         }
 
-        item { SectionHeader("Pro Tools") }
+        item { SectionHeader("Advanced tools") }
         items(advancedEntries) { entry ->
             MoreMenuItem(entry = entry)
         }
 
         item {
             Text(
-                text = "BYSEL v${BuildConfig.VERSION_NAME} - AI-Powered Trading",
+                text = "BYSEL v${BuildConfig.VERSION_NAME} — paper trading + AI practice gym",
                 color = LocalAppTheme.current.textSecondary,
                 fontSize = 12.sp,
                 modifier = Modifier
@@ -324,7 +370,6 @@ private fun QuickInfoChip(label: String, onClick: () -> Unit) {
             containerColor = LocalAppTheme.current.card,
             labelColor = LocalAppTheme.current.text,
         ),
-        border = null,
     )
 }
 
@@ -334,9 +379,8 @@ private fun MoreMenuItem(entry: MoreMenuEntry) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = entry.onClick),
-        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(14.dp),
     ) {
         Row(
             modifier = Modifier
@@ -346,7 +390,7 @@ private fun MoreMenuItem(entry: MoreMenuEntry) {
         ) {
             Box(
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(42.dp)
                     .background(
                         brush = Brush.linearGradient(entry.gradientColors),
                         shape = CircleShape,
@@ -357,33 +401,30 @@ private fun MoreMenuItem(entry: MoreMenuEntry) {
                     imageVector = entry.icon,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(24.dp),
+                    modifier = Modifier.size(22.dp),
                 )
             }
-
-            Spacer(modifier = Modifier.width(14.dp))
-
+            Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = entry.title,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
                     color = LocalAppTheme.current.text,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
                 )
-                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = entry.subtitle,
-                    color = LocalAppTheme.current.textSecondary,
                     fontSize = 12.sp,
+                    color = LocalAppTheme.current.textSecondary,
+                    modifier = Modifier.padding(top = 2.dp),
                 )
             }
-
             Icon(
                 imageVector = Icons.Filled.ChevronRight,
                 contentDescription = null,
                 tint = LocalAppTheme.current.textSecondary,
-                modifier = Modifier.size(22.dp),
             )
         }
+        Spacer(modifier = Modifier.height(0.dp))
     }
 }

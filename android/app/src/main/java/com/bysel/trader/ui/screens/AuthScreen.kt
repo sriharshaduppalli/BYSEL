@@ -42,6 +42,7 @@ import com.bysel.trader.data.repository.AuthRepository
 import com.bysel.trader.data.repository.Result
 import com.bysel.trader.data.auth.AuthSessionManager
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.util.CredentialHelper
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
@@ -97,6 +98,10 @@ fun AuthScreen(
 
     var otpCountdown by remember { mutableStateOf(0) }
 
+    // Activity (needed for OTP consent + Credential Manager)
+    val activity = LocalContext.current as? Activity
+    val context = LocalContext.current
+
     // Wake Render free-tier before the user taps Login (avoids false "timeout" on cold start).
     LaunchedEffect(Unit) {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -104,8 +109,16 @@ fun AuthScreen(
         }
     }
 
-    // Activity (needed to launch User Consent intent)
-    val activity = LocalContext.current as? Activity
+    // Credential Manager: offer saved username/password when available.
+    LaunchedEffect(Unit) {
+        val saved = CredentialHelper.loadPassword(context)
+        if (saved != null) {
+            username = saved.id
+            password = saved.password
+            isLoginMode = true
+            isOtpMode = false
+        }
+    }
 
     // Consent launcher to receive the single-SMS consent UI result
     val consentLauncher = rememberLauncherForActivityResult(
@@ -593,7 +606,20 @@ fun AuthScreen(
 
                         loading = false
                         when (result) {
-                            is Result.Success -> onAuthenticated()
+                            is Result.Success -> {
+                                activity?.let { act ->
+                                    try {
+                                        CredentialHelper.savePassword(
+                                            activity = act,
+                                            id = if (isLoginMode) trimmedUsername else trimmedEmail.ifBlank { trimmedUsername },
+                                            password = password,
+                                        )
+                                    } catch (_: Exception) {
+                                        // Autofill save is best-effort.
+                                    }
+                                }
+                                onAuthenticated()
+                            }
                             is Result.Error -> {
                                 messageIsError = true
                                 message = result.message

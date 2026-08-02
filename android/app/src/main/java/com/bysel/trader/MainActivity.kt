@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material3.*
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +43,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,6 +61,7 @@ import com.bysel.trader.ui.theme.isDynamicThemeId
 import com.bysel.trader.ui.theme.isLightThemeId
 import com.bysel.trader.ui.theme.normalizeThemeId
 import com.bysel.trader.ui.theme.toAppTheme
+import com.bysel.trader.util.rememberWindowLayoutInfo
 import com.google.android.play.core.appupdate.AppUpdateManager
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.install.model.AppUpdateType
@@ -103,6 +106,17 @@ class MainActivity : FragmentActivity() {
         }
 
         AuthSessionManager.init(applicationContext)
+
+        // Process-wide foreground/background: pause live quotes when leaving the app
+        // (does not fire for in-app Activities like UPI, unlike Activity.onStop).
+        (application as? ByselApplication)?.let { app ->
+            app.onAppForeground = {
+                tradingViewModel?.takeIf { AuthSessionManager.hasSession() }?.onAppForegroundResume()
+            }
+            app.onAppBackground = {
+                tradingViewModel?.onAppBackgroundPause()
+            }
+        }
         
         // Handle app shortcuts
         val shortcutAction = intent.getStringExtra("shortcut_action")
@@ -111,7 +125,7 @@ class MainActivity : FragmentActivity() {
             val authRepository = remember { AuthRepository() }
             val scope = rememberCoroutineScope()
             val lifecycleOwner = LocalLifecycleOwner.current
-            val isLoggedIn by AuthSessionManager.sessionState.collectAsState()
+            val isLoggedIn by AuthSessionManager.sessionState.collectAsStateWithLifecycle()
             var wasLoggedIn by remember { mutableStateOf(isLoggedIn) }
             var manualLogoutInProgress by remember { mutableStateOf(false) }
             var activeTradingViewModel by remember { mutableStateOf(tradingViewModel) }
@@ -223,8 +237,9 @@ class MainActivity : FragmentActivity() {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        .safeDrawingPadding()
                         .background(Color.Black),
-                    contentAlignment = Alignment.Center
+                    contentAlignment = Alignment.Center,
                 ) {
                     CircularProgressIndicator()
                 }
@@ -280,7 +295,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onStart() {
         super.onStart()
-        tradingViewModel?.takeIf { AuthSessionManager.hasSession() }?.onAppForegroundResume()
+        // Quote stream pause/resume is owned by ProcessLifecycleOwner (ByselApplication).
     }
 
     override fun onResume() {
@@ -293,12 +308,9 @@ class MainActivity : FragmentActivity() {
                 onCancel = { }
             )
         }
-
-        tradingViewModel?.takeIf { AuthSessionManager.hasSession() }?.onAppForegroundResume()
     }
 
     override fun onStop() {
-        tradingViewModel?.onAppBackgroundPause()
         super.onStop()
     }
 
@@ -426,6 +438,8 @@ fun BYSELApp(
         mutableStateOf(migrated)
     }
     val density = LocalDensity.current
+    val windowLayout = rememberWindowLayoutInfo()
+    val contentHorizontalPadding = if (windowLayout.isWide) 24.dp else 0.dp
     val edgeThresholdPx = with(density) { 28.dp.toPx() }
     val swipeTriggerPx = with(density) { 110.dp.toPx() }
     val pagerState = rememberPagerState(
@@ -433,38 +447,38 @@ fun BYSELApp(
         pageCount = { 5 }
     )
     
-    val quotes by viewModel.quotes.collectAsState()
-    val watchlistSymbols by viewModel.watchlist.collectAsState()
-    val holdings by viewModel.holdings.collectAsState()
-    val alerts by viewModel.alerts.collectAsState()
-    val searchResults by viewModel.searchResults.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
-    val isSearching by viewModel.isSearching.collectAsState()
-    val error by viewModel.error.collectAsState()
-    val productActionMessage by viewModel.productActionMessage.collectAsState()
-    val lastExecutedOrder by viewModel.lastExecutedOrder.collectAsState()
+    val quotes by viewModel.quotes.collectAsStateWithLifecycle()
+    val watchlistSymbols by viewModel.watchlist.collectAsStateWithLifecycle()
+    val holdings by viewModel.holdings.collectAsStateWithLifecycle()
+    val alerts by viewModel.alerts.collectAsStateWithLifecycle()
+    val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val isSearching by viewModel.isSearching.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
+    val productActionMessage by viewModel.productActionMessage.collectAsStateWithLifecycle()
+    val lastExecutedOrder by viewModel.lastExecutedOrder.collectAsStateWithLifecycle()
     // AI & Analytics state
-    val chatHistory by viewModel.chatHistory.collectAsState()
-    val aiLoading by viewModel.aiLoading.collectAsState()
-    val aiLikelyColdStart by viewModel.aiLikelyColdStart.collectAsState()
-    val onDeviceLlmState by viewModel.onDeviceLlmState.collectAsState()
-    val portfolioHealth by viewModel.portfolioHealth.collectAsState()
-    val healthLoading by viewModel.healthLoading.collectAsState()
-    val marketHeatmap by viewModel.marketHeatmap.collectAsState()
-    val heatmapLoading by viewModel.heatmapLoading.collectAsState()
-    val signalLabBuckets by viewModel.signalLabBuckets.collectAsState()
-    val signalLabBucketsLoading by viewModel.signalLabBucketsLoading.collectAsState()
-    val selectedQuote by viewModel.selectedQuote.collectAsState()
-    val detailLoading by viewModel.detailLoading.collectAsState()
-    val walletBalance by viewModel.walletBalance.collectAsState()
-    val marketStatus by viewModel.marketStatus.collectAsState()
-    val lastQuoteUpdateAt by viewModel.lastQuoteUpdateAt.collectAsState()
-    val investorPortfolios by viewModel.investorPortfolios.collectAsState()
-    val investorPortfoliosLoading by viewModel.investorPortfoliosLoading.collectAsState()
-    val investorPortfolioChanges by viewModel.investorPortfolioChanges.collectAsState()
-    val smartMoneyIdeas by viewModel.smartMoneyIdeas.collectAsState()
-    val smartMoneyQuarterLabel by viewModel.smartMoneyQuarterLabel.collectAsState()
-    val investorInsightsLoading by viewModel.investorInsightsLoading.collectAsState()
+    val chatHistory by viewModel.chatHistory.collectAsStateWithLifecycle()
+    val aiLoading by viewModel.aiLoading.collectAsStateWithLifecycle()
+    val aiLikelyColdStart by viewModel.aiLikelyColdStart.collectAsStateWithLifecycle()
+    val onDeviceLlmState by viewModel.onDeviceLlmState.collectAsStateWithLifecycle()
+    val portfolioHealth by viewModel.portfolioHealth.collectAsStateWithLifecycle()
+    val healthLoading by viewModel.healthLoading.collectAsStateWithLifecycle()
+    val marketHeatmap by viewModel.marketHeatmap.collectAsStateWithLifecycle()
+    val heatmapLoading by viewModel.heatmapLoading.collectAsStateWithLifecycle()
+    val signalLabBuckets by viewModel.signalLabBuckets.collectAsStateWithLifecycle()
+    val signalLabBucketsLoading by viewModel.signalLabBucketsLoading.collectAsStateWithLifecycle()
+    val selectedQuote by viewModel.selectedQuote.collectAsStateWithLifecycle()
+    val detailLoading by viewModel.detailLoading.collectAsStateWithLifecycle()
+    val walletBalance by viewModel.walletBalance.collectAsStateWithLifecycle()
+    val marketStatus by viewModel.marketStatus.collectAsStateWithLifecycle()
+    val lastQuoteUpdateAt by viewModel.lastQuoteUpdateAt.collectAsStateWithLifecycle()
+    val investorPortfolios by viewModel.investorPortfolios.collectAsStateWithLifecycle()
+    val investorPortfoliosLoading by viewModel.investorPortfoliosLoading.collectAsStateWithLifecycle()
+    val investorPortfolioChanges by viewModel.investorPortfolioChanges.collectAsStateWithLifecycle()
+    val smartMoneyIdeas by viewModel.smartMoneyIdeas.collectAsStateWithLifecycle()
+    val smartMoneyQuarterLabel by viewModel.smartMoneyQuarterLabel.collectAsStateWithLifecycle()
+    val investorInsightsLoading by viewModel.investorInsightsLoading.collectAsStateWithLifecycle()
 
     LaunchedEffect(productActionMessage) {
         val message = productActionMessage?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -614,7 +628,10 @@ fun BYSELApp(
                 )
             } else {
                 Surface(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .safeDrawingPadding()
+                        .padding(horizontal = contentHorizontalPadding),
                     color = appTheme.surface
                 ) {
                     Scaffold(
@@ -800,6 +817,7 @@ fun BYSELApp(
                                         isLoading = isLoading,
                                         error = error,
                                         walletBalance = walletBalance,
+                                        watchlistSymbols = watchlistSymbols,
                                         onRefresh = { viewModel.refreshQuotes(force = true) },
                                         onTradeClick = { symbol ->
                                             previousTab = selectedTab
@@ -875,6 +893,9 @@ fun BYSELApp(
                                             viewModel.fetchAndSelectQuote(symbol)
                                             selectedTab = 9
                                         },
+                                        onAiFeedback = { query, answer, helpful ->
+                                            viewModel.submitAiFeedback(query, answer, helpful)
+                                        },
                                         onDeviceLlmState = onDeviceLlmState,
                                         onDownloadModel = { viewModel.downloadOnDeviceModel() },
                                         likelyColdStart = aiLikelyColdStart,
@@ -928,7 +949,12 @@ fun BYSELApp(
                                             previousTab = selectedTab
                                             viewModel.fetchAndSelectQuote(symbol)
                                             selectedTab = 9
-                                        }
+                                        },
+                                        searchResults = searchResults,
+                                        isSearching = isSearching,
+                                        onSearchQuery = { query -> viewModel.searchStocks(query) },
+                                        onClearSearch = { viewModel.clearSearchResults() },
+                                        onAddToWatchlist = { symbol -> viewModel.addToWatchlist(symbol) },
                                     )
                                 }
                             }
@@ -1044,6 +1070,7 @@ fun BYSELApp(
                                         viewModel.fetchAndSelectQuote(symbol)
                                         selectedTab = 9
                                     },
+                                    onAddToWatchlist = { symbol -> viewModel.addToWatchlist(symbol) },
                                     onRouteClick = { targetTab -> selectedTab = targetTab }
                                 )
                                 7 -> AlertsScreen(

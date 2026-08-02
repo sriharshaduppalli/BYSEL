@@ -3395,13 +3395,6 @@
     "exchange": "NSE"
   },
   {
-    "symbol": "AGSTRA",
-    "company_name": "AGS Transact Technologies Limited",
-    "yahoo_ticker": "AGSTRA.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
     "symbol": "AHCL",
     "company_name": "Anlon Healthcare Limited",
     "yahoo_ticker": "AHCL.NS",
@@ -4173,7 +4166,7 @@
   },
   {
     "symbol": "ASTERDM",
-    "company_name": "Aster DM Healthcare Limited",
+    "company_name": "Aster DM Quality Care Limited",
     "yahoo_ticker": "ASTERDM.NS",
     "isin": "",
     "exchange": "NSE"
@@ -4777,13 +4770,6 @@
     "symbol": "BFUTILITIE",
     "company_name": "BF Utilities Limited",
     "yahoo_ticker": "BFUTILITIE.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
-    "symbol": "BGLOBAL",
-    "company_name": "Bharatiya Global Infomedia Limited",
-    "yahoo_ticker": "BGLOBAL.NS",
     "isin": "",
     "exchange": "NSE"
   },
@@ -5523,13 +5509,6 @@
     "exchange": "NSE"
   },
   {
-    "symbol": "CLCIND",
-    "company_name": "CLC Industries Limited",
-    "yahoo_ticker": "CLCIND.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
     "symbol": "CLEANMAX",
     "company_name": "Clean Max Enviro Energy Solutions Limited",
     "yahoo_ticker": "CLEANMAX.NS",
@@ -5540,13 +5519,6 @@
     "symbol": "CLSEL",
     "company_name": "Chaman Lal Setia Exports Limited",
     "yahoo_ticker": "CLSEL.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
-    "symbol": "CMICABLES",
-    "company_name": "CMI Limited",
-    "yahoo_ticker": "CMICABLES.NS",
     "isin": "",
     "exchange": "NSE"
   },
@@ -6216,13 +6188,6 @@
     "exchange": "NSE"
   },
   {
-    "symbol": "DIL",
-    "company_name": "Debock Industries Limited",
-    "yahoo_ticker": "DIL.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
     "symbol": "DISAQ",
     "company_name": "Disa India Limited",
     "yahoo_ticker": "DISAQ.NS",
@@ -6464,13 +6429,6 @@
     "symbol": "EDELWEISS",
     "company_name": "Edelweiss Financial Services Limited",
     "yahoo_ticker": "EDELWEISS.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
-    "symbol": "EDUCOMP",
-    "company_name": "Educomp Solutions Limited",
-    "yahoo_ticker": "EDUCOMP.NS",
     "isin": "",
     "exchange": "NSE"
   },
@@ -6895,13 +6853,6 @@
     "exchange": "NSE"
   },
   {
-    "symbol": "FCONSUMER",
-    "company_name": "Future Consumer Limited",
-    "yahoo_ticker": "FCONSUMER.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
     "symbol": "FCSSOFT",
     "company_name": "FCS Software Solutions Limited",
     "yahoo_ticker": "FCSSOFT.NS",
@@ -7280,13 +7231,6 @@
     "exchange": "NSE"
   },
   {
-    "symbol": "GENSOL",
-    "company_name": "Gensol Engineering Limited",
-    "yahoo_ticker": "GENSOL.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
     "symbol": "GENUSPAPER",
     "company_name": "Genus Paper & Boards Limited",
     "yahoo_ticker": "GENUSPAPER.NS",
@@ -7311,13 +7255,6 @@
     "symbol": "GFLLIMITED",
     "company_name": "GFL Limited",
     "yahoo_ticker": "GFLLIMITED.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
-    "symbol": "GFSTEELS",
-    "company_name": "Grand Foundry Limited",
-    "yahoo_ticker": "GFSTEELS.NS",
     "isin": "",
     "exchange": "NSE"
   },
@@ -8547,13 +8484,6 @@
     "exchange": "NSE"
   },
   {
-    "symbol": "IMPEXFERRO",
-    "company_name": "Impex Ferro Tech Limited",
-    "yahoo_ticker": "IMPEXFERRO.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
     "symbol": "INA",
     "company_name": "Insolation Energy Limited",
     "yahoo_ticker": "INA.NS",
@@ -8655,6 +8585,13 @@
     "symbol": "INDOFARM",
     "company_name": "Indo Farm Equipment Limited",
     "yahoo_ticker": "INDOFARM.NS",
+    "isin": "",
+    "exchange": "NSE"
+  },
+  {
+    "symbol": "INDOMIM",
+    "company_name": "INDO-MIM Limited",
+    "yahoo_ticker": "INDOMIM.NS",
     "isin": "",
     "exchange": "NSE"
   },
@@ -10052,6 +9989,13 @@
     "exchange": "NSE"
   },
   {
+    "symbol": "LCL",
+    "company_name": "Lohia Corp Limited",
+    "yahoo_ticker": "LCL.NS",
+    "isin": "",
+    "exchange": "NSE"
+  },
+  {
     "symbol": "LEMERITE",
     "company_name": "Le Merite Exports Limited",
     "yahoo_ticker": "LEMERITE.NS",
@@ -10997,13 +10941,6 @@
     "exchange": "NSE"
   },
   {
-    "symbol": "MORARJEE",
-    "company_name": "Morarjee Textiles Limited",
-    "yahoo_ticker": "MORARJEE.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
     "symbol": "MOREPENLAB",
     "company_name": "Morepen Laboratories Limited",
     "yahoo_ticker": "MOREPENLAB.NS",
@@ -11168,13 +11105,6 @@
     "symbol": "NACLIND",
     "company_name": "NACL Industries Limited",
     "yahoo_ticker": "NACLIND.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
-    "symbol": "NAGAFERT",
-    "company_name": "Nagarjuna Fertilizers and Chemicals Limited",
-    "yahoo_ticker": "NAGAFERT.NS",
     "isin": "",
     "exchange": "NSE"
   },
@@ -11399,13 +11329,6 @@
     "symbol": "NETWORK18",
     "company_name": "Network18 Media & Investments Limited",
     "yahoo_ticker": "NETWORK18.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
-    "symbol": "NEUEON",
-    "company_name": "Neueon Corporation Limited",
-    "yahoo_ticker": "NEUEON.NS",
     "isin": "",
     "exchange": "NSE"
   },
@@ -12775,13 +12698,6 @@
     "exchange": "NSE"
   },
   {
-    "symbol": "QUINTEGRA",
-    "company_name": "Quintegra Solutions Limited",
-    "yahoo_ticker": "QUINTEGRA.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
     "symbol": "RACE",
     "company_name": "Race Eco Chain Limited",
     "yahoo_ticker": "RACE.NS",
@@ -12883,13 +12799,6 @@
     "symbol": "RAJTV",
     "company_name": "Raj Television Network Limited",
     "yahoo_ticker": "RAJTV.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
-    "symbol": "RAJVIR",
-    "company_name": "Rajvir Industries Limited",
-    "yahoo_ticker": "RAJVIR.NS",
     "isin": "",
     "exchange": "NSE"
   },
@@ -13058,13 +12967,6 @@
     "symbol": "RELIGARE",
     "company_name": "Religare Enterprises Limited",
     "yahoo_ticker": "RELIGARE.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
-    "symbol": "RELINFRA",
-    "company_name": "Reliance Infrastructure Limited",
-    "yahoo_ticker": "RELINFRA.NS",
     "isin": "",
     "exchange": "NSE"
   },
@@ -14553,13 +14455,6 @@
     "exchange": "NSE"
   },
   {
-    "symbol": "SKIL",
-    "company_name": "SKIL Infrastructure Limited",
-    "yahoo_ticker": "SKIL.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
     "symbol": "SKIPPER",
     "company_name": "Skipper Limited",
     "yahoo_ticker": "SKIPPER.NS",
@@ -14808,13 +14703,6 @@
     "symbol": "SRM",
     "company_name": "SRM Contractors Limited",
     "yahoo_ticker": "SRM.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
-    "symbol": "SRPL",
-    "company_name": "Shree Ram Proteins Limited",
-    "yahoo_ticker": "SRPL.NS",
     "isin": "",
     "exchange": "NSE"
   },
@@ -16121,13 +16009,6 @@
     "exchange": "NSE"
   },
   {
-    "symbol": "UNIVAFOODS",
-    "company_name": "Univa Foods Limited",
-    "yahoo_ticker": "UNIVAFOODS.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
     "symbol": "UNIVASTU",
     "company_name": "Univastu India Limited",
     "yahoo_ticker": "UNIVASTU.NS",
@@ -16877,13 +16758,6 @@
     "exchange": "NSE"
   },
   {
-    "symbol": "WINSOME",
-    "company_name": "Winsome Yarns Limited",
-    "yahoo_ticker": "WINSOME.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
     "symbol": "WIPL",
     "company_name": "The Western India Plywoods Limited",
     "yahoo_ticker": "WIPL.NS",
@@ -16957,6 +16831,13 @@
     "symbol": "XTGLOBAL",
     "company_name": "Xtglobal Infotech Limited",
     "yahoo_ticker": "XTGLOBAL.NS",
+    "isin": "",
+    "exchange": "NSE"
+  },
+  {
+    "symbol": "XTRANET",
+    "company_name": "Xtranet Technologies Limited",
+    "yahoo_ticker": "XTRANET.NS",
     "isin": "",
     "exchange": "NSE"
   },

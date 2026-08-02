@@ -52,11 +52,29 @@ class HoldingModel(Base):
 class AlertModel(Base):
     __tablename__ = "alerts"
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True, default=None)
     symbol = Column(String, index=True)
     threshold_price = Column(Float)
     alert_type = Column(String)  # ABOVE or BELOW
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class TradeJournalModel(Base):
+    __tablename__ = "trade_journal"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    symbol = Column(String, index=True)
+    side = Column(String)
+    qty = Column(Integer)
+    price = Column(Float)
+    total = Column(Float, default=0.0)
+    order_id = Column(Integer, nullable=True, index=True)
+    context_json = Column(String, nullable=True)
+    auto_notes_json = Column(String, nullable=True)
+    user_note = Column(String, nullable=True, default="")
+    outcome = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 class OrderModel(Base):
     __tablename__ = "orders"
@@ -322,6 +340,10 @@ def _ensure_holdings_columns() -> None:
     _ensure_column("holdings", "user_id", "user_id INTEGER NOT NULL DEFAULT 1")
 
 
+def _ensure_alert_columns() -> None:
+    _ensure_column("alerts", "user_id", "user_id INTEGER NULL")
+
+
 def _ensure_order_columns() -> None:
     _ensure_column("orders", "user_id", "user_id INTEGER NOT NULL DEFAULT 1")
     _ensure_column("orders", "order_type", "order_type VARCHAR NULL")
@@ -511,6 +533,7 @@ def _merge_legacy_auth_rows_into_active_db() -> None:
 _ensure_refresh_token_columns()
 _ensure_user_columns()
 _ensure_holdings_columns()
+_ensure_alert_columns()
 _ensure_order_columns()
 _ensure_order_indexes()
 _merge_legacy_auth_rows_into_active_db()

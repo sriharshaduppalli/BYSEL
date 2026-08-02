@@ -595,13 +595,19 @@ async def get_portfolio_risk(
     Used by Risk Lab screen.
     symbols = comma-separated e.g. "RELIANCE,TCS,INFY"
     weights = comma-separated floats e.g. "0.4,0.3,0.3"
+
+    When symbols is empty, callers should pass the authenticated user's holdings
+    from the Android client (preferred). Demo basket is a last-resort fallback.
     """
     try:
         import yfinance as yf
 
         sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        used_demo = False
         if not sym_list:
-            raise HTTPException(status_code=400, detail="symbols required")
+            # Educational fallback so Risk Lab still opens when portfolio is empty.
+            sym_list = ["RELIANCE", "TCS", "INFY"]
+            used_demo = True
 
         weight_list = [float(w) for w in weights.split(",") if w.strip()] if weights else []
         if not weight_list or len(weight_list) != len(sym_list):
@@ -695,6 +701,12 @@ async def get_portfolio_risk(
             "monteCarloMedian": round(mc_50th * 100, 2),
             "monteCarloP95": round(mc_95th * 100, 2),
             "riskLevel": "Low" if var_95 > -0.01 else "Medium" if var_95 > -0.025 else "High",
+            "demoBasket": used_demo,
+            "disclaimer": (
+                "Educational demo basket (RELIANCE/TCS/INFY) — not your live paper portfolio."
+                if used_demo
+                else "Computed on the symbols you provided (paper portfolio when supplied by the app)."
+            ),
         }
     except HTTPException:
         raise

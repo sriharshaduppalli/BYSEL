@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -314,31 +315,41 @@ fun DashboardScreen(
     onPracticeReviewSubmit: ((symbol: String, qty: Int, price: Double, note: String, setSl: Boolean, followedPlan: Boolean) -> Unit)? = null,
     walletBalance: Double = 0.0,
     onAddPracticeFunds: (() -> Unit)? = null,
+    watchlistSymbols: List<String> = emptyList(),
 ) {
     val context = LocalContext.current
     val dashboardViewModel: DashboardViewModel = viewModel()
-    val pinnedStocks by dashboardViewModel.pinnedStocks.collectAsState()
-    val portfolioPinned by dashboardViewModel.portfolioPinned.collectAsState()
-    val newsPinned by dashboardViewModel.newsPinned.collectAsState()
-    val widgetOrder by dashboardViewModel.widgetOrder.collectAsState()
-    val watchlistPinned by dashboardViewModel.watchlistPinned.collectAsState()
-    val marketNews by dashboardViewModel.marketNews.collectAsState()
-    val newsSymbols by dashboardViewModel.newsSymbols.collectAsState()
-    val newsLoading by dashboardViewModel.newsLoading.collectAsState()
-    val newsError by dashboardViewModel.newsError.collectAsState()
-    val marketGainers by dashboardViewModel.momentumLeaders.collectAsState()
-    val marketLosers by dashboardViewModel.pressureZone.collectAsState()
-    val moversUniverseSize by dashboardViewModel.moversUniverseSize.collectAsState()
-    val moversLoading by dashboardViewModel.moversLoading.collectAsState()
-    val practiceIdeas by dashboardViewModel.practiceIdeas.collectAsState()
-    val practiceIdeasLoading by dashboardViewModel.practiceIdeasLoading.collectAsState()
-    val practiceIdeasDisclaimer by dashboardViewModel.practiceIdeasDisclaimer.collectAsState()
+    val pinnedStocks by dashboardViewModel.pinnedStocks.collectAsStateWithLifecycle()
+    val portfolioPinned by dashboardViewModel.portfolioPinned.collectAsStateWithLifecycle()
+    val newsPinned by dashboardViewModel.newsPinned.collectAsStateWithLifecycle()
+    val widgetOrder by dashboardViewModel.widgetOrder.collectAsStateWithLifecycle()
+    val watchlistPinned by dashboardViewModel.watchlistPinned.collectAsStateWithLifecycle()
+    val marketNews by dashboardViewModel.marketNews.collectAsStateWithLifecycle()
+    val newsSymbols by dashboardViewModel.newsSymbols.collectAsStateWithLifecycle()
+    val newsLoading by dashboardViewModel.newsLoading.collectAsStateWithLifecycle()
+    val newsError by dashboardViewModel.newsError.collectAsStateWithLifecycle()
+    val marketGainers by dashboardViewModel.momentumLeaders.collectAsStateWithLifecycle()
+    val marketLosers by dashboardViewModel.pressureZone.collectAsStateWithLifecycle()
+    val moversUniverseSize by dashboardViewModel.moversUniverseSize.collectAsStateWithLifecycle()
+    val moversLoading by dashboardViewModel.moversLoading.collectAsStateWithLifecycle()
+    val practiceIdeas by dashboardViewModel.practiceIdeas.collectAsStateWithLifecycle()
+    val practiceIdeasLoading by dashboardViewModel.practiceIdeasLoading.collectAsStateWithLifecycle()
+    val practiceIdeasDisclaimer by dashboardViewModel.practiceIdeasDisclaimer.collectAsStateWithLifecycle()
 
     var showHomeGuide by rememberSaveable { mutableStateOf(false) }
     var homeGuideStep by rememberSaveable { mutableIntStateOf(0) }
     var habit by remember { mutableStateOf(PracticeHabitStore.load(context)) }
+    var practiceProgress by remember { mutableStateOf(PracticeHabitStore.loadProgress(context)) }
     var pendingPracticeBuy by remember { mutableStateOf<Pair<String, Int>?>(null) }
     var practiceReview by remember { mutableStateOf<PracticeReviewTarget?>(null) }
+
+    val personalNewsSymbols = remember(watchlistSymbols, holdings) {
+        buildPersonalNewsSymbols(watchlistSymbols, holdings.map { it.symbol })
+    }
+
+    LaunchedEffect(personalNewsSymbols) {
+        dashboardViewModel.refreshMarketNews(personalNewsSymbols)
+    }
 
     LaunchedEffect(practiceIdeas) {
         if (practiceIdeas.isNotEmpty()) {
@@ -378,10 +389,13 @@ fun DashboardScreen(
             onErrorDismiss = onErrorDismiss,
             onRefresh = {
                 onRefresh()
+                dashboardViewModel.refreshMarketNews(personalNewsSymbols)
                 dashboardViewModel.refreshMarketMovers(staggerMs = 400L)
                 dashboardViewModel.refreshPracticeIdeas()
                 habit = PracticeHabitStore.load(context)
+                practiceProgress = PracticeHabitStore.loadProgress(context)
             },
+            watchlistSymbols = watchlistSymbols,
             showHomeGuide = showHomeGuide,
             homeGuideStep = homeGuideStep,
             onShowGuide = {
@@ -410,6 +424,7 @@ fun DashboardScreen(
             practiceIdeasLoading = practiceIdeasLoading,
             practiceIdeasDisclaimer = practiceIdeasDisclaimer,
             practiceHabit = habit,
+            practiceProgress = practiceProgress,
             onAiClick = onAiClick,
             marketStatus = marketStatus,
             onQuickTradeClick = onQuickTradeClick,
@@ -450,6 +465,7 @@ fun DashboardScreen(
             onDismiss = { practiceReview = null },
             onSubmit = { note, setSl, followedPlan ->
                 habit = PracticeHabitStore.markReviewed(context, setSl, followedPlan)
+                practiceProgress = PracticeHabitStore.loadProgress(context)
                 onPracticeReviewSubmit?.invoke(
                     target.symbol,
                     target.qty,
@@ -503,9 +519,11 @@ fun DashboardContent(
     onPaperBuy: ((String, Int) -> Unit)? = null,
     onPracticeAlert: ((String, Double, String) -> Unit)? = null,
     practiceHabit: PracticeHabitStore.DayState = PracticeHabitStore.DayState(dateKey = ""),
+    practiceProgress: PracticeHabitStore.Progress = PracticeHabitStore.Progress(),
     onOpenPracticeReview: (() -> Unit)? = null,
     walletBalance: Double = 0.0,
     onAddPracticeFunds: (() -> Unit)? = null,
+    watchlistSymbols: List<String> = emptyList(),
 ) {
     val theme = LocalAppTheme.current
     val scope = rememberCoroutineScope()
@@ -601,6 +619,13 @@ fun DashboardContent(
             .distinctBy { it.symbol }
             .take(6)
     }
+    val watchlistQuotes = remember(quotes, watchlistSymbols) {
+        val order = watchlistSymbols.map { it.trim().uppercase() }.filter { it.isNotBlank() }.distinct()
+        order.mapNotNull { sym -> quotes.firstOrNull { it.symbol.equals(sym, ignoreCase = true) } }
+    }
+    val newsRefreshSymbols = remember(watchlistSymbols, holdings) {
+        buildPersonalNewsSymbols(watchlistSymbols, holdings.map { it.symbol })
+    }
     val signalBuckets = remember(quotes) { buildSignalLabBuckets(quotes).take(3) }
     val dashboardMetrics = remember(totalValue, holdings, positiveCount, negativeCount, focusQuotes, marketNews, theme) {
         listOf(
@@ -638,7 +663,7 @@ fun DashboardContent(
                 colors = listOf(theme.primary.copy(alpha = 0.3f), theme.card),
                 onClick = {
                     onRefresh()
-                    dashboardViewModel.refreshMarketNews()
+                    dashboardViewModel.refreshMarketNews(newsRefreshSymbols)
                     dashboardViewModel.refreshMarketMovers(staggerMs = 400L)
                 },
             ),
@@ -677,7 +702,7 @@ fun DashboardContent(
             isRefreshing = isRefreshing,
             onRefresh = {
                 onRefresh()
-                dashboardViewModel.refreshMarketNews()
+                dashboardViewModel.refreshMarketNews(newsRefreshSymbols)
                 dashboardViewModel.refreshMarketMovers(staggerMs = 400L)
             },
             enabled = true
@@ -703,7 +728,7 @@ fun DashboardContent(
                 portfolioPinned = portfolioPinned,
                 onRefresh = {
                     onRefresh()
-                    dashboardViewModel.refreshMarketNews()
+                    dashboardViewModel.refreshMarketNews(newsRefreshSymbols)
                     dashboardViewModel.refreshMarketMovers(staggerMs = 400L)
                 },
                 onShowGuide = onShowGuide,
@@ -726,7 +751,15 @@ fun DashboardContent(
         item {
             TodaysPracticeStrip(
                 habit = practiceHabit,
+                progress = practiceProgress,
                 onReviewClick = onOpenPracticeReview,
+            )
+        }
+
+        item {
+            PaperWalletHomeStrip(
+                balance = walletBalance,
+                onAddFunds = onAddPracticeFunds,
             )
         }
 
@@ -972,7 +1005,7 @@ fun DashboardContent(
                                     isLoading = newsLoading,
                                     error = newsError,
                                     onPinClick = { dashboardViewModel.toggleNewsPin() },
-                                    onRefresh = { dashboardViewModel.refreshMarketNews() },
+                                    onRefresh = { dashboardViewModel.refreshMarketNews(newsRefreshSymbols) },
                                 )
                                 Column {
                                     IconButton(onClick = { dashboardViewModel.moveWidgetUp("news") }, enabled = idx > 0) {
@@ -1001,7 +1034,7 @@ fun DashboardContent(
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
                                 WatchlistWidget(
                                     isPinned = true,
-                                    quotes = focusQuotes,
+                                    quotes = watchlistQuotes.ifEmpty { focusQuotes },
                                     onPinClick = { dashboardViewModel.toggleWatchlistPin() },
                                     onQuoteClick = { onTradeClick(it.symbol) },
                                     onTradeClick = onQuickTradeClick?.let { handler -> { handler(it.symbol) } },
@@ -1032,7 +1065,7 @@ fun DashboardContent(
                         isLoading = newsLoading,
                         error = newsError,
                         onPinClick = { dashboardViewModel.toggleNewsPin() },
-                        onRefresh = { dashboardViewModel.refreshMarketNews() },
+                        onRefresh = { dashboardViewModel.refreshMarketNews(newsRefreshSymbols) },
                     )
                 }
                 Spacer(modifier = Modifier.height(20.dp))
@@ -1043,7 +1076,7 @@ fun DashboardContent(
             item {
                 WatchlistWidget(
                     isPinned = false,
-                    quotes = focusQuotes,
+                    quotes = watchlistQuotes.ifEmpty { focusQuotes },
                     onPinClick = { dashboardViewModel.toggleWatchlistPin() },
                     onQuoteClick = { onTradeClick(it.symbol) },
                     onTradeClick = onQuickTradeClick?.let { handler -> { handler(it.symbol) } },
@@ -1180,7 +1213,7 @@ fun DashboardContent(
                         }
                         4 -> {
                             onRefresh()
-                            dashboardViewModel.refreshMarketNews()
+                            dashboardViewModel.refreshMarketNews(newsRefreshSymbols)
                             guideFeedback = "Quotes and news refresh started."
                             onHomeGuideStepChange(5)
                         }
@@ -1782,6 +1815,7 @@ private fun MarketPulseHero(
 @Composable
 private fun TodaysPracticeStrip(
     habit: PracticeHabitStore.DayState,
+    progress: PracticeHabitStore.Progress = PracticeHabitStore.Progress(),
     onReviewClick: (() -> Unit)?,
 ) {
     val theme = LocalAppTheme.current
@@ -1806,8 +1840,9 @@ private fun TodaysPracticeStrip(
                     fontWeight = FontWeight.SemiBold,
                     color = theme.text,
                 )
+                val streakLabel = if (progress.streakDays > 0) " · ${progress.streakDays}-day streak" else ""
                 Text(
-                    text = "Idea → Paper trade → Review  ·  score ${habit.score}/3",
+                    text = "Idea → Paper trade → Review  ·  score ${habit.score}/3$streakLabel",
                     fontSize = 11.sp,
                     color = theme.textSecondary,
                 )
@@ -1858,6 +1893,22 @@ private fun TodaysPracticeStrip(
                     ),
             )
         }
+        if (habit.reviewed || progress.reviewsCompleted > 0) {
+            val slBits = buildList {
+                if (habit.reviewed) {
+                    add(if (habit.setSl) "SL ✓ today" else "SL skipped today")
+                    add(if (habit.followedPlan) "Plan ✓" else "Plan skipped")
+                }
+                progress.slDisciplinePct?.let { add("SL discipline $it% (${progress.slRespected}/${progress.reviewsCompleted})") }
+            }
+            if (slBits.isNotEmpty()) {
+                Text(
+                    text = slBits.joinToString(" · "),
+                    fontSize = 10.sp,
+                    color = theme.textSecondary,
+                )
+            }
+        }
         if (habit.tradeDone && !habit.reviewed) {
             Text(
                 text = "Tap Review to journal SL discipline — that closes today's loop.",
@@ -1866,7 +1917,11 @@ private fun TodaysPracticeStrip(
             )
         } else if (habit.reviewed) {
             Text(
-                text = "Loop complete. Come back tomorrow for the next drill.",
+                text = if (progress.streakDays > 1) {
+                    "Loop complete · keep the ${progress.streakDays}-day streak tomorrow."
+                } else {
+                    "Loop complete. Come back tomorrow for the next drill."
+                },
                 fontSize = 10.sp,
                 color = theme.positive,
             )
@@ -2003,6 +2058,62 @@ private fun PracticeReviewSheet(
             }
             TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
                 Text("Skip for now")
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaperWalletHomeStrip(
+    balance: Double,
+    onAddFunds: (() -> Unit)?,
+) {
+    val theme = LocalAppTheme.current
+    val empty = balance <= 0.0
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                if (empty) theme.primary.copy(alpha = 0.12f)
+                else theme.card
+            )
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Paper wallet",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = theme.textSecondary,
+            )
+            Text(
+                text = "₹${"%,.0f".format(balance)}",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = theme.text,
+            )
+            Text(
+                text = if (empty) "Add practice credit before Paper Buy." else "Simulation cash · not real money",
+                fontSize = 11.sp,
+                color = theme.textSecondary,
+            )
+        }
+        if (onAddFunds != null) {
+            Button(
+                onClick = onAddFunds,
+                modifier = Modifier.height(36.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = theme.primary),
+                shape = RoundedCornerShape(10.dp),
+            ) {
+                Text(
+                    text = if (empty) "Add credit" else "Top up",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                )
             }
         }
     }
@@ -2641,4 +2752,21 @@ fun AiDailyBriefCard(
             }
         }
     }
+}
+
+/** Prefer watchlist + holdings for Home news, pad with liquid names up to 12. */
+private fun buildPersonalNewsSymbols(
+    watchlist: List<String>,
+    holdingSymbols: List<String>,
+): List<String> {
+    val preferred = (watchlist + holdingSymbols)
+        .map { it.trim().uppercase(Locale.US) }
+        .filter { it.isNotBlank() && !it.startsWith("^") }
+        .distinct()
+    val liquidDefaults = listOf(
+        "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK",
+        "SBIN", "BHARTIARTL", "ITC", "LT", "TATAMOTORS",
+        "AXISBANK", "KOTAKBANK",
+    )
+    return (preferred + liquidDefaults).distinct().take(12)
 }

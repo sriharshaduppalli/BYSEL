@@ -43,7 +43,7 @@ fun RiskLabScreen(
                 null
             }
             if (riskData == null) {
-                errorMsg = "Could not load risk data. Add holdings first, then retry."
+                errorMsg = "Could not load risk data. Check connection and retry (demo basket loads when portfolio is empty)."
             }
             isLoading = false
         }
@@ -122,6 +122,33 @@ private fun RiskLabContent(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        if (data.demoBasket || !data.disclaimer.isNullOrBlank()) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFFFF9800).copy(alpha = 0.14f)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = if (data.demoBasket) "Demo basket (not your paper portfolio)" else "Risk Lab note",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFE65100),
+                        )
+                        Text(
+                            text = data.disclaimer?.takeIf { it.isNotBlank() }
+                                ?: "Educational demo basket (RELIANCE/TCS/INFY).",
+                            fontSize = 11.sp,
+                            color = appTheme.textSecondary,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                }
+            }
+        }
+
         if (riskLevel != null || data.symbols.isNotEmpty()) {
             item {
                 RiskSectionCard(title = "Portfolio", appTheme = appTheme) {

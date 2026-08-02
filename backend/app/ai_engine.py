@@ -2220,7 +2220,7 @@ def _build_generic_response(query: str, symbols: List[str]) -> Dict:
         else:
             return _build_help_response()
 
-def ai_assistant(query: str, db=None) -> Dict:
+def ai_assistant(query: str, db=None, user_id: int | None = None) -> Dict:
     """
     Process natural language queries about stocks with Indian market context.
     Examples:
@@ -2408,7 +2408,7 @@ def ai_assistant(query: str, db=None) -> Dict:
         if symbols:
             return _handle_buy_sell_query(symbols, user_query)
         # Personalized recommendation logic
-        user_portfolio = _get_user_portfolio(db)
+        user_portfolio = _get_user_portfolio(db, user_id=user_id)
         if user_portfolio:
             return _handle_personalized_recommendation(query_lower, symbols, user_portfolio)
         else:
@@ -2440,16 +2440,25 @@ def ai_assistant(query: str, db=None) -> Dict:
         return _build_generic_response(query, symbols)
 
 
-def _get_user_portfolio(db=None):
-    """Fetch user's portfolio or watchlist for personalized recommendations."""
-    if db is not None:
-        try:
-            from .routes.trading import get_holdings
-            holdings = get_holdings(db)
-            return [h.symbol for h in holdings if getattr(h, "symbol", None)]
-        except Exception:
-            pass
-    return []
+def _get_user_portfolio(db=None, user_id: int | None = None):
+    """Fetch user's portfolio symbols for personalized recommendations."""
+    if user_id is None:
+        return []
+    owns_session = False
+    session = db
+    try:
+        if session is None:
+            from .database.db import SessionLocal
+            session = SessionLocal()
+            owns_session = True
+        from .routes.trading import get_holdings
+        holdings = get_holdings(session, user_id=int(user_id))
+        return [h.symbol for h in holdings if getattr(h, "symbol", None)]
+    except Exception:
+        return []
+    finally:
+        if owns_session and session is not None:
+            session.close()
 
 
 def _safe_float(value, default: float = 0.0) -> float:

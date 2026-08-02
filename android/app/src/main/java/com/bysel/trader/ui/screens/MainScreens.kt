@@ -41,9 +41,13 @@ import com.bysel.trader.ui.components.SwipeToDismissItem
 import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
 import com.bysel.trader.ui.components.PortfolioSkeletonLoader
 import com.bysel.trader.ui.components.DashboardSkeletonLoader
+import com.bysel.trader.ui.components.WatchlistSortMode
+import com.bysel.trader.ui.components.sortedByWatchlistMode
 import com.bysel.trader.ui.theme.LocalAppTheme
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.runtime.saveable.rememberSaveable
 
 @Composable
 fun WatchlistScreen(
@@ -54,6 +58,12 @@ fun WatchlistScreen(
     onQuoteClick: (Quote) -> Unit,
     onErrorDismiss: () -> Unit
 ) {
+    var sortModeName by rememberSaveable { mutableStateOf(WatchlistSortMode.MOVE.name) }
+    val sortMode = remember(sortModeName) {
+        runCatching { WatchlistSortMode.valueOf(sortModeName) }.getOrDefault(WatchlistSortMode.MOVE)
+    }
+    val sortedQuotes = remember(quotes, sortMode) { quotes.sortedByWatchlistMode(sortMode) }
+
     if (isLoading && quotes.isEmpty()) {
         DashboardSkeletonLoader(
             modifier = Modifier.fillMaxSize().background(LocalAppTheme.current.surface)
@@ -73,12 +83,23 @@ fun WatchlistScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Watchlist",
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = LocalAppTheme.current.text
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "My Watchlist",
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = LocalAppTheme.current.text
+                    )
+                    Text(
+                        text = if (quotes.isEmpty()) {
+                            "Empty · add from Search (full NSE catalog)"
+                        } else {
+                            "${quotes.size} tracked · ${sortMode.label}"
+                        },
+                        fontSize = 12.sp,
+                        color = LocalAppTheme.current.textSecondary,
+                    )
+                }
                 Button(
                     onClick = onRefresh,
                     modifier = Modifier.height(40.dp),
@@ -87,6 +108,24 @@ fun WatchlistScreen(
                 ) {
                     Text("Refresh", fontSize = 12.sp)
                 }
+            }
+
+            if (quotes.isNotEmpty()) {
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(WatchlistSortMode.entries, key = { it.name }) { mode ->
+                        FilterChip(
+                            selected = sortMode == mode,
+                            onClick = { sortModeName = mode.name },
+                            label = { Text(mode.label, fontSize = 11.sp) },
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
             }
 
             if (error != null) {
@@ -104,15 +143,38 @@ fun WatchlistScreen(
                 onRefresh = onRefresh,
                 enabled = true
             ) {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 8.dp)
-                ) {
-                items(items = quotes, key = { it.symbol }) { quote ->
-                    UpgradedQuoteCard(quote) { onQuoteClick(quote) }
+                if (sortedQuotes.isEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Text(
+                            text = "No tracked symbols yet",
+                            fontWeight = FontWeight.Bold,
+                            color = LocalAppTheme.current.text,
+                            fontSize = 16.sp,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Search the full NSE listed universe, tap Watch, then open Trade → My list.",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 13.sp,
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 8.dp)
+                    ) {
+                        items(items = sortedQuotes, key = { it.symbol }) { quote ->
+                            UpgradedQuoteCard(quote) { onQuoteClick(quote) }
+                        }
+                    }
                 }
-            }
             }
         }
     }

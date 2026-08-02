@@ -30,13 +30,6 @@ import com.bysel.trader.ui.format.formatInr
 import com.bysel.trader.ui.format.formatSignedPct
 import com.bysel.trader.ui.theme.LocalAppTheme
 
-private enum class WatchSort(val label: String) {
-    MOVE("Top move"),
-    GAINERS("Gainers"),
-    LOSERS("Losers"),
-    ALPHA("A–Z"),
-}
-
 @Composable
 fun WatchlistWidget(
     isPinned: Boolean,
@@ -46,17 +39,12 @@ fun WatchlistWidget(
     onTradeClick: ((Quote) -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
-    var sort by rememberSaveable { mutableStateOf(WatchSort.MOVE.name) }
+    var sort by rememberSaveable { mutableStateOf(WatchlistSortMode.MOVE.name) }
     val selectedSort = remember(sort) {
-        runCatching { WatchSort.valueOf(sort) }.getOrDefault(WatchSort.MOVE)
+        runCatching { WatchlistSortMode.valueOf(sort) }.getOrDefault(WatchlistSortMode.MOVE)
     }
     val sortedQuotes = remember(quotes, selectedSort) {
-        when (selectedSort) {
-            WatchSort.MOVE -> quotes.sortedByDescending { kotlin.math.abs(it.pctChange) }
-            WatchSort.GAINERS -> quotes.sortedByDescending { it.pctChange }
-            WatchSort.LOSERS -> quotes.sortedBy { it.pctChange }
-            WatchSort.ALPHA -> quotes.sortedBy { it.symbol }
-        }.take(6)
+        quotes.sortedByWatchlistMode(selectedSort).take(6)
     }
 
     Column(
@@ -75,16 +63,16 @@ fun WatchlistWidget(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Market Watch",
+                    text = "My Watchlist",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = theme.text,
                 )
                 Text(
                     text = if (quotes.isEmpty()) {
-                        "No live symbols on the board yet."
+                        "Add names from Search or Trade — full NSE catalog."
                     } else {
-                        "${quotes.size} symbols · sorted by ${selectedSort.label.lowercase()}"
+                        "${quotes.size} tracked · ${selectedSort.label.lowercase()}"
                     },
                     fontSize = 12.sp,
                     color = theme.textSecondary,
@@ -106,7 +94,7 @@ fun WatchlistWidget(
                     .padding(horizontal = 12.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(WatchSort.entries, key = { it.name }) { option ->
+                items(WatchlistSortMode.entries, key = { it.name }) { option ->
                     FilterChip(
                         selected = option == selectedSort,
                         onClick = { sort = option.name },
@@ -135,7 +123,7 @@ fun WatchlistWidget(
         ) {
             if (sortedQuotes.isEmpty()) {
                 Text(
-                    text = "Pin symbols or refresh Home to populate a live market watch board.",
+                    text = "Your watchlist is empty. Search any listed NSE stock, tap Watch, then return here.",
                     fontSize = 14.sp,
                     color = theme.textSecondary,
                 )

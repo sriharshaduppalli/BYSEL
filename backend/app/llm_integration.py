@@ -211,3 +211,56 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
     except Exception as exc:
         logger.error("Indian Stock LLM query failed: %s", exc, exc_info=True)
         return None
+
+
+def record_chat_feedback(
+    query: str,
+    answer: str,
+    helpful: bool = True,
+    intent: str | None = None,
+) -> bool:
+    """Persist chat thumbs into the Indian Stock LLM learning loop (TSV + JSONL)."""
+    assistant = _load_assistant()
+    if assistant is None:
+        return False
+    try:
+        from datetime import datetime, timezone
+
+        from indian_stock_llm.learning_loop import FeedbackLearningPipeline
+
+        resolved_intent = (intent or "general_query").strip() or "general_query"
+        lm = getattr(assistant, "learning_manager", None)
+        if lm is None:
+            return False
+
+        # TSV samples drive FeedbackLearningPipeline.promote_from_feedback_log.
+        if hasattr(lm, "record_feedback"):
+            lm.record_feedback(query=query, intent=resolved_intent)
+        if hasattr(lm, "record_anonymized_feedback"):
+            lm.record_anonymized_feedback(query=query, intent=resolved_intent)
+
+        # Explicit thumbs signal (helpful / not helpful) for later analytics.
+        feedback_path = getattr(lm, "feedback_log_path", None)
+        if feedback_path is not None and hasattr(lm, "_write_line"):
+            payload = {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "kind": "thumbs_v1",
+                "intent": resolved_intent,
+                "helpful": bool(helpful),
+                "query_hash": lm.anonymize_query(query) if hasattr(lm, "anonymize_query") else "",
+                "answer_chars": len((answer or "").strip()),
+            }
+            lm._write_line(json.dumps(payload, ensure_ascii=False) + "\n")
+
+        # Best-effort: promote frequent helpful topics into learned_knowledge.json.
+        if helpful:
+            cfg = getattr(assistant, "config", None)
+            FeedbackLearningPipeline.promote_from_feedback_log(
+                getattr(cfg, "feedback_log_path", None),
+                getattr(cfg, "learned_knowledge_path", None),
+                min_count=3,
+            )
+        return True
+    except Exception as exc:
+        logger.debug("record_chat_feedback failed: %s", exc)
+        return False

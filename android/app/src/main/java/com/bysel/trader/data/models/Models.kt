@@ -182,7 +182,15 @@ data class ConversationTurn(
 data class AiQuery(
     val query: String,
     @com.google.gson.annotations.SerializedName("conversation_history")
-    val conversationHistory: List<ConversationTurn>? = null
+    val conversationHistory: List<ConversationTurn>? = null,
+    val tier: String? = "auto",
+)
+
+data class AiFeedbackRequest(
+    val query: String,
+    val answer: String,
+    val helpful: Boolean = true,
+    val intent: String? = null,
 )
 
 data class AiAssistantResponse(
@@ -195,6 +203,10 @@ data class AiAssistantResponse(
     val data: Map<String, Any>? = null,
     val stocks: List<Map<String, Any>>? = null,
     val source: String = "rule-engine",
+    val confidence: Double? = null,
+    @com.google.gson.annotations.SerializedName("tier_requested")
+    val tierRequested: String? = null,
+    val citations: List<String>? = null,
     // Enhanced AI features (Level 2)
     val enhancedFeatures: EnhancedFeatures? = null,
     val apiVersion: String = "v1"
