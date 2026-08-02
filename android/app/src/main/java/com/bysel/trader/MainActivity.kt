@@ -111,6 +111,10 @@ class MainActivity : FragmentActivity() {
         val shortcutAction = intent.getStringExtra("shortcut_action")
 
         setContent {
+            // activity-compose + lifecycle-runtime-compose can leave LocalLifecycleOwner
+            // unset on FragmentActivity; provide it explicitly so collectAsStateWithLifecycle
+            // does not crash at cold start.
+            CompositionLocalProvider(LocalLifecycleOwner provides this@MainActivity) {
             val authRepository = remember { AuthRepository() }
             val scope = rememberCoroutineScope()
             val lifecycleOwner = LocalLifecycleOwner.current
@@ -233,7 +237,8 @@ class MainActivity : FragmentActivity() {
                     CircularProgressIndicator()
                 }
             } else {
-                val currentTradingViewModel = activeTradingViewModel ?: return@setContent
+                val currentTradingViewModel = activeTradingViewModel
+                if (currentTradingViewModel != null) {
                 BYSELApp(
                     viewModel = currentTradingViewModel,
                     biometricAuthManager = biometricAuthManager,
@@ -278,7 +283,9 @@ class MainActivity : FragmentActivity() {
                         }
                     }
                 )
+                }
             }
+            } // CompositionLocalProvider LocalLifecycleOwner
         }
     }
 
