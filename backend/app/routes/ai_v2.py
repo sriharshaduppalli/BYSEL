@@ -391,8 +391,28 @@ async def get_daily_brief():
 
         ist = pytz.timezone("Asia/Kolkata")
         now_ist = datetime.now(ist)
-        hour = now_ist.hour
-        session = "pre-market" if hour < 9 else "post-market" if hour >= 15 else "market"
+        try:
+            from app.market_session import CASH_OPEN, is_within_equity_session, session_close_for_status
+
+            t = now_ist.time()
+            if t < CASH_OPEN:
+                session = "pre-market"
+            elif is_within_equity_session(now_ist):
+                session = "market"
+            else:
+                session = "post-market"
+            _ = session_close_for_status(now_ist.date())
+        except Exception:
+            hour = now_ist.hour
+            minute = now_ist.minute
+            # Fallback: open until 15:40 after CAS go-live approximation.
+            session = (
+                "pre-market"
+                if hour < 9 or (hour == 9 and minute < 15)
+                else "post-market"
+                if hour > 15 or (hour == 15 and minute > 40)
+                else "market"
+            )
 
         headlines_data = get_market_headlines(limit=6)
         headlines = headlines_data.get("headlines", [])

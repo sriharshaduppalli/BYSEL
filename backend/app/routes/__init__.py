@@ -1583,7 +1583,7 @@ async def withdraw_funds_endpoint(txn: WalletTransaction, db: Session = Depends(
 
 @router.get("/market/status", response_model=MarketStatus)
 async def market_status_endpoint():
-    """Check if NSE market is currently open (9:15 AM - 3:30 PM IST, Mon-Fri)."""
+    """Check if NSE/BSE session is open (9:15 IST through latest equity close; CAS/F&O rules from 3 Aug 2026)."""
     return is_market_open()
 
 
@@ -1730,13 +1730,25 @@ async def get_symbols_endpoint():
 
 @router.get("/symbols/count")
 async def get_symbols_count():
-    """Get count of available symbols."""
+    """Get count of available symbols (NSE + BSE current listings)."""
     catalog = get_stock_catalog()
+    coverage = {}
+    try:
+        from ..stock_enricher import get_listing_coverage
+
+        coverage = get_listing_coverage()
+    except Exception:
+        coverage = {}
     return {
         "count": len(catalog),
         "curatedCount": len(INDIAN_STOCKS),
         "exchange": "NSE/BSE",
-        "source": "curated+nse_equity_master",
+        "source": "curated+nse_equity_master+bse_active_scrips",
+        "nseCount": coverage.get("nseCount"),
+        "bseCodeCount": coverage.get("bseCodeCount"),
+        "bseScripIdCount": coverage.get("bseScripIdCount"),
+        "dualListedApprox": coverage.get("dualListedApprox"),
+        "bseOnlyApprox": coverage.get("bseOnlyApprox"),
     }
 
 # ==================== HEALTH ====================
@@ -1780,7 +1792,9 @@ async def warmup_endpoint(db: Session = Depends(get_db)):
 class AiQuery(BaseModel):
     query: str
     conversation_history: Optional[List[Dict]] = None  # last N turns: [{"role":"user"|"assistant","content":str}]
-    tier: Optional[str] = "auto"  # NEW: "auto" (default) | "groq" | "indian-stock-llm" | "rule-engine"
+    # auto/fast: Groq-first (skip heavy Yahoo rule engine when possible)
+    # groq|gemini|indian-stock-llm|rule-engine: explicit tier
+    tier: Optional[str] = "auto"
 
 
 class AiFeedbackBody(BaseModel):
@@ -1898,10 +1912,9 @@ async def ai_ask_endpoint(
 
     # Parse tier preference
     requested_tier = (body.tier or "auto").lower().strip()
-    valid_tiers = {"auto", "groq", "gemini", "indian-stock-llm", "rule-engine"}
+    valid_tiers = {"auto", "fast", "groq", "gemini", "indian-stock-llm", "rule-engine"}
     if requested_tier not in valid_tiers:
         requested_tier = "auto"
-
     from ..groq_llm import (
         classify_intent,
         expand_acronyms_in_query,
@@ -1971,19 +1984,60 @@ async def ai_ask_endpoint(
         return _validated({"answer": clarifier}, "clarifier", requested_tier)
 
     # Instant glossary / equation answers for common market terms (no LLM needed).
+    # Skip only for stock-specific live asks (S/R, sentiment, buy/sell, etc.).
+    # Do not skip on false symbol hits like CAS/TIMINGS from literacy questions.
     from ..market_education import get_education_answer
     education_answer = get_education_answer(normalized_query)
-    if education_answer:
+    stock_live_ask = bool(explicit_symbol) and bool(
+        re.search(
+            r"\b(support|resistance|s/?r|trading levels?|pivots?|sentiment|"
+            r"should i|buy|sell|pe ratio|p/?e\b|pb ratio|p/?b\b|technical|"
+            r"fundamental|target|stop ?loss|macd|rsi of|price of|quote)\b",
+            normalized_query,
+            flags=re.IGNORECASE,
+        )
+    )
+    if education_answer and not stock_live_ask:
         return _validated({"answer": education_answer}, "education", requested_tier)
 
     # For sector/theme screens, run rule engine on the bare user text so selected-quote
     # context cannot hijack the answer toward an unrelated stock.
     rule_query = normalized_query if detected_intent == "SECTOR_SCREEN" else body.query
-    # Offload Yahoo/rule work; do not share the request Session across threads.
-    # Pass user_id so personalised recommendations use the caller's holdings.
-    rule_result = await asyncio.to_thread(ai_assistant, rule_query, None, auth_user_id)
+
+    # Heavy Yahoo rule-engine first ONLY when required. For normal chat (auto/fast/groq),
+    # skip it and let Groq answer from lightweight enrich context — biggest latency win.
+    needs_rule_first = (
+        requested_tier == "rule-engine"
+        or detected_intent in {"SECTOR_SCREEN", "COMPARE", "DERIVATIVES"}
+    )
+    rule_result: dict = {}
+    if needs_rule_first:
+        rule_result = await asyncio.to_thread(ai_assistant, rule_query, None, auth_user_id)
+    else:
+        light_symbol = (
+            explicit_symbol
+            or extract_symbol_from_query(normalized_query)
+            or extract_symbol_from_query(body.query)
+        )
+        rule_result = {"symbol": light_symbol, "answer": "", "data": {}}
+        if light_symbol:
+            try:
+                from ..market_data import fetch_quote
+
+                q = await asyncio.to_thread(fetch_quote, str(light_symbol).upper())
+                if isinstance(q, dict) and q:
+                    rule_result["current_price"] = q.get("last") or q.get("last_price")
+                    rule_result["pct_change"] = q.get("pctChange") or q.get("pct_change") or 0
+            except Exception as exc:
+                logger.debug("ai.ask.light_quote_failed symbol=%s reason=%s", light_symbol, exc)
+
+    enriched_ctx_cache: Optional[dict] = None
 
     async def _build_enriched_context() -> dict:
+        nonlocal enriched_ctx_cache
+        if enriched_ctx_cache is not None:
+            return enriched_ctx_cache
+
         # Resolve symbol — prefer rule-engine detection, fallback to query extraction
         symbol = (rule_result.get("symbol")
                   or (rule_result.get("detected_stock") or {}).get("symbol")
@@ -2031,8 +2085,10 @@ async def ai_ask_endpoint(
             "sentiment": data.get("sentiment", {}),
         }
 
-        # Enrich with live yfinance data when a symbol is known
-        if symbol:
+        # Skip enrich when rule-engine already supplied tech+fund (avoids duplicate Yahoo).
+        # Fast path (no rule data) always enriches once — cached ~3 min.
+        has_rule_depth = bool(ctx["technical"]) and bool(ctx["fundamental"])
+        if symbol and not has_rule_depth:
             try:
                 live = await enrich(symbol)
                 if live:
@@ -2112,13 +2168,14 @@ async def ai_ask_endpoint(
             except Exception as exc:
                 logger.warning("Enrichment failed for %s: %s", symbol, exc)
 
+        enriched_ctx_cache = ctx
         return ctx
 
     logger.info(f"DEBUG: Tier requested = {requested_tier}")
 
     # Sector themes (defence / pharma / …) are more reliable from the curated
     # rule screener than free-form LLM answers that invent unrelated tickers.
-    if detected_intent == "SECTOR_SCREEN" and requested_tier in ("auto", "rule-engine"):
+    if detected_intent == "SECTOR_SCREEN" and requested_tier in ("auto", "fast", "rule-engine"):
         rule_answer = (rule_result.get("answer") or "").strip()
         rule_stocks = rule_result.get("stocks") or []
         answer_l = rule_answer.lower()
@@ -2133,8 +2190,62 @@ async def ai_ask_endpoint(
         if rule_answer and looks_like_sector and "popular stocks" not in answer_l:
             return _validated(rule_result, "rule-engine", requested_tier)
 
-    # Tier 1: Groq — enriched with live price, fundamentals, pre-computed signals, extracted entities, and conversation history
-    if requested_tier in ("auto", "groq"):
+    # Tier 1 (default): Indian Stock LLM — custom grounded model (no paid API).
+    # Groq/Gemini remain optional fallbacks when ISM confidence is too low.
+    if requested_tier in ("auto", "fast", "indian-stock-llm"):
+        try:
+            from ..llm_integration import llm_available, ask_llm
+            if llm_available():
+                llm_context = {}
+                try:
+                    # Same enrich depth Groq gets — required for ISM accuracy on
+                    # buy/sell, valuation, and compare asks.
+                    enriched_ctx = await _build_enriched_context()
+                    for key in (
+                        "symbol",
+                        "current_price",
+                        "technical",
+                        "fundamental",
+                        "trading_levels",
+                        "sentiment",
+                        "company_name",
+                        "sector",
+                        "all_symbols",
+                        "news_summary",
+                        "pre_signals",
+                    ):
+                        if enriched_ctx.get(key) not in (None, {}, [], ""):
+                            llm_context[key] = enriched_ctx.get(key)
+                except Exception:
+                    llm_context = {}
+                llm_result = ask_llm(normalized_query, context=llm_context or None)
+                if llm_result and llm_result.get("answer") and llm_result.get("confidence", 0) >= 0.35:
+                    logger.info("DEBUG: Using Indian Stock LLM (confidence=%.2f)", llm_result.get("confidence", 0))
+                    merged = {
+                        **rule_result,
+                        "answer": llm_result["answer"],
+                    }
+                    if not merged.get("symbol") and llm_context.get("symbol"):
+                        merged["symbol"] = llm_context["symbol"]
+                    if not merged.get("suggestions") and merged.get("symbol"):
+                        try:
+                            from ..ai_engine import _build_stock_suggestions
+                            merged["suggestions"] = _build_stock_suggestions(str(merged["symbol"]).upper())
+                        except Exception:
+                            pass
+                    return _validated(merged, "indian-stock-llm", requested_tier)
+                else:
+                    low_conf = llm_result.get("confidence", 0) if llm_result else 0
+                    logger.info("DEBUG: Indian Stock LLM confidence too low (%.2f), falling back", low_conf)
+                    if requested_tier == "indian-stock-llm":
+                        return _validated(llm_result or {"answer": "Low confidence"}, "indian-stock-llm", requested_tier)
+        except Exception as e:
+            logger.error("Indian Stock LLM error: %s", e)
+            if requested_tier == "indian-stock-llm":
+                return _validated({"answer": f"Indian Stock LLM error: {str(e)}"}, "none", requested_tier)
+
+    # Tier 2: Groq — paid generative fallback
+    if requested_tier in ("auto", "fast", "groq"):
         try:
             from ..groq_llm import groq_available, ask_groq
             logger.info(f"DEBUG: groq_available() = {groq_available()}")
@@ -2154,7 +2265,6 @@ async def ai_ask_endpoint(
                         **rule_result,
                         "answer": groq_result["answer"],
                     }
-                    # Never leak a bogus ticker from greeting/search misfires onto chat UI.
                     try:
                         from ..groq_llm import get_small_talk_response as _gst
                         if _gst(normalized_query) or len(normalized_query.strip()) < 3:
@@ -2162,7 +2272,6 @@ async def ai_ask_endpoint(
                             merged.pop("suggestions", None)
                     except Exception:
                         pass
-                    # Keep follow-ups on the stock that was actually answered.
                     if not merged.get("symbol") and enriched_ctx.get("symbol"):
                         merged["symbol"] = enriched_ctx["symbol"]
                     if not merged.get("suggestions") and merged.get("symbol"):
@@ -2182,20 +2291,18 @@ async def ai_ask_endpoint(
                             pass
                     return _validated(merged, "groq", requested_tier)
                 else:
-                    logger.info("DEBUG: Groq returned empty, falling back to Tier 2")
+                    logger.info("DEBUG: Groq returned empty, falling back")
             else:
                 logger.info("DEBUG: Groq not available")
                 if requested_tier == "groq":
-                    # User explicitly requested Groq but it's not available
                     return _validated({"answer": "Groq LLM not available. Please use tier='auto' for fallback."}, "none", requested_tier)
         except Exception as e:
             logger.error("Groq LLM error: %s", e)
             if requested_tier == "groq":
-                # User explicitly requested Groq but got error
                 return _validated({"answer": f"Groq LLM error: {str(e)}"}, "none", requested_tier)
 
-    # Tier 1.5: Gemini — same as Groq but using Google's Gemini API
-    if requested_tier in ("auto", "gemini"):
+    # Tier 3: Gemini — optional paid fallback
+    if requested_tier in ("auto", "fast", "gemini"):
         try:
             from ..gemini_llm import gemini_available, ask_gemini
             logger.info(f"DEBUG: gemini_available() = {gemini_available()}")
@@ -2210,7 +2317,6 @@ async def ai_ask_endpoint(
                 if intent_result.get("intent") == "CALCULATION":
                     gemini_style_prompt += " If this is a calculation query, show formula and step-by-step math."
 
-                # ask_gemini is synchronous (Gemini API doesn't support async)
                 gemini_result = ask_gemini(
                     normalized_query,
                     context=enriched_ctx,
@@ -2242,59 +2348,23 @@ async def ai_ask_endpoint(
                     return _validated(merged, "gemini", requested_tier)
                 else:
                     error_msg = gemini_result.get("error", "Unknown error")
-                    logger.info(f"DEBUG: Gemini returned error or empty ({error_msg}), falling back to Tier 2")
+                    logger.info(f"DEBUG: Gemini returned error or empty ({error_msg}), falling back")
             else:
                 logger.info("DEBUG: Gemini not available")
                 if requested_tier == "gemini":
-                    # User explicitly requested Gemini but it's not available
                     return _validated({"answer": "Gemini LLM not available. Please use tier='auto' for fallback."}, "none", requested_tier)
         except Exception as e:
             logger.error("Gemini LLM error: %s", e, exc_info=True)
             if requested_tier == "gemini":
-                # User explicitly requested Gemini but got error
                 return _validated({"answer": f"Gemini LLM error: {str(e)}"}, "none", requested_tier)
 
-    # Tier 2: Indian Stock LLM (grounded knowledge pack — equations/terms/sectors/symbols)
-    if requested_tier in ("auto", "indian-stock-llm"):
+    # Tier 3: rule-engine — run now if we skipped it for the fast path
+    if not needs_rule_first or not (rule_result.get("answer") or "").strip():
+        logger.info("DEBUG: Running rule-engine fallback (needs_rule_first=%s)", needs_rule_first)
         try:
-            from ..llm_integration import llm_available, ask_llm
-            if llm_available():
-                llm_context = {}
-                try:
-                    enriched_ctx = await _build_enriched_context()
-                    if enriched_ctx.get("symbol"):
-                        llm_context["symbol"] = enriched_ctx.get("symbol")
-                    if enriched_ctx.get("current_price") is not None:
-                        llm_context["current_price"] = enriched_ctx.get("current_price")
-                except Exception:
-                    llm_context = {}
-                llm_result = ask_llm(normalized_query, context=llm_context or None)
-                # Only use LLM if it has a confident answer (not withheld for safety)
-                if llm_result and llm_result.get("answer") and llm_result.get("confidence", 0) >= 0.35:
-                    logger.info("DEBUG: Using Indian Stock LLM (confidence=%.2f)", llm_result.get("confidence", 0))
-                    merged = {
-                        **rule_result,
-                        "answer": llm_result["answer"],
-                    }
-                    if not merged.get("suggestions") and merged.get("symbol"):
-                        try:
-                            from ..ai_engine import _build_stock_suggestions
-                            merged["suggestions"] = _build_stock_suggestions(str(merged["symbol"]).upper())
-                        except Exception:
-                            pass
-                    return _validated(merged, "indian-stock-llm", requested_tier)
-                else:
-                    low_conf = llm_result.get("confidence", 0) if llm_result else 0
-                    logger.info("DEBUG: Indian Stock LLM confidence too low (%.2f), falling back to Rule Engine", low_conf)
-                    if requested_tier == "indian-stock-llm":
-                        # User explicitly requested Indian Stock LLM but confidence too low
-                        return _validated(llm_result or {"answer": "Low confidence"}, "indian-stock-llm", requested_tier)
+            rule_result = await asyncio.to_thread(ai_assistant, rule_query, None, auth_user_id)
         except Exception as e:
-            logger.error("Indian Stock LLM error: %s", e)
-            if requested_tier == "indian-stock-llm":
-                return _validated({"answer": f"Indian Stock LLM error: {str(e)}"}, "none", requested_tier)
-
-    # Tier 3: rule-engine only
+            logger.error("Rule-engine fallback error: %s", e)
     logger.info("DEBUG: Falling back to rule-engine only")
     return _validated(rule_result, "rule-engine", requested_tier)
 

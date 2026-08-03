@@ -2010,7 +2010,9 @@ class TradingViewModel(
 
             // Prefer the server (better Indian-market routing). On-device Gemma is
             // a fallback when the network path fails — not the first reply.
-            when (val r = repository.aiAsk(prompt, buildConversationHistory(), tier = "auto")) {
+            // "fast" = custom Indian Stock LLM first (with live enrich), paid LLMs only
+            // as fallback; also skips a duplicate Yahoo rule-engine pre-pass.
+            when (val r = repository.aiAsk(prompt, buildConversationHistory(), tier = "fast")) {
                 is Result.Success -> {
                     lastAiSuccessAtMs = System.currentTimeMillis()
                     lastAiWarmAtMs = lastAiSuccessAtMs
@@ -2322,7 +2324,13 @@ class TradingViewModel(
         val dow = ist.get(java.util.Calendar.DAY_OF_WEEK)
         if (dow == java.util.Calendar.SATURDAY || dow == java.util.Calendar.SUNDAY) return false
         val timeInMin = ist.get(java.util.Calendar.HOUR_OF_DAY) * 60 + ist.get(java.util.Calendar.MINUTE)
-        return timeInMin in (9 * 60 + 15)..(15 * 60 + 30)
+        // From 3 Aug 2026: live window through F&O derivatives close 15:40 IST (CAS regime).
+        val casGoLive = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Kolkata")).apply {
+            set(2026, java.util.Calendar.AUGUST, 3, 0, 0, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val closeMin = if (!ist.before(casGoLive)) (15 * 60 + 40) else (15 * 60 + 30)
+        return timeInMin in (9 * 60 + 15)..closeMin
     }
 
     fun loadSignalLabBuckets(force: Boolean = false, limitPerBucket: Int = 8) {

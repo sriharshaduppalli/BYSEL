@@ -2,12 +2,13 @@
 Real-time stock context enricher.
 Sources (all free, no API key):
   1. NSE equity CSV   — company names for ALL 2000+ NSE-listed stocks
-  2. NSE India API    — P/E, sector P/E avg, 52-week range, live price
-  3. Yahoo Finance API— P/E, sector, dividend yield (direct HTTP, not yfinance lib)
-  4. Google News RSS  — headlines from ET, MoneyControl, Business Standard
-  5. yfinance fast_info — market cap, fallback price
-  6. yf.download()    — OHLCV history for RSI, Bollinger, SMAs, S/R levels
-  7. Hardcoded maps   — sector + company name fallback for top 200 stocks
+  2. BSE List of Scrips API — active BSE equities (scrip id + 6-digit code)
+  3. NSE India API    — P/E, sector P/E avg, 52-week range, live price
+  4. Yahoo Finance API— P/E, sector, dividend yield (direct HTTP, not yfinance lib)
+  5. Google News RSS  — headlines from ET, MoneyControl, Business Standard
+  6. yfinance fast_info — market cap, fallback price
+  7. yf.download()    — OHLCV history for RSI, Bollinger, SMAs, S/R levels
+  8. Hardcoded maps   — sector + company name fallback for top 200 stocks
 """
 from __future__ import annotations
 
@@ -18,29 +19,61 @@ import logging
 import re
 import threading
 from time import time
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import quote_plus
 from xml.etree import ElementTree as ET
 
 logger = logging.getLogger(__name__)
 
 _cache: dict[str, tuple[float, dict]] = {}
-_CACHE_TTL = 60  # seconds
+_CACHE_TTL = 180  # seconds — chat reuse within a session; still fresh enough for AI context
+
+# Listing masters refresh periodically so new IPO / listing changes show up.
+_LISTING_TTL_SECONDS = 12 * 3600
 
 # Loaded from NSE archives CSV — covers ALL ~2000+ NSE-listed stocks
 _NSE_EQUITY_MAP: dict[str, str] = {}   # symbol -> full company name
 _NSE_EQUITY_LOADED = False
+_NSE_EQUITY_LOADED_AT = 0.0
 _NSE_EQUITY_LOCK = threading.Lock()
 
+# BSE active equity master (scrip_id / code / ISIN)
+_BSE_BY_ID: dict[str, dict[str, Any]] = {}
+_BSE_BY_CODE: dict[str, dict[str, Any]] = {}
+_BSE_BY_ISIN: dict[str, dict[str, Any]] = {}
+_BSE_EQUITY_LOADED = False
+_BSE_EQUITY_LOADED_AT = 0.0
+_BSE_EQUITY_LOCK = threading.Lock()
 
-def _load_nse_equity_map() -> None:
+
+def _listings_stale(loaded: bool, loaded_at: float) -> bool:
+    if not loaded:
+        return True
+    if loaded_at <= 0:
+        return False  # loaded once with failure / no clock — don't spin
+    return (time() - loaded_at) >= _LISTING_TTL_SECONDS
+
+
+def _invalidate_search_catalog() -> None:
+    """Mark catalog dirty without taking its lock (avoids deadlock during merge)."""
+    try:
+        from .market_data import mark_stock_catalog_dirty
+
+        mark_stock_catalog_dirty()
+    except Exception:
+        pass
+
+
+def _load_nse_equity_map(*, force: bool = False) -> None:
     """
-    Downloads NSE EQUITY_L.csv once and builds symbol→company name map.
-    Called lazily on first enrich() call. Cached for the process lifetime.
+    Downloads NSE EQUITY_L.csv and builds symbol→company name map.
+    Refreshes about every 12 hours so new listings appear without restart.
     """
-    global _NSE_EQUITY_MAP, _NSE_EQUITY_LOADED
+    global _NSE_EQUITY_MAP, _NSE_EQUITY_LOADED, _NSE_EQUITY_LOADED_AT
     with _NSE_EQUITY_LOCK:
-        if _NSE_EQUITY_LOADED:
+        if not force and _NSE_EQUITY_LOADED and not _listings_stale(
+            _NSE_EQUITY_LOADED, _NSE_EQUITY_LOADED_AT
+        ):
             return
         try:
             import requests
@@ -53,25 +86,252 @@ def _load_nse_equity_map() -> None:
                 timeout=15,
             )
             if resp.status_code == 200:
+                fresh: dict[str, str] = {}
                 reader = csv.DictReader(io.StringIO(resp.text))
                 for row in reader:
-                    sym = row.get("SYMBOL", "").strip()
+                    sym = row.get("SYMBOL", "").strip().upper()
                     name = row.get("NAME OF COMPANY", "").strip()
                     if sym and name:
-                        _NSE_EQUITY_MAP[sym] = name
-                logger.info("NSE equity list loaded: %d symbols", len(_NSE_EQUITY_MAP))
+                        fresh[sym] = name
+                if fresh:
+                    _NSE_EQUITY_MAP = fresh
+                    _NSE_EQUITY_LOADED_AT = time()
+                    _invalidate_search_catalog()
+                    logger.info("NSE equity list loaded: %d symbols", len(_NSE_EQUITY_MAP))
+                else:
+                    logger.warning("NSE equity CSV empty — keeping prior map (%d)", len(_NSE_EQUITY_MAP))
             else:
                 logger.warning("NSE equity CSV returned %s", resp.status_code)
         except Exception as e:
             logger.warning("NSE equity list load failed: %s", e)
         finally:
-            _NSE_EQUITY_LOADED = True  # don't retry even on failure
+            _NSE_EQUITY_LOADED = True
 
 
 def get_nse_equity_map() -> dict[str, str]:
     """Public accessor for the NSE EQUITY_L symbol→name map (~2000+ equities)."""
     _load_nse_equity_map()
     return dict(_NSE_EQUITY_MAP)
+
+
+def _load_bse_equity_map(*, force: bool = False) -> None:
+    """
+    Fetch active BSE Equity scrips from BSE ListofScripData API.
+    Indexes by scrip_id (e.g. RELIANCE), 6-digit code (500325), and ISIN.
+    """
+    global _BSE_BY_ID, _BSE_BY_CODE, _BSE_BY_ISIN, _BSE_EQUITY_LOADED, _BSE_EQUITY_LOADED_AT
+    with _BSE_EQUITY_LOCK:
+        if not force and _BSE_EQUITY_LOADED and not _listings_stale(
+            _BSE_EQUITY_LOADED, _BSE_EQUITY_LOADED_AT
+        ):
+            return
+        try:
+            import requests
+
+            url = (
+                "https://api.bseindia.com/BseIndiaAPI/api/ListofScripData/w"
+                "?Group=&Scripcode=&industry=&segment=Equity&status=Active"
+            )
+            resp = requests.get(
+                url,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/120.0.0.0 Safari/537.36"
+                    ),
+                    "Referer": "https://www.bseindia.com/",
+                    "Origin": "https://www.bseindia.com",
+                    "Accept": "application/json, text/plain, */*",
+                },
+                timeout=30,
+            )
+            if resp.status_code != 200:
+                logger.warning("BSE equity API returned %s", resp.status_code)
+                return
+            rows = resp.json()
+            if not isinstance(rows, list) or not rows:
+                logger.warning("BSE equity API empty payload")
+                return
+
+            by_id: dict[str, dict[str, Any]] = {}
+            by_code: dict[str, dict[str, Any]] = {}
+            by_isin: dict[str, dict[str, Any]] = {}
+            nse_syms = set(_NSE_EQUITY_MAP.keys()) if _NSE_EQUITY_MAP else set()
+            if not nse_syms:
+                # Best-effort: may still be empty if NSE load failed.
+                nse_syms = set()
+
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                status = str(row.get("Status") or "").strip().lower()
+                segment = str(row.get("Segment") or "").strip().lower()
+                if status and status != "active":
+                    continue
+                if segment and segment != "equity":
+                    continue
+                code = str(row.get("SCRIP_CD") or "").strip()
+                if not (len(code) == 6 and code.isdigit()):
+                    continue
+                sid = str(row.get("scrip_id") or "").strip().upper()
+                name = (
+                    str(row.get("Issuer_Name") or "").strip()
+                    or str(row.get("Scrip_Name") or "").strip()
+                    or sid
+                    or code
+                )
+                isin = str(row.get("ISIN_NUMBER") or "").strip().upper()
+                group = str(row.get("GROUP") or "").strip().upper()
+                rec = {
+                    "code": code,
+                    "scrip_id": sid,
+                    "name": name,
+                    "isin": isin,
+                    "group": group,
+                    "yahoo": f"{code}.BO",
+                    "dual_listed": bool(sid and sid in nse_syms),
+                }
+                by_code[code] = rec
+                if sid and re.fullmatch(r"[A-Z][A-Z0-9-]{0,14}", sid):
+                    # Prefer first / dual-aware record; keep richer name if empty.
+                    prev = by_id.get(sid)
+                    if prev is None or (not prev.get("name") and name):
+                        by_id[sid] = rec
+                if isin.startswith("IN"):
+                    by_isin[isin] = rec
+
+            if by_code:
+                _BSE_BY_ID = by_id
+                _BSE_BY_CODE = by_code
+                _BSE_BY_ISIN = by_isin
+                _BSE_EQUITY_LOADED_AT = time()
+                _invalidate_search_catalog()
+                logger.info(
+                    "BSE equity list loaded: %d codes, %d scrip_ids (%d dual-ish vs NSE cache)",
+                    len(by_code),
+                    len(by_id),
+                    sum(1 for r in by_id.values() if r.get("dual_listed")),
+                )
+        except Exception as e:
+            logger.warning("BSE equity list load failed: %s", e)
+        finally:
+            _BSE_EQUITY_LOADED = True
+
+
+def get_bse_equity_records() -> list[dict[str, Any]]:
+    """All active BSE equity records (one per scrip code)."""
+    # Prefer NSE names loaded first so dual_listed flags are accurate.
+    _load_nse_equity_map()
+    _load_bse_equity_map()
+    return list(_BSE_BY_CODE.values())
+
+
+def get_bse_equity_map() -> dict[str, str]:
+    """scrip_id and 6-digit code → company name (active BSE equities)."""
+    _load_nse_equity_map()
+    _load_bse_equity_map()
+    out: dict[str, str] = {}
+    for sid, rec in _BSE_BY_ID.items():
+        if sid and rec.get("name"):
+            out[sid] = str(rec["name"])
+    for code, rec in _BSE_BY_CODE.items():
+        if code and rec.get("name"):
+            out[code] = str(rec["name"])
+    return out
+
+
+def lookup_bse_listing(symbol: str) -> Optional[dict[str, Any]]:
+    """Resolve a symbol/code/ISIN to a BSE equity record."""
+    _load_bse_equity_map()
+    raw = (symbol or "").strip().upper()
+    if not raw:
+        return None
+    if raw.endswith(".BO"):
+        raw = raw[:-3]
+    if raw.startswith("BSE:"):
+        raw = raw.split(":", 1)[1].strip()
+    if raw in _BSE_BY_CODE:
+        return dict(_BSE_BY_CODE[raw])
+    if raw in _BSE_BY_ID:
+        return dict(_BSE_BY_ID[raw])
+    if raw in _BSE_BY_ISIN:
+        return dict(_BSE_BY_ISIN[raw])
+    return None
+
+
+def is_bse_only_symbol(symbol: str) -> bool:
+    """True when listed on BSE but not present in the NSE equity master."""
+    _load_nse_equity_map()
+    rec = lookup_bse_listing(symbol)
+    if not rec:
+        return False
+    sid = str(rec.get("scrip_id") or "").upper()
+    if sid and sid in _NSE_EQUITY_MAP:
+        return False
+    return True
+
+
+def resolve_analysis_symbol(symbol: str) -> str:
+    """Prefer NSE scrip_id for dual-listed BSE codes (reliable quotes/OHLCV).
+
+    Example: 500325 / BSE:500325 → RELIANCE. Pure BSE-only names stay unchanged.
+    """
+    raw = (symbol or "").strip().upper()
+    if not raw:
+        return raw
+    if raw.endswith(".BO") or raw.endswith(".NS"):
+        raw = raw.rsplit(".", 1)[0]
+    if raw.startswith("BSE:") or raw.startswith("NSE:"):
+        raw = raw.split(":", 1)[1].strip()
+    _load_nse_equity_map()
+    if raw in _NSE_EQUITY_MAP:
+        return raw
+    rec = lookup_bse_listing(raw)
+    if not rec:
+        return raw
+    sid = str(rec.get("scrip_id") or "").upper()
+    if sid and sid in _NSE_EQUITY_MAP:
+        return sid
+    return raw
+
+
+def format_symbol_display(asked: str, analysis_symbol: str | None = None) -> str:
+    """Human label that keeps BSE code context when remapped to NSE."""
+    asked_u = (asked or "").strip().upper()
+    if asked_u.startswith("BSE:"):
+        asked_u = asked_u.split(":", 1)[1].strip()
+    analysis = (analysis_symbol or resolve_analysis_symbol(asked_u) or asked_u).upper()
+    if asked_u and analysis and asked_u != analysis:
+        if len(asked_u) == 6 and asked_u.isdigit():
+            return f"{analysis} (BSE:{asked_u})"
+        return f"{analysis} (asked {asked_u})"
+    return analysis or asked_u
+
+
+def listings_are_stale() -> bool:
+    """True when NSE or BSE masters should be refreshed (or never loaded)."""
+    nse_stale = _listings_stale(_NSE_EQUITY_LOADED, _NSE_EQUITY_LOADED_AT) or not _NSE_EQUITY_MAP
+    bse_stale = _listings_stale(_BSE_EQUITY_LOADED, _BSE_EQUITY_LOADED_AT) or not _BSE_BY_CODE
+    return nse_stale or bse_stale
+
+
+def get_listing_coverage() -> dict[str, Any]:
+    """Counts for /symbols/count and diagnostics."""
+    nse = get_nse_equity_map()
+    _load_bse_equity_map()
+    dual = sum(1 for r in _BSE_BY_ID.values() if r.get("scrip_id") in nse)
+    bse_only = sum(1 for r in _BSE_BY_ID.values() if r.get("scrip_id") not in nse)
+    return {
+        "nseCount": len(nse),
+        "bseCodeCount": len(_BSE_BY_CODE),
+        "bseScripIdCount": len(_BSE_BY_ID),
+        "dualListedApprox": dual,
+        "bseOnlyApprox": bse_only,
+        "nseLoadedAt": _NSE_EQUITY_LOADED_AT,
+        "bseLoadedAt": _BSE_EQUITY_LOADED_AT,
+        "listingTtlSeconds": _LISTING_TTL_SECONDS,
+    }
 _NAME_TO_SYMBOL: dict[str, str] = {
     "reliance": "RELIANCE", "ril": "RELIANCE",
     "tcs": "TCS", "tata consultancy": "TCS",
@@ -93,14 +353,24 @@ _NAME_TO_SYMBOL: dict[str, str] = {
     "ltimindtree": "LTIM", "lti": "LTIM",
     "tech mahindra": "TECHM",
     "sun pharma": "SUNPHARMA", "sun pharmaceutical": "SUNPHARMA",
-    "asian paints": "ASIANPAINT",
+    "asian paints": "ASIANPAINT", "asianpaint": "ASIANPAINT",
     "bharti airtel": "BHARTIARTL", "airtel": "BHARTIARTL",
     "ongc": "ONGC",
     "power grid": "POWERGRID",
     "ntpc": "NTPC",
     "coal india": "COALINDIA",
     "jio financial": "JIOFIN", "jio fin": "JIOFIN",
-    "tata motors": "TATAMOTORS",
+    # TATAMOTORS is not listed after demerger — map common names to TMPV (PV).
+    "tata motors": "TMPV",
+    "tatamotors": "TMPV",
+    "tmpv": "TMPV",
+    "tata motors passenger": "TMPV",
+    "tata motors pv": "TMPV",
+    "tata motors passenger vehicles": "TMPV",
+    "tmcv": "TMCV",
+    "tata motors cv": "TMCV",
+    "tata motors commercial": "TMCV",
+    "tata motors commercial vehicles": "TMCV",
     "tata steel": "TATASTEEL",
     "hindalco": "HINDALCO",
     "jsw steel": "JSWSTEEL",
@@ -118,7 +388,7 @@ _NAME_TO_SYMBOL: dict[str, str] = {
     "indusind": "INDUSINDBK", "indusind bank": "INDUSINDBK",
     # Extended coverage
     "lupin": "LUPIN",
-    "zomato": "ZOMATO",
+    "zomato": "ETERNAL", "eternal": "ETERNAL",
     "irctc": "IRCTC",
     "havells": "HAVELLS",
     "pidilite": "PIDILITIND",
@@ -154,7 +424,7 @@ _NAME_TO_SYMBOL: dict[str, str] = {
     "abbott": "ABBOTINDIA",
     "zydus": "ZYDUSLIFE",
     "alkem": "ALKEM",
-    "motherson": "MOTHERSUMI",
+    "motherson": "MOTHERSON", "mother sumi": "MOTHERSON", "mothersumi": "MOTHERSON",
     "tata communication": "TATACOMM", "tata comm": "TATACOMM",
     "tata elxsi": "TATAELXSI",
     "tata chemicals": "TATACHEM",
@@ -170,7 +440,18 @@ _NAME_TO_SYMBOL: dict[str, str] = {
     "dabur": "DABUR",
     "hul": "HINDUNILVR", "hindustan unilever": "HINDUNILVR",
     "ioc": "IOC", "indian oil": "IOC",
-    "hpcl": "HPCL", "hindustan petroleum": "HPCL",
+    "hpcl": "HINDPETRO", "hindustan petroleum": "HINDPETRO",
+    "adani transmission": "ADANIENSOL", "adani energy solutions": "ADANIENSOL",
+    "gmr infra": "GMRAIRPORT", "gmr airports": "GMRAIRPORT",
+    "uno minda": "UNOMINDA", "minda": "UNOMINDA",
+    "l&t finance": "LTF", "lt finance": "LTF",
+    "360 one": "360ONE", "iifl wam": "360ONE",
+    "sammaan": "SAMMAANCAP", "indiabulls housing": "SAMMAANCAP",
+    "adani wilmar": "AWL", "awl": "AWL",
+    "canara bank": "CANBK", "canara": "CANBK",
+    "dalmia": "DALBHARAT", "dalmia bharat": "DALBHARAT",
+    "indigo paints": "INDIGOPNTS",
+    "lemon tree": "LEMONTREE",
     "concor": "CONCOR", "container corporation": "CONCOR",
     "bhel": "BHEL",
     "abb": "ABB",
@@ -202,20 +483,26 @@ _NAME_TO_SYMBOL: dict[str, str] = {
     "karnataka bank": "KTKBANK",
     "south indian bank": "SOUTHBANK",
     "city union bank": "CUB",
-    "lakshmi vilas": "LAKSHVILAS",
+    # LAKSHVILAS amalgamated into DBS — do not map as a live equity.
 }
 
 _POS_WORDS = {
     "surge", "rally", "growth", "profit", "strong", "beat", "record",
-    "gain", "rise", "bull", "upgrade", "positive", "high", "wins",
-    "boost", "outperform", "buy", "overweight", "robust", "better",
-    "recovery", "rebound", "momentum", "expansion", "milestone",
+    "gain", "rise", "bull", "upgrade", "positive", "wins", "boost",
+    "outperform", "buy", "overweight", "robust", "better", "recovery",
+    "rebound", "momentum", "expansion", "milestone", "breakout", "bullish",
+    "upbeat", "optimistic", "soar", "jumps", "climbs", "partnership",
+    "deal", "approval", "dividend", "buyback", "bonus", "inflow",
+    "raise", "raised", "exceed", "improves", "highest", "award",
 }
 _NEG_WORDS = {
     "fall", "decline", "loss", "weak", "miss", "cut", "drop", "bear",
-    "downgrade", "risk", "concern", "warning", "down", "low", "crash",
-    "slump", "worry", "underperform", "sell", "underweight", "poor",
-    "disappointing", "slowdown", "contraction", "pressure", "debt",
+    "downgrade", "risk", "concern", "warning", "crash", "slump", "worry",
+    "underperform", "sell", "underweight", "poor", "disappointing",
+    "slowdown", "contraction", "pressure", "debt", "fraud", "probe",
+    "penalty", "default", "pledge", "ban", "suspend", "layoff", "bearish",
+    "selloff", "plunge", "tumbles", "slides", "outflow", "scam", "delay",
+    "rejected", "impairment", "writedown", "litigation",
 }
 
 _NSE_HEADERS = {
@@ -258,7 +545,8 @@ _SYMBOL_SECTOR: dict[str, str] = {
     "NTPC": "Power / Utilities",
     "COALINDIA": "Mining / Energy",
     "JIOFIN": "Financial Services",
-    "TATAMOTORS": "Automobiles",
+    "TMPV": "Automobiles",
+    "TMCV": "Automobiles",
     "TATASTEEL": "Steel / Metals",
     "HINDALCO": "Metals & Mining",
     "JSWSTEEL": "Steel / Metals",
@@ -312,7 +600,19 @@ _SYMBOL_SECTOR: dict[str, str] = {
     "ABBOTINDIA": "Pharmaceuticals",
     "ZYDUSLIFE": "Pharmaceuticals",
     "ALKEM": "Pharmaceuticals",
-    "MOTHERSUMI": "Auto Ancillaries",
+    "MOTHERSON": "Auto Ancillaries",
+    "UNOMINDA": "Auto Ancillaries",
+    "ADANIENSOL": "Power",
+    "GMRAIRPORT": "Infrastructure",
+    "LTF": "Financial Services",
+    "360ONE": "Financial Services",
+    "SAMMAANCAP": "Financial Services",
+    "ETERNAL": "Consumer",
+    "CANBK": "Banking",
+    "DALBHARAT": "Cement",
+    "INDIGOPNTS": "Paints",
+    "EIH": "Hotels",
+    "LEMONTREE": "Hotels",
     "TATACOMM": "Telecom / IT Services",
     "TATAELXSI": "Information Technology",
     "TATACHEM": "Chemicals",
@@ -322,7 +622,7 @@ _SYMBOL_SECTOR: dict[str, str] = {
     "INDIGO": "Aviation",
     "HINDUNILVR": "FMCG",
     "IOC": "Oil & Gas",
-    "HPCL": "Oil & Gas",
+    "HINDPETRO": "Oil & Gas",
     "CONCOR": "Logistics / Railways",
     "BHEL": "Capital Goods / Engineering",
     "ABB": "Capital Goods / Engineering",
@@ -380,7 +680,8 @@ _SYMBOL_COMPANY: dict[str, str] = {
     "NTPC": "NTPC Ltd",
     "COALINDIA": "Coal India Ltd",
     "JIOFIN": "Jio Financial Services Ltd",
-    "TATAMOTORS": "Tata Motors Ltd",
+    "TMPV": "Tata Motors Passenger Vehicles Ltd",
+    "TMCV": "Tata Motors Ltd (Commercial Vehicles)",
     "TATASTEEL": "Tata Steel Ltd",
     "HINDALCO": "Hindalco Industries Ltd",
     "JSWSTEEL": "JSW Steel Ltd",
@@ -434,7 +735,19 @@ _SYMBOL_COMPANY: dict[str, str] = {
     "ABBOTINDIA": "Abbott India Ltd",
     "ZYDUSLIFE": "Zydus Lifesciences Ltd",
     "ALKEM": "Alkem Laboratories Ltd",
-    "MOTHERSUMI": "Samvardhana Motherson International Ltd",
+    "MOTHERSON": "Samvardhana Motherson International Ltd",
+    "UNOMINDA": "UNO Minda Ltd",
+    "ADANIENSOL": "Adani Energy Solutions Ltd",
+    "GMRAIRPORT": "GMR Airports Ltd",
+    "LTF": "L&T Finance Ltd",
+    "360ONE": "360 ONE WAM Ltd",
+    "SAMMAANCAP": "Sammaan Capital Ltd",
+    "ETERNAL": "Eternal Ltd (Zomato)",
+    "CANBK": "Canara Bank",
+    "DALBHARAT": "Dalmia Bharat Ltd",
+    "INDIGOPNTS": "Indigo Paints Ltd",
+    "EIH": "EIH Ltd",
+    "LEMONTREE": "Lemon Tree Hotels Ltd",
     "TATACOMM": "Tata Communications Ltd",
     "TATAELXSI": "Tata Elxsi Ltd",
     "TATACHEM": "Tata Chemicals Ltd",
@@ -444,7 +757,7 @@ _SYMBOL_COMPANY: dict[str, str] = {
     "INDIGO": "InterGlobe Aviation Ltd",
     "HINDUNILVR": "Hindustan Unilever Ltd",
     "IOC": "Indian Oil Corporation Ltd",
-    "HPCL": "Hindustan Petroleum Corporation Ltd",
+    "HINDPETRO": "Hindustan Petroleum Corporation Ltd",
     "CONCOR": "Container Corporation of India Ltd",
     "BHEL": "Bharat Heavy Electricals Ltd",
     "ABB": "ABB India Ltd",
@@ -548,8 +861,9 @@ def extract_all_symbols_from_query(query: str) -> list[str]:
 
     # Step 1: Extract via name lookups (most reliable — runs on longest matches first)
     for name, sym in sorted(_NAME_TO_SYMBOL.items(), key=lambda x: -len(x[0])):
-        if name in q_lower and sym not in symbols:
-            symbols.append(sym)
+        resolved = _resolve_listed_symbol(sym)
+        if name in q_lower and resolved not in symbols:
+            symbols.append(resolved)
 
     # Step 2: Extract via regex (uppercase tokens not in skip list)
     _SKIP = {
@@ -564,6 +878,13 @@ def extract_all_symbols_from_query(query: str) -> list[str]:
         "RALLY", "TREND", "TRENDING", "BULLISH", "BEARISH", "NEUTRAL", "TECHNICAL", "ANALYSIS", "SCREENER",
         "GROWTH", "INCOME", "DIVIDEND", "DIVIDENDS", "YIELD", "VALUE", "QUALITY", "RETURNS", "PROFIT", "LOSS",
         "SUPPORT", "RESIST", "VOLATILE", "VOLATILITY", "OVERVALUE", "UNDERVALUE",
+        "RSI", "MACD", "SMA", "EMA", "ATR", "ADX", "VWAP", "OBV",
+        "PE", "PB", "PEG", "EPS", "ROE", "ROCE", "CAGR", "BETA",
+        "STOCH", "BBANDS", "BOLLINGER", "BANDS", "BAND", "BANDWIDTH",
+        "UPPER", "LOWER", "MIDDLE", "INDICATOR", "INDICATORS",
+        "OVERBOUGHT", "OVERSOLD", "STOP", "STOPS", "LEVEL", "LEVELS",
+        "SENTIMENT", "NEWS", "MOOD", "INVESTOR", "HEADLINE", "HEADLINES", "FACTOR",
+        "CAS", "TIMINGS", "HOURS", "SESSION", "AUCTION", "CLOSING", "PREOPEN",
         "SMALL", "LARGE", "MIDCAP", "LARGECAP", "SMALLCAP", "CAP", "MICRO", "NANO",
         "GOOD", "SAFE", "RISK", "RISKY", "INDIA", "INDIAN", "OPTION", "OPTIONS", "FUTURE", "FUTURES",
         "PORTFOLIO", "DIVERSIFY", "ANALYZE", "ANALYSE", "COMPARE", "PREDICT", "FORECAST", "ACCUMULATE", "PARK",
@@ -575,8 +896,10 @@ def extract_all_symbols_from_query(query: str) -> list[str]:
     }
     tokens = re.findall(r'\b[A-Z][A-Z0-9\-]{1,9}\b', query.upper())
     for tok in tokens:
-        if tok not in _SKIP and len(tok) >= 3 and tok not in symbols:
-            symbols.append(tok)
+        if tok not in _SKIP and len(tok) >= 3:
+            resolved = _resolve_listed_symbol(tok)
+            if resolved not in symbols:
+                symbols.append(resolved)
 
     return symbols
 
@@ -784,7 +1107,7 @@ def screen_stocks(criteria: Optional[Dict] = None) -> List[Dict]:
         "IT": ["TCS", "INFY", "WIPRO", "HCLTECH", "TECHM", "MPHASIS", "LTTS"],
         "BANKING": ["SBIN", "ICICIBANK", "HDFCBANK", "AXISBANK", "KOTAKBANK", "INDUSINDBK"],
         "PHARMA": ["SUNPHARMA", "CIPLA", "LUPIN", "DIVISLAB", "BIOCON", "DRREDDY"],
-        "AUTO": ["MARUTI", "TATAMOTORS", "M&M", "BAJAJ-AUTO", "HEROMOTOCO", "EICHERMOT"],
+        "AUTO": ["MARUTI", "TMPV", "TMCV", "M&M", "BAJAJ-AUTO", "HEROMOTOCO", "EICHERMOT"],
         "ENERGY": ["RELIANCE", "NTPC", "POWERGRID", "ONGC", "IOC", "BPCL"],
         "INFRA": ["LT", "ADANIPORTS", "ADANIENT", "IRCON", "RVNL"],
         "FMCG": ["ITC", "HINDUNILVR", "NESTLEIND", "BRITANNIA", "DABUR", "MARICO"],
@@ -889,10 +1212,32 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
         if re.search(pattern, q_lower):
             return None
 
+    # Definitional indicator/term asks are not stock lookups ("What is RSI?").
+    if re.search(
+        r"\b(what is|what are|define|definition|meaning of|explain|formula|equation)\b",
+        q_lower,
+    ) and re.search(
+        r"\b(rsi|macd|sma|ema|atr|pe|p/e|pb|peg|eps|roe|vwap|bollinger|stochastic|cagr|beta|"
+        r"cas|closing auction|market timings|market hours|trading hours)\b",
+        q_lower,
+    ) and not re.search(r"\b(of|for|on)\s+[a-z]{2,15}\b", q_lower):
+        return None
+
     # Step 2: name-based lookup — most reliable for natural language
     for name, sym in sorted(_NAME_TO_SYMBOL.items(), key=lambda x: -len(x[0])):
         if name in q_lower:
-            return sym
+            return _resolve_listed_symbol(sym)
+
+    # Step 2b: BSE scrip codes / explicit exchange prefixes
+    bse_pref = re.search(r"\bBSE:([A-Za-z0-9]{2,15})\b", query, flags=re.IGNORECASE)
+    if bse_pref:
+        return bse_pref.group(1).upper()
+    nse_pref = re.search(r"\bNSE:([A-Za-z0-9]{2,15})\b", query, flags=re.IGNORECASE)
+    if nse_pref:
+        return _resolve_listed_symbol(nse_pref.group(1).upper())
+    code_match = re.search(r"\b(\d{6})\b", query)
+    if code_match:
+        return code_match.group(1)
 
     # Step 3: regex for explicit uppercase tickers (e.g. "Is LUPIN a buy?")
     _SKIP = {
@@ -919,11 +1264,21 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
         "RALLY", "RALLY", "TREND", "TRENDING",
         "BULLISH", "BEARISH", "NEUTRAL",
         "TECHNICAL", "ANALYSIS", "SCREENER",
-        # financial metrics / concepts
+        # financial metrics / concepts / indicators (never tickers)
         "GROWTH", "INCOME", "DIVIDEND", "DIVIDENDS", "YIELD",
         "VALUE", "QUALITY", "RETURNS", "PROFIT", "LOSS",
         "SUPPORT", "RESIST", "VOLATILE", "VOLATILITY",
         "OVERVALUE", "UNDERVALUE",
+        "RSI", "MACD", "SMA", "EMA", "ATR", "ADX", "VWAP", "OBV",
+        "PE", "PB", "PEG", "EPS", "ROE", "ROCE", "CAGR", "BETA",
+        "STOCH", "BBANDS", "BOLLINGER", "BANDS", "BAND", "BANDWIDTH",
+        "UPPER", "LOWER", "MIDDLE", "INDICATOR", "INDICATORS",
+        "OVERBOUGHT", "OVERSOLD", "FORMULA", "EQUATION", "MEANING",
+        "EXPLAIN", "DEFINE", "DEFINITION",
+        "STOP", "STOPS", "LEVEL", "LEVELS", "PIVOT", "PIVOTS",
+        "SENTIMENT", "NEWS", "MOOD", "INVESTOR", "HEADLINE", "HEADLINES", "FACTOR",
+        # session / literacy tokens mistaken for tickers
+        "CAS", "TIMINGS", "HOURS", "SESSION", "AUCTION", "CLOSING", "PREOPEN",
         # size / category
         "SMALL", "LARGE", "MIDCAP", "LARGECAP", "SMALLCAP", "CAP",
         "MICRO", "NANO",
@@ -949,14 +1304,16 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
         # time
         "YEAR", "MONTH", "WEEK", "TERM", "LONG", "SHORT",
         "NEXT", "LAST", "TODAY", "DAILY", "WEEKLY", "MONTHLY",
-        # sector themes that look like tickers
+        # sector themes / common nouns that look like tickers
         "DEFENCE", "DEFENSE", "PHARMA", "FMCG", "INFRA", "REALTY",
+        "SETTLEMENT", "CIRCUIT", "LIMIT", "LIMITS", "RATIO", "RATIOS",
+        "UNDER", "NIFTY", "INDEX",
     }
     q_upper = query.upper().strip()
     tokens = re.findall(r'\b[A-Z][A-Z0-9\-]{1,9}\b', q_upper)
     for tok in tokens:
         if tok not in _SKIP and len(tok) >= 3:
-            return tok
+            return _resolve_listed_symbol(tok)
 
     # Step 4: fuzzy matching fallback for typos (e.g., "RELIANGE" → "RELIANCE")
     from difflib import get_close_matches
@@ -966,7 +1323,7 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
             if token not in _SKIP:
                 candidates = get_close_matches(token, list(_NAME_TO_SYMBOL.values()), n=1, cutoff=0.75)
                 if candidates:
-                    return candidates[0]
+                    return _resolve_listed_symbol(candidates[0])
 
     return None
 
@@ -1016,9 +1373,23 @@ def _calc_rsi(closes, period=14):
 
 
 def _news_sentiment(headlines: list[str]) -> dict:
+    """Keyword sentiment over headlines (shared lexicon with ISM sentiment pack)."""
+    try:
+        from indian_stock_llm.analysis_math import score_news_headlines
+
+        scored = score_news_headlines(list(headlines or []))
+        if scored.get("ok"):
+            return {
+                "overall": scored.get("overall"),
+                "breakdown": scored.get("breakdown"),
+                "score": scored.get("score"),
+                "tagged": scored.get("tagged"),
+            }
+    except Exception:
+        pass
     pos, neg, neu = 0, 0, 0
     for h in headlines:
-        words = set(h.lower().split())
+        words = set(re.findall(r"[a-z0-9]+", (h or "").lower()))
         p = len(words & _POS_WORDS)
         n = len(words & _NEG_WORDS)
         if p > n:
@@ -1037,6 +1408,7 @@ def _news_sentiment(headlines: list[str]) -> dict:
     return {
         "overall": overall,
         "breakdown": f"Positive {pos*100//total}% / Neutral {neu*100//total}% / Negative {neg*100//total}%",
+        "score": round((pos - neg) / total, 3),
     }
 
 
@@ -1068,6 +1440,24 @@ def _fetch_nse_fundamentals(symbol: str) -> dict:
         whl = price_info.get("weekHighLow", {})
         pe_val = meta.get("pdSymbolPe")
         pe_sector_val = meta.get("pdSectorPe")
+        # Delivery % lives under trade_info (separate call; best-effort).
+        delivery_pct = None
+        try:
+            trade_resp = session.get(
+                f"https://www.nseindia.com/api/quote-equity?symbol={symbol}&section=trade_info",
+                timeout=8,
+            )
+            if trade_resp.status_code == 200:
+                td = trade_resp.json() or {}
+                sw = td.get("securityWiseDP") or {}
+                raw_del = sw.get("deliveryToTradedQuantity")
+                if raw_del is not None:
+                    delivery_pct = float(raw_del)
+                    if 0 < delivery_pct <= 1.5:
+                        delivery_pct *= 100.0
+        except Exception:
+            delivery_pct = None
+
         return {
             "company_name": info.get("companyName"),
             "sector": info.get("industry") or meta.get("industry"),
@@ -1076,6 +1466,7 @@ def _fetch_nse_fundamentals(symbol: str) -> dict:
             "pe_sector": float(pe_sector_val) if pe_sector_val else None,
             "week52_high": float(whl["max"]) if whl.get("max") else None,
             "week52_low": float(whl["min"]) if whl.get("min") else None,
+            "delivery_pct": delivery_pct,
         }
     except Exception as e:
         logger.warning("NSE fetch failed for %s: %s", symbol, e)
@@ -1096,6 +1487,18 @@ _YF_HEADERS = {
 }
 
 
+def _resolve_listed_symbol(symbol: str) -> str:
+    """Map retired/renamed NSE tickers to the current listed symbol."""
+    try:
+        from app.market_data import normalize_listed_symbol
+
+        return normalize_listed_symbol(symbol)
+    except Exception:
+        aliases = {"TATAMOTORS": "TMPV"}
+        sym = (symbol or "").strip().upper()
+        return aliases.get(sym, sym)
+
+
 def _fetch_yahoo_fundamentals(symbol: str) -> dict:
     """
     Direct Yahoo Finance quoteSummary API call using requests (not yfinance lib).
@@ -1104,7 +1507,10 @@ def _fetch_yahoo_fundamentals(symbol: str) -> dict:
     """
     try:
         import requests
-        yf_sym = f"{symbol}.NS"
+        from app.market_data import _yf_ticker
+
+        symbol = _resolve_listed_symbol(symbol)
+        yf_sym = _yf_ticker(symbol)
         url = (
             "https://query1.finance.yahoo.com/v10/finance/quoteSummary/"
             f"{yf_sym}?modules=summaryDetail,summaryProfile,defaultKeyStatistics"
@@ -1155,7 +1561,7 @@ def _fetch_google_news_headlines(symbol: str, company_name: str = "") -> list[st
     """
     try:
         import requests
-        query = quote_plus(f"{company_name or symbol} NSE stock India")
+        query = quote_plus(f"{company_name or symbol} (NSE OR BSE) stock India")
         url = (
             f"https://news.google.com/rss/search"
             f"?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
@@ -1183,16 +1589,40 @@ def _fetch_google_news_headlines(symbol: str, company_name: str = "") -> list[st
 def _fetch_yfinance(symbol: str) -> dict:
     try:
         import yfinance as yf
+        from app.market_data import _yf_ticker
 
-        # Ensure NSE equity list is loaded (covers all 2000+ NSE stocks)
-        if not _NSE_EQUITY_LOADED:
-            _load_nse_equity_map()
+        symbol = _resolve_listed_symbol(symbol)
 
-        nse_sym = symbol if symbol.endswith(".NS") else f"{symbol}.NS"
-        ticker = yf.Ticker(nse_sym)
+        # Ensure NSE + BSE equity lists are loaded (current listings).
+        _load_nse_equity_map()
+        _load_bse_equity_map()
 
-        # --- Source 1: NSE India API (primary for fundamentals) ---
-        nse = _fetch_nse_fundamentals(symbol)
+        bse_rec = lookup_bse_listing(symbol)
+        # Dual-listed BSE codes → NSE twin for Yahoo OHLCV ( .BO history is flaky ).
+        analysis_symbol = resolve_analysis_symbol(symbol)
+        yf_sym = _yf_ticker(analysis_symbol)
+        nse_api_symbol = analysis_symbol if analysis_symbol in _NSE_EQUITY_MAP else symbol
+        if nse_api_symbol not in _NSE_EQUITY_MAP and bse_rec:
+            sid = str(bse_rec.get("scrip_id") or "").upper()
+            if sid in _NSE_EQUITY_MAP:
+                nse_api_symbol = sid
+                yf_sym = _yf_ticker(sid)
+                analysis_symbol = sid
+        use_nse_api = nse_api_symbol in _NSE_EQUITY_MAP
+        ticker = yf.Ticker(yf_sym)
+        # Keep BSE label when user asked a BSE code; data may still come from NSE twin.
+        asked_bse = bool(
+            (len(symbol) == 6 and symbol.isdigit())
+            or str(_yf_ticker(symbol)).endswith(".BO")
+        )
+        exchange_label = "BSE" if asked_bse and not use_nse_api else (
+            "BSE→NSE" if asked_bse and use_nse_api else ("BSE" if str(yf_sym).endswith(".BO") else "NSE")
+        )
+
+        # --- Source 1: NSE India API (when an NSE listing exists) ---
+        nse: dict = {}
+        if use_nse_api:
+            nse = _fetch_nse_fundamentals(nse_api_symbol)
         company_name: str = nse.get("company_name") or ""
         sector: str = nse.get("sector") or ""
         price = nse.get("price")
@@ -1202,7 +1632,7 @@ def _fetch_yfinance(symbol: str) -> dict:
         week52_low = nse.get("week52_low")
 
         # --- Source 1b: Yahoo Finance direct API (fills gaps when NSE is blocked) ---
-        yf_fund = _fetch_yahoo_fundamentals(symbol)
+        yf_fund = _fetch_yahoo_fundamentals(analysis_symbol or symbol)
         if not pe:
             pe = yf_fund.get("pe")
         div_yield = yf_fund.get("div_yield")
@@ -1211,13 +1641,21 @@ def _fetch_yfinance(symbol: str) -> dict:
         if not company_name:
             company_name = yf_fund.get("company_name") or ""
 
-        # --- NSE equity list (covers ALL NSE-listed stocks) ---
+        # --- NSE / BSE equity masters ---
         if not company_name:
             company_name = _NSE_EQUITY_MAP.get(symbol, "")
+        if not company_name and bse_rec:
+            company_name = str(bse_rec.get("name") or "")
+        if not company_name:
+            company_name = (_BSE_BY_ID.get(symbol) or {}).get("name") or (
+                (_BSE_BY_CODE.get(symbol) or {}).get("name") or ""
+            )
 
         # --- Hardcoded maps (top 200 stocks, 100% reliable) ---
         if not sector:
             sector = _SYMBOL_SECTOR.get(symbol, "N/A")
+            if sector == "N/A" and bse_rec and bse_rec.get("scrip_id"):
+                sector = _SYMBOL_SECTOR.get(str(bse_rec["scrip_id"]), "N/A")
         if not company_name:
             company_name = _SYMBOL_COMPANY.get(symbol, symbol)
 
@@ -1236,12 +1674,25 @@ def _fetch_yfinance(symbol: str) -> dict:
             logger.warning("fast_info failed for %s: %s", symbol, e)
 
         # yfinance ticker.info: last-resort fill for anything still missing
+        pb = None
+        roe = None
+        eps = None
         try:
             info = ticker.info or {}
             if not div_yield:
                 div_yield = info.get("dividendYield")
             if not pe:
                 pe = info.get("trailingPE") or info.get("forwardPE")
+            pb = info.get("priceToBook")
+            roe = info.get("returnOnEquity")
+            if roe is not None:
+                try:
+                    roe_f = float(roe)
+                    # yfinance often returns ROE as fraction (0.18 → 18%)
+                    roe = roe_f * 100.0 if abs(roe_f) <= 1.5 else roe_f
+                except (TypeError, ValueError):
+                    roe = None
+            eps = info.get("trailingEps") or info.get("epsTrailingTwelveMonths")
             if not sector or sector == "N/A":
                 sector = info.get("sector") or info.get("industry") or _SYMBOL_SECTOR.get(symbol, "N/A")
             if not company_name or company_name == symbol:
@@ -1276,7 +1727,7 @@ def _fetch_yfinance(symbol: str) -> dict:
         # --- Source 4: yf.download() for OHLCV (technicals) ---
         closes, highs, lows = [], [], []
         try:
-            hist = yf.download(nse_sym, period="1y", progress=False, auto_adjust=True)
+            hist = yf.download(yf_sym, period="1y", progress=False, auto_adjust=True)
             if not hist.empty:
                 # Newer yfinance returns MultiIndex columns (field, ticker) — flatten
                 if hasattr(hist.columns, "levels"):
@@ -1394,10 +1845,21 @@ def _fetch_yfinance(symbol: str) -> dict:
 
         fundamental_data = {
             "pe_ratio": f"{pe:.1f}" if pe else None,
-            "pe_sector_avg": f"{pe_sector_avg:.1f}" if pe_sector_avg else "~25 (market avg)",
+            "pe": pe,
+            "pb": pb,
+            "p/b": pb,
+            "roe": roe,
+            "eps": eps,
+            "pe_sector_avg": f"{pe_sector_avg:.1f}" if pe_sector_avg else None,
+            "pe_sector": pe_sector_avg,
             "market_cap": _fmt_inr_cr(market_cap),
-            "dividend_yield": f"{div_yield*100:.2f}%" if div_yield else "Not declared",
+            "dividend_yield": (
+                f"{(div_yield * 100.0 if isinstance(div_yield, (int, float)) and div_yield < 1 else div_yield):.2f}%"
+                if isinstance(div_yield, (int, float))
+                else ("Not declared" if not div_yield else str(div_yield))
+            ),
             "week_52": pos_52w,
+            "delivery_pct": nse.get("delivery_pct") if isinstance(nse, dict) else None,
         }
         trading_levels_data = {
             "support_1": f"{support1:,.2f}" if support1 else None,
@@ -1425,6 +1887,13 @@ def _fetch_yfinance(symbol: str) -> dict:
             "symbol": symbol,
             "company_name": company_name,
             "sector": sector,
+            "exchange": exchange_label,
+            "yahoo_ticker": yf_sym,
+            "analysis_symbol": analysis_symbol,
+            "bse_code": (bse_rec or {}).get("code") or (
+                symbol if len(symbol) == 6 and symbol.isdigit() else None
+            ),
+            "isin": (bse_rec or {}).get("isin") or "",
             "current_price": f"{current:,.2f}" if current else None,
             "fundamental": fundamental_data,
             "technical": technical_data,
@@ -1432,6 +1901,8 @@ def _fetch_yfinance(symbol: str) -> dict:
             "sentiment": {
                 "overall": sentiment.get("overall"),
                 "breakdown": sentiment.get("breakdown"),
+                "score": sentiment.get("score"),
+                "tagged": sentiment.get("tagged"),
                 "recent_events": headlines[:5],
                 "sector_trend": sector_trend,
             },
@@ -1589,5 +2060,13 @@ def compute_pre_signals(
             signals["pe_signal"] = f"P/E {pe:.1f} — Expensive, high risk if earnings disappoint"
     except (ValueError, TypeError, IndexError):
         pass
+
+    # Aliases so answer_composer / older prompts find the same cues.
+    if signals.get("ma_signal") and not signals.get("trend_signal"):
+        signals["trend_signal"] = signals["ma_signal"]
+    if signals.get("pe_signal") and not signals.get("valuation_signal"):
+        signals["valuation_signal"] = signals["pe_signal"]
+    if signals.get("level_signal") and not signals.get("levels_signal"):
+        signals["levels_signal"] = signals["level_signal"]
 
     return signals

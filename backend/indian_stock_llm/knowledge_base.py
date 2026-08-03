@@ -48,6 +48,11 @@ INTENT_TAG_PRIORS = {
     "prediction": {"prediction", "forecast", "uncertainty", "risk"},
     "stock_analysis": {"analysis", "technical", "fundamental", "earnings", "checklist"},
     "portfolio": {"portfolio", "risk", "diversification", "sip"},
+    "market_literacy": {
+        "beginner", "education", "nse", "bse", "sebi", "demat", "ipo", "settlement",
+        "depository", "nsdl", "cdsl", "participants", "mistakes", "kyc",
+        "technical", "candlestick", "fibonacci", "volume", "pivot",
+    },
     "general_query": {"stocks", "symbols", "nse", "bse", "terms"},
 }
 

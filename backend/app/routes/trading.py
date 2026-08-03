@@ -205,51 +205,56 @@ def _transition_trigger_status(trigger_db: TriggerOrderModel, next_status: str) 
 
 
 def is_market_open() -> MarketStatus:
-    """Check if NSE is currently open. Market hours: 9:15 AM - 3:30 PM IST, Mon-Fri."""
+    """NSE/BSE open flag for UI — 9:15 IST through latest equity close (15:40 from 3 Aug 2026)."""
+    from ..market_session import (
+        CASH_OPEN,
+        closed_after_hours_message,
+        next_close_label,
+        open_message,
+        session_close_for_status,
+    )
+
     now_ist = datetime.now(IST)
     today_str = now_ist.strftime("%Y-%m-%d")
     weekday = now_ist.weekday()  # 0=Monday, 6=Sunday
-
-    market_open = time(9, 15)
-    market_close = time(15, 30)
+    market_close = session_close_for_status(now_ist.date())
 
     if weekday >= 5:  # Saturday or Sunday
-        next_monday = now_ist.date()
         days_until_monday = 7 - weekday
         from datetime import timedelta
         next_open_date = now_ist.date() + timedelta(days=days_until_monday)
         return MarketStatus(
             isOpen=False,
             message="Market closed - Weekend",
-            nextOpen=f"{next_open_date} 09:15 IST"
+            nextOpen=f"{next_open_date} 09:15 IST",
         )
 
     if today_str in NSE_HOLIDAYS_2026:
         return MarketStatus(
             isOpen=False,
             message="Market closed - Holiday",
-            nextOpen="Next trading day 09:15 IST"
+            nextOpen="Next trading day 09:15 IST",
         )
 
     current_time = now_ist.time()
-    if current_time < market_open:
+    if current_time < CASH_OPEN:
         return MarketStatus(
             isOpen=False,
-            message=f"Market opens at 9:15 AM IST",
+            message="Market opens at 9:15 AM IST",
             nextOpen=f"{today_str} 09:15 IST",
-            nextClose=f"{today_str} 15:30 IST"
+            nextClose=next_close_label(today_str, now_ist.date()),
         )
     elif current_time > market_close:
         return MarketStatus(
             isOpen=False,
-            message="Market closed for today (3:30 PM IST)",
-            nextOpen="Next trading day 09:15 IST"
+            message=closed_after_hours_message(now_ist),
+            nextOpen="Next trading day 09:15 IST",
         )
     else:
         return MarketStatus(
             isOpen=True,
-            message="Market is OPEN",
-            nextClose=f"{today_str} 15:30 IST"
+            message=open_message(now_ist),
+            nextClose=next_close_label(today_str, now_ist.date()),
         )
 
 
@@ -932,7 +937,7 @@ def place_order(
             return _duplicate_order_response(normalized_order, duplicate_order, resolved_trace_id)
     # BYSEL is paper/simulation trading: allow practice fills outside NSE hours
     # using the latest available quote (last session). Live NSE gatekeeping is
-    # informational only — do not hard-block paper orders after 3:30 PM IST.
+    # informational only — do not hard-block paper orders after session close.
     market = is_market_open()
     after_hours_paper = not market.isOpen
 

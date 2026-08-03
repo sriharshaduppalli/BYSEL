@@ -42,7 +42,8 @@ def test_extract_symbols_handles_wrapped_prompt_and_lowercase_name():
     symbols = ai_engine._extract_symbols(
         "user_query:should i buy tata motors now? | context:symbol=RELIANCE,wallet=1000"
     )
-    assert "TATAMOTORS" in symbols
+    # Post-demerger: Tata Motors PV lists as TMPV (TATAMOTORS is not listed).
+    assert "TMPV" in symbols
 
 
 def test_extract_symbols_recognizes_common_bank_aliases():

@@ -45,7 +45,13 @@ private fun isNseMarketOpen(): Boolean {
     val dow = ist.get(Calendar.DAY_OF_WEEK)
     if (dow == Calendar.SATURDAY || dow == Calendar.SUNDAY) return false
     val timeInMin = ist.get(Calendar.HOUR_OF_DAY) * 60 + ist.get(Calendar.MINUTE)
-    return timeInMin in (9 * 60 + 15)..(15 * 60 + 30)
+    // From 3 Aug 2026: keep live until latest equity close (F&O derivatives 15:40 IST).
+    val casGoLive = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata")).apply {
+        set(2026, Calendar.AUGUST, 3, 0, 0, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val closeMin = if (!ist.before(casGoLive)) (15 * 60 + 40) else (15 * 60 + 30)
+    return timeInMin in (9 * 60 + 15)..closeMin
 }
 
 /** Snapshot of advance/decline/unchanged share for the live breath graph. */
@@ -275,7 +281,8 @@ private fun MarketStatusBanner(marketOpen: Boolean, staleReason: String? = null)
         else -> Triple(
             Color(0xFF4A1010),
             Icons.Filled.Schedule,
-            staleReason ?: "Market Closed  •  NSE opens Mon–Fri 9:15 AM IST  •  Showing last session data",
+            staleReason
+                ?: "Market Closed  •  NSE/BSE Mon–Fri from 9:15 IST  •  From 3 Aug 2026: CAS/F&O multi-close (to 3:40)  •  Showing last session data",
         )
     }
 

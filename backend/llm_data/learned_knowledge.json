@@ -1,1 +1,391 @@
-[]
+[
+  {
+    "id": "learned_ans_a77c2b14d76f696e",
+    "title": "Grounded answer note: Should I buy RELIANCE for swing trade?\n\nFocus symbol: RELIANCE | Live pr",
+    "content": "Educational retrieved note for «Should I buy RELIANCE for swing trade?\n\nFocus symbol: RELIANCE | Live price context: 2900» (intent=price_action, citations=bysel_builtin_v2, domain_seed_v1, bysel_builtin_v1). **Price-action notes**\n\n• **Corporate actions literacy**: Common actions: dividend (cash credit), bonus (free shares, price adjusts), stock split (more shares, lower price, same value), rights issue (offer to buy more), buyback, merger/demerger. Record date / ex-date decide who gets the benefit. Charts often adjust for splits/bonus — compare adjusted vs unadjusted carefully. Always read exchange/company notices; do not trade only on tip-style rumour of actions.\n• **Valuation interpretation**: P/E should be interpreted with growth durability, return on capital, and sector cycle context instead of in isolation.\n• **Support and resistance**: Support is a price zone where buying historically appears; resistance where selling appears. Use prior swing highs/lows, round numbers, and volume nodes.… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "price_action",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_d7c61775859654da",
+    "title": "Grounded answer note: Compare TCS and INFY\n\nFocus symbol: TCS",
+    "content": "Educational retrieved note for «Compare TCS and INFY\n\nFocus symbol: TCS» (intent=general_query, citations=bysel_builtin_v1, bysel_builtin_v2). **Indian market knowledge**\n\n• **Common liquid large-cap symbols**: Highly traded large caps include RELIANCE, TCS, INFY, HDFCBANK, ICICIBANK, SBIN, ITC, LT, BHARTIARTL, AXISBANK, KOTAKBANK, BAJFINANCE, HINDUNILVR, SUNPHARMA, MARUTI, TITAN, NTPC, POWERGRID, ULTRACEMCO, TATAMOTORS, TATASTEEL, WIPRO, HCLTECH. These dominate Nifty weight and BYSEL default watchlists.\n• **IT sector primer**: IT majors (TCS, INFY, WIPRO, HCLTECH, TECHM) depend on US/EU demand, deal wins, attrition, and currency. A weak rupee can aid reported revenue; discretionary tech spend slowdowns hurt midcaps first. Watch guidance and large-deal pipelines.\n• **Corporate actions literacy**: Common actions: dividend (cash credit), bonus (free shares, price adjusts), stock split (more shares, lower price, same value), rights… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "general_query",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_cf1ae63d5bedda12",
+    "title": "Grounded answer note: Top defence stocks in India",
+    "content": "Educational retrieved note for «Top defence stocks in India» (intent=general_query, citations=bysel_builtin_v1). **Indian market knowledge**\n\n• **F&O basics India**: Futures & Options on NSE cover indices (NIFTY, BANKNIFTY) and many stocks with lot sizes. Weekly/monthly expiries, mark-to-market on futures, and option Greeks (delta, gamma, theta, vega) drive risk. F&O is leveraged — margin calls and expiry decay can wipe capital quickly.\n• **Reading Indian stock symbols**: NSE equity symbols are usually uppercase tickers (RELIANCE, HDFCBANK). Prefer exact symbols in queries for BYSEL. Yahoo mapping appends .NS for NSE and .BO for many BSE codes. Indices use special tickers (NIFTY50, SENSEX, BANKNIFTY). Always verify company name when symbols look similar (e.g. HDFCBANK vs HDFCLIFE).\n• **Common liquid large-cap symbols**: Highly traded large caps include RELIANCE, TCS, INFY, HDFCBANK, ICICIBANK, SBIN,… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "general_query",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_c98f7748f6a2dbd4",
+    "title": "Grounded answer note: How does T+1 settlement work?",
+    "content": "Educational retrieved note for «How does T+1 settlement work?» (intent=events_news, citations=learned_answer_v1, bysel_builtin_v2, bysel_builtin_v1). **Market / regulatory context**\n\n• **Grounded answer note: How does T+1 settlement work?**: Educational retrieved note for «How does T+1 settlement work?» (intent=events_news, citations=bysel_builtin_v1, bysel_builtin_v2). **Market / regulatory context**\n• **Demat account (Hinglish retail jargon)**: Demat = dematerialised account jahan shares electronic form mein rehte hain (NSDL/CDSL). Delivery kharidne ke baad shares demat mein credit hote hain (T+1 settlement). Trading account orders place karta hai; demat holdings store karta hai. BYSEL paper trades simulate karti hain — real demat debit/credit nahi hota.\n• **Comparing TCS vs INFY vs WIPRO**: IT peer compare checklist: (1) revenue growth & large-deal TCV, (2) EBIT margin trend, (3) attrition/utilization, (4) geographic mix (US discreti… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "sebi",
+      "regulation",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_bd0d32f5188de3f5",
+    "title": "Grounded answer note: Should I buy RELIANCE for swing trade?",
+    "content": "Educational retrieved note for «Should I buy RELIANCE for swing trade?» (intent=price_action, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, bysel_builtin_v2). **RELIANCE — paper-practice trade plan**\n\n**Direct answer:** HOLD / wait — no clear edge yet\n**Why:** Wilder RSI 53.31 mid-healthy; MACD hist +0.99; EV/EBITDA 10.66 not stretched\n\n**Action:** HOLD | score=1 | confidence=0.72 | horizon=swing\n• Entry zone: 1279.8 – 1301.5\n• Stop: 1275.5 | Target 1: 1356.3 | Target 2: 1388.7\n• R:R=1.50 | qty for risk budget=154 | kelly_frac(capped)=0.054\n• Invalidation: Close below stop 1275.5\n\n• Price: 1319.0\n• RSI: 53.31 — neutral\n• Supertrend: bearish | MACD hist: 0.99\n• Trend: neutral | MAs: Mixed. 5-SMA ₹1,284.86, 20-SMA ₹1,294.62, 50-SMA ₹1,303.49, 200-SMA ₹1,404.61\n• Support: 1249.8 | Resistance: 1345.9\n• Stop idea: 1275.5 | Target idea: 1356.3\n• Risk/reward cue: 1.5\n• Fundamentals: P/E=23.90, mcap=₹17.8 lakh crore, div=n/a\n\n**Signal stack:**\n• Wilder… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "price_action",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_cf5a5711a3d5129b",
+    "title": "Grounded answer note: Compare TCS and INFY",
+    "content": "Educational retrieved note for «Compare TCS and INFY» (intent=compare, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, bysel_builtin_v1). **Comparison scorecard (educational)**\n\n| Stock | Price | RSI | Trend | P/E | P/B | ROE% | Mcap | Notes |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| INFY | 1130.1 | 57.35 | neutral | 15.22 | 5.20 | 32.00 | ₹4.8 lakh crore | momentum OK |\n| TCS | 2365.6 | 70.40 | neutral | 17.97 | 8.16 | 47.74 | ₹9.0 lakh crore | overbought risk |\n\n**Fundamental detail**\n• **INFY**: P/E=15.22 | P/B=5.20 | ROE=32.00% | EPS=77.52 | Div=4.42% | Mcap=₹4.8 lakh crore\n• **TCS**: P/E=17.97 | P/B=8.16 | ROE=47.74% | EPS=137.7 | Div=2.75% | Mcap=₹9.0 lakh crore\n\n**Bias (paper):** INFY currently screens cleaner on available RSI/trend/P/E/ROE cues — still verify guidance and valuation vs history.\n\nDo not pick solely on lower P/E — prefer growth durability + cleaner technicals for your horizon.\n_Grounded… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "compare",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_300cedb3dffd1aea",
+    "title": "Grounded answer note: Top defence stocks in India",
+    "content": "Educational retrieved note for «Top defence stocks in India» (intent=sector_screen, citations=bysel_enrich_v1). **DEFENCE screen (educational)**\n\nCurated liquid names to research further (not a ranked buy list):\n• HAL, BEL, BDL, MAZDOCK, COCHINSHIP, GRSE, DATAPATTNS\n• Drivers: MoD order-book, indigenisation, export clearances, quarterly execution.\n\nCheck liquidity, valuation vs peers, and news before any paper trade.\n_Grounded by BYSEL Indian Stock LLM — educational only._\n\n⚠️ Disclaimer: Educational / informational only — validate with live NSE/BSE data before decisions. Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "sector_screen",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_d33793d5c5aeefea",
+    "title": "Grounded answer note: What is PE ratio of WIPRO?",
+    "content": "Educational retrieved note for «What is PE ratio of WIPRO?» (intent=fundamentals, citations=live_quote_v1, instrument_master, bysel_enrich_v1, learned_answer_v1, bysel_builtin_v1). **WIPRO fundamental snapshot**\n\n• Last price: 188.7\n• P/E: 22.40\n• P/B: 3.10\n• ROE: 15.20\n• EPS: 8.40\n\nInterpret P/E vs IT/sector peers and growth — a low P/E alone is not 'cheap'.\n_Educational snapshot from live enrich context — not investment advice._\n\n⚠️ Disclaimer: Educational / informational only — validate with live NSE/BSE data before decisions. Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "fundamentals",
+      "valuation",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_99bd0e96af7e3896",
+    "title": "Grounded answer note: Compare TCS and INFY for long term",
+    "content": "Educational retrieved note for «Compare TCS and INFY for long term» (intent=compare, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, bysel_builtin_v13). **Comparison scorecard (educational)**\n\n| Stock | Price | RSI | Trend | P/E | P/B | ROE% | Mcap | Notes |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| INFY | 1130.1 | 57.35 | neutral | 15.22 | 5.20 | 32.00 | ₹4.8 lakh crore | momentum OK |\n| TCS | 2365.6 | 70.40 | neutral | 17.97 | 8.16 | 47.74 | ₹9.0 lakh crore | overbought risk |\n\n**Fundamental detail**\n• **INFY**: P/E=15.22 | P/B=5.20 | ROE=32.00% | EPS=77.52 | Div=4.42% | Mcap=₹4.8 lakh crore\n• **TCS**: P/E=17.97 | P/B=8.16 | ROE=47.74% | EPS=137.7 | Div=2.75% | Mcap=₹9.0 lakh crore\n\n**Bias (paper):** INFY currently screens cleaner on available RSI/trend/P/E/ROE cues — still verify guidance and valuation vs history.\n\nDo not pick solely on lower P/E — prefer growth durability + cleaner technicals for your horizon.\n_Grounded… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "compare",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_bd84b65264070067",
+    "title": "Grounded answer note: What is the PE ratio of WIPRO?",
+    "content": "Educational retrieved note for «What is the PE ratio of WIPRO?» (intent=fundamentals, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, bysel_builtin_v11). **WIPRO fundamental snapshot**\n\n• Last price: 183.7\n• P/E: 14.97\n• P/B: 2.41\n• ROE: 16.13\n• EPS: 12.60\n• Market cap: ₹1.9 lakh crore\n• Dividend yield: 4.36%\n• 52-week context: ₹169.00 – ₹273.10 | Current at 19% (near 52-week low)\n• Earnings yield=6.86% | EV/EBITDA=9.63 | NetDebt/EBITDA=-1.04\n• vs Nifty: RS20=1.038 | β60=0.966\n\nInterpret P/E vs sector peers and growth — a low P/E alone is not 'cheap'.\n_Educational snapshot from live enrich + P0 math — not investment advice._\n\n⚠️ Disclaimer: Educational / informational only — validate with live NSE/BSE data before decisions. Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "fundamentals",
+      "valuation",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_bc8d83525529ef17",
+    "title": "Grounded answer note: Is SBIN overbought now?",
+    "content": "Educational retrieved note for «Is SBIN overbought now?» (intent=general_query, citations=live_quote_v1, instrument_master, bysel_enrich_v1, learned_answer_v1, bysel_builtin_v1). **Indian market knowledge**\n\n• **Live quote SBIN**: Live quote snapshot for SBIN: last=1045.00, pctChange=+1.71%\n• **Instrument SBIN**: Matched instrument: SBIN — State Bank of India (exchange=NSE, ISIN=n/a).\n• **Live enrich SBIN**: price=1,045.00 | technical=rsi:60.6 (neutral),trend:strong_bullish | fundamental= | levels=support_1:1,000.80,resistance_1:1,067.00,stop_loss:980.78\n• **Grounded answer note: Compare TCS and INFY\n• **Grounded answer note: Top defence stocks in India**: Educational retrieved note for «Top defence stocks in India» (intent=general_query, citations=bysel_builtin_v1). **Indian market knowledge**\n• **RSI equation and reading**: RSI (Relative Strength Index): RSI = 100 - (100 / (1 + RS)), where RS = Average Gain / Average Loss over N periods (usually 14). Above 70 oft… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "general_query",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_510225649076df2a",
+    "title": "Grounded answer note: Buy or sell ITC this week?",
+    "content": "Educational retrieved note for «Buy or sell ITC this week?» (intent=price_action, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, bysel_builtin_v2). **ITC — paper-practice trade plan**\n\n**Direct answer:** TRIM / reduce on strength (paper)\n**Why:** Bollinger squeeze — wait for expansion direction; MACD hist +0.63; Earnings yield 5.64% supportive\n\n**Action:** TRIM | score=-2 | confidence=0.72 | horizon=week\n• Entry zone: 281.0 – 290.0\n• Stop: 274.3 | Target 1: 290.4 | Target 2: 292.4\n• R:R=1.40 | qty for risk budget=744 | kelly_frac(capped)=0.010\n• Invalidation: Close above 274.3 invalidates short/trim thesis\n\n• Price: 281.0\n• RSI: 43.26 — neutral\n• Supertrend: bearish | MACD hist: 0.63\n• Trend: bearish | MAs: Bearish — price below 50 & 200 SMA. 5-SMA ₹284.56, 20-SMA ₹282.27, 50-SMA ₹285.41, 200-SMA ₹321.99\n• Support: 275.0 | Resistance: 290.7\n• Stop idea: 274.3 | Target idea: 290.4\n• Risk/reward cue: 1.4\n• Fundamentals: P/E=18.11, mcap=… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "price_action",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_1c66e3bc8cee8e78",
+    "title": "Grounded answer note: Best IT stocks under Nifty",
+    "content": "Educational retrieved note for «Best IT stocks under Nifty» (intent=sector_screen, citations=bysel_enrich_v1, bysel_builtin_v1). **IT screen (educational)**\n\nCurated liquid names to research further (not a ranked buy list):\n• TCS, INFY, WIPRO, HCLTECH, TECHM, LTIM, PERSISTENT\n• Drivers: US/EU deal wins, EBIT margins, attrition, rupee, guidance quality.\n• **P/E valuation equation**: P/E = Price / EPS. Trailing uses last-12-month EPS; forward uses estimates. Compare within sector (TCS vs INFY, HDFCBANK vs ICICIBANK), not across banks vs IT. Low P/E alone is not undervaluation — check growth, debt, and earnings quality.\n\nCheck liquidity, valuation vs peers, and news before any paper trade.\n_Grounded by BYSEL Indian Stock LLM — educational only._\n\n⚠️ Disclaimer: Educational / informational only — validate with live NSE/BSE data before decisions. Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "sector_screen",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_434b49200e16e7cf",
+    "title": "Grounded answer note: Is SBIN overbought now?",
+    "content": "Educational retrieved note for «Is SBIN overbought now?» (intent=overbought_check, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, bysel_builtin_v1). **SBIN — momentum check**\n\n**Direct answer:** No. Wilder RSI is 50.73 (below the classic ≥ 70 overbought threshold).\n• Price: 1027.4 | Trend: strong_bullish\n• Support: 1000.8 | Resistance: 1067.0\n• RSI read: neutral\n• Divergence: no clear divergence\n• %B=0.482 | BW=squeeze | Vol z20=0.32 | RS20 vs Nifty=0.983\n\nRSI alone is not enough — confirm with trend and volume before paper trades.\n_Grounded by BYSEL Indian Stock LLM + P0 math._\n\n⚠️ Disclaimer: Educational / informational only — validate with live NSE/BSE data before decisions. Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "overbought_check",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_1a347d46e3d4d5f4",
+    "title": "Grounded answer note: Should I buy TCS for long term? When to sell?",
+    "content": "Educational retrieved note for «Should I buy TCS for long term? When to sell?» (intent=price_action, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, bysel_builtin_v1). **TCS — paper-practice trade plan**\n\n**Direct answer:** BUY bias (paper) — wait for entry zone\n**Why:** Wilder RSI 68.77 bullish momentum; Bandwidth expansion with upper-half price; Supertrend bullish @ 2261.4\n\n**Action:** BUY | score=8 | confidence=0.92 | horizon=long\n• Entry zone: 2436.6 – 2473.7\n• Stop: 2368.2 | Target 1: 2579.2 | Target 2: 2815.2\n• R:R=1.00 | qty for risk budget=47 | kelly_frac(capped)=0.075\n• Invalidation: Close below stop 2368.2\n\n• Price: 2473.7\n• RSI: 68.77 — overbought\n• Supertrend: bullish | MACD hist: 27.58\n• Trend: neutral | MAs: Mixed. 5-SMA ₹2,423.14, 20-SMA ₹2,241.67, 50-SMA ₹2,189.82, 200-SMA ₹2,621.52\n• Support: 2005.0 | Resistance: 2495.0\n• Stop idea: 2368.2 | Target idea: 2579.2\n• Risk/reward cue: 1.0\n• Fundamentals: P/E=18.00, mcap=₹9.0 lakh crore, div=n… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "price_action",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_36e8db86582daf68",
+    "title": "Grounded answer note: Should I buy TCS this week? When to sell?",
+    "content": "Educational retrieved note for «Should I buy TCS this week? When to sell?» (intent=price_action, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, domain_seed_v1). **TCS — paper-practice trade plan**\n\n**Direct answer:** BUY bias (paper) — wait for entry zone\n**Why:** Wilder RSI 68.77 bullish momentum; Bandwidth expansion with upper-half price; Supertrend bullish @ 2261.4\n\n**Action:** BUY | score=6 | confidence=0.72 | horizon=week\n• Entry zone: 2436.6 – 2473.7\n• Stop: 2368.2 | Target 1: 2632.0 | Target 2: 2737.5\n• R:R=1.50 | qty for risk budget=47 | kelly_frac(capped)=0.104\n• Invalidation: Close below stop 2368.2\n\n• Price: 2473.7\n• RSI: 68.77 — neutral\n• Supertrend: bullish | MACD hist: 27.58\n• Trend: neutral | MAs: Mixed. 5-SMA ₹2,423.14, 20-SMA ₹2,241.67, 50-SMA ₹2,189.82, 200-SMA ₹2,621.52\n• Support: 2005.0 | Resistance: 2495.0\n• Stop idea: 2368.2 | Target idea: 2632.0\n• Risk/reward cue: 1.5\n• Fundamentals: P/E=17.97, mcap=₹9.0 lakh crore, div=n/a… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "price_action",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_08c335cf5d55271a",
+    "title": "Grounded answer note: Should I buy HAL for long term?",
+    "content": "Educational retrieved note for «Should I buy HAL for long term?» (intent=price_action, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, bysel_builtin_v1). **HAL — paper-practice trade plan**\n\n**Direct answer:** ACCUMULATE on dips (paper) — staged entries\n**Why:** Wilder RSI 65.53 bullish momentum; Supertrend bullish @ 4373.6; MACD hist +7.98\n\n**Action:** ACCUMULATE | score=2 | confidence=0.72 | horizon=long\n• Entry zone: 4547.2 – 4646.5\n• Stop: 4515.0 | Target 1: 4843.7 | Target 2: 4975.2\n• R:R=1.50 | qty for risk budget=38 | kelly_frac(capped)=0.067\n• Invalidation: Close below stop 4515.0\n\n• Price: 4646.5\n• RSI: 65.53 — neutral\n• Supertrend: bullish | MACD hist: 7.98\n• Trend: strong_bullish | MAs: Bullish — price above 50 & 200 SMA. 5-SMA ₹4,607.80, 20-SMA ₹4,512.62, 50-SMA ₹4,409.79, 200-SMA ₹4,345.73\n• Support: 4305.8 | Resistance: 4669.0\n• Stop idea: 4515.0 | Target idea: 4843.7\n• Risk/reward cue: 1.5\n• Fundamentals: P/E=34.45, mcap=₹3.1… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "price_action",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_d2de10e2b9726d42",
+    "title": "Grounded answer note: Is MARUTI good for swing trade?",
+    "content": "Educational retrieved note for «Is MARUTI good for swing trade?» (intent=price_action, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, bysel_builtin_v2). **MARUTI — paper-practice trade plan**\n\n**Direct answer:** BUY bias (paper) — wait for entry zone\n**Why:** Wilder RSI 61.71 bullish momentum; Supertrend bullish @ 13378.2; MACD hist +45.24\n\n**Action:** BUY | score=4 | confidence=0.72 | horizon=swing\n• Entry zone: 13873.0 – 14234.0\n• Stop: 13799.2 | Target 1: 14886.2 | Target 2: 15321.0\n• R:R=1.50 | qty for risk budget=11 | kelly_frac(capped)=0.092\n• Invalidation: Close below stop 13799.2\n\n• Price: 14234.0\n• RSI: 61.71 — neutral\n• Supertrend: bullish | MACD hist: 45.24\n• Trend: neutral | MAs: Mixed. 5-SMA ₹13,980.40, 20-SMA ₹13,814.15, 50-SMA ₹13,589.24, 200-SMA ₹14,576.84\n• Support: 13197.0 | Resistance: 14598.0\n• Stop idea: 13799.2 | Target idea: 14886.2\n• Risk/reward cue: 1.5\n• Fundamentals: P/E=31.07, mcap=₹4.4 lakh crore, div=n/a\n\n**Si… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "price_action",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_7610f1047b3837dc",
+    "title": "Grounded answer note: Buy or sell HDFCBANK now?",
+    "content": "Educational retrieved note for «Buy or sell HDFCBANK now?» (intent=price_action, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1). **HDFCBANK — paper-practice trade plan**\n\n**Direct answer:** TRIM / reduce on strength (paper)\n**Why:** Stoch %K 17.61 oversold; Earnings yield 6.12% supportive; PEG 0.91 reasonable vs growth\n\n**Action:** TRIM | score=-3 | confidence=0.72 | horizon=swing\n• Entry zone: 748.1 – 854.7\n• Stop: 726.7 | Target 1: 780.3 | Target 2: 801.8\n• R:R=1.50 | qty for risk budget=232 | kelly_frac(capped)=0.004\n• Invalidation: Close above 726.7 invalidates short/trim thesis\n\n• Price: 748.1\n• RSI: 38.93 — neutral\n• Supertrend: bearish | MACD hist: -5.34\n• Trend: bearish | MAs: Bearish — price below 50 & 200 SMA. 5-SMA ₹745.05, 20-SMA ₹784.51, 50-SMA ₹772.68, 200-SMA ₹860.03\n• Support: 732.0 | Resistance: 843.0\n• Stop idea: 726.7 | Target idea: 780.3\n• Risk/reward cue: 1.5\n• Fundamentals: P/E=16.44, mcap=₹11.… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "price_action",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_855d0f3b30b698e0",
+    "title": "Grounded answer note: Should I sell AXISBANK this week?",
+    "content": "Educational retrieved note for «Should I sell AXISBANK this week?» (intent=price_action, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, bysel_builtin_v2). **AXISBANK — paper-practice trade plan**\n\n**Direct answer:** TRIM / reduce on strength (paper)\n**Why:** Stoch %K 13.76 oversold; Earnings yield 7.23% supportive; PEG 0.66 reasonable vs growth\n\n**Action:** TRIM | score=-3 | confidence=0.72 | horizon=week\n• Entry zone: 1229.5 – 1365.8\n• Stop: 1192.2 | Target 1: 1285.4 | Target 2: 1322.7\n• R:R=1.50 | qty for risk budget=134 | kelly_frac(capped)=0.004\n• Invalidation: Close above 1192.2 invalidates short/trim thesis\n\n• Price: 1229.5\n• RSI: 33.74 — neutral\n• Supertrend: bearish | MACD hist: -5.46\n• Trend: neutral | MAs: Mixed. 5-SMA ₹1,228.96, 20-SMA ₹1,277.02, 50-SMA ₹1,306.23, 200-SMA ₹1,285.68\n• Support: 1210.6 | Resistance: 1369.9\n• Stop idea: 1192.2 | Target idea: 1285.4\n• Risk/reward cue: 1.5\n• Fundamentals: P/E=14.31, mcap=₹4.0 lakh crore… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "price_action",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_d4a6cb0bfeb78438",
+    "title": "Grounded answer note: Analyze TATAMOTORS for swing",
+    "content": "Educational retrieved note for «Analyze TATAMOTORS for swing» (intent=general_query, citations=live_quote_v1, instrument_master, bysel_enrich_v1, bysel_builtin_v1). **Indian market knowledge**\n\n• **Live quote TATAMOTORS**: Live quote snapshot for TATAMOTORS: last=0.00, pctChange=+0.00%\n• **Instrument TATAMOTORS**: Matched instrument: TATAMOTORS — Tata Motors Ltd (exchange=NSE, ISIN=n/a).\n• **Live enrich TATAMOTORS**: technical=trend:neutral | fundamental=dividend_yield:Not declared | levels=\n• **Common liquid large-cap symbols**: Highly traded large caps include RELIANCE, TCS, INFY, HDFCBANK, ICICIBANK, SBIN, ITC, LT, BHARTIARTL, AXISBANK, KOTAKBANK, BAJFINANCE, HINDUNILVR, SUNPHARMA, MARUTI, TITAN, NTPC, POWERGRID, ULTRACEMCO, TATAMOTORS, TATASTEEL, WIPRO, HCLTECH. These dominate Nifty weight and BYSEL default watchlists.\n• **Auto and energy primers**: Auto (TATAMOTORS, MARUTI, M&M) tracks volumes, rural demand, EV transition, and commodity costs. En… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "general_query",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_07053efadf907663",
+    "title": "Grounded answer note: PE and PB of SBIN",
+    "content": "Educational retrieved note for «PE and PB of SBIN» (intent=fundamentals, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, bysel_builtin_v1). **SBIN fundamental snapshot**\n\n• Last price: 1027.4\n• P/E: 11.47\n• P/B: 1.62\n• ROE: 15.48\n• EPS: 91.13\n• Market cap: ₹9.6 lakh crore\n• Dividend yield: 1.69%\n• 52-week context: ₹786.55 – ₹1,234.70 | Current at 58% (middle of range)\n• Earnings yield=8.87% | EV/EBITDA=n/a | NetDebt/EBITDA=n/a\n• vs Nifty: RS20=0.983 | β60=1.074\n\nInterpret P/E vs sector peers and growth — a low P/E alone is not 'cheap'.\n_Educational snapshot from live enrich + P0 math — not investment advice._\n\n⚠️ Disclaimer: Educational / informational only — validate with live NSE/BSE data before decisions. Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "fundamentals",
+      "valuation",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_5d76cbfb1c068d5f",
+    "title": "Grounded answer note: Dividend yield of ITC",
+    "content": "Educational retrieved note for «Dividend yield of ITC» (intent=fundamentals, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1). **ITC fundamental snapshot**\n\n• Last price: 281.0\n• P/E: 18.11\n• P/B: 4.96\n• ROE: n/a\n• EPS: 15.85\n• Market cap: ₹3.6 lakh crore\n• Dividend yield: 5.69%\n• 52-week context: ₹275.00 – ₹427.00 | Current at 8% (near 52-week low)\n• Earnings yield=5.64% | EV/EBITDA=13.25 | NetDebt/EBITDA=-0.87\n• vs Nifty: RS20=0.965 | β60=0.692\n\nInterpret P/E vs sector peers and growth — a low P/E alone is not 'cheap'.\n_Educational snapshot from live enrich + P0 math — not investment advice._\n\n⚠️ Disclaimer: Educational / informational only — validate with live NSE/BSE data before decisions. Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "fundamentals",
+      "valuation",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_cd7f858c3e354c1b",
+    "title": "Grounded answer note: Compare RELIANCE and ONGC",
+    "content": "Educational retrieved note for «Compare RELIANCE and ONGC» (intent=compare, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, bysel_builtin_v1). **Comparison scorecard (educational)**\n\n| Stock | Price | RSI | Trend | P/E | P/B | ROE% | Mcap | Notes |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| RELIANCE | 1307.8 | 53.31 | neutral | 23.90 | 1.97 | n/a | ₹17.8 lakh crore | neutral |\n| ONGC | 242.5 | 39.10 | bearish | 7.35 | 0.82 | 12.70 | ₹3.0 lakh crore | neutral |\n\n**Fundamental detail**\n• **RELIANCE**: P/E=23.90 | P/B=1.97 | ROE=n/a% | EPS=55.19 | Div=n/a | Mcap=₹17.8 lakh crore\n• **ONGC**: P/E=7.35 | P/B=0.82 | ROE=12.70% | EPS=32.94 | Div=7.63% | Mcap=₹3.0 lakh crore\n\n**Bias (paper):** RELIANCE currently screens cleaner on available RSI/trend/P/E/ROE cues — still verify guidance and valuation vs history.\n\nDo not pick solely on lower P/E — prefer growth durability + cleaner technicals for your horizon.\n_Grounded by B… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "compare",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_5de1aaa51c5f1800",
+    "title": "Grounded answer note: Compare WIPRO and HCLTECH",
+    "content": "Educational retrieved note for «Compare WIPRO and HCLTECH» (intent=compare, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, bysel_builtin_v2). **Comparison scorecard (educational)**\n\n| Stock | Price | RSI | Trend | P/E | P/B | ROE% | Mcap | Notes |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| HCLTECH | 1346.9 | 74.27 | neutral | 21.43 | 5.02 | 24.07 | ₹3.7 lakh crore | overbought risk |\n| WIPRO | 183.7 | 63.20 | neutral | 14.97 | 2.41 | 16.13 | ₹1.9 lakh crore | momentum OK |\n\n**Fundamental detail**\n• **HCLTECH**: P/E=21.43 | P/B=5.02 | ROE=24.07% | EPS=64.25 | Div=4.45% | Mcap=₹3.7 lakh crore\n• **WIPRO**: P/E=14.97 | P/B=2.41 | ROE=16.13% | EPS=12.60 | Div=4.36% | Mcap=₹1.9 lakh crore\n\n**Bias (paper):** WIPRO currently screens cleaner on available RSI/trend/P/E/ROE cues — still verify guidance and valuation vs history.\n\nDo not pick solely on lower P/E — prefer growth durability + cleaner technicals for your horizon.… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "compare",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_e7585f5f43b1a650",
+    "title": "Grounded answer note: Analyze INFY",
+    "content": "Educational retrieved note for «Analyze INFY» (intent=stock_analysis, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, bysel_builtin_v1). **INFY — paper-practice trade plan**\n\n**Direct answer:** BUY bias (paper) — wait for entry zone\n**Why:** Wilder RSI 57.35 mid-healthy; Bandwidth expansion with upper-half price; Supertrend bullish @ 1065.1\n\n**Action:** BUY | score=5 | confidence=0.72 | horizon=swing\n• Entry zone: 1095.7 – 1130.1\n• Stop: 1077.5 | Target 1: 1201.1 | Target 2: 1214.5\n• R:R=1.35 | qty for risk budget=95 | kelly_frac(capped)=0.098\n• Invalidation: Close below stop 1077.5\n\n• Price: 1130.1\n• RSI: 57.35 — neutral\n• Supertrend: bullish | MACD hist: 11.40\n• Trend: neutral | MAs: Mixed. 5-SMA ₹1,125.14, 20-SMA ₹1,083.97, 50-SMA ₹1,099.84, 200-SMA ₹1,325.13\n• Support: 1013.9 | Resistance: 1187.7\n• Stop idea: 1077.5 | Target idea: 1201.1\n• Risk/reward cue: 1.35\n• Fundamentals: P/E=15.22, mcap=₹4.8 lakh crore, div=4.42%… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "analysis",
+      "technical",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_c1a0c7b8b1e48496",
+    "title": "Grounded answer note: Analyze TMPV for swing",
+    "content": "Educational retrieved note for «Analyze TMPV for swing» (intent=general_query, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, bysel_builtin_v5). **Indian market knowledge**\n\n• **Live quote TMPV**: Live quote snapshot for TMPV: last=349.30, pctChange=+2.74%\n• **Instrument TMPV**: Matched instrument: TMPV — Tata Motors Passenger Vehicles Limited (exchange=NSE, ISIN=n/a).\n• **Quantitative + trade plan TMPV**: Full math for TMPV: | Wilder RSI(14)=50.62 | divergence=bullish divergence cue (price down, RSI up) | Bollinger %B=0.756 | bandwidth=0.0741 (normal) | ATR(14)=7.58 | stop=328.38 | structT1=356.81 | qty=439 | structural R:R=1.5 | MACD hist=1.81 | Supertrend=bearish @344.68 | ADX≈1.33 | StochK=90.72 | Fib 0.618=373.72 | ext1.618=262.78 | VWAP20=333.88 | Pivots P=332.42 S1=329.83 R1=336.78 | CPR P=332.42 TC=333.31 BC=331.52 (normal) | Vol z20=0.05 | delivery%=None | RS20=0.983 β60=1.23 β120=1.563 | EY%=-1.3 PEG=-0.21 EV/EBITDA=12.48… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "general_query",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_ce0cd69415d968f2",
+    "title": "Grounded answer note: Analyze 500325",
+    "content": "Educational retrieved note for «Analyze 500325» (intent=stock_analysis, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1). **500325 — paper-practice trade plan**\n\n**Direct answer:** HOLD / wait — no clear edge yet\n**Why:** Wilder RSI 53.31 mid-healthy; MACD hist +0.99; Earnings yield 6.68% supportive\n\n**Action:** HOLD | score=1 | confidence=0.72 | horizon=swing\n• Entry zone: 1279.8 – 1301.5\n• Stop: 1275.5 | Target 1: 1356.3 | Target 2: 1388.7\n• R:R=1.50 | qty for risk budget=154 | kelly_frac(capped)=0.054\n• Invalidation: Close below stop 1275.5\n\n• Price: 0.00\n• RSI: 53.31 — neutral\n• Supertrend: bearish | MACD hist: 0.99\n• Trend: neutral | MAs: n/a\n• Support: n/a | Resistance: n/a\n• Stop idea: 1275.5 | Target idea: 1356.3\n• Risk/reward cue: 1.5\n\n**Signal stack:**\n• Wilder RSI 53 — Neutral momentum, no directional RSI signal\n• Mixed MA signals — sideways consolidation, wait for directional breakout\n• Sentiment… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "analysis",
+      "technical",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_beaa638f58778b54",
+    "title": "Grounded answer note: Is TITAN a buy for swing?",
+    "content": "Educational retrieved note for «Is TITAN a buy for swing?» (intent=price_action, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, bysel_builtin_v4). **TITAN — paper-practice trade plan**\n\n**Direct answer:** HOLD / wait — no clear edge yet\n**Why:** Supertrend bullish @ 4637.0; MACD hist +12.84; ADX~65.77 supports trend strength\n\n**Action:** HOLD | score=0 | confidence=0.65 | horizon=swing\n• Entry zone: 4824.0 – 4873.0\n• Stop: 4762.1 | Target 1: 5044.9 | Target 2: 5157.9\n• R:R=1.50 | qty for risk budget=44 | kelly_frac(capped)=0.042\n• Invalidation: Close below stop 4762.1\n\n• Price: 4875.2\n• RSI: 78.15 — overbought\n• Supertrend: bullish | MACD hist: 12.84\n• Trend: strong_bullish | MAs: Bullish — price above 50 & 200 SMA. 5-SMA ₹4,833.04, 20-SMA ₹4,668.61, 50-SMA ₹4,404.38, 200-SMA ₹4,146.14\n• Support: 4435.4 | Resistance: 4886.0\n• Stop idea: 4762.1 | Target idea: 5044.9\n• Risk/reward cue: 1.5\n• Fundamentals: P/E=87.66, mcap=₹4.4 lakh cror… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "price_action",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_38b11fefd84f3606",
+    "title": "Grounded answer note: Should I accumulate SUNPHARMA?",
+    "content": "Educational retrieved note for «Should I accumulate SUNPHARMA?» (intent=price_action, citations=bysel_enrich_v1). **Price-action notes**\n\n• **Live enrich**: symbol=None\n\n_Grounded by BYSEL Indian Stock LLM knowledge pack (equations, terms, sectors, symbols)._\n\n⚠️ Disclaimer: Educational / informational only — validate with live NSE/BSE data before decisions. Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "price_action",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_b92ca4f11a4da8b8",
+    "title": "Grounded answer note: Buy or sell BAJFINANCE now?",
+    "content": "Educational retrieved note for «Buy or sell BAJFINANCE now?» (intent=price_action, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, bysel_builtin_v4). **BAJFINANCE — paper-practice trade plan**\n\n**Direct answer:** HOLD / wait — no clear edge yet\n**Why:** Supertrend bullish @ 1021.7; MACD hist +3.22; ADX~35.65 supports trend strength\n\n**Action:** HOLD | score=1 | confidence=0.72 | horizon=swing\n• Entry zone: 1036.4 – 1069.3\n• Stop: 1096.8 | Target 1: 1207.8 | Target 2: 1252.3\n• R:R=1.50 | qty for risk budget=112 | kelly_frac(capped)=0.054\n• Invalidation: Close below stop 1096.8\n\n• Price: 1141.2\n• RSI: 74.00 — overbought\n• Supertrend: bullish | MACD hist: 3.22\n• Trend: strong_bullish | MAs: Bullish — price above 50 & 200 SMA. 5-SMA ₹1,069.16, 20-SMA ₹1,042.13, 50-SMA ₹977.91, 200-SMA ₹966.38\n• Support: 994.1 | Resistance: 1151.5\n• Stop idea: 1096.8 | Target idea: 1207.8\n• Risk/reward cue: 1.5\n• Fundamentals: P/E=35.46, mcap=₹7.2 lakh crore… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "price_action",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_7e363b330221b225",
+    "title": "Grounded answer note: Analyze BSE:500180",
+    "content": "Educational retrieved note for «Analyze BSE:500180» (intent=stock_analysis, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, bysel_builtin_v3). **500180 — paper-practice trade plan**\n\n**Direct answer:** SELL / avoid fresh buys (paper)\n**Why:** Stoch %K 17.61 oversold\n\n**Action:** SELL | score=-5 | confidence=0.72 | horizon=swing\n• Entry zone: 748.1 – 854.7\n• Stop: 770.6 | Target 1: 780.3 | Target 2: 801.8\n• R:R=1.43 | qty for risk budget=222 | kelly_frac(capped)=0.000\n• Invalidation: Close above 770.6 invalidates short/trim thesis\n\n• Price: 0.00\n• RSI: 38.93 — neutral\n• Supertrend: bearish | MACD hist: -5.34\n• Trend: neutral | MAs: n/a\n• Support: n/a | Resistance: n/a\n• Stop idea: 770.6 | Target idea: 780.3\n• Risk/reward cue: 1.43\n\n**Signal stack:**\n• Wilder RSI 39 — Soft momentum, wait for stabilization\n• Mixed MA signals — sideways consolidation, wait for directional breakout\n• Sentiment Mildly bearish (score -0.28)\n\n**Sentiment… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "analysis",
+      "technical",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_894718ba4a8bfeab",
+    "title": "Grounded answer note: Quote for 532540",
+    "content": "Educational retrieved note for «Quote for 532540» (intent=general_query, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, bysel_builtin_v9). **Indian market knowledge**\n\n• **Live quote 532540**: Live quote snapshot for 532540: last=0.00, pctChange=+0.00%\n• **Instrument 532540**: Matched instrument: 532540 — Tata Consultancy Services Ltd. (exchange=NSE, ISIN=n/a).\n• **Quantitative + trade plan 532540**: Full math for 532540: | Wilder RSI(14)=62.06 | divergence=no clear divergence | Bollinger %B=0.797 | bandwidth=0.2138 (expansion) | ATR(14)=67.43 | stop=2264.45 | structT1=2517.32 | qty=49 | structural R:R=1.5 | MACD hist=26.04 | Supertrend=bullish @2261.36 | ADX≈36.09 | StochK=62.99 | Fib 0.618=2174.75 | ext1.618=2815.25 | VWAP20=2229.25 | Pivots P=2449.93 S1=2404.87 R1=2476.87 | CPR P=2449.93 TC=2440.87 BC=2459.0 (normal) | Vol z20=-0.25 | delivery%=None | RS20=1.125 β60=1.093 β120=0.764 | EY%=None PEG=None EV/EBITDA=None secto… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "general_query",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_c7ddab2812826378",
+    "title": "Grounded answer note: ROE of TCS",
+    "content": "Educational retrieved note for «ROE of TCS» (intent=fundamentals, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1). **TCS fundamental snapshot**\n\n• Last price: 2365.6\n• P/E: 17.97\n• P/B: 8.16\n• ROE: 47.74\n• EPS: 137.7\n• Market cap: ₹9.0 lakh crore\n• Dividend yield: 2.75%\n• 52-week context: ₹1,976.80 – ₹3,350.00 | Current at 36% (middle of range)\n• Earnings yield=5.82% | EV/EBITDA=11.95 | NetDebt/EBITDA=-0.47\n• vs Nifty: RS20=1.125 | β60=1.093\n\nInterpret P/E vs sector peers and growth — a low P/E alone is not 'cheap'.\n_Educational snapshot from live enrich + P0 math — not investment advice._\n\n⚠️ Disclaimer: Educational / informational only — validate with live NSE/BSE data before decisions. Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "fundamentals",
+      "valuation",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_3ef99c3984b45dfe",
+    "title": "Grounded answer note: Supertrend of INFY",
+    "content": "Educational retrieved note for «Supertrend of INFY» (intent=general_query, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1). **Indian market knowledge**\n\n• **Live quote INFY**: Live quote snapshot for INFY: last=1180.00, pctChange=+4.42%\n• **Instrument INFY**: Matched instrument: INFY — Infosys Limited (exchange=NSE, ISIN=n/a).\n• **Quantitative + trade plan INFY**: Full math for INFY: | Wilder RSI(14)=57.35 | divergence=no clear divergence | Bollinger %B=0.854 | bandwidth=0.1203 (expansion) | ATR(14)=35.05 | stop=1077.53 | structT1=1201.1 | qty=95 | structural R:R=1.35 | MACD hist=11.4 | Supertrend=bullish @1065.07 | ADX≈10.83 | StochK=66.86 | Fib 0.618=1165.64 | ext1.618=799.16 | VWAP20=1091.85 | Pivots P=1164.7 S1=1141.7 R1=1178.1 | CPR P=1164.7 TC=1159.9 BC=1169.5 (wide) | Vol z20=-0.08 | delivery%=None | RS20=1.074 β60=0.96 β120=0.649 | EY%=6.86 PEG=2.87 EV/EBITDA=1065.81 sectorPE_prem%=None | Sortino=-0.665… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "general_query",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_e5d0650213d1bdcc",
+    "title": "Grounded answer note: Compare HDFCBANK vs ICICIBANK",
+    "content": "Educational retrieved note for «Compare HDFCBANK vs ICICIBANK» (intent=compare, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, bysel_builtin_v13). **Comparison scorecard (educational)**\n\n| Stock | Price | RSI | Trend | P/E | P/B | ROE% | Mcap | Notes |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| ICICIBANK | 1423.4 | 59.44 | strong_bullish | 18.87 | 2.75 | 16.07 | ₹10.5 lakh crore | momentum OK |\n| HDFCBANK | 748.1 | 25.40 | bearish | 16.44 | 1.91 | 13.84 | ₹11.6 lakh crore | oversold watch |\n\n**Fundamental detail**\n• **ICICIBANK**: P/E=18.87 | P/B=2.75 | ROE=16.07% | EPS=77.37 | Div=n/a | Mcap=₹10.5 lakh crore\n• **HDFCBANK**: P/E=16.44 | P/B=1.91 | ROE=13.84% | EPS=45.79 | Div=1.74% | Mcap=₹11.6 lakh crore\n\n**Bias (paper):** ICICIBANK currently screens cleaner on available RSI/trend/P/E/ROE cues — still verify guidance and valuation vs history.\n\nDo not pick solely on lower P/E — prefer growth durability + cleaner techni… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "compare",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_572ad7b6fcea7add",
+    "title": "Grounded answer note: Best banking stocks in India",
+    "content": "Educational retrieved note for «Best banking stocks in India» (intent=sector_screen, citations=bysel_enrich_v1, bysel_builtin_v2). **BANKING screen (educational)**\n\nCurated liquid names to research further (not a ranked buy list):\n• HDFCBANK, ICICIBANK, SBIN, AXISBANK, KOTAKBANK, INDUSINDBK\n• Drivers: NIM, credit growth, asset quality, RBI policy stance.\n\nCheck liquidity, valuation vs peers, and news before any paper trade.\n_Grounded by BYSEL Indian Stock LLM — educational only._\n\n⚠️ Disclaimer: Educational / informational only — validate with live NSE/BSE data before decisions. Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "sector_screen",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_1725b3d2508736c5",
+    "title": "Grounded answer note: Pharma stocks to research",
+    "content": "Educational retrieved note for «Pharma stocks to research» (intent=sector_screen, citations=bysel_enrich_v1, bysel_builtin_v2, bysel_builtin_v11, bysel_builtin_v15). **PHARMA screen (educational)**\n\nCurated liquid names to research further (not a ranked buy list):\n• SUNPHARMA, CIPLA, DRREDDY, DIVISLAB, LUPIN, BIOCON\n\nCheck liquidity, valuation vs peers, and news before any paper trade.\n_Grounded by BYSEL Indian Stock LLM — educational only._\n\n⚠️ Disclaimer: Educational / informational only — validate with live NSE/BSE data before decisions. Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "sector_screen",
+      "education"
+    ],
+    "source": "learned_answer_v1"
+  }
+]

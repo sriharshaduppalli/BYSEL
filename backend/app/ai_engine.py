@@ -32,7 +32,7 @@ _news_cache_lock = Lock()
 # Broader liquid NSE set so home Market News is not stuck on 5 megacaps.
 _MARKET_NEWS_DEFAULT_SYMBOLS = [
     "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK",
-    "SBIN", "BHARTIARTL", "ITC", "LT", "TATAMOTORS",
+    "SBIN", "BHARTIARTL", "ITC", "LT", "TMPV",
     "AXISBANK", "KOTAKBANK", "SUNPHARMA", "WIPRO", "NTPC",
     "HAL", "BEL", "MARUTI", "ONGC", "POWERGRID",
 ]
@@ -1157,7 +1157,7 @@ def get_best_stocks_to_buy(limit: int = 10) -> Dict:
         "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK",
         "HINDUNILVR", "ITC", "SBIN", "BHARTIARTL", "KOTAKBANK",
         "LT", "AXISBANK", "BAJFINANCE", "ASIANPAINT", "MARUTI",
-        "TITAN", "SUNPHARMA", "TATAMOTORS", "WIPRO", "ULTRACEMCO",
+        "TITAN", "SUNPHARMA", "TMPV", "WIPRO", "ULTRACEMCO",
         "NESTLEIND", "HCLTECH", "TATASTEEL", "NTPC", "POWERGRID",
         "TECHM", "BAJAJFINSV", "ONGC", "JSWSTEEL", "ADANIENT",
         "HDFCLIFE", "DIVISLAB", "DRREDDY", "SBILIFE", "BRITANNIA",
@@ -1570,7 +1570,7 @@ _MANUAL_STOCK_ALIASES = {
     "reliance industries": "RELIANCE",
     "infosys": "INFY",
     "infy": "INFY",
-    "tata motors": "TATAMOTORS",
+    "tata motors": "TMPV",
     "tata steel": "TATASTEEL",
     "tata power": "TATAPOWER",
     "tata chemicals": "TATACHEM",
@@ -2049,8 +2049,8 @@ _SECTOR_PEERS: Dict[str, List[str]] = {
     "AXISBANK":    ["HDFCBANK", "ICICIBANK", "KOTAKBANK"],
     "SBIN":        ["HDFCBANK", "ICICIBANK", "PNB", "BANKBARODA"],
     "INDUSINDBK":  ["HDFCBANK", "ICICIBANK", "AXISBANK"],
-    "PNB":         ["SBIN", "BANKBARODA", "CANARABANK"],
-    "BANKBARODA":  ["SBIN", "PNB", "CANARABANK"],
+    "PNB":         ["SBIN", "BANKBARODA", "CANBK"],
+    "BANKBARODA":  ["SBIN", "PNB", "CANBK"],
     # IT
     "TCS":         ["INFY", "WIPRO", "HCLTECH", "TECHM"],
     "INFY":        ["TCS", "WIPRO", "HCLTECH", "TECHM"],
@@ -2070,13 +2070,13 @@ _SECTOR_PEERS: Dict[str, List[str]] = {
     "TATAPOWER":   ["NTPC", "ADANIGREEN", "POWERGRID"],
     "POWERGRID":   ["NTPC", "TATAPOWER", "ADANIGREEN"],
     # Auto
-    "TATAMOTORS":  ["MARUTI", "BAJAJ-AUTO", "HEROMOTOCO", "EICHERMOT"],
-    "MARUTI":      ["TATAMOTORS", "BAJAJ-AUTO", "HEROMOTOCO"],
-    "BAJAJ-AUTO":  ["MARUTI", "TATAMOTORS", "HEROMOTOCO", "EICHERMOT"],
+    "TMPV":  ["MARUTI", "BAJAJ-AUTO", "HEROMOTOCO", "EICHERMOT"],
+    "MARUTI":      ["TMPV", "BAJAJ-AUTO", "HEROMOTOCO"],
+    "BAJAJ-AUTO":  ["MARUTI", "TMPV", "HEROMOTOCO", "EICHERMOT"],
     "HEROMOTOCO":  ["BAJAJ-AUTO", "MARUTI", "EICHERMOT"],
     "EICHERMOT":   ["BAJAJ-AUTO", "HEROMOTOCO", "TVSMOTOR"],
     "TVSMOTOR":    ["BAJAJ-AUTO", "HEROMOTOCO", "EICHERMOT"],
-    "ASHOKLEY":    ["TATAMOTORS", "MARUTI", "BAJAJ-AUTO"],
+    "ASHOKLEY":    ["TMPV", "MARUTI", "BAJAJ-AUTO"],
     # Pharma
     "SUNPHARMA":   ["DRREDDY", "CIPLA", "LUPIN", "DIVISLAB"],
     "DRREDDY":     ["SUNPHARMA", "CIPLA", "LUPIN"],
@@ -2175,7 +2175,7 @@ def _build_help_response() -> Dict:
                   "• \"Should I buy SBIN?\"\n"
                   "• \"Is it a good time to sell WIPRO?\"\n\n"
                   "**Analysis & Details:**\n"
-                  "• \"Analyze TATAMOTORS\"\n"
+                  "• \"Analyze TMPV\"\n"
                   "• \"Tell me about MARUTI\"\n\n"
                   "I cover 363+ Indian stocks with live data and AI analysis!",
         "suggestions": [
@@ -2185,7 +2185,7 @@ def _build_help_response() -> Dict:
             "Is HDFCBANK overvalued?",
             "Best bank stocks",
             "Top pharma stocks",
-            "Analyze TATAMOTORS",
+            "Analyze TMPV",
             "Will WIPRO go up?",
         ],
     }
@@ -3042,7 +3042,7 @@ def _handle_52_week_query(query_lower: str, symbols: List[str]) -> Dict:
     """Handle 52-week high/low and all-time high queries."""
     is_high = any(w in query_lower for w in ["high", "ath", "all time high"])
     scope_stocks = symbols if symbols else ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK",
-                                             "SBIN", "BHARTIARTL", "TATAMOTORS", "LT", "SUNPHARMA"]
+                                             "SBIN", "BHARTIARTL", "TMPV", "LT", "SUNPHARMA"]
     results = []
     for sym in scope_stocks[:8]:
         try:
@@ -3166,7 +3166,7 @@ def _handle_fii_dii_query(query_lower: str) -> Dict:
 def _handle_intraday_query(query_lower: str) -> Dict:
     """Handle intraday / day trading queries."""
     # Pick high-volume liquid stocks suitable for intraday
-    intraday_picks = ["RELIANCE", "SBIN", "TATAMOTORS", "ICICIBANK", "HDFCBANK",
+    intraday_picks = ["RELIANCE", "SBIN", "TMPV", "ICICIBANK", "HDFCBANK",
                       "BHARTIARTL", "AXISBANK", "INFY", "ITC", "BAJFINANCE"]
     results = []
     for sym in intraday_picks[:6]:
@@ -3192,7 +3192,10 @@ def _handle_intraday_query(query_lower: str) -> Dict:
 
     parts.append("\n📌 **Intraday Tips:**")
     parts.append("• Always set a stop-loss (0.5-1% for intraday)")
-    parts.append("• Trade only in the first 2 hours (9:15-11:15 AM) or last hour (2:30-3:30 PM)")
+    parts.append(
+        "• Trade only in the first 2 hours (9:15-11:15 AM) or late session "
+        "(note: from 3 Aug 2026 F&O cash continuous ends 3:15 PM before CAS)"
+    )
     parts.append("• Stick to Nifty 50 / high-volume stocks for easy entry/exit")
     parts.append("• Never carry intraday positions overnight without converting to delivery")
     parts.append("\n⚠️ Intraday trading carries high risk. Use proper risk management.")
@@ -3213,7 +3216,7 @@ def _handle_screening_query(query_lower: str, symbols: List[str]) -> Dict:
         "bank": ["HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK", "INDUSINDBK", "PNB", "BANKBARODA"],
         "pharma": ["SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB", "LUPIN", "AUROPHARMA", "BIOCON"],
         "it": ["TCS", "INFY", "WIPRO", "HCLTECH", "TECHM", "LTIM", "MPHASIS", "COFORGE"],
-        "auto": ["TATAMOTORS", "MARUTI", "BAJAJ-AUTO", "HEROMOTOCO", "EICHERMOT", "TVSMOTOR", "ASHOKLEY"],
+        "auto": ["TMPV", "MARUTI", "BAJAJ-AUTO", "HEROMOTOCO", "EICHERMOT", "TVSMOTOR", "ASHOKLEY"],
         "metal": ["TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL", "SAIL", "NATIONALUM", "JINDALSTEL"],
         "energy": ["RELIANCE", "ONGC", "BPCL", "IOC", "NTPC", "POWERGRID", "TATAPOWER", "ADANIGREEN"],
         "fmcg": ["HINDUNILVR", "ITC", "NESTLEIND", "BRITANNIA", "DABUR", "MARICO", "COLPAL", "GODREJCP"],
@@ -3229,19 +3232,19 @@ def _handle_screening_query(query_lower: str, symbols: List[str]) -> Dict:
         "shipping": ["COCHINSHIP", "MAZDOCK", "GRSE", "SCI"],
         "shipyard": ["COCHINSHIP", "MAZDOCK", "GRSE"],
         "textile": ["TRENT", "RAYMOND", "ABFRL", "PAGEIND", "ARVIND"],
-        "cement": ["ULTRACEMCO", "AMBUJACEM", "SHREECEM", "ACC", "DALMIACEM", "RAMCOCEM", "JKCEMENT"],
-        "chemical": ["PIDILITIND", "SRF", "AARTI", "DEEPAKNTR", "CLEAN", "NAVINFLUOR", "FLUOROCHEM"],
+        "cement": ["ULTRACEMCO", "AMBUJACEM", "SHREECEM", "ACC", "DALBHARAT", "RAMCOCEM", "JKCEMENT"],
+        "chemical": ["PIDILITIND", "SRF", "AARTIIND", "DEEPAKNTR", "CLEAN", "NAVINFLUOR", "FLUOROCHEM"],
         "telecom": ["BHARTIARTL", "IDEA", "TTML", "RAILTEL"],
         "media": ["ZEEL", "SUNTV", "PVRINOX", "SAREGAMA", "NETWORK18"],
-        "hotel": ["INDHOTEL", "ELIH", "LEMONTR", "CHALET"],
-        "hospitality": ["INDHOTEL", "ELIH", "LEMONTR", "CHALET"],
-        "paint": ["ASIANPAINT", "BERGEPAINT", "KANSAINER", "INDIGO"],
+        "hotel": ["INDHOTEL", "EIH", "LEMONTREE", "CHALET"],
+        "hospitality": ["INDHOTEL", "EIH", "LEMONTREE", "CHALET"],
+        "paint": ["ASIANPAINT", "BERGEPAINT", "KANSAINER", "INDIGOPNTS"],
         "jewel": ["TITAN", "KALYANKJIL", "PCJEWELLER", "SENCO"],
         "gold": ["TITAN", "KALYANKJIL", "PCJEWELLER", "SENCO"],
         "sugar": ["BALRAMCHIN", "RENUKA", "TRIVENI", "DHAMPUR"],
         "power": ["NTPC", "POWERGRID", "TATAPOWER", "ADANIGREEN", "NHPC", "SJVN", "JSWENERGY"],
         "electric": ["TATAPOWER", "ADANIGREEN", "NHPC", "SJVN", "JSWENERGY", "IREDA"],
-        "ev": ["TATAMOTORS", "HEROMOTOCO", "OLECTRA", "TATAMOTORS"],
+        "ev": ["TMPV", "HEROMOTOCO", "OLECTRA", "TMCV"],
         "fintech": ["PAYTM", "POLICYBZR", "JIOFIN", "BAJFINANCE"],
         "nbfc": ["BAJFINANCE", "BAJAJFINSV", "CHOLAFIN", "MUTHOOTFIN", "MANAPPURAM", "SHRIRAMFIN"],
     }
@@ -4219,7 +4222,8 @@ def _handle_indian_finance_query(query: str) -> Dict:
                     "**Key Points:**\n"
                     "• Represent overall market performance\n"
                     "• Weighted by market capitalization\n"
-                    "• Trading hours: 9:15 AM - 3:30 PM IST\n"
+                    "• Trading hours: 9:15 AM IST open; from 3 Aug 2026 multi-close "
+                    "(F&O cash CTS 3:15 + CAS 3:35; non-F&O 3:30; derivatives 3:40)\n"
                     "• Used for derivatives and ETFs\n\n"
                     "**Current Levels:**\n"
                     "• Nifty 50: ~22,000 points\n"

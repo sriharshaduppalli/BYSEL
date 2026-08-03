@@ -32,7 +32,7 @@ from pathlib import Path
 INTENT_KEYWORDS = {
     "price_action": {
         "price", "target", "entry", "exit", "support", "resistance",
-        "kharid", "bech", "buy", "sell",
+        "kharid", "bech", "buy", "sell", "swing", "intraday", "should",
     },
     "prediction": {"predict", "prediction", "forecast", "tomorrow", "next", "week"},
     "fundamentals": {
@@ -43,11 +43,35 @@ INTENT_KEYWORDS = {
         "news", "event", "result", "results", "quarter", "guidance", "sebi", "regulation",
         "demat", "circuit", "settlement",
     },
+    "market_literacy": {
+        "beginner", "basics", "meaning", "participants", "depository", "nsdl", "cdsl",
+        "kyc", "mistakes", "rumour", "rumor", "how", "works", "work", "guide",
+        "primary", "secondary", "shareholder", "marketplace", "trader", "investor",
+        "scalper", "swing", "holding", "cagr", "absolute", "varsity", "opinions",
+        "candlestick", "marubozu", "doji", "hammer", "engulfing", "fibonacci",
+        "technical", "volume", "cpr", "dow",
+    },
     "portfolio": {
         "portfolio", "allocation", "risk", "diversification", "sip",
-        "paper", "practice", "journal", "margin", "lot",
+        "paper", "practice", "journal",
+        "var", "kelly", "drawdown", "position", "sizing", "bias",
+    },
+    "derivatives": {
+        "f&o", "fno", "futures", "options", "option", "call", "put",
+        "iv", "greeks", "premium", "expiry", "straddle", "strangle",
+        "lot", "margin", "basis", "oi", "pcr", "maxpain",
+        "currency", "usdinr", "forex", "commodity", "commodities", "mcx",
+        "ncdex", "gold", "silver", "crude", "gsec", "g-sec", "tbill",
     },
     "stock_analysis": {"analyze", "analysis", "technical", "trend", "momentum", "checklist"},
+    "compare": {"compare", "vs", "versus", "against", "comparison", "which"},
+    "overbought_check": {
+        "overbought", "oversold", "over", "bought", "sold", "extended", "stretched",
+    },
+    "sector_screen": {
+        "sector", "sectors", "defence", "defense", "pharma", "banking", "fmcg",
+        "realty", "railway", "psu", "metal", "cement", "top", "best",
+    },
     "market_calculations": {
         "calculate", "calculation", "cagr", "return", "volatility", "beta", "indicator",
         "indicators", "rsi", "sma", "ema", "macd", "bollinger", "formula", "equation",
@@ -383,6 +407,36 @@ class StockMarketAssistant:
 
     def classify_intent(self, query: str) -> str:
         normalized = _normalize_hinglish(query)
+        qlow = normalized.lower()
+        # Phrase-level overrides beat sparse keyword ties.
+        if re.search(r"\b(overbought|oversold|over.?bought|over.?sold)\b", qlow):
+            return "overbought_check"
+        if re.search(
+            r"\b(how does the (stock|share) market work|how the (stock|share) market works|"
+            r"stock market meaning|key participants|depository participant|"
+            r"how (are |do )?share prices|price discovery|how to start investing|"
+            r"common mistakes|primary market|secondary market|what is (nsdl|cdsl|demat)|"
+            r"what moves (the )?stock|why do stock prices|trader vs investor|day trader|"
+            r"scalper|swing trader|holding period|absolute return|where do you fit|"
+            r"how to calculate returns|after you (own|buy) (a )?stock|"
+            r"technical analysis|candlestick|marubozu|doji|hammer|engulfing|"
+            r"morning star|fibonacci|dow theory|central pivot|\bcpr\b)\b",
+            qlow,
+        ):
+            return "market_literacy"
+        if re.search(r"\bcompare\b|\bvs\b|\bversus\b", qlow):
+            return "compare"
+        if re.search(
+            r"\b(top|best|list)\b.{0,24}\b(defence|defense|pharma|bank|banking|it|auto|fmcg|energy|metal|realty|psu|railway)\b"
+            r"|\b(defence|defense|pharma|banking|fmcg)\s+stocks?\b"
+            r"|\bbest\s+it\s+stocks?\b|\bit\s+stocks?\s+under\b",
+            qlow,
+        ):
+            return "sector_screen"
+        if re.search(r"\b(should i buy|should i sell|buy|sell|swing trade|entry|stoploss|stop loss)\b", qlow):
+            # Prefer price_action over generic sector tokens in the same sentence.
+            if not re.search(r"\b(top|best)\s+\w+\s+stocks?\b", qlow):
+                return "price_action"
         tokens = _regex_tokens(normalized) | _nlp_tokens(normalized, self.config.nlp_backend)
         scores: dict[str, int] = {}
         for intent, keywords in INTENT_KEYWORDS.items():
@@ -405,6 +459,8 @@ class StockMarketAssistant:
                 return "market_calculations"
             if "predict" in tokens or "forecast" in tokens:
                 return "prediction"
+            if "compare" in tokens or "vs" in tokens:
+                return "compare"
             return "general_query"
         return best_intent
 
@@ -456,23 +512,45 @@ class StockMarketAssistant:
             "market_calculations": "calculations",
             "prediction": "prediction_guidance",
             "portfolio": "analysis",
+            "derivatives": "derivatives",
+            "market_literacy": "nse_bse_sebi",
             "price_action": "analysis",
+            "compare": "analysis",
+            "sector_screen": "stocks",
+            "overbought_check": "analysis",
         }
         category = mapping.get(intent, "stocks")
         return category if category in SUPPORTED_QUERY_CATEGORIES else "stocks"
 
     def _policy_disclaimer(self, intent: str) -> str:
-        if intent in {"prediction", "price_action"}:
+        if intent in {
+            "prediction",
+            "price_action",
+            "compare",
+            "sector_screen",
+            "overbought_check",
+            "derivatives",
+        }:
             return (
                 "This response is informational, not investment advice. "
                 "Use risk controls and verify with live NSE/BSE data before trading."
             )
         return "This response is informational and should be validated against live market data."
 
-    def ask(self, query: str) -> AssistantResponse:
+    def ask(self, query: str, market_context: dict | None = None) -> AssistantResponse:
         intent = self.classify_intent(query)
         category = self._category_for_intent(intent)
-        factual_intents = {"fundamentals", "events_news", "market_calculations", "stock_analysis"}
+        # prediction_signals is only filled for prediction intent below; keep defined.
+        prediction_signals = None
+        factual_intents = {
+            "fundamentals",
+            "events_news",
+            "market_calculations",
+            "stock_analysis",
+            "compare",
+            "sector_screen",
+            "overbought_check",
+        }
         policy_decision = self.safety_policy.evaluate(query)
         if not policy_decision.allowed:
             return AssistantResponse(
@@ -499,9 +577,30 @@ class StockMarketAssistant:
 
             wants_live_indicator = (
                 PandasTaIndicatorCalculator.indicator_requested(query)
-                and bool(PandasTaIndicatorCalculator._symbol_from_query(query))
+                and bool(
+                    PandasTaIndicatorCalculator._symbol_from_query(query)
+                    or (market_context or {}).get("symbol")
+                )
             )
-            if not wants_live_indicator:
+            has_of_symbol = bool(
+                re.search(r"\b(of|for|on)\s+[a-z0-9][a-z0-9.&-]{1,15}\b", query.lower())
+            ) or bool((market_context or {}).get("symbol"))
+            stock_specific_metric = bool(
+                (market_context or {}).get("symbol")
+                or PandasTaIndicatorCalculator._symbol_from_query(query)
+            ) and bool(
+                re.search(
+                    r"\b(p/?e|pe ratio|pb|p/b|roe|eps|valuation|rsi|macd|overbought|oversold)\b",
+                    query.lower(),
+                )
+            ) and (
+                has_of_symbol
+                or not re.search(
+                    r"\b(formula|equation|define|definition|meaning of|what is|what are|explain)\b",
+                    query.lower(),
+                )
+            )
+            if not wants_live_indicator and not stock_specific_metric:
                 education = get_education_answer(query)
         except Exception:
             education = None
@@ -540,6 +639,17 @@ class StockMarketAssistant:
                 policy_reason="Data readiness gate blocked factual response",
             )
         resolved_entity = self.data_layer.resolve_entity(query)
+        # Prefer explicit symbol from live enrich context (BYSEL /ai/ask).
+        if market_context and market_context.get("symbol"):
+            resolved_entity = {
+                **(resolved_entity or {}),
+                "symbol": str(market_context.get("symbol")).upper(),
+                "company_name": (resolved_entity or {}).get("company_name")
+                or market_context.get("company_name")
+                or "",
+                "exchange": (resolved_entity or {}).get("exchange") or "NSE",
+                "isin": (resolved_entity or {}).get("isin") or "n/a",
+            }
         # Soft retrieval — do not hard-filter by tag (that emptied results before).
         context_items = self.knowledge_base.search(
             query,
@@ -548,6 +658,125 @@ class StockMarketAssistant:
             metadata_filters=None,
             intent=intent,
         )
+        # Drop polluted learned/promoted notes that leak unrelated prior answers.
+        context_items = [
+            item
+            for item in context_items
+            if "grounded answer note" not in str(getattr(item, "title", "")).lower()
+            and "educational retrieved note" not in str(getattr(item, "content", "")).lower()
+            and "grounded answer note" not in str(getattr(item, "content", "")).lower()
+        ]
+
+        # Sector screens: inject curated liquid names (no paid LLM needed).
+        if intent == "sector_screen":
+            try:
+                from app.stock_enricher import screen_stocks  # type: ignore
+
+                sector = None
+                for key in (
+                    "defence", "defense", "pharma", "banking", "bank", "it", "auto",
+                    "fmcg", "energy", "metal", "realty", "psu", "railway", "cement", "infra",
+                ):
+                    if re.search(r"\b" + re.escape(key) + r"\b", query.lower()):
+                        sector = "DEFENCE" if key in ("defence", "defense") else (
+                            "BANKING" if key == "bank" else key.upper()
+                        )
+                        break
+                screened = screen_stocks({"sector": sector} if sector else {}) if sector else []
+                if screened:
+                    lines = []
+                    for row in screened[:7]:
+                        sym = row.get("symbol") or row.get("ticker") or "?"
+                        pe = row.get("pe") or row.get("trailingPE") or "n/a"
+                        lines.append(f"{sym}: P/E {pe}")
+                    context_items = [
+                        KnowledgeItem(
+                            id=f"sector_screen_{sector or 'x'}",
+                            title=f"Screened {sector or 'sector'} names",
+                            content="Curated liquid names — " + "; ".join(lines),
+                            tags=["sector", "screen", str(sector or "").lower()],
+                            source="sector_screener_v1",
+                        ),
+                        *context_items,
+                    ][: self.config.top_k_context + 2]
+            except Exception:
+                pass
+
+        # Inject BYSEL live enrich context (technical / fundamental / levels).
+        if market_context:
+            bits = []
+            if market_context.get("current_price") is not None:
+                bits.append(f"price={market_context.get('current_price')}")
+            tech = market_context.get("technical") or {}
+            fund = market_context.get("fundamental") or {}
+            levels = market_context.get("trading_levels") or {}
+            if tech:
+                bits.append(
+                    "technical="
+                    + ",".join(
+                        f"{k}:{tech.get(k)}"
+                        for k in (
+                            "rsi", "trend", "ma_signal", "macd_hist", "macd_histogram",
+                            "rsi_interpretation", "moving_averages", "bollinger_bands",
+                        )
+                        if tech.get(k) is not None
+                    )
+                )
+            if fund:
+                bits.append(
+                    "fundamental="
+                    + ",".join(
+                        f"{k}:{fund.get(k)}"
+                        for k in (
+                            "pe", "pe_ratio", "trailingPE", "pb", "priceToBook",
+                            "roe", "eps", "market_cap", "dividend_yield",
+                        )
+                        if fund.get(k) is not None
+                    )
+                )
+            if levels:
+                bits.append(
+                    "levels="
+                    + ",".join(
+                        f"{k}:{levels.get(k)}"
+                        for k in (
+                            "support", "support_1", "support_2",
+                            "resistance", "resistance_1", "resistance_2",
+                            "stop_loss", "stop", "take_profit", "risk_reward",
+                        )
+                        if levels.get(k) is not None
+                    )
+                )
+            # Always keep a live-context item when a symbol is in play so the
+            # structured composer can answer even if KB retrieval is empty.
+            content = " | ".join(bits) if bits else f"symbol={market_context.get('symbol')}"
+            context_items = [
+                KnowledgeItem(
+                    id="live_market_context",
+                    title=f"Live enrich {(market_context.get('symbol') or '')}".strip(),
+                    content=content,
+                    tags=["live", "enrich", "technical", "fundamental"],
+                    source="bysel_enrich_v1",
+                ),
+                *context_items,
+            ][: self.config.top_k_context + 2]
+            p0 = market_context.get("p0_math") or {}
+            if isinstance(p0, dict) and p0.get("ok"):
+                try:
+                    from .analysis_math import format_p0_for_prompt
+
+                    context_items = [
+                        KnowledgeItem(
+                            id="p0_math_pack",
+                            title=f"Quantitative + trade plan {market_context.get('symbol') or ''}".strip(),
+                            content=format_p0_for_prompt(p0),
+                            tags=["math", "rsi", "atr", "beta", "valuation", "pivots", "trade_plan", "buy_sell"],
+                            source="bysel_quant_math_v2",
+                        ),
+                        *context_items,
+                    ][: self.config.top_k_context + 3]
+                except Exception:
+                    pass
 
         # Inject resolved instrument facts into grounding context.
         if resolved_entity:
@@ -609,6 +838,35 @@ class StockMarketAssistant:
                 f"entity={resolved_entity if resolved_entity else 'None'}; "
                 f"kb_items={len(self.knowledge_base.items)}"
             )
+            market_json = "none"
+            if market_context:
+                try:
+                    from .answer_composer import normalize_market_context
+
+                    normalized = normalize_market_context(market_context)
+                    market_json = json.dumps(
+                        {
+                            "symbol": normalized.get("symbol"),
+                            "current_price": normalized.get("current_price"),
+                            "technical": normalized.get("technical") or {},
+                            "fundamental": normalized.get("fundamental") or {},
+                            "trading_levels": normalized.get("trading_levels") or {},
+                            "company_name": market_context.get("company_name"),
+                            "sector": market_context.get("sector"),
+                            "peers": market_context.get("peers") or [],
+                            "pre_signals": market_context.get("pre_signals") or {},
+                            "sentiment": market_context.get("sentiment") or {},
+                            "p0_math": market_context.get("p0_math") or {},
+                            "trade_plan": (
+                                market_context.get("trade_plan")
+                                or (market_context.get("p0_math") or {}).get("trade_plan")
+                                or {}
+                            ),
+                        },
+                        ensure_ascii=False,
+                    )
+                except Exception:
+                    market_json = "none"
             prompt = self.model_orchestrator.compose_prompt(
                 query=query,
                 intent=intent,
@@ -618,6 +876,7 @@ class StockMarketAssistant:
                 deterministic_note=deterministic_note,
                 policy_disclaimer=self._policy_disclaimer(intent),
                 readiness_note=readiness_note,
+                market_context_json=market_json,
             )
             generated = self.model_orchestrator.generate(
                 prompt,
@@ -632,10 +891,13 @@ class StockMarketAssistant:
             )
             prediction_signals: dict | None = None
             if intent == "prediction":
+                mc = market_context or {}
                 signals = self.prediction_engine.predict(
                     context_items=context_items,
                     deterministic_note=deterministic_note,
                     resolved_entity=resolved_entity,
+                    trade_plan=mc.get("trade_plan") if isinstance(mc, dict) else None,
+                    p0_math=mc.get("p0_math") if isinstance(mc, dict) else None,
                 )
                 prediction_signals = {
                     "intraday": {
@@ -659,7 +921,16 @@ class StockMarketAssistant:
             answer_parts = [generated.answer.strip()]
             if deterministic_note:
                 answer_parts.append(deterministic_note)
-            if prediction_note.strip():
+            if prediction_signals:
+                ps = prediction_signals
+                answer_parts.append(
+                    "**Multi-horizon outlook (estimate, not a guarantee):**\n"
+                    f"• Intraday: {ps['intraday']['direction']} (~{ps['intraday']['probability']:.0%})\n"
+                    f"• Swing: {ps['swing']['direction']} (~{ps['swing']['probability']:.0%})\n"
+                    f"• Medium-term: {ps['medium_term']['direction']} (~{ps['medium_term']['probability']:.0%})\n"
+                    f"• Key cues: {'; '.join(ps.get('key_signals') or []) or 'n/a'}"
+                )
+            elif prediction_note.strip():
                 answer_parts.append(prediction_note.strip())
             answer_parts.append(
                 "⚠️ Disclaimer: Educational / informational only — validate with live NSE/BSE data before decisions."
@@ -760,8 +1031,8 @@ class StockMarketAssistant:
             diagnostics=diagnostics,
         )
 
-    def query(self, query: str) -> dict[str, Any]:
-        response = self.ask(query)
+    def query(self, query: str, market_context: dict | None = None) -> dict[str, Any]:
+        response = self.ask(query, market_context=market_context)
         feedback_metrics = self.learning_manager.feedback_metrics()
         safety_metrics = self.safety_policy.audit_summary()
         return {

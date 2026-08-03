@@ -59,7 +59,8 @@ class IndianMarketContext:
         "JSWSTEEL": "JSW Steel Ltd",
         "INDUSINDBK": "IndusInd Bank Ltd",
         "HCLTECH": "HCL Technologies Ltd",
-        "TATAMOTORS": "Tata Motors Ltd",
+        "TMPV": "Tata Motors Passenger Vehicles Ltd",
+        "TMCV": "Tata Motors Ltd (Commercial Vehicles)",
         "DRREDDY": "Dr. Reddy's Laboratories Ltd",
         "CIPLA": "Cipla Ltd",
         "TECHM": "Tech Mahindra Ltd",
@@ -98,7 +99,7 @@ class IndianMarketContext:
         "pharma": ["SUNPHARMA", "CIPLA", "LUPIN", "DIVISLAB", "DRREDDY", "AUROPHARMA", "GLENMARK"],
         "it": ["TCS", "INFY", "WIPRO", "HCLTECH", "TECHM", "LTTS", "COFORGE", "MPHASIS"],
         "banking": ["HDFCBANK", "ICICIBANK", "SBIN", "AXISBANK", "KOTAKBANK", "INDUSINDBK", "BANDHANBNK"],
-        "auto": ["MARUTI", "TATAMOTORS", "HEROMOTOCO", "EICHERMOT", "BAJAJ-AUTO", "M&M", "TVSMOTOR"],
+        "auto": ["MARUTI", "TMPV", "TMCV", "HEROMOTOCO", "EICHERMOT", "BAJAJ-AUTO", "M&M", "TVSMOTOR"],
         "fmcg": ["HINDUNILVR", "ITC", "NESTLEIND", "BRITANNIA", "COLPAL", "DABUR", "MARICO", "GODREJCP"],
         "energy": ["RELIANCE", "NTPC", "POWERGRID", "ONGC", "BPCL", "GAIL", "COALINDIA"],
         "cement": ["ULTRACEMCO", "SHREECEM", "GRASIM", "AMBUJACEM", "ACC"],
@@ -167,14 +168,18 @@ class IndianMarketContext:
         "tax saving": "Tax Saving Mutual Fund"
     }
 
-    # Market hours and trading sessions
+    # Market hours and trading sessions (CAS / F&O close from 3 Aug 2026)
     MARKET_HOURS = {
         "nse_open": "09:15",
-        "nse_close": "15:30",
+        "nse_close": "15:35",  # CAS end for F&O cash; non-F&O still 15:30
         "bse_open": "09:15",
-        "bse_close": "15:30",
+        "bse_close": "15:35",
+        "fo_cash_continuous_end": "15:15",
+        "cas_end": "15:35",
+        "non_fo_cash_close": "15:30",
+        "fo_derivatives_close": "15:40",
         "pre_open": "09:00-09:15",
-        "after_hours": "15:30-16:00"
+        "after_hours": "15:50-16:00",
     }
 
     @classmethod
@@ -202,7 +207,8 @@ class IndianMarketContext:
             "JSW STEEL": "JSWSTEEL",
             "INDUSIND BANK": "INDUSINDBK",
             "HCL TECH": "HCLTECH",
-            "TATA MOTORS": "TATAMOTORS",
+            "TATA MOTORS": "TMPV",
+            "TATAMOTORS": "TMPV",
             "DR REDDY": "DRREDDY",
             "DR REDDYS": "DRREDDY",
             "TECH MAHINDRA": "TECHM",
@@ -283,11 +289,15 @@ class IndianMarketContext:
         if now.weekday() >= 5:  # Saturday = 5, Sunday = 6
             return False
 
-        # Check market hours (9:15 AM to 3:30 PM IST)
-        market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
-        market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+        # 9:15 through latest equity close (15:40 from 3 Aug 2026 CAS/F&O regime).
+        try:
+            from .market_session import is_within_equity_session
 
-        return market_open <= now <= market_close
+            return is_within_equity_session(now)
+        except Exception:
+            market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
+            market_close = now.replace(hour=15, minute=40, second=0, microsecond=0)
+            return market_open <= now <= market_close
 
 # ──────────────────────────────────────────────────────────────
 # ENHANCED QUERY CLASSIFICATION & MULTI-INTENT EXTRACTION

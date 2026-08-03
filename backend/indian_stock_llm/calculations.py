@@ -165,6 +165,20 @@ class PandasTaIndicatorCalculator:
         "SENSEX": "SENSEX",
         "BANKNIFTY": "BANKNIFTY",
     }
+    # Legacy tickers → current Yahoo/NSE symbols (demergers, renames).
+    _SYMBOL_ALIASES = {
+        "TATAMOTORS": "TMPV",
+        "ADANITRANS": "ADANIENSOL",
+        "GMRINFRA": "GMRAIRPORT",
+        "MINDAIND": "UNOMINDA",
+        "MOTHERSUMI": "MOTHERSON",
+        "L&TFH": "LTF",
+        "IIFLWAM": "360ONE",
+        "IBULHSGFIN": "SAMMAANCAP",
+        "ADANIWILMAR": "AWL",
+        "HPCL": "HINDPETRO",
+        "ZOMATO": "ETERNAL",
+    }
 
     @classmethod
     def indicator_requested(cls, query: str) -> bool:
@@ -182,6 +196,7 @@ class PandasTaIndicatorCalculator:
         source_label = "provided prices"
         symbol = (symbol_hint or cls._symbol_from_query(query) or "").strip().upper()
         symbol = cls._INDEX_ALIASES.get(symbol, symbol)
+        symbol = cls._SYMBOL_ALIASES.get(symbol, symbol)
 
         opens: list[float] = []
         highs: list[float] = []
@@ -461,6 +476,7 @@ class PandasTaIndicatorCalculator:
 
     @classmethod
     def _load_ohlcv_frame(cls, symbol: str) -> dict[str, list[float]] | None:
+        symbol = cls._SYMBOL_ALIASES.get((symbol or "").upper(), (symbol or "").upper())
         # Prefer BYSEL market_data when running inside the app backend.
         try:
             from app.market_data import fetch_quote_history
@@ -480,10 +496,25 @@ class PandasTaIndicatorCalculator:
         try:
             import yfinance as yf  # type: ignore
 
-            ticker = symbol if symbol.startswith("^") else f"{symbol}.NS"
-            hist = yf.Ticker(ticker).history(period="3mo", interval="1d", auto_adjust=False)
-            if hist is None or hist.empty:
-                hist = yf.Ticker(f"{symbol}.BO").history(period="3mo", interval="1d", auto_adjust=False)
+            yahoo = None
+            try:
+                from app.market_data import _yf_ticker
+
+                yahoo = _yf_ticker(symbol)
+            except Exception:
+                yahoo = None
+            tickers: list[str] = []
+            if yahoo:
+                tickers.append(yahoo)
+            if symbol.startswith("^"):
+                tickers.append(symbol)
+            else:
+                tickers.extend([f"{symbol}.NS", f"{symbol}.BO"])
+            hist = None
+            for ticker in tickers:
+                hist = yf.Ticker(ticker).history(period="3mo", interval="1d", auto_adjust=False)
+                if hist is not None and not hist.empty:
+                    break
             if hist is None or hist.empty:
                 return None
             return {
@@ -562,6 +593,8 @@ class PandasTaIndicatorCalculator:
         "can", "you", "give", "get", "find", "compute", "formula", "equation",
         "meaning", "define", "explain", "stock", "market", "india", "indian", "nse",
         "bse", "price", "prices", "series", "period", "window", "length",
+        "sentiment", "news", "mood", "investor", "headline", "headlines", "analysis",
+        "bullish", "bearish", "neutral", "factor", "factors",
     }
 
     @classmethod

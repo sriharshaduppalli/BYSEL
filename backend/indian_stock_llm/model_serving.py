@@ -53,16 +53,53 @@ class TemplateModelBackend:
         return lines
 
     @classmethod
+    def _extract_market_context(cls, prompt: str) -> dict:
+        marker = "Live market context JSON:\n"
+        if marker not in prompt:
+            return {}
+        tail = prompt.split(marker, 1)[1]
+        stop = tail.find("\nGrounding context:")
+        block = (tail if stop < 0 else tail[:stop]).strip()
+        if not block or block == "none":
+            return {}
+        try:
+            import json
+
+            data = json.loads(block)
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    @classmethod
     def _compose_answer(cls, prompt: str) -> str:
         intent = cls._extract_field(prompt, "Intent") or "general_query"
         category = cls._extract_field(prompt, "Category") or "stocks"
+        query = cls._extract_field(prompt, "User query")
         context_lines = cls._extract_context_lines(prompt)
+        market_context = cls._extract_market_context(prompt)
         deterministic = ""
         marker = "Deterministic checks:\n"
         if marker in prompt:
             block = prompt.split(marker, 1)[1]
             stop = block.find("\nCompliance disclaimer:")
             deterministic = (block if stop < 0 else block[:stop]).strip()
+            if deterministic == "none":
+                deterministic = ""
+
+        try:
+            from .answer_composer import compose_structured_answer
+
+            structured = compose_structured_answer(
+                query=query,
+                intent=intent,
+                market_context=market_context,
+                context_lines=context_lines,
+                deterministic=deterministic,
+            )
+            if structured:
+                return structured
+        except Exception:
+            pass
 
         headers = {
             "market_calculations": "Indian market equations & calculations",
@@ -70,16 +107,28 @@ class TemplateModelBackend:
             "stock_analysis": "Stock analysis notes",
             "prediction": "Forecast framing (not a guarantee)",
             "portfolio": "Portfolio guidance",
+            "derivatives": "F&O / derivatives notes",
             "events_news": "Market / regulatory context",
             "price_action": "Price-action notes",
+            "compare": "Comparison notes",
+            "sector_screen": "Sector screen",
+            "overbought_check": "Overbought / oversold check",
+            "market_literacy": "How the stock market works (beginner)",
             "general_query": "Indian market knowledge",
         }
         title = headers.get(intent, f"Indian market insight ({category})")
         parts = [f"**{title}**", ""]
 
-        if context_lines:
-            for line in context_lines:
-                text = line[2:].strip() if line.startswith("- ") else line
+        # Prefer live / sector lines; trim noisy NSE status dumps from bullets.
+        cleaned: list[str] = []
+        for line in context_lines:
+            text = line[2:].strip() if line.startswith("- ") else line
+            if "NSE market status" in text:
+                text = text.split("NSE market status")[0].strip().rstrip(".")
+            if text:
+                cleaned.append(text)
+        if cleaned:
+            for text in cleaned[:8]:
                 parts.append(f"• {text}")
         else:
             parts.append("No grounded knowledge snippets matched this query.")
@@ -164,12 +213,14 @@ class ModelOrchestrator:
         deterministic_note: str,
         policy_disclaimer: str,
         readiness_note: str,
+        market_context_json: str = "none",
     ) -> str:
         citation_text = ", ".join(citations) if citations else "none"
         return (
             f"Intent: {intent}\n"
             f"Category: {category}\n"
             f"User query: {query.strip()}\n"
+            f"Live market context JSON:\n{market_context_json or 'none'}\n"
             f"Grounding context:\n{context_text}\n"
             f"Citations: {citation_text}\n"
             f"Readiness: {readiness_note}\n"

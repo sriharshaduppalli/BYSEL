@@ -67,7 +67,10 @@ INDIAN_STOCKS: Dict[str, tuple] = {
     "MARUTI":       ("MARUTI.NS",       "Maruti Suzuki India Ltd"),
     "TITAN":        ("TITAN.NS",        "Titan Company Ltd"),
     "SUNPHARMA":    ("SUNPHARMA.NS",    "Sun Pharmaceutical Industries Ltd"),
-    "TATAMOTORS":   ("TATAMOTORS.NS",   "Tata Motors Ltd"),
+    # Tata Motors demerger: TATAMOTORS is no longer a listed NSE symbol.
+    # Listed: TMPV (passenger vehicles / JLR) and TMCV (commercial vehicles).
+    "TMPV":         ("TMPV.NS",         "Tata Motors Passenger Vehicles Ltd"),
+    "TMCV":         ("TMCV.NS",         "Tata Motors Ltd (Commercial Vehicles)"),
     "WIPRO":        ("WIPRO.NS",        "Wipro Ltd"),
     "ULTRACEMCO":   ("ULTRACEMCO.NS",   "UltraTech Cement Ltd"),
     "NESTLEIND":    ("NESTLEIND.NS",    "Nestle India Ltd"),
@@ -103,7 +106,7 @@ INDIAN_STOCKS: Dict[str, tuple] = {
 
     # ── NIFTY NEXT 50 ────────────────────────────────────────
     "ADANIGREEN":   ("ADANIGREEN.NS",   "Adani Green Energy Ltd"),
-    "ADANITRANS":   ("ADANITRANS.NS",   "Adani Transmission Ltd"),
+    "ADANIENSOL":   ("ADANIENSOL.NS",   "Adani Energy Solutions Ltd"),
     "AMBUJACEM":    ("AMBUJACEM.NS",    "Ambuja Cements Ltd"),
     "BANDHANBNK":   ("BANDHANBNK.NS",   "Bandhan Bank Ltd"),
     "BANKBARODA":   ("BANKBARODA.NS",   "Bank of Baroda"),
@@ -138,10 +141,9 @@ INDIAN_STOCKS: Dict[str, tuple] = {
     "TORNTPHARM":   ("TORNTPHARM.NS",   "Torrent Pharmaceuticals Ltd"),
     "TRENT":        ("TRENT.NS",        "Trent Ltd"),
     "VEDL":         ("VEDL.NS",         "Vedanta Ltd"),
-    "ZOMATO":       ("ETERNAL.NS",      "Zomato Ltd (Eternal Ltd)"),
+    "ETERNAL":      ("ETERNAL.NS",      "Eternal Ltd (Zomato)"),
 
     # ── NIFTY MIDCAP 150 / POPULAR MIDCAPS ──────────────────
-    "AAPL":         ("AAPL.NS",         "Not applicable - use international"),
     "AARTIIND":     ("AARTIIND.NS",     "Aarti Industries Ltd"),
     "ABB":          ("ABB.NS",          "ABB India Ltd"),
     "ABCAPITAL":    ("ABCAPITAL.NS",    "Aditya Birla Capital Ltd"),
@@ -187,7 +189,7 @@ INDIAN_STOCKS: Dict[str, tuple] = {
     "FEDERALBNK":   ("FEDERALBNK.NS",   "Federal Bank Ltd"),
     "FORTIS":       ("FORTIS.NS",       "Fortis Healthcare Ltd"),
     "GLENMARK":     ("GLENMARK.NS",     "Glenmark Pharmaceuticals Ltd"),
-    "GMRINFRA":     ("GMRINFRA.NS",     "GMR Airports Infrastructure Ltd"),
+    "GMRAIRPORT":   ("GMRAIRPORT.NS",   "GMR Airports Ltd"),
     "GNFC":         ("GNFC.NS",         "Gujarat Narmada Valley Fertilizers & Chemicals Ltd"),
     "GODREJPROP":   ("GODREJPROP.NS",   "Godrej Properties Ltd"),
     "GRANULES":     ("GRANULES.NS",     "Granules India Ltd"),
@@ -274,7 +276,6 @@ INDIAN_STOCKS: Dict[str, tuple] = {
 
     # ── ADDITIONAL POPULAR / SMALL & MICRO CAPS ─────────────
     "ADANIPOWER":   ("ADANIPOWER.NS",   "Adani Power Ltd"),
-    "ADANIWILMAR":  ("ADANIWILMAR.NS",  "Adani Wilmar Ltd"),
     "ATGL":         ("ATGL.NS",         "Adani Total Gas Ltd"),
     "AWL":          ("AWL.NS",          "Adani Wilmar Ltd"),
     "BDL":          ("BDL.NS",          "Bharat Dynamics Ltd"),
@@ -307,11 +308,12 @@ INDIAN_STOCKS: Dict[str, tuple] = {
     "HAPPSTMNDS":   ("HAPPSTMNDS.NS",   "Happiest Minds Technologies Ltd"),
     "HFCL":         ("HFCL.NS",         "HFCL Ltd"),
     "HUDCO":        ("HUDCO.NS",        "Housing & Urban Development Corp Ltd"),
-    "IBULHSGFIN":   ("IBULHSGFIN.NS",  "Indiabulls Housing Finance Ltd"),
+    "SAMMAANCAP":   ("SAMMAANCAP.NS",   "Sammaan Capital Ltd"),
     "IDBI":         ("IDBI.NS",         "IDBI Bank Ltd"),
     "IDEA":         ("IDEA.NS",         "Vodafone Idea Ltd"),
-    "IIFLWAM":      ("IIFLWAM.NS",      "360 ONE WAM Ltd"),
+    "360ONE":       ("360ONE.NS",       "360 ONE WAM Ltd"),
     "INDIGO":       ("INDIGO.NS",       "InterGlobe Aviation Ltd"),
+    "INDIGOPNTS":   ("INDIGOPNTS.NS",   "Indigo Paints Ltd"),
     "IOB":          ("IOB.NS",          "Indian Overseas Bank"),
     "ISEC":         ("ISEC.NS",         "ICICI Securities Ltd"),
     "ITI":          ("ITI.NS",          "ITI Ltd"),
@@ -327,7 +329,7 @@ INDIAN_STOCKS: Dict[str, tuple] = {
     "KIOCL":        ("KIOCL.NS",        "KIOCL Ltd"),
     "KNRCON":       ("KNRCON.NS",       "KNR Constructions Ltd"),
     "KPRMILL":      ("KPRMILL.NS",      "KPR Mill Ltd"),
-    "L&TFH":        ("L&TFH.NS",        "L&T Finance Ltd"),
+    "LTF":          ("LTF.NS",          "L&T Finance Ltd"),
     "LAXMIMACH":    ("LAXMIMACH.NS",    "Lakshmi Machine Works Ltd"),
     "LINDEINDIA":   ("LINDEINDIA.NS",   "Linde India Ltd"),
     "M&MFIN":       ("M&MFIN.NS",       "Mahindra & Mahindra Financial Services Ltd"),
@@ -339,8 +341,12 @@ INDIAN_STOCKS: Dict[str, tuple] = {
     "MCX":          ("MCX.NS",          "Multi Commodity Exchange of India Ltd"),
     "MEDANTA":      ("MEDANTA.NS",      "Global Health Ltd"),
     "METROPOLIS":   ("METROPOLIS.NS",   "Metropolis Healthcare Ltd"),
-    "MINDAIND":     ("MINDAIND.NS",     "Minda Industries Ltd"),
+    "UNOMINDA":     ("UNOMINDA.NS",     "UNO Minda Ltd"),
     "MOTILALOFS":   ("MOTILALOFS.NS",   "Motilal Oswal Financial Services Ltd"),
+    "CANBK":        ("CANBK.NS",        "Canara Bank"),
+    "DALBHARAT":    ("DALBHARAT.NS",    "Dalmia Bharat Ltd"),
+    "EIH":          ("EIH.NS",          "EIH Ltd"),
+    "LEMONTREE":    ("LEMONTREE.NS",    "Lemon Tree Hotels Ltd"),
     "NAM-INDIA":    ("NAM-INDIA.NS",    "Nippon Life India Asset Management Ltd"),
     "NATCOPHARM":   ("NATCOPHARM.NS",   "Natco Pharma Ltd"),
     "NAUKRI":       ("NAUKRI.NS",       "Info Edge (India) Ltd"),
@@ -391,7 +397,6 @@ INDIAN_STOCKS: Dict[str, tuple] = {
     "UCOBANK":      ("UCOBANK.NS",      "UCO Bank"),
     "UJJIVANSFB":   ("UJJIVANSFB.NS",  "Ujjivan Small Finance Bank Ltd"),
     "VAIBHAVGBL":   ("VAIBHAVGBL.NS",  "Vaibhav Global Ltd"),
-    "VALUEIND":     ("VALUEIND.NS",     "Value Industries Ltd"),
     "VINATIORGA":   ("VINATIORGA.NS",   "Vinati Organics Ltd"),
     "VGUARD":       ("VGUARD.NS",       "V-Guard Industries Ltd"),
     "WELCORP":      ("WELCORP.NS",      "Welspun Corp Ltd"),
@@ -405,7 +410,7 @@ INDIAN_STOCKS: Dict[str, tuple] = {
     "BANKNIFTY":    ("^NSEBANK",        "NIFTY Bank Index"),
     "NIFTYIT":      ("^CNXIT",          "NIFTY IT Index"),
 
-    # ── BSE-ONLY / ADDITIONAL POPULAR ────────────────────────
+    # ── ADDITIONAL POPULAR (mostly dual-listed NSE) ──────────
     "DMART":        ("DMART.NS",        "Avenue Supermarts Ltd"),
     "NYKAA":        ("NYKAA.NS",        "FSN E-Commerce Ventures Ltd"),
     "POLICYBZR":    ("POLICYBZR.NS",    "PB Fintech Ltd"),
@@ -546,6 +551,28 @@ INDIAN_STOCKS: Dict[str, tuple] = {
 # Build legacy NSE_SYMBOLS dict (symbol → Yahoo ticker) for backward compat
 NSE_SYMBOLS: Dict[str, str] = {k: v[0] for k, v in INDIAN_STOCKS.items()}
 
+# Retired / renamed tickers → current listed NSE symbols.
+# Keep aliases for user queries; do not treat keys as live listings.
+LEGACY_SYMBOL_ALIASES: Dict[str, str] = {
+    "TATAMOTORS": "TMPV",       # demerger → passenger vehicles
+    "ADANITRANS": "ADANIENSOL",  # Adani Energy Solutions
+    "GMRINFRA": "GMRAIRPORT",
+    "MINDAIND": "UNOMINDA",
+    "MOTHERSUMI": "MOTHERSON",
+    "L&TFH": "LTF",
+    "LTFH": "LTF",
+    "IIFLWAM": "360ONE",
+    "IBULHSGFIN": "SAMMAANCAP",
+    "ADANIWILMAR": "AWL",
+    "HPCL": "HINDPETRO",
+    "ZOMATO": "ETERNAL",
+    "CANARABANK": "CANBK",
+    "DALMIACEM": "DALBHARAT",
+    "AARTI": "AARTIIND",
+    "ELIH": "EIH",
+    "LEMONTR": "LEMONTREE",
+}
+
 # Build name lookup (lowercase company name → symbol) for search
 _NAME_INDEX: Dict[str, str] = {}
 
@@ -584,7 +611,7 @@ for _sym, (_ticker, _name) in INDIAN_STOCKS.items():
 DEFAULT_SYMBOLS = [
     "RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN",
     "WIPRO", "ICICIBANK", "KOTAKBANK", "HINDUNILVR", "ITC",
-    "BHARTIARTL", "LT", "AXISBANK", "BAJFINANCE", "TATAMOTORS",
+    "BHARTIARTL", "LT", "AXISBANK", "BAJFINANCE", "TMPV",
     "SUNPHARMA", "TITAN", "MARUTI", "HCLTECH", "TATASTEEL",
 ]
 
@@ -671,27 +698,76 @@ _quote_cache = QuoteCache(
 )
 
 
+def normalize_listed_symbol(symbol: str) -> str:
+    """Map retired tickers to the current listed NSE symbol (e.g. TATAMOTORS→TMPV)."""
+    raw = (symbol or "").strip().upper()
+    if raw.endswith(".NS") or raw.endswith(".BO"):
+        raw = raw.rsplit(".", 1)[0]
+    if raw.startswith("NSE:") or raw.startswith("BSE:"):
+        raw = raw.split(":", 1)[1].strip()
+    return LEGACY_SYMBOL_ALIASES.get(raw, raw)
+
+
 def _yf_ticker(symbol: str) -> str:
     """Convert symbol input into a Yahoo Finance ticker with NSE/BSE support."""
     raw_symbol = (symbol or "").strip().upper()
     if not raw_symbol:
         return ""
 
+    force_bse = False
     if raw_symbol.startswith("NSE:"):
         raw_symbol = raw_symbol.split(":", 1)[1].strip()
     elif raw_symbol.startswith("BSE:"):
         raw_symbol = raw_symbol.split(":", 1)[1].strip()
-        if raw_symbol and not raw_symbol.endswith(".BO"):
-            return f"{raw_symbol}.BO"
+        force_bse = True
 
     if raw_symbol.endswith(".NS") or raw_symbol.endswith(".BO"):
+        base = raw_symbol.rsplit(".", 1)[0]
+        mapped = LEGACY_SYMBOL_ALIASES.get(base)
+        if mapped:
+            suffix = raw_symbol.rsplit(".", 1)[1]
+            return f"{mapped}.{suffix}"
         return raw_symbol
+
+    raw_symbol = LEGACY_SYMBOL_ALIASES.get(raw_symbol, raw_symbol)
+
+    # Explicit BSE prefix / numeric scrip code → .BO (resolve alpha via BSE master).
+    if force_bse or (len(raw_symbol) == 6 and raw_symbol.isdigit()):
+        try:
+            from .stock_enricher import lookup_bse_listing
+
+            rec = lookup_bse_listing(raw_symbol)
+            if rec and rec.get("code"):
+                return f"{rec['code']}.BO"
+        except Exception:
+            pass
+        if len(raw_symbol) == 6 and raw_symbol.isdigit():
+            return f"{raw_symbol}.BO"
+        return f"{raw_symbol}.BO"
 
     if raw_symbol in NSE_SYMBOLS:
         return NSE_SYMBOLS[raw_symbol]
 
-    if len(raw_symbol) == 6 and raw_symbol.isdigit():
-        return f"{raw_symbol}.BO"
+    # Live catalog may already know the Yahoo ticker (NSE or BSE-only).
+    try:
+        catalog = get_stock_catalog()
+        if raw_symbol in catalog:
+            yahoo = catalog[raw_symbol][0]
+            if yahoo:
+                return str(yahoo)
+    except Exception:
+        pass
+
+    # BSE-only active listings (not on NSE equity master) → numeric .BO.
+    try:
+        from .stock_enricher import is_bse_only_symbol, lookup_bse_listing
+
+        if is_bse_only_symbol(raw_symbol):
+            rec = lookup_bse_listing(raw_symbol)
+            if rec and rec.get("code"):
+                return f"{rec['code']}.BO"
+    except Exception:
+        pass
 
     return f"{raw_symbol}.NS"
 
@@ -719,8 +795,43 @@ def fetch_quote_history(symbol: str, period: str = "1mo", interval: str = "1d") 
     if normalized_interval not in HISTORY_ALLOWED_INTERVALS:
         raise ValueError(f"Unsupported history interval: {interval}")
 
-    ticker = yf.Ticker(_yf_ticker(normalized_symbol))
-    hist = ticker.history(period=normalized_period, interval=normalized_interval, auto_adjust=False)
+    candidates: List[str] = []
+    primary = _yf_ticker(normalized_symbol)
+    if primary:
+        candidates.append(primary)
+    # Dual-listed BSE codes: also try NSE twin (Yahoo .BO history can be flaky).
+    try:
+        from .stock_enricher import get_nse_equity_map, lookup_bse_listing
+
+        rec = lookup_bse_listing(normalized_symbol)
+        sid = str((rec or {}).get("scrip_id") or "").upper()
+        if sid and sid in get_nse_equity_map():
+            nse_yahoo = _yf_ticker(sid)
+            if nse_yahoo and nse_yahoo not in candidates:
+                # Prefer NSE history first for dual-listed names.
+                candidates.insert(0, nse_yahoo)
+    except Exception:
+        pass
+    if normalized_symbol not in candidates:
+        # Last-resort suffixes.
+        if len(normalized_symbol) == 6 and normalized_symbol.isdigit():
+            candidates.append(f"{normalized_symbol}.BO")
+        else:
+            candidates.extend([f"{normalized_symbol}.NS", f"{normalized_symbol}.BO"])
+
+    hist = None
+    for yahoo in list(dict.fromkeys(candidates)):
+        try:
+            hist = yf.Ticker(yahoo).history(
+                period=normalized_period,
+                interval=normalized_interval,
+                auto_adjust=False,
+            )
+            if hist is not None and not hist.empty:
+                break
+        except Exception as exc:
+            logger.debug("history failed for %s: %s", yahoo, exc)
+            hist = None
     if hist is None or hist.empty:
         return []
 
@@ -988,6 +1099,7 @@ def get_symbols_with_names() -> List[dict]:
 
 
 _SEARCH_CATALOG: Optional[Dict[str, tuple]] = None
+_SEARCH_CATALOG_DIRTY = False
 _SEARCH_CATALOG_LOCK = Lock()
 _INDEX_SYMBOLS = {
     "NIFTY50", "SENSEX", "BANKNIFTY", "NIFTYIT", "NIFTYBANK",
@@ -999,33 +1111,100 @@ _MOVERS_CACHE_LOCK = Lock()
 _MOVERS_REFRESH_LOCK = Lock()
 
 
+def mark_stock_catalog_dirty() -> None:
+    """Signal that NSE/BSE masters changed — next get_stock_catalog() rebuilds."""
+    global _SEARCH_CATALOG_DIRTY
+    _SEARCH_CATALOG_DIRTY = True
+
+
+def invalidate_stock_catalog() -> None:
+    """Clear process catalog cache (called when NSE/BSE listing masters refresh)."""
+    global _SEARCH_CATALOG, _SEARCH_CATALOG_DIRTY
+    _SEARCH_CATALOG_DIRTY = True
+    with _SEARCH_CATALOG_LOCK:
+        _SEARCH_CATALOG = None
+
+
 def get_stock_catalog() -> Dict[str, tuple]:
     """
-    Search/browse catalog = curated INDIAN_STOCKS (ticker overrides win)
-    plus NSE EQUITY_L equities mapped as SYMBOL.NS.
+    Search/browse catalog = curated INDIAN_STOCKS (overrides win)
+    + NSE EQUITY_L (SYMBOL.NS) + BSE active equities (BSE-only SYMBOL.BO + 6-digit codes).
+    Dual-listed names stay on NSE; BSE scrip codes remain searchable.
     """
-    global _SEARCH_CATALOG
+    global _SEARCH_CATALOG, _SEARCH_CATALOG_DIRTY
     with _SEARCH_CATALOG_LOCK:
-        if _SEARCH_CATALOG is not None:
+        listings_stale = False
+        try:
+            from .stock_enricher import listings_are_stale
+
+            listings_stale = listings_are_stale()
+        except Exception:
+            listings_stale = False
+        if (
+            _SEARCH_CATALOG is not None
+            and not _SEARCH_CATALOG_DIRTY
+            and not listings_stale
+        ):
             return _SEARCH_CATALOG
 
         catalog: Dict[str, tuple] = dict(INDIAN_STOCKS)
+        nse_count = 0
+        bse_only_count = 0
+        bse_code_count = 0
         try:
-            from .stock_enricher import get_nse_equity_map
+            from .stock_enricher import get_bse_equity_records, get_nse_equity_map
 
-            for sym, name in get_nse_equity_map().items():
+            nse_map = get_nse_equity_map()
+            for sym, name in nse_map.items():
                 key = (sym or "").strip().upper()
                 if not key or key in catalog:
                     continue
+                # Drop retired tickers that may still appear in stale equity masters.
+                if key in LEGACY_SYMBOL_ALIASES:
+                    continue
                 catalog[key] = (f"{key}.NS", name)
+                nse_count += 1
+
+            for rec in get_bse_equity_records():
+                code = str(rec.get("code") or "").strip()
+                sid = str(rec.get("scrip_id") or "").strip().upper()
+                name = str(rec.get("name") or sid or code).strip()
+                yahoo_bo = str(rec.get("yahoo") or (f"{code}.BO" if code else ""))
+                if not code or not yahoo_bo:
+                    continue
+
+                on_nse = bool(sid and (sid in catalog or sid in nse_map))
+                if on_nse:
+                    # Dual-listed: keep NSE analysis path; expose BSE code for search/quotes.
+                    if code not in catalog:
+                        # Prefer NSE yahoo for the shared name; code maps to .BO for BSE asks.
+                        catalog[code] = (yahoo_bo, catalog.get(sid, (None, name))[1] or name)
+                        bse_code_count += 1
+                    continue
+
+                # BSE-only equity — list under scrip_id and numeric code.
+                if sid and sid not in catalog and sid not in LEGACY_SYMBOL_ALIASES:
+                    catalog[sid] = (yahoo_bo, name)
+                    bse_only_count += 1
+                if code not in catalog:
+                    catalog[code] = (yahoo_bo, name)
+                    bse_code_count += 1
         except Exception as exc:
-            logger.warning("NSE equity master merge skipped: %s", exc)
+            logger.warning("NSE/BSE equity master merge skipped: %s", exc)
+
+        # Never expose delisted aliases as searchable listed symbols.
+        for legacy in LEGACY_SYMBOL_ALIASES:
+            catalog.pop(legacy, None)
 
         _SEARCH_CATALOG = catalog
+        _SEARCH_CATALOG_DIRTY = False  # clear dirty set during master load
         logger.info(
-            "Stock catalog ready: %d symbols (curated=%d)",
+            "Stock catalog ready: %d symbols (curated=%d, nse_added=%d, bse_only=%d, bse_codes=%d)",
             len(catalog),
             len(INDIAN_STOCKS),
+            nse_count,
+            bse_only_count,
+            bse_code_count,
         )
         return catalog
 
@@ -1227,7 +1406,7 @@ def search_stocks(query: str, limit: int = 50) -> List[dict]:
     """
     Search stocks by symbol or company name.
     Pipeline: exact → prefix → contains → name phrase → fuzzy → Yahoo search API.
-    Catalog = curated INDIAN_STOCKS + NSE EQUITY_L master.
+    Catalog = curated INDIAN_STOCKS + NSE EQUITY_L + BSE active equities.
     """
     catalog = get_stock_catalog()
     terms = _build_search_terms(query)
@@ -1255,14 +1434,20 @@ def search_stocks(query: str, limit: int = 50) -> List[dict]:
     results = []
     seen = set()
 
+    def _row(sym: str, name: str, match_type: str) -> dict:
+        yahoo = catalog.get(sym, ("",))[0] if sym in catalog else ""
+        return {
+            "symbol": sym,
+            "name": name,
+            "matchType": match_type,
+            "exchange": "BSE" if str(yahoo).endswith(".BO") else "NSE",
+            "yahooTicker": yahoo or None,
+        }
+
     # 1) Exact symbol match from any meaningful unit.
     for query_upper in search_units_upper:
         if query_upper in catalog and query_upper not in seen:
-            results.append({
-                "symbol": query_upper,
-                "name": catalog[query_upper][1],
-                "matchType": "exact"
-            })
+            results.append(_row(query_upper, catalog[query_upper][1], "exact"))
             seen.add(query_upper)
 
     # 2) Symbol prefix matches (highest priority after exact)
@@ -1272,7 +1457,7 @@ def search_stocks(query: str, limit: int = 50) -> List[dict]:
             continue
         symbol_lower = sym.lower()
         if any(symbol_lower.startswith(unit) for unit in search_units_lower if len(unit) >= 3):
-            results.append({"symbol": sym, "name": name, "matchType": "symbol"})
+            results.append(_row(sym, name, "symbol"))
             seen.add(sym)
 
     # 3) Symbol contains matches — require >= 3 chars (was 2 → "hi" ⊂ HINDUNILVR).
@@ -1281,7 +1466,7 @@ def search_stocks(query: str, limit: int = 50) -> List[dict]:
             continue
         symbol_lower = sym.lower()
         if any(unit in symbol_lower for unit in search_units_lower if len(unit) >= 3):
-            results.append({"symbol": sym, "name": name, "matchType": "symbol"})
+            results.append(_row(sym, name, "symbol"))
             seen.add(sym)
 
     # 4) Company name matches — phrase match or all-tokens match
@@ -1292,7 +1477,7 @@ def search_stocks(query: str, limit: int = 50) -> List[dict]:
         phrase_match = phrase in name_lower
         token_match = all(term in name_lower for term in terms if len(term) >= 2)
         if phrase_match or token_match:
-            results.append({"symbol": sym, "name": name, "matchType": "name"})
+            results.append(_row(sym, name, "name"))
             seen.add(sym)
 
     # 4b) Partial token match — any search term appears in name (relaxed)
@@ -1303,7 +1488,7 @@ def search_stocks(query: str, limit: int = 50) -> List[dict]:
             name_lower = name.lower()
             meaningful_terms = [t for t in terms if len(t) >= 3]
             if meaningful_terms and any(t in name_lower for t in meaningful_terms):
-                results.append({"symbol": sym, "name": name, "matchType": "partial"})
+                results.append(_row(sym, name, "partial"))
                 seen.add(sym)
 
     # 5) Fuzzy matching on company names (handles typos, "india" vs "indian")
@@ -1315,11 +1500,7 @@ def search_stocks(query: str, limit: int = 50) -> List[dict]:
         for matched_name in close_matches:
             for sym, name_lower in _all_names.items():
                 if name_lower == matched_name and sym not in seen:
-                    results.append({
-                        "symbol": sym,
-                        "name": catalog[sym][1],
-                        "matchType": "fuzzy"
-                    })
+                    results.append(_row(sym, catalog[sym][1], "fuzzy"))
                     seen.add(sym)
                     break
 
@@ -1333,31 +1514,39 @@ def search_stocks(query: str, limit: int = 50) -> List[dict]:
                 results.append({"symbol": sym, "name": name, "matchType": "yahoo"})
                 seen.add(sym)
 
-    # 7) Legacy fallback: try raw tokens as NSE tickers
+    # 7) Legacy fallback: try raw tokens as NSE then BSE Yahoo tickers
     if not results:
         yahoo_candidates = _dedupe_keep_order(search_units_upper + [term.upper() for term in terms])
         for candidate in yahoo_candidates:
             if len(candidate) < 2:
                 continue
-            try:
-                ticker = yf.Ticker(f"{candidate}.NS")
-                hist = ticker.history(period="1d")
-                if hist.empty:
-                    continue
+            suffixes = (".BO",) if len(candidate) == 6 and candidate.isdigit() else (".NS", ".BO")
+            found = False
+            for suffix in suffixes:
                 try:
-                    info = ticker.info
-                    name = info.get("shortName", candidate)
-                except Exception:
-                    name = candidate
+                    yf_name = f"{candidate}{suffix}"
+                    ticker = yf.Ticker(yf_name)
+                    hist = ticker.history(period="1d")
+                    if hist.empty:
+                        continue
+                    try:
+                        info = ticker.info
+                        name = info.get("shortName", candidate)
+                    except Exception:
+                        name = candidate
 
-                results.append({
-                    "symbol": candidate,
-                    "name": name,
-                    "matchType": "yahoo"
-                })
+                    results.append({
+                        "symbol": candidate,
+                        "name": name,
+                        "matchType": "yahoo",
+                        "exchange": "BSE" if yf_name.endswith(".BO") else "NSE",
+                    })
+                    found = True
+                    break
+                except Exception:
+                    continue
+            if found:
                 break
-            except Exception:
-                continue
 
     return results[:limit]
 
