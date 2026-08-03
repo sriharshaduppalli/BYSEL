@@ -291,6 +291,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onStart() {
         super.onStart()
+        // Single resume entry — avoid onStart+onResume double warmup stampede.
         tradingViewModel?.takeIf { AuthSessionManager.hasSession() }?.onAppForegroundResume()
     }
 
@@ -304,7 +305,6 @@ class MainActivity : FragmentActivity() {
                 onCancel = { }
             )
         }
-        tradingViewModel?.takeIf { AuthSessionManager.hasSession() }?.onAppForegroundResume()
     }
 
     override fun onStop() {
@@ -426,12 +426,16 @@ fun BYSELApp(
     var pendingAiTrade by remember { mutableStateOf<AiTradeRequest?>(null) }
     var pendingOpenAddFunds by remember { mutableStateOf(false) }
     var lastBackPressAt by remember { mutableLongStateOf(0L) }
-    // Default 2s live refresh while market is open. Migrate older 30–60s prefs down.
+    // Default 5s heatmap poll — 1–2s caused overlapping Yahoo/Render storms.
     var heatmapInterval by remember {
-        val saved = prefs.getInt("heatmapInterval", 2_000)
+        val saved = prefs.getInt("heatmapInterval", 5_000)
         val migrated = when {
-            saved in 1_000..10_000 -> saved
-            else -> 2_000
+            saved in 1_000..2_000 -> 5_000
+            saved in 5_000..10_000 -> saved
+            else -> 5_000
+        }
+        if (migrated != saved) {
+            prefs.edit().putInt("heatmapInterval", migrated).apply()
         }
         mutableStateOf(migrated)
     }
@@ -921,6 +925,7 @@ fun BYSELApp(
                                             viewModel.lookupOrderByTrace(traceId)
                                             selectedTab = 19
                                         },
+                                        isActive = pagerState.currentPage == 2,
                                         viewModel = viewModel
                                     )
                                     3 -> PortfolioScreen(
@@ -942,7 +947,8 @@ fun BYSELApp(
                                         isLoading = heatmapLoading,
                                         heatmapInterval = heatmapInterval,
                                         isActive = pagerState.currentPage == 4,
-                                        onRefresh = { viewModel.loadMarketHeatmap(force = true) },
+                                        onRefresh = { viewModel.loadMarketHeatmap(force = false) },
+                                        onForceRefresh = { viewModel.loadMarketHeatmap(force = true) },
                                         onStockClick = { symbol ->
                                             previousTab = selectedTab
                                             viewModel.fetchAndSelectQuote(symbol)

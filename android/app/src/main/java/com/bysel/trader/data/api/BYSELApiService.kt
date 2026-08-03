@@ -244,6 +244,9 @@ interface BYSELApiService {
     @GET("/health")
     suspend fun healthCheck(): Map<String, String>
 
+    @GET("/warmup")
+    suspend fun warmup(): Map<String, Any>
+
     // ==================== WALLET ====================
     @GET("/wallet")
     suspend fun getWallet(): WalletBalance

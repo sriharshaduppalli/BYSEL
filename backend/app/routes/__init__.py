@@ -7,10 +7,12 @@ import asyncio
 import logging
 import os
 import re
+import threading
 import time
 import hashlib
 from math import erf, exp, log, sqrt
 from urllib import request as urllib_request
+from sqlalchemy import text
 from ..database.db import (
     get_db,
     AlertModel,
@@ -1743,6 +1745,34 @@ async def get_symbols_count():
 async def health_check():
     """Health check endpoint."""
     return HealthCheck(status="healthy", version="2.0.0")
+
+
+@router.get("/warmup")
+async def warmup_endpoint(db: Session = Depends(get_db)):
+    """
+    Fast wake helper for app resume / external keepalive.
+    Pings DB and kicks background quote warm — does not wait on Yahoo.
+    """
+    db_ok = False
+    try:
+        db.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception as exc:
+        logger.warning("warmup.db_ping_failed reason=%s", exc)
+
+    def _warm_quotes():
+        try:
+            from ..market_data import fetch_quotes, get_default_symbols
+            fetch_quotes(get_default_symbols())
+        except Exception as exc:
+            logger.warning("warmup.quotes_failed reason=%s", exc)
+
+    threading.Thread(target=_warm_quotes, name="bysel-warmup-quotes", daemon=True).start()
+    return {
+        "status": "warming",
+        "db": db_ok,
+        "version": "2.0.0",
+    }
 
 
 # ==================== AI STOCK ASSISTANT ====================

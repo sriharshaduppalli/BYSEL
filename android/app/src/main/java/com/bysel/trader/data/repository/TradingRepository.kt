@@ -470,6 +470,21 @@ open class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
+    /** Cheap market-API wake (Render free tier) — does not touch the AI service. */
+    suspend fun warmMarketBackend(): Result<Unit> {
+        return try {
+            // Prefer /warmup (DB ping + background quote seed); fall back to /health.
+            try {
+                apiService.warmup()
+            } catch (_: Exception) {
+                apiService.healthCheck()
+            }
+            Result.Success(Unit)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Market warmup failed")
+        }
+    }
+
     suspend fun aiAsk(
         query: String,
         chatHistory: List<ConversationTurn>? = null,
@@ -730,9 +745,9 @@ open class TradingRepository(private val database: BYSELDatabase) {
         return try {
             Result.Success(apiService.getMarketHeatmap())
         } catch (first: Exception) {
-            // Render free tier may be asleep; wake via /health then retry once.
+            // Render free tier may be asleep; wake market /health then retry once.
             return try {
-                warmAiBackend()
+                warmMarketBackend()
                 Result.Success(apiService.getMarketHeatmap())
             } catch (second: Exception) {
                 Result.Error(

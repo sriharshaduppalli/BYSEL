@@ -26,10 +26,11 @@ object AuthTokenRefresher {
     private val refreshClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .addInterceptor(RequestMetadataInterceptor())
-            .callTimeout(90, TimeUnit.SECONDS)
-            .connectTimeout(45, TimeUnit.SECONDS)
-            .readTimeout(90, TimeUnit.SECONDS)
-            .writeTimeout(45, TimeUnit.SECONDS)
+            // Keep proactive resume refresh snappy; authenticator can still retry later.
+            .callTimeout(20, TimeUnit.SECONDS)
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .build()
     }

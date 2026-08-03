@@ -57,7 +57,7 @@ fun SettingsScreen(
     onLogout: () -> Unit = {},
     onLogoutAllDevices: () -> Unit = {},
     onOpenPriceAlerts: () -> Unit = {},
-    heatmapInterval: Int = 2000,
+    heatmapInterval: Int = 5000,
     onHeatmapIntervalChange: (Int) -> Unit = {}
 ) {
     val authRepository = remember { AuthRepository() }
@@ -721,7 +721,7 @@ fun ManageSessionsDialog(
 
 @Composable
 fun IntervalSelectionDialog(selectedInterval: Int, onIntervalSelected: (Int) -> Unit, onDismiss: () -> Unit) {
-    val intervals = listOf(1_000, 2_000, 5_000, 10_000)
+    val intervals = listOf(5_000, 10_000, 15_000, 30_000)
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = LocalAppTheme.current.card,

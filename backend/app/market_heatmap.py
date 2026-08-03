@@ -183,8 +183,30 @@ def get_market_heatmap() -> Dict:
         _HEATMAP_CACHE["timestamp"] = now
         return empty
 
-    # Open market, no cache yet — must build synchronously once.
-    return _refresh_heatmap_sync(market_open=True)
+    # Open market, no cache yet — never block the client on a full Yahoo rebuild.
+    # Serve last disk snapshot (or a light empty shell) and refresh in background.
+    persisted = _load_persisted_heatmap_snapshot()
+    if persisted:
+        stamped = _stamp_stale(
+            persisted,
+            market_open=True,
+            reason="Warming live heatmap — showing last saved snapshot.",
+        )
+        _HEATMAP_CACHE["data"] = stamped
+        _HEATMAP_CACHE["timestamp"] = now
+        _schedule_heatmap_refresh(market_open=True)
+        return stamped
+
+    empty = _empty_heatmap_payload(
+        mood_desc="Market data is warming up — heatmap tiles will fill in shortly."
+    )
+    empty["isStale"] = True
+    empty["marketOpen"] = True
+    empty["staleReason"] = empty["moodDescription"]
+    _HEATMAP_CACHE["data"] = empty
+    _HEATMAP_CACHE["timestamp"] = now
+    _schedule_heatmap_refresh(market_open=True)
+    return empty
 
 
 def _schedule_heatmap_refresh(*, market_open: bool) -> None:
