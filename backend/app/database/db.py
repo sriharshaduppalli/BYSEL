@@ -21,12 +21,28 @@ def _select_default_sqlite_path() -> Path:
 
 _DEFAULT_SQLITE_DB = _select_default_sqlite_path()
 _DEFAULT_DATABASE_URL = f"sqlite:///{_DEFAULT_SQLITE_DB.as_posix()}"
-DATABASE_URL = os.getenv("DATABASE_URL", _DEFAULT_DATABASE_URL)
-
-engine = create_engine(
-    DATABASE_URL, 
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
+_RAW_DATABASE_URL = os.getenv("DATABASE_URL", _DEFAULT_DATABASE_URL)
+# Render often provides postgres:// — SQLAlchemy expects postgresql://
+DATABASE_URL = (
+    _RAW_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    if _RAW_DATABASE_URL.startswith("postgres://")
+    else _RAW_DATABASE_URL
 )
+
+_is_sqlite = "sqlite" in DATABASE_URL
+_engine_kwargs: dict = {}
+if _is_sqlite:
+    _engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    # Survive free-tier Postgres sleep / dropped connections without long hangs.
+    _engine_kwargs.update(
+        pool_pre_ping=True,
+        pool_recycle=280,
+        pool_size=5,
+        max_overflow=5,
+    )
+
+engine = create_engine(DATABASE_URL, **_engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

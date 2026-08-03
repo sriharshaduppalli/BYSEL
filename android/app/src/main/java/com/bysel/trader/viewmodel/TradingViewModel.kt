@@ -314,7 +314,8 @@ class TradingViewModel(
     private val QUOTE_REFRESH_DEBOUNCE = 1_250L
     private val ALL_QUOTES_WARMUP_INTERVAL = 10 * 60_000L
     private val SIGNAL_LAB_REFRESH_DEBOUNCE = 15_000L
-    private val HEATMAP_REFRESH_DEBOUNCE = 1_000L  // 1 second for sub-1s market updates
+    private val HEATMAP_REFRESH_DEBOUNCE = 4_000L
+    private val HEATMAP_STALE_THRESHOLD = 20_000L
     private var lastForegroundWarmupAt = 0L
     private var lastQuotesRefreshAt = 0L
     private var lastQuotesRefreshRequestAt = 0L
@@ -323,6 +324,7 @@ class TradingViewModel(
     private var lastHeatmapRefreshAt = 0L  // Track heatmap cache timestamp
     private var activeHistoryRequestKey: String? = null
     private var quotesRefreshJob: Job? = null
+    private var heatmapJob: Job? = null
     private val defaultSymbols = listOf(
         "RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN",
         "ICICIBANK", "ITC", "LT", "KOTAKBANK", "HINDUNILVR",
@@ -966,10 +968,12 @@ class TradingViewModel(
         lastForegroundWarmupAt = now
 
         viewModelScope.launch {
-            // Refresh first so wallet/quotes don't stampede 401s with a stale access token.
-            withContext(kotlinx.coroutines.Dispatchers.IO) {
-                AuthTokenRefresher.refreshBlocking(failedAccessToken = null)
+            // Auth refresh in parallel — do not block quotes/wallet on a 90s wake.
+            launch(kotlinx.coroutines.Dispatchers.IO) {
+                AuthTokenRefresher.refreshIfNeeded()
             }
+            // Wake market API cheaply; AI warm stays on the AI tab.
+            launch { repository.warmMarketBackend() }
 
             refreshMarketStatus()
             refreshWallet()
@@ -983,10 +987,11 @@ class TradingViewModel(
                 refreshHoldings()
             }
 
-            // Wake Render and refresh heatmap snapshot on resume so it does not
-            // look "stuck" until the developer machine or a manual retry warms the server.
-            warmAiBackend()
-            loadMarketHeatmap(force = true)
+            val heatmapStale = _marketHeatmap.value == null ||
+                System.currentTimeMillis() - lastHeatmapRefreshAt > HEATMAP_STALE_THRESHOLD
+            if (force || heatmapStale) {
+                loadMarketHeatmap(force = false)
+            }
 
             if (_fastRefreshEnabled.value) {
                 startFastRefresh(symbols = trackedSymbols())
@@ -996,6 +1001,10 @@ class TradingViewModel(
 
     fun onAppBackgroundPause() {
         stopFastRefresh()
+        // Drop in-flight heatmap poll work so return-to-app is not stuck behind it.
+        heatmapJob?.cancel()
+        heatmapJob = null
+        _heatmapLoading.value = false
     }
 
     fun setFastRefreshEnabled(enabled: Boolean) {
@@ -2282,24 +2291,29 @@ class TradingViewModel(
         if (!force && _marketHeatmap.value != null && (now - lastHeatmapRefreshAt) < HEATMAP_REFRESH_DEBOUNCE) {
             return
         }
+        if (!force && heatmapJob?.isActive == true) return
 
-        viewModelScope.launch {
+        heatmapJob?.cancel()
+        heatmapJob = viewModelScope.launch {
             _heatmapLoading.value = true
-            when (val r = repository.getMarketHeatmap()) {
-                is Result.Success -> {
-                    _marketHeatmap.value = r.data
-                    lastHeatmapRefreshAt = System.currentTimeMillis()
-                    _error.value = null
-                }
-                is Result.Error -> {
-                    // Keep last good heatmap if we have one; surface a clear wake-up hint.
-                    if (_marketHeatmap.value == null) {
-                        _error.value = r.message
+            try {
+                when (val r = repository.getMarketHeatmap()) {
+                    is Result.Success -> {
+                        _marketHeatmap.value = r.data
+                        lastHeatmapRefreshAt = System.currentTimeMillis()
+                        _error.value = null
                     }
+                    is Result.Error -> {
+                        // Keep last good heatmap if we have one; surface a clear wake-up hint.
+                        if (_marketHeatmap.value == null) {
+                            _error.value = r.message
+                        }
+                    }
+                    else -> {}
                 }
-                else -> {}
+            } finally {
+                _heatmapLoading.value = false
             }
-            _heatmapLoading.value = false
         }
     }
 

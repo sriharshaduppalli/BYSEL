@@ -295,7 +295,8 @@ async def stream_quotes(websocket: WebSocket):
                     str(exc),
                 )
 
-            quote_rows = fetch_quotes(symbols)
+            # Keep Yahoo I/O off the asyncio event loop so REST resume calls stay responsive.
+            quote_rows = await asyncio.to_thread(fetch_quotes, symbols)
             sequence = _next_stream_sequence()
             payload = {
                 "type": "quotes",

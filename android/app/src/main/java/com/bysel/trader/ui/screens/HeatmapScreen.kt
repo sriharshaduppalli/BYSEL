@@ -128,8 +128,9 @@ fun HeatmapScreen(
     heatmap: MarketHeatmap?,
     isLoading: Boolean,
     onRefresh: () -> Unit,
+    onForceRefresh: () -> Unit = onRefresh,
     onStockClick: (String) -> Unit,
-    heatmapInterval: Int = 1000,
+    heatmapInterval: Int = 5_000,
     isActive: Boolean = true,
 ) {
     var marketOpen by remember { mutableStateOf(isNseMarketOpen()) }
@@ -169,10 +170,11 @@ fun HeatmapScreen(
 
     LaunchedEffect(heatmapInterval, isActive) {
         if (!isActive) return@LaunchedEffect
-        val pollMs = heatmapInterval.toLong().coerceIn(1_000L, 10_000L)
+        val pollMs = heatmapInterval.toLong().coerceIn(5_000L, 30_000L)
         while (true) {
             marketOpen = isNseMarketOpen()
             if (marketOpen) {
+                // ViewModel single-flight + debounce drops overlaps.
                 onRefresh()
                 kotlinx.coroutines.delay(pollMs)
             } else {
@@ -213,7 +215,7 @@ fun HeatmapScreen(
         ) {
             PullToRefreshBox(
                 isRefreshing = isLoading,
-                onRefresh = onRefresh,
+                onRefresh = onForceRefresh,
                 enabled = true
             ) {
                 LazyColumn(

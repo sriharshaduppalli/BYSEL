@@ -168,15 +168,19 @@ fun TradingScreen(
     onTraceSupportLookup: ((String) -> Unit)? = null,
     openAddFundsRequest: Boolean = false,
     onOpenAddFundsConsumed: () -> Unit = {},
+    isActive: Boolean = true,
     viewModel: com.bysel.trader.viewmodel.TradingViewModel
 ) {
-    // Start fast-refresh while this screen is visible; stop on dispose.
-    // The full symbol universe is only needed for browsing here, so it is fetched on
-    // first visit rather than during app startup.
-    DisposableEffect(viewModel) {
-        viewModel.startFastRefresh()
-        viewModel.loadAllQuotes()
-        onDispose { viewModel.stopFastRefresh() }
+    // Only warm the full quote universe while Trade is the active pager page
+    // (adjacent pages stay composed via beyondBoundsPageCount).
+    DisposableEffect(viewModel, isActive) {
+        if (isActive) {
+            viewModel.startFastRefresh()
+            viewModel.loadAllQuotes()
+        }
+        onDispose {
+            if (isActive) viewModel.stopFastRefresh()
+        }
     }
     val liveQuotes by viewModel.quotes.collectAsStateWithLifecycle()
     val watchlistSymbols by viewModel.watchlist.collectAsStateWithLifecycle()

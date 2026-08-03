@@ -15,9 +15,17 @@ services:
       - key: AUTH_SECRET
         sync: false
       - key: QUOTE_BATCH_SIZE
-        value: "30"
+        value: "25"
       - key: QUOTE_CACHE_MAX_ENTRIES
-        value: "250"
+        value: "2500"
+      - key: HEATMAP_CACHE_TTL_OPEN
+        value: "5"
+      - key: HEATMAP_QUOTE_MAX_AGE_OPEN
+        value: "90"
+      - key: HEATMAP_QUOTE_REFRESH_BUDGET
+        value: "60"
+      - key: MARKET_NEWS_BUDGET_SECONDS
+        value: "4"
       - key: NEWS_CACHE_MAX_SYMBOLS
         value: "80"
       # Password reset email (prefer Resend — set the secret in Render Dashboard)
