@@ -29,6 +29,7 @@ import com.bysel.trader.data.models.Quote
 import com.bysel.trader.ui.format.formatInr
 import com.bysel.trader.ui.format.formatSignedPct
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.TickPriceText
 
 @Composable
 fun WatchlistWidget(
@@ -186,10 +187,12 @@ private fun WatchRow(
                 fontWeight = FontWeight.SemiBold,
                 color = theme.text,
             )
-            Text(
+            TickPriceText(
+                price = quote.last,
                 text = formatInr(quote.last, decimals = 2),
-                fontSize = 12.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = theme.textSecondary,
+                fontWeight = FontWeight.Normal,
             )
             Box(
                 modifier = Modifier

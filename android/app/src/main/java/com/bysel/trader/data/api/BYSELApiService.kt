@@ -558,21 +558,37 @@ data class PortfolioRiskResponse(
 }
 
 data class EarningsEntry(
+    @com.google.gson.annotations.SerializedName("symbol")
     val symbol: String = "",
+    @com.google.gson.annotations.SerializedName("name")
     val name: String? = null,
     // Backend (ai_v2) fields
+    @com.google.gson.annotations.SerializedName("nextEarningsDate")
     val nextEarningsDate: String? = null,
+    @com.google.gson.annotations.SerializedName("epsTrailing")
     val epsTrailing: Double? = null,
+    @com.google.gson.annotations.SerializedName("epsForward")
     val epsForward: Double? = null,
+    @com.google.gson.annotations.SerializedName("revenueGrowth")
     val revenueGrowth: Double? = null,
+    @com.google.gson.annotations.SerializedName("pe")
     val pe: Double? = null,
+    @com.google.gson.annotations.SerializedName("sector")
     val sector: String? = null,
+    @com.google.gson.annotations.SerializedName("estimated")
+    val estimated: Boolean = false,
     // Legacy / alternate field names
+    @com.google.gson.annotations.SerializedName("earningsDate")
     val earningsDate: String? = null,
+    @com.google.gson.annotations.SerializedName("epsEstimate")
     val epsEstimate: Double? = null,
+    @com.google.gson.annotations.SerializedName("epsActual")
     val epsActual: Double? = null,
+    @com.google.gson.annotations.SerializedName("revenueEstimate")
     val revenueEstimate: Long? = null,
+    @com.google.gson.annotations.SerializedName("trailingPE")
     val trailingPE: Double? = null,
+    @com.google.gson.annotations.SerializedName("forwardPE")
     val forwardPE: Double? = null,
 ) {
     fun displayDate(): String? {
@@ -593,10 +609,16 @@ data class EarningsEntry(
 
 data class EarningsCalendarResponse(
     // Backend returns `items`; older clients expected `earnings`.
+    @com.google.gson.annotations.SerializedName("items")
     val items: List<EarningsEntry>? = null,
+    @com.google.gson.annotations.SerializedName("earnings")
     val earnings: List<EarningsEntry>? = null,
+    @com.google.gson.annotations.SerializedName("count")
     val count: Int = 0,
+    @com.google.gson.annotations.SerializedName("generatedAt")
     val generatedAt: String = "",
+    @com.google.gson.annotations.SerializedName("disclaimer")
+    val disclaimer: String? = null,
 ) {
     fun resolvedEntries(): List<EarningsEntry> = items ?: earnings ?: emptyList()
 }

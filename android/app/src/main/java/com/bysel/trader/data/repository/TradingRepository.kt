@@ -9,6 +9,7 @@ import com.bysel.trader.data.api.TradeHistory
 import com.bysel.trader.data.local.BYSELDatabase
 import com.bysel.trader.data.models.*
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import java.util.UUID
 
@@ -43,6 +44,7 @@ open class TradingRepository(private val database: BYSELDatabase) {
         }
     private val apiService: BYSELApiService = RetrofitClient.apiService
     private val aiApiService: BYSELApiService = RetrofitClient.aiApiService
+    private val warmApiService: BYSELApiService = RetrofitClient.warmApiService
     private val liveMarketDataClient = LiveMarketDataClient(apiService)
 
     // ==================== QUOTES ====================
@@ -192,13 +194,28 @@ open class TradingRepository(private val database: BYSELDatabase) {
 
     // ==================== HOLDINGS ====================
     fun getHoldings(): Flow<Result<List<Holding>>> = flow {
+        // Cache-first so reopen shows last holdings while the network catch-up runs.
+        var servedCache = false
         try {
+            val cached = database.holdingDao().getAllHoldings().first()
+            if (cached.isNotEmpty()) {
+                emit(Result.Success(cached))
+                servedCache = true
+            } else {
+                emit(Result.Loading)
+            }
+        } catch (_: Exception) {
             emit(Result.Loading)
+        }
+        try {
             val holdings = apiService.getHoldings()
+            database.holdingDao().clearAll()
             database.holdingDao().insertHoldings(holdings)
             emit(Result.Success(holdings))
         } catch (e: Exception) {
-            emit(Result.Error(e.message ?: "Unknown error"))
+            if (!servedCache) {
+                emit(Result.Error(e.message ?: "Unknown error"))
+            }
         }
     }
 
@@ -371,6 +388,8 @@ open class TradingRepository(private val database: BYSELDatabase) {
                 return Result.Success(emptyList())
             }
             val results = apiService.searchStocks(normalizedQuery)
+                .map { it.normalized() }
+                .filter { it.symbol.isNotBlank() }
             Result.Success(results)
         } catch (e: Exception) {
             Result.Error(e.message ?: "Unknown error")
@@ -436,6 +455,8 @@ open class TradingRepository(private val database: BYSELDatabase) {
     suspend fun getAllSymbols(): Result<List<StockSearchResult>> {
         return try {
             val symbols = apiService.getAllSymbols()
+                .map { it.normalized() }
+                .filter { it.symbol.isNotBlank() }
             Result.Success(symbols)
         } catch (e: Exception) {
             Result.Error(e.message ?: "Unknown error")
@@ -463,7 +484,8 @@ open class TradingRepository(private val database: BYSELDatabase) {
     /** Cheap ping that wakes the Render free-tier instance before the user opens chat. */
     suspend fun warmAiBackend(): Result<Unit> {
         return try {
-            aiApiService.healthCheck()
+            // Same host as market API — use short warm client, not the 90s AI client.
+            warmApiService.healthCheck()
             Result.Success(Unit)
         } catch (e: Exception) {
             Result.Error(toAiErrorMessage(e, "AI warmup failed"))
@@ -475,9 +497,9 @@ open class TradingRepository(private val database: BYSELDatabase) {
         return try {
             // Prefer /warmup (DB ping + background quote seed); fall back to /health.
             try {
-                apiService.warmup()
+                warmApiService.warmup()
             } catch (_: Exception) {
-                apiService.healthCheck()
+                warmApiService.healthCheck()
             }
             Result.Success(Unit)
         } catch (e: Exception) {

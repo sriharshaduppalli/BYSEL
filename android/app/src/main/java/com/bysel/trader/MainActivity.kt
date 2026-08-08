@@ -7,12 +7,16 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.bysel.trader.security.BiometricAuthManager
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
+import android.os.StrictMode
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
+import com.bysel.trader.BuildConfig
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -36,9 +40,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModelProvider
@@ -52,7 +58,10 @@ import com.bysel.trader.data.local.BYSELDatabase
 import com.bysel.trader.data.repository.AuthRepository
 import com.bysel.trader.data.repository.Result
 import com.bysel.trader.data.repository.TradingRepository
+import com.bysel.trader.navigation.ShortcutActions
 import com.bysel.trader.ui.screens.*
+import com.bysel.trader.ui.theme.ByselShapes
+import com.bysel.trader.ui.theme.ByselTypography
 import com.bysel.trader.ui.theme.DEFAULT_THEME_ID
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.theme.getTheme
@@ -84,11 +93,26 @@ class MainActivity : FragmentActivity() {
 
     private lateinit var upiLauncher: androidx.activity.result.ActivityResultLauncher<android.content.Intent>
 
+    /** Launcher shortcut / notification deep-link; updated from [onNewIntent] when already running. */
+    private val pendingShortcutAction = mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Install modern splash screen (Material You)
         val splashScreen = installSplashScreen()
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        // Catch accidental main-thread I/O during startup in debug builds only.
+        if (BuildConfig.DEBUG) {
+            StrictMode.setThreadPolicy(
+                StrictMode.ThreadPolicy.Builder()
+                    .detectDiskReads()
+                    .detectDiskWrites()
+                    .detectNetwork()
+                    .penaltyLog()
+                    .build()
+            )
+        }
         
         // Initialize biometric auth manager
         biometricAuthManager = BiometricAuthManager(this)
@@ -107,8 +131,7 @@ class MainActivity : FragmentActivity() {
 
         AuthSessionManager.init(applicationContext)
 
-        // Handle app shortcuts
-        val shortcutAction = intent.getStringExtra("shortcut_action")
+        pendingShortcutAction.value = intent.getStringExtra(ShortcutActions.EXTRA_ACTION)
 
         setContent {
             // activity-compose + lifecycle-runtime-compose can leave LocalLifecycleOwner
@@ -122,6 +145,10 @@ class MainActivity : FragmentActivity() {
             var wasLoggedIn by remember { mutableStateOf(isLoggedIn) }
             var manualLogoutInProgress by remember { mutableStateOf(false) }
             var activeTradingViewModel by remember { mutableStateOf(tradingViewModel) }
+            val shortcutAction by pendingShortcutAction
+            val initialTab = remember(shortcutAction) {
+                ShortcutActions.tabForAction(shortcutAction)
+            }
 
             // Biometric unlock gate — cleared on background so returning requires unlock again.
             var biometricUnlocked by remember {
@@ -143,17 +170,6 @@ class MainActivity : FragmentActivity() {
                 }
                 lifecycleOwner.lifecycle.addObserver(observer)
                 onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-            }
-            
-            // Determine initial tab based on shortcut
-            val initialTab = remember {
-                when (shortcutAction) {
-                    "open_portfolio" -> 3  // Portfolio tab
-                    "buy_stock" -> 2       // Trading tab
-                    "market_status" -> 4   // Heatmap tab
-                    "price_alerts" -> 7    // Alerts screen
-                    else -> 0              // Default: Home
-                }
             }
             
             LaunchedEffect(isLoggedIn) {
@@ -243,6 +259,8 @@ class MainActivity : FragmentActivity() {
                     viewModel = currentTradingViewModel,
                     biometricAuthManager = biometricAuthManager,
                     initialTab = initialTab,
+                    pendingShortcutAction = shortcutAction,
+                    onShortcutConsumed = { pendingShortcutAction.value = null },
                     onUpiPay = { amount, upiPackageName ->
                         launchUpiPayment(amount, upiPackageName) { success ->
                             if (success) currentTradingViewModel.addFunds(amount)
@@ -287,6 +305,12 @@ class MainActivity : FragmentActivity() {
             }
             } // CompositionLocalProvider LocalLifecycleOwner
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingShortcutAction.value = intent.getStringExtra(ShortcutActions.EXTRA_ACTION)
     }
 
     override fun onStart() {
@@ -396,9 +420,12 @@ fun BYSELApp(
     onUpiPay: (Double, String) -> Unit,
     onLogout: () -> Unit = {},
     onLogoutAllDevices: () -> Unit = {},
-    initialTab: Int = 0
+    initialTab: Int = 0,
+    pendingShortcutAction: String? = null,
+    onShortcutConsumed: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     val prefs = remember { context.getSharedPreferences("bysel_settings", Context.MODE_PRIVATE) }
     var currentThemeName by remember {
         val normalized = normalizeThemeId(prefs.getString("theme", DEFAULT_THEME_ID))
@@ -413,6 +440,14 @@ fun BYSELApp(
         else getTheme(currentThemeName)
     }
 
+    // Light themes need dark status-bar icons; dark themes need light icons.
+    SideEffect {
+        val window = (view.context as? android.app.Activity)?.window ?: return@SideEffect
+        val lightBars = appTheme.surface.luminance() > 0.5f || isLightThemeId(currentThemeName)
+        WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = lightBars
+        WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = lightBars
+    }
+
     // Play Core managers for modern app lifecycle
     val appUpdateManager = remember { AppUpdateManagerFactory.create(context) }
     val reviewManager = remember { ReviewManagerFactory.create(context) }
@@ -422,9 +457,18 @@ fun BYSELApp(
 
     var selectedTab by remember { mutableStateOf(initialTab) }
     var previousTab by remember { mutableIntStateOf(0) }
+
+    // Warm start / notification tap: apply deep-link after composition is ready.
+    LaunchedEffect(pendingShortcutAction) {
+        val action = pendingShortcutAction ?: return@LaunchedEffect
+        selectedTab = ShortcutActions.tabForAction(action)
+        onShortcutConsumed()
+    }
+
     // Trades suggested by the AI assistant are confirmed here before they reach the broker.
     var pendingAiTrade by remember { mutableStateOf<AiTradeRequest?>(null) }
     var pendingOpenAddFunds by remember { mutableStateOf(false) }
+    var showHomeAddFundsDialog by remember { mutableStateOf(false) }
     var lastBackPressAt by remember { mutableLongStateOf(0L) }
     // Default 5s heatmap poll — 1–2s caused overlapping Yahoo/Render storms.
     var heatmapInterval by remember {
@@ -459,6 +503,8 @@ fun BYSELApp(
     val error by viewModel.error.collectAsStateWithLifecycle()
     val productActionMessage by viewModel.productActionMessage.collectAsStateWithLifecycle()
     val lastExecutedOrder by viewModel.lastExecutedOrder.collectAsStateWithLifecycle()
+    val activeAlertCount = remember(alerts) { alerts.count { it.isActive } }
+    val snackbarHostState = remember { SnackbarHostState() }
     // AI & Analytics state
     val chatHistory by viewModel.chatHistory.collectAsStateWithLifecycle()
     val aiLoading by viewModel.aiLoading.collectAsStateWithLifecycle()
@@ -484,12 +530,37 @@ fun BYSELApp(
 
     LaunchedEffect(productActionMessage) {
         val message = productActionMessage?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        snackbarHostState.showSnackbar(
+            message = message,
+            withDismissAction = true,
+            duration = SnackbarDuration.Short,
+        )
         viewModel.clearProductActionMessage()
     }
 
-    // Check for in-app updates on app start
+    // Tell the system when Home is usable (TTFD) — cached wallet/holdings/quotes count.
+    var reportedFullyDrawn by remember { mutableStateOf(false) }
+    LaunchedEffect(quotes, holdings, walletBalance, showOnboarding) {
+        if (reportedFullyDrawn || showOnboarding) return@LaunchedEffect
+        val usable = quotes.isNotEmpty() || holdings.isNotEmpty() || walletBalance > 0.0
+        if (!usable) return@LaunchedEffect
+        kotlinx.coroutines.delay(32)
+        (context as? android.app.Activity)?.reportFullyDrawn()
+        reportedFullyDrawn = true
+    }
+    // Fallback so Play/vitals still get a signal if cache is empty on first install.
+    LaunchedEffect(showOnboarding) {
+        if (reportedFullyDrawn || showOnboarding) return@LaunchedEffect
+        kotlinx.coroutines.delay(2_500)
+        if (!reportedFullyDrawn) {
+            (context as? android.app.Activity)?.reportFullyDrawn()
+            reportedFullyDrawn = true
+        }
+    }
+
+    // Defer Play update check so it does not compete with first Home paint.
     LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(3_000)
         val appUpdateInfoTask = appUpdateManager.appUpdateInfo
         appUpdateInfoTask.addOnSuccessListener { appUpdateInfo ->
             if (appUpdateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE
@@ -521,6 +592,10 @@ fun BYSELApp(
     LaunchedEffect(selectedTab) {
         if (selectedTab in 0..4 && pagerState.settledPage != selectedTab) {
             pagerState.animateScrollToPage(selectedTab)
+        }
+        // Soft resync when jumping Home ↔ Trade; skip if we just topped up (avoids stale overwrite).
+        if (selectedTab == 0 || selectedTab == 2) {
+            viewModel.refreshWallet(force = false)
         }
         if (selectedTab == 6 || selectedTab == 20) {
             viewModel.loadSignalLabBuckets()
@@ -575,7 +650,11 @@ fun BYSELApp(
         }
     }
     CompositionLocalProvider(LocalAppTheme provides appTheme) {
-        MaterialTheme(colorScheme = materialScheme) {
+        MaterialTheme(
+            colorScheme = materialScheme,
+            typography = ByselTypography,
+            shapes = ByselShapes,
+        ) {
             pendingAiTrade?.let { trade ->
                 val livePrice = quotes.firstOrNull { it.symbol == trade.symbol }?.last
                 val estimate = livePrice?.let { it * trade.quantity }
@@ -619,6 +698,15 @@ fun BYSELApp(
                     containerColor = appTheme.card
                 )
             }
+            if (showHomeAddFundsDialog) {
+                AddFundsDialog(
+                    onDismiss = { showHomeAddFundsDialog = false },
+                    onAddPracticeCredit = { amount ->
+                        viewModel.addFunds(amount)
+                        showHomeAddFundsDialog = false
+                    },
+                )
+            }
             if (showOnboarding) {
                 com.bysel.trader.ui.screens.OnboardingScreen(
                     onFinish = {
@@ -637,6 +725,17 @@ fun BYSELApp(
                     color = appTheme.surface
                 ) {
                     Scaffold(
+                    snackbarHost = {
+                        SnackbarHost(hostState = snackbarHostState) { data ->
+                            Snackbar(
+                                snackbarData = data,
+                                containerColor = appTheme.card,
+                                contentColor = appTheme.text,
+                                actionColor = appTheme.primary,
+                                dismissActionContentColor = appTheme.textSecondary,
+                            )
+                        }
+                    },
                     bottomBar = {
                         // Stock detail (tab 9) is opened on top of another tab, so keep the
                         // originating tab highlighted instead of falling through to "More".
@@ -719,9 +818,35 @@ fun BYSELApp(
                             indicatorColor = Color.Transparent
                         )
                     )
-                    // Tab 5: More (Search, Alerts, Settings)
+                    // Tab 5: More (Search, Alerts, Settings) — badge when price alerts are armed
                     NavigationBarItem(
-                        icon = { Icon(Icons.Filled.MoreHoriz, contentDescription = "More", modifier = Modifier.size(22.dp)) },
+                        icon = {
+                            BadgedBox(
+                                badge = {
+                                    if (activeAlertCount > 0) {
+                                        Badge(
+                                            containerColor = appTheme.primary,
+                                            contentColor = appTheme.onPrimary,
+                                        ) {
+                                            Text(
+                                                text = if (activeAlertCount > 99) "99+" else activeAlertCount.toString(),
+                                                fontSize = 10.sp,
+                                            )
+                                        }
+                                    }
+                                },
+                            ) {
+                                Icon(
+                                    Icons.Filled.MoreHoriz,
+                                    contentDescription = if (activeAlertCount > 0) {
+                                        "More, $activeAlertCount active alerts"
+                                    } else {
+                                        "More"
+                                    },
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
+                        },
                         label = { Text("More", fontSize = 10.sp) },
                         selected = navHighlightTab in 5..26,
                         onClick = { selectedTab = 5 },
@@ -810,7 +935,8 @@ fun BYSELApp(
                             HorizontalPager(
                                 state = pagerState,
                                 modifier = Modifier.fillMaxSize(),
-                                beyondBoundsPageCount = 1
+                                // Don't precompose adjacent tabs (AI/Trade) during Home cold start.
+                                beyondBoundsPageCount = 0
                             ) { page ->
                                 when (page) {
                                     0 -> DashboardScreen(
@@ -839,13 +965,11 @@ fun BYSELApp(
                                             selectedTab = 21
                                         },
                                         onAddPracticeFunds = {
-                                            selectedTab = 2
-                                            pendingOpenAddFunds = true
+                                            showHomeAddFundsDialog = true
                                         },
                                         onPaperBuy = { symbol, qty ->
                                             if (walletBalance <= 0.0) {
-                                                selectedTab = 2
-                                                pendingOpenAddFunds = true
+                                                showHomeAddFundsDialog = true
                                                 Toast.makeText(
                                                     context,
                                                     "Add practice credit before Paper Buy",
@@ -902,6 +1026,7 @@ fun BYSELApp(
                                         onDownloadModel = { viewModel.downloadOnDeviceModel() },
                                         likelyColdStart = aiLikelyColdStart,
                                         onWarmAi = { viewModel.warmAiBackend() },
+                                        isActive = pagerState.currentPage == 1,
                                     )
                                     2 -> TradingScreen(
                                         isLoading = isLoading,
@@ -961,6 +1086,7 @@ fun BYSELApp(
                             // Non-swipeable screens (More, Search, Alerts, Settings, Detail, Achievements)
                             when (selectedTab) {
                                 5 -> MoreScreen(
+                                    activeAlertCount = activeAlertCount,
                                     onSearchClick = { selectedTab = 6 },
                                     onAlertsClick = { selectedTab = 7 },
                                     onSettingsClick = { selectedTab = 8 },

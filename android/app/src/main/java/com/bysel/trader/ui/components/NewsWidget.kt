@@ -135,9 +135,8 @@ fun NewsWidget(
                         )
                         Text(
                             text = headline.title,
-                            fontSize = 14.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = LocalAppTheme.current.text,
-                            lineHeight = 20.sp
                         )
                         val meta = listOf(headline.source, headline.publishedLabel)
                             .filter { it.isNotBlank() }

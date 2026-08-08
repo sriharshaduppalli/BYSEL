@@ -80,7 +80,9 @@ object AuthTokenRefresher {
             } catch (httpException: HttpException) {
                 handleHttpFailure(httpException, refreshToken)
             } catch (error: Exception) {
-                Log.w(TAG, "refresh failed (non-auth)", error)
+                if (BuildConfig.DEBUG) {
+                    Log.w(TAG, "refresh failed (non-auth)", error)
+                }
                 null
             }
         }
@@ -101,7 +103,9 @@ object AuthTokenRefresher {
     private fun handleHttpFailure(httpException: HttpException, attemptedRefreshToken: String): String? {
         val detail = extractErrorDetail(httpException)
         val code = httpException.code()
-        Log.w(TAG, "refresh HTTP $code detail=$detail")
+        if (BuildConfig.DEBUG) {
+            Log.w(TAG, "refresh HTTP $code detail=$detail")
+        }
 
         // Another in-flight refresh already rotated this token and saved new credentials.
         val currentRefresh = AuthSessionManager.getRefreshToken()
@@ -117,7 +121,9 @@ object AuthTokenRefresher {
         }
 
         if (shouldClearSession(code, detail)) {
-            Log.w(TAG, "clearing session after definitive refresh failure: $detail")
+            if (BuildConfig.DEBUG) {
+                Log.w(TAG, "clearing session after definitive refresh failure: $detail")
+            }
             AuthSessionManager.clearSession()
         }
         return null

@@ -1,7 +1,7 @@
 package com.bysel.trader.ui.components
 
 import android.annotation.SuppressLint
-import android.webkit.JavascriptInterface
+import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -123,20 +123,29 @@ fun TradingViewChart(
             webViewRef?.evaluateJavascript("toggleOverlay('${overlay.name}', ${overlay in activeOverlays})", null)
         }
 
-        // TradingView Lightweight Charts WebView
+        // Lightweight Charts WebView — JS required for the chart; no JS↔Android bridge.
         AndroidView(
             factory = { context ->
                 WebView(context).also { wv ->
                     webViewRef = wv
                     wv.settings.apply {
                         javaScriptEnabled = true
-                        domStorageEnabled = true
+                        domStorageEnabled = false
+                        allowFileAccess = false
+                        allowContentAccess = false
                         cacheMode = WebSettings.LOAD_NO_CACHE
                         builtInZoomControls = false
                         displayZoomControls = false
                     }
-                    wv.addJavascriptInterface(ChartBridge(), "Android")
                     wv.webViewClient = object : WebViewClient() {
+                        override fun shouldOverrideUrlLoading(
+                            view: WebView?,
+                            request: WebResourceRequest?,
+                        ): Boolean {
+                            // Keep the chart document in-place; block navigations / deep links.
+                            return true
+                        }
+
                         override fun onPageFinished(view: WebView?, url: String?) {
                             view?.evaluateJavascript("loadCandles($candleJson)", null)
                             if (patternsJson != "[]") {
@@ -144,7 +153,13 @@ fun TradingViewChart(
                             }
                         }
                     }
-                    wv.loadDataWithBaseURL(null, buildChartHtml(isDarkTheme), "text/html", "UTF-8", null)
+                    wv.loadDataWithBaseURL(
+                        "https://appassets.local/",
+                        buildChartHtml(isDarkTheme),
+                        "text/html",
+                        "UTF-8",
+                        null,
+                    )
                 }
             },
             update = { wv ->
@@ -180,14 +195,6 @@ private fun LazyRowChips(
             }
         }
     }
-}
-
-private class ChartBridge {
-    @JavascriptInterface
-    fun onCrosshairMove(price: Double, time: Long) {}
-
-    @JavascriptInterface
-    fun onBarClick(open: Double, high: Double, low: Double, close: Double, volume: Long) {}
 }
 
 private fun buildChartHtml(isDark: Boolean): String {

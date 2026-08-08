@@ -13,6 +13,9 @@
 -keep class com.google.gson.** { *; }
 -keep interface com.google.gson.** { *; }
 -keep class com.bysel.trader.data.models.** { *; }
+# Retrofit/Gson DTOs live here too (Risk Lab, Earnings, AI v2, etc.)
+-keep class com.bysel.trader.data.api.** { *; }
+-keepclassmembers class com.bysel.trader.data.api.** { <fields>; }
 
 # Room
 -keep class androidx.room.** { *; }
@@ -27,6 +30,7 @@
 
 # Keep data classes
 -keep class com.bysel.trader.data.models.** { *; }
+-keep class com.bysel.trader.data.api.** { *; }
 -keep class com.bysel.trader.ui.** { *; }
 
 # Keep other app classes that may be referenced via manifest or reflection

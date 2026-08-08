@@ -1093,7 +1093,7 @@ def get_stock_name(symbol: str) -> str:
 def get_symbols_with_names() -> List[dict]:
     """Return searchable symbols with company names (curated + NSE equity master)."""
     return [
-        {"symbol": sym, "name": info[1]}
+        {"symbol": sym, "name": info[1], "matchType": "catalog"}
         for sym, info in get_stock_catalog().items()
     ]
 
@@ -1580,7 +1580,11 @@ def _yahoo_search_query(query: str, limit: int = 5) -> List[dict]:
 
             # Normalize: strip .NS/.BO suffix for our internal symbol
             clean_symbol = symbol.replace(".NS", "").replace(".BO", "")
-            results.append({"symbol": clean_symbol, "name": short_name})
+            results.append({
+                "symbol": clean_symbol,
+                "name": short_name,
+                "matchType": "yahoo",
+            })
 
         return results
     except Exception as exc:

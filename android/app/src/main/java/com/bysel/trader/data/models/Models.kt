@@ -167,10 +167,27 @@ data class MarketMoversResponse(
 )
 
 data class StockSearchResult(
-    val symbol: String,
-    val name: String,
-    val matchType: String = ""
-)
+    @SerializedName("symbol")
+    val symbol: String = "",
+    @SerializedName("name")
+    val name: String = "",
+    // Nullable: /symbols omits this field; Gson leaves it null (Kotlin defaults are not applied).
+    @SerializedName("matchType")
+    val matchType: String? = null,
+) {
+    fun normalized(): StockSearchResult {
+        // Gson may leave Kotlin String fields null when JSON omits them (defaults unused).
+        @Suppress("SENSELESS_COMPARISON", "UNNECESSARY_SAFE_CALL", "USELESS_ELVIS")
+        val cleanSymbol = (symbol ?: "").trim().uppercase()
+        @Suppress("SENSELESS_COMPARISON", "UNNECESSARY_SAFE_CALL", "USELESS_ELVIS")
+        val cleanName = (name ?: "").trim().ifBlank { cleanSymbol }
+        return StockSearchResult(
+            symbol = cleanSymbol,
+            name = cleanName,
+            matchType = matchType?.trim().orEmpty(),
+        )
+    }
+}
 
 // ==================== AI & ANALYTICS MODELS ====================
 

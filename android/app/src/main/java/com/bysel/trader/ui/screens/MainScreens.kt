@@ -34,7 +34,6 @@ import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.Holding
 import com.bysel.trader.data.models.PortfolioHealthScore
 import com.bysel.trader.ui.components.QuoteCard
-import com.bysel.trader.ui.components.ErrorScreen
 import com.bysel.trader.ui.components.LoadingScreen
 import com.bysel.trader.ui.components.PullToRefreshBox
 import com.bysel.trader.ui.components.SwipeToDismissItem
@@ -63,13 +62,34 @@ fun WatchlistScreen(
         runCatching { WatchlistSortMode.valueOf(sortModeName) }.getOrDefault(WatchlistSortMode.MOVE)
     }
     val sortedQuotes = remember(quotes, sortMode) { quotes.sortedByWatchlistMode(sortMode) }
+    // Shared ViewModel _error is used app-wide (alerts, orders, wallet…). Never treat
+    // those as a fatal watchlist load failure — that showed "Alert already exists" here.
+    val watchlistLoadError = remember(error) {
+        error?.takeIf { msg ->
+            val lower = msg.lowercase()
+            !lower.contains("alert already") &&
+                (
+                    lower.contains("quote") ||
+                        lower.contains("watchlist") ||
+                        lower.contains("network") ||
+                        lower.contains("timeout") ||
+                        lower.contains("connection") ||
+                        lower.contains("unable to resolve")
+                    )
+        }
+    }
+
+    LaunchedEffect(error) {
+        // Drop stale alert/order banners as soon as user opens More → Watchlist.
+        if (error != null && watchlistLoadError == null) {
+            onErrorDismiss()
+        }
+    }
 
     if (isLoading && quotes.isEmpty()) {
         DashboardSkeletonLoader(
             modifier = Modifier.fillMaxSize().background(LocalAppTheme.current.surface)
         )
-    } else if (error != null && quotes.isEmpty()) {
-        ErrorScreen(error) { onRefresh() }
     } else {
         Column(
             modifier = Modifier
@@ -128,9 +148,9 @@ fun WatchlistScreen(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            if (error != null) {
+            if (watchlistLoadError != null) {
                 TraceAwareErrorSnackbar(
-                    error = error,
+                    error = watchlistLoadError,
                     onDismiss = onErrorDismiss,
                     modifier = Modifier
                         .fillMaxWidth()

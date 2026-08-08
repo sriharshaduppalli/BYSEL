@@ -34,7 +34,7 @@ class RequestMetadataInterceptor : Interceptor {
             val durationMs = (System.nanoTime() - startedAtNs) / 1_000_000
             val serverTraceId = response.header(TRACE_HEADER) ?: traceId
 
-            if (durationMs >= SLOW_REQUEST_THRESHOLD_MS) {
+            if (BuildConfig.DEBUG && durationMs >= SLOW_REQUEST_THRESHOLD_MS) {
                 Log.w(
                     TAG,
                     "Slow request ${request.method} ${request.url.encodedPath} ${durationMs}ms traceId=$serverTraceId"

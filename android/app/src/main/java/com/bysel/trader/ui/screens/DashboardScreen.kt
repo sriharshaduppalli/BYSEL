@@ -1279,28 +1279,24 @@ private fun DashboardHeroCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "BYSEL Pulse",
-                        fontSize = 30.sp,
-                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.headlineLarge,
                         color = theme.text,
                     )
                     Text(
                         text = "Paper Practice · Simulated money",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
+                        style = MaterialTheme.typography.labelSmall,
                         color = theme.primary,
                         modifier = Modifier.padding(top = 2.dp, bottom = 4.dp),
                     )
                     Text(
                         text = marketMoodTitle,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.titleMedium,
                         color = theme.text,
                     )
                     Text(
                         text = marketMoodDetail,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = theme.textSecondary,
-                        lineHeight = 18.sp,
                     )
                 }
                 AssistChip(
@@ -2089,11 +2085,12 @@ private fun PaperWalletHomeStrip(
                 fontWeight = FontWeight.SemiBold,
                 color = theme.textSecondary,
             )
-            Text(
-                text = "₹${"%,.0f".format(balance)}",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.ExtraBold,
+            com.bysel.trader.ui.theme.AnimatedAmountText(
+                amount = balance,
+                formatter = { "₹${"%,.0f".format(it)}" },
+                style = MaterialTheme.typography.headlineSmall,
                 color = theme.text,
+                fontWeight = FontWeight.ExtraBold,
             )
             Text(
                 text = if (empty) "Add practice credit before Paper Buy." else "Simulation cash · not real money",
@@ -2765,7 +2762,7 @@ private fun buildPersonalNewsSymbols(
         .distinct()
     val liquidDefaults = listOf(
         "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK",
-        "SBIN", "BHARTIARTL", "ITC", "LT", "TATAMOTORS",
+        "SBIN", "BHARTIARTL", "ITC", "LT", "TMPV",
         "AXISBANK", "KOTAKBANK",
     )
     return (preferred + liquidDefaults).distinct().take(12)

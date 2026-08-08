@@ -24,6 +24,8 @@ object AuthSessionManager {
 
     @Volatile
     private var prefs: SharedPreferences? = null
+    @Volatile
+    private var appContext: Context? = null
     private val _sessionState = MutableStateFlow(false)
     val sessionState: StateFlow<Boolean> = _sessionState.asStateFlow()
 
@@ -49,6 +51,7 @@ object AuthSessionManager {
     }
 
     fun init(context: Context) {
+        appContext = context.applicationContext
         if (prefs == null) {
             synchronized(this) {
                 if (prefs == null) {
@@ -73,6 +76,9 @@ object AuthSessionManager {
             }
         }
     }
+
+    /** Application context for best-effort Credential Manager cleanup after logout. */
+    fun applicationContextOrNull(): Context? = appContext
 
     private fun migrateLegacyPrefs(context: Context) {
         val legacy = context.applicationContext.getSharedPreferences(LEGACY_PREFS_NAME, Context.MODE_PRIVATE)

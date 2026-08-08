@@ -11,6 +11,7 @@ import com.bysel.trader.data.models.MarketMoverQuote
 import com.bysel.trader.data.models.MarketNewsHeadline
 import com.bysel.trader.data.repository.Result
 import com.bysel.trader.data.repository.TradingRepository
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -97,9 +98,15 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         loadPinnedStocks()
         loadPinnedWidgets()
         loadWidgetOrder()
-        refreshMarketNews()
-        refreshMarketMovers()
-        refreshPracticeIdeas()
+        // Stagger Home secondary fetches so they don't stampede wallet/holdings on cold start.
+        viewModelScope.launch {
+            delay(1_200) // let first Home frame + priority quotes win
+            refreshMarketNews()
+            delay(1_200)
+            refreshMarketMovers()
+            delay(800)
+            refreshPracticeIdeas()
+        }
     }
 
     /**

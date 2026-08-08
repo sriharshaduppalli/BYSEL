@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Auto Backup (API ≤30 fullBackupContent).
+  Exclude auth/session material so tokens never leave the device via backup.
+  Theme/watchlist/settings remain backup-eligible.
+-->
 <full-backup-content>
-    <include domain="file" path="." />
+    <exclude domain="sharedpref" path="bysel_auth_encrypted.xml" />
+    <exclude domain="sharedpref" path="bysel_auth.xml" />
+    <exclude domain="sharedpref" path="security_prefs.xml" />
+    <!-- androidx.security.crypto Tink keysets for EncryptedSharedPreferences -->
+    <exclude domain="sharedpref" path="__androidx_security_crypto_encrypted_prefs_key_keyset__.xml" />
+    <exclude domain="sharedpref" path="__androidx_security_crypto_encrypted_prefs_value_keyset__.xml" />
 </full-backup-content>

@@ -1,115 +1,129 @@
 package com.bysel.trader.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.Holding
 import com.bysel.trader.data.models.Alert
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.TickPriceText
+import com.bysel.trader.ui.theme.animatedChangeColor
+import com.bysel.trader.ui.theme.byselCardColors
+import com.bysel.trader.ui.theme.colorForChange
+
+/**
+ * Shared market cards.
+ *
+ * Visuals come from [LocalAppTheme] / MaterialTheme (typography, shapes, card colors).
+ * Interaction (click / delete) stays on callbacks + Material clickable surfaces — not in visuals.
+ * Pass [modifier] for layout placement from the caller (padding, weight, test tags).
+ */
 
 @Composable
-fun QuoteCard(quote: Quote, onClick: () -> Unit = {}) {
+fun QuoteCard(
+    quote: Quote,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {},
+) {
+    val theme = LocalAppTheme.current
     Card(
-        modifier = Modifier
+        onClick = onClick,
+        modifier = modifier
             .fillMaxWidth()
-            .padding(8.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)
+            .padding(8.dp),
+        shape = MaterialTheme.shapes.medium,
+        colors = byselCardColors(),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Column {
                 Text(
                     text = quote.symbol,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = LocalAppTheme.current.text
+                    style = MaterialTheme.typography.titleLarge,
+                    color = theme.text,
                 )
-                Text(
+                TickPriceText(
+                    price = quote.last,
                     text = "₹${quote.last}",
-                    fontSize = 14.sp,
-                    color = LocalAppTheme.current.textSecondary
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = theme.textSecondary,
+                    fontWeight = null,
                 )
             }
             Text(
                 text = "${if (quote.pctChange > 0) "+" else ""}${quote.pctChange}%",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (quote.pctChange > 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
+                style = MaterialTheme.typography.titleMedium,
+                color = animatedChangeColor(quote.pctChange),
             )
         }
     }
 }
 
 @Composable
-fun HoldingCard(holding: Holding) {
+fun HoldingCard(
+    holding: Holding,
+    modifier: Modifier = Modifier,
+) {
+    val theme = LocalAppTheme.current
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(8.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)
+        shape = MaterialTheme.shapes.medium,
+        colors = byselCardColors(),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(16.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Column {
                     Text(
                         text = holding.symbol,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = LocalAppTheme.current.text
+                        style = MaterialTheme.typography.titleLarge,
+                        color = theme.text,
                     )
                     Text(
                         text = "Qty: ${holding.qty}",
-                        fontSize = 12.sp,
-                        color = LocalAppTheme.current.textSecondary
+                        style = MaterialTheme.typography.bodySmall,
+                        color = theme.textSecondary,
                     )
                 }
                 Text(
                     text = "₹${holding.pnl}",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (holding.pnl > 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
+                    style = MaterialTheme.typography.titleMedium,
+                    color = theme.colorForChange(holding.pnl),
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text = "Avg: ₹${holding.avgPrice}",
-                    fontSize = 12.sp,
-                    color = LocalAppTheme.current.textSecondary
+                    style = MaterialTheme.typography.bodySmall,
+                    color = theme.textSecondary,
                 )
                 Text(
                     text = "Last: ₹${holding.last}",
-                    fontSize = 12.sp,
-                    color = LocalAppTheme.current.textSecondary
+                    style = MaterialTheme.typography.bodySmall,
+                    color = theme.textSecondary,
                 )
             }
         }
@@ -117,32 +131,36 @@ fun HoldingCard(holding: Holding) {
 }
 
 @Composable
-fun AlertCard(alert: Alert, onDelete: () -> Unit = {}) {
+fun AlertCard(
+    alert: Alert,
+    modifier: Modifier = Modifier,
+    onDelete: () -> Unit = {},
+) {
+    val theme = LocalAppTheme.current
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(8.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)
+        shape = MaterialTheme.shapes.medium,
+        colors = byselCardColors(),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "${alert.symbol} ${alert.alertType}",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = LocalAppTheme.current.text
+                    style = MaterialTheme.typography.titleMedium,
+                    color = theme.text,
                 )
                 Text(
                     text = "₹${alert.thresholdPrice}",
-                    fontSize = 14.sp,
-                    color = LocalAppTheme.current.textSecondary
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = theme.textSecondary,
                 )
             }
             Button(
@@ -150,55 +168,62 @@ fun AlertCard(alert: Alert, onDelete: () -> Unit = {}) {
                 modifier = Modifier
                     .width(60.dp)
                     .height(36.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B0000))
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = theme.negative,
+                    contentColor = MaterialTheme.colorScheme.onError,
+                ),
             ) {
-                Text("Delete", fontSize = 10.sp)
+                Text("Delete", style = MaterialTheme.typography.labelSmall)
             }
         }
     }
 }
 
 @Composable
-fun LoadingScreen() {
+fun LoadingScreen(modifier: Modifier = Modifier) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .background(LocalAppTheme.current.surface),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         CircularProgressIndicator(color = LocalAppTheme.current.primary)
     }
 }
 
 @Composable
-fun ErrorScreen(error: String, onRetry: () -> Unit) {
+fun ErrorScreen(
+    error: String,
+    modifier: Modifier = Modifier,
+    onRetry: () -> Unit,
+) {
+    val theme = LocalAppTheme.current
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
-            .background(LocalAppTheme.current.surface)
+            .background(theme.surface)
             .padding(16.dp),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Center,
         ) {
             Text(
                 text = "Error",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = LocalAppTheme.current.negative
+                style = MaterialTheme.typography.headlineSmall,
+                color = theme.negative,
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = error,
-                fontSize = 14.sp,
-                color = LocalAppTheme.current.textSecondary,
-                modifier = Modifier.padding(16.dp)
+                style = MaterialTheme.typography.bodyMedium,
+                color = theme.textSecondary,
+                modifier = Modifier.padding(16.dp),
             )
             Button(
                 onClick = onRetry,
-                colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary)
+                colors = ButtonDefaults.buttonColors(containerColor = theme.primary),
             ) {
                 Text("Retry")
             }

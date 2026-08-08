@@ -7,7 +7,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -76,28 +75,30 @@ fun EarningsCalendarScreen(
 
         when {
             isLoading -> {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = appTheme.primary)
                 }
             }
             errorMsg != null -> {
-                Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Filled.CalendarMonth,
-                            contentDescription = null,
-                            tint = appTheme.textSecondary,
-                            modifier = Modifier.size(48.dp),
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(errorMsg.orEmpty(), color = appTheme.textSecondary, fontSize = 14.sp)
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(errorMsg.orEmpty(), color = appTheme.textSecondary, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(onClick = { load() }, enabled = !isLoading) {
+                        Text("Retry")
                     }
                 }
             }
             else -> {
                 val entries = data?.resolvedEntries().orEmpty()
+                val disclaimerNote = data?.disclaimer
                 if (entries.isEmpty()) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text("No upcoming earnings found.", color = appTheme.textSecondary, fontSize = 14.sp)
                     }
                 } else {
@@ -105,6 +106,23 @@ fun EarningsCalendarScreen(
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
+                        if (!disclaimerNote.isNullOrBlank()) {
+                            item {
+                                Card(
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = Color(0xFFFF9800).copy(alpha = 0.14f)
+                                    ),
+                                    shape = RoundedCornerShape(12.dp),
+                                ) {
+                                    Text(
+                                        disclaimerNote,
+                                        fontSize = 11.sp,
+                                        color = appTheme.textSecondary,
+                                        modifier = Modifier.padding(12.dp)
+                                    )
+                                }
+                            }
+                        }
                         item {
                             Text(
                                 "${entries.size} companies tracked",
@@ -159,7 +177,7 @@ private fun EarningsCard(
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
-                            dateLabel,
+                            text = if (entry.estimated) "Est. $dateLabel" else dateLabel,
                             fontSize = 11.sp,
                             color = appTheme.primary,
                             fontWeight = FontWeight.SemiBold,
@@ -176,19 +194,19 @@ private fun EarningsCard(
             Row(modifier = Modifier.fillMaxWidth()) {
                 EarningsMetric(
                     label = "EPS Fwd",
-                    value = epsEstimate?.let { String.format("%.2f", it) } ?: "—",
+                    value = epsEstimate?.let { String.format("%.2f", it) } ?: "N/A",
                     color = appTheme.textSecondary,
                     modifier = Modifier.weight(1f)
                 )
                 EarningsMetric(
                     label = "EPS Trail",
-                    value = epsActual?.let { String.format("%.2f", it) } ?: "—",
+                    value = epsActual?.let { String.format("%.2f", it) } ?: "N/A",
                     color = appTheme.textSecondary,
                     modifier = Modifier.weight(1f)
                 )
                 EarningsMetric(
                     label = "Trailing P/E",
-                    value = trailingPe?.let { String.format("%.1f", it) } ?: "—",
+                    value = trailingPe?.let { String.format("%.1f", it) } ?: "N/A",
                     color = appTheme.textSecondary,
                     modifier = Modifier.weight(1f)
                 )
@@ -196,7 +214,7 @@ private fun EarningsCard(
                     label = "Rev growth",
                     value = entry.revenueGrowth?.let { String.format("%.1f%%", it) }
                         ?: forwardPe?.let { String.format("%.1f", it) }
-                        ?: "—",
+                        ?: "N/A",
                     color = appTheme.textSecondary,
                     modifier = Modifier.weight(1f)
                 )

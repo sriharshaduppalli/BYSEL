@@ -68,7 +68,7 @@ SECTOR_STOCKS = {
         "AUROPHARMA", "BIOCON", "TORNTPHARM", "ALKEM",
     ],
     "Auto": [
-        "TATAMOTORS", "MARUTI", "BAJAJ-AUTO", "HEROMOTOCO", "EICHERMOT",
+        "TMPV", "TMCV", "MARUTI", "BAJAJ-AUTO", "HEROMOTOCO", "EICHERMOT",
         "TVSMOTOR", "ASHOKLEY", "MOTHERSON", "MRF",
     ],
     "FMCG": [

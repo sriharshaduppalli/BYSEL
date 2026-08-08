@@ -604,6 +604,140 @@ async def get_chart_patterns(symbol: str, period: str = "3mo"):
 
 # ==================== PORTFOLIO RISK ENGINE ====================
 
+def _illustrative_risk_payload(
+    sym_list: List[str],
+    horizon_days: int,
+    *,
+    reason: str,
+) -> Dict:
+    """Always-open educational payload when live history is unavailable."""
+    n = max(len(sym_list), 1)
+    equal = [round(1.0 / n, 4)] * n
+    corr = [[1.0 if i == j else 0.55 for j in range(n)] for i in range(n)]
+    return {
+        "symbols": sym_list,
+        "weights": equal,
+        "metrics": {
+            "var95": -1.8,
+            "var99": -2.9,
+            "maxDrawdown": -12.5,
+            "sharpeRatio": 0.85,
+            "annualizedReturn": 14.2,
+            "annualizedVolatility": 18.0,
+        },
+        "var95": -1.8,
+        "var99": -2.9,
+        "maxDrawdown": -12.5,
+        "sharpeRatio": 0.85,
+        "annualizedReturn": 14.2,
+        "annualizedVolatility": 18.0,
+        "correlationMatrix": corr,
+        "monteCarlo": {
+            "horizonDays": horizon_days,
+            "simulations": 500,
+            "p5": -8.5,
+            "p50": 2.1,
+            "p95": 12.4,
+        },
+        "monteCarloP5": -8.5,
+        "monteCarloMedian": 2.1,
+        "monteCarloP95": 12.4,
+        "riskLevel": "Medium",
+        "demoBasket": True,
+        "disclaimer": (
+            f"Illustrative educational metrics ({', '.join(sym_list)}). {reason}"
+        ),
+    }
+
+
+def _build_risk_payload_from_returns(
+    returns_dict: Dict[str, "np.ndarray"],
+    sym_list: List[str],
+    weight_list: List[float],
+    horizon_days: int,
+    used_demo: bool,
+) -> Dict:
+    import numpy as np
+
+    min_len = min(len(r) for r in returns_dict.values())
+    if min_len < 5:
+        raise ValueError("insufficient aligned return history")
+
+    matrix = np.column_stack([returns_dict[s][-min_len:] for s in returns_dict])
+    w = np.array([weight_list[i] for i, s in enumerate(sym_list) if s in returns_dict], dtype=float)
+    if w.size == 0 or float(w.sum()) <= 0:
+        raise ValueError("invalid portfolio weights")
+    w /= w.sum()
+
+    portfolio_returns = matrix @ w
+
+    var_95 = float(np.percentile(portfolio_returns, 5))
+    var_99 = float(np.percentile(portfolio_returns, 1))
+
+    cum = np.cumprod(1 + portfolio_returns)
+    peak = np.maximum.accumulate(cum)
+    drawdown = (cum - peak) / peak
+    max_drawdown = float(drawdown.min())
+
+    rf_daily = 0.065 / 252
+    excess = portfolio_returns - rf_daily
+    sharpe = float(excess.mean() / excess.std() * np.sqrt(252)) if excess.std() > 0 else 0.0
+
+    symbols_in = list(returns_dict.keys())
+    corr = np.corrcoef(matrix.T).tolist() if len(symbols_in) > 1 else [[1.0]]
+
+    mc_final = []
+    for _ in range(500):
+        path = np.random.choice(portfolio_returns, size=horizon_days, replace=True)
+        mc_final.append(float(np.prod(1 + path) - 1))
+    mc_final.sort()
+    mc_5th = mc_final[int(0.05 * len(mc_final))]
+    mc_50th = mc_final[len(mc_final) // 2]
+    mc_95th = mc_final[int(0.95 * len(mc_final))]
+
+    mean_daily = float(portfolio_returns.mean()) if len(portfolio_returns) else 0.0
+    std_daily = float(portfolio_returns.std()) if len(portfolio_returns) else 0.0
+    annualized_return = (1.0 + mean_daily) ** 252 - 1.0
+    annualized_vol = std_daily * float(np.sqrt(252))
+
+    return {
+        "symbols": symbols_in,
+        "weights": w.tolist(),
+        "metrics": {
+            "var95": round(var_95 * 100, 2),
+            "var99": round(var_99 * 100, 2),
+            "maxDrawdown": round(max_drawdown * 100, 2),
+            "sharpeRatio": round(sharpe, 2),
+            "annualizedReturn": round(annualized_return * 100, 2),
+            "annualizedVolatility": round(annualized_vol * 100, 2),
+        },
+        "var95": round(var_95 * 100, 2),
+        "var99": round(var_99 * 100, 2),
+        "maxDrawdown": round(max_drawdown * 100, 2),
+        "sharpeRatio": round(sharpe, 2),
+        "annualizedReturn": round(annualized_return * 100, 2),
+        "annualizedVolatility": round(annualized_vol * 100, 2),
+        "correlationMatrix": corr,
+        "monteCarlo": {
+            "horizonDays": horizon_days,
+            "simulations": 500,
+            "p5": round(mc_5th * 100, 2),
+            "p50": round(mc_50th * 100, 2),
+            "p95": round(mc_95th * 100, 2),
+        },
+        "monteCarloP5": round(mc_5th * 100, 2),
+        "monteCarloMedian": round(mc_50th * 100, 2),
+        "monteCarloP95": round(mc_95th * 100, 2),
+        "riskLevel": "Low" if var_95 > -0.01 else "Medium" if var_95 > -0.025 else "High",
+        "demoBasket": used_demo,
+        "disclaimer": (
+            "Educational demo basket (RELIANCE/TCS/INFY) — not your live paper portfolio."
+            if used_demo
+            else "Computed on the symbols you provided (paper portfolio when supplied by the app)."
+        ),
+    }
+
+
 @router.get("/portfolio/risk-analysis")
 async def get_portfolio_risk(
     symbols: str = "",
@@ -618,10 +752,18 @@ async def get_portfolio_risk(
 
     When symbols is empty, callers should pass the authenticated user's holdings
     from the Android client (preferred). Demo basket is a last-resort fallback.
-    """
-    try:
-        import yfinance as yf
 
+    History is loaded via market_data.fetch_quote_history (same path as /quotes/{sym}/history),
+    not raw yfinance — Render often blocks direct Ticker.history() calls.
+    """
+    import asyncio
+
+    import numpy as np
+
+    from ..market_data import fetch_quote_history
+
+    try:
+        horizon_days = max(5, min(int(horizon_days or 30), 90))
         sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
         used_demo = False
         if not sym_list:
@@ -633,194 +775,230 @@ async def get_portfolio_risk(
         if not weight_list or len(weight_list) != len(sym_list):
             weight_list = [1 / len(sym_list)] * len(sym_list)
 
-        returns_dict: Dict[str, np.ndarray] = {}
-        for sym in sym_list:
+        async def _daily_returns(sym: str):
             try:
-                ticker = yf.Ticker(sym if sym.endswith(".NS") else sym + ".NS")
-                hist = ticker.history(period="1y")
-                if hist is not None and not hist.empty:
-                    closes = hist["Close"].values
-                    returns_dict[sym] = np.diff(closes) / closes[:-1]
-            except Exception:
-                pass
+                candles = await asyncio.to_thread(fetch_quote_history, sym, "1y", "1d")
+                if len(candles) < 10:
+                    candles = await asyncio.to_thread(fetch_quote_history, sym, "6mo", "1d")
+                closes = [
+                    float(c.get("close") or 0.0)
+                    for c in candles
+                    if float(c.get("close") or 0.0) > 0
+                ]
+                if len(closes) < 10:
+                    return sym, None
+                arr = np.asarray(closes, dtype=float)
+                return sym, (np.diff(arr) / arr[:-1])
+            except Exception as exc:
+                logger.debug("risk.history_failed symbol=%s reason=%s", sym, exc)
+                return sym, None
+
+        pairs = await asyncio.gather(*[_daily_returns(s) for s in sym_list])
+        returns_dict = {s: r for s, r in pairs if r is not None and len(r) > 0}
 
         if not returns_dict:
-            raise HTTPException(status_code=404, detail="No data for provided symbols")
+            logger.warning(
+                "risk.no_history symbols=%s — serving illustrative demo payload",
+                ",".join(sym_list),
+            )
+            return _illustrative_risk_payload(
+                sym_list,
+                horizon_days,
+                reason="Live return history was unavailable; showing sample Risk Lab numbers.",
+            )
 
-        # Align returns by length
-        min_len = min(len(r) for r in returns_dict.values())
-        matrix = np.column_stack([returns_dict[s][-min_len:] for s in returns_dict])
-        w = np.array([weight_list[i] for i, s in enumerate(sym_list) if s in returns_dict])
-        w /= w.sum()
-
-        portfolio_returns = matrix @ w
-
-        # VaR
-        var_95 = float(np.percentile(portfolio_returns, 5))
-        var_99 = float(np.percentile(portfolio_returns, 1))
-
-        # Max drawdown
-        cum = np.cumprod(1 + portfolio_returns)
-        peak = np.maximum.accumulate(cum)
-        drawdown = (cum - peak) / peak
-        max_drawdown = float(drawdown.min())
-
-        # Sharpe ratio (annualised, risk-free ~6.5% India)
-        rf_daily = 0.065 / 252
-        excess = portfolio_returns - rf_daily
-        sharpe = float(excess.mean() / excess.std() * np.sqrt(252)) if excess.std() > 0 else 0.0
-
-        # Correlation matrix
-        symbols_in = list(returns_dict.keys())
-        corr = np.corrcoef(matrix.T).tolist() if len(symbols_in) > 1 else [[1.0]]
-
-        # Monte Carlo — 500 simulations over horizon_days
-        mc_final = []
-        for _ in range(500):
-            path = np.random.choice(portfolio_returns, size=horizon_days, replace=True)
-            mc_final.append(float(np.prod(1 + path) - 1))
-        mc_final.sort()
-        mc_5th = mc_final[int(0.05 * len(mc_final))]
-        mc_50th = mc_final[len(mc_final) // 2]
-        mc_95th = mc_final[int(0.95 * len(mc_final))]
-
-        # Annualised return / vol (for Risk Lab portfolio performance card)
-        mean_daily = float(portfolio_returns.mean()) if len(portfolio_returns) else 0.0
-        std_daily = float(portfolio_returns.std()) if len(portfolio_returns) else 0.0
-        annualized_return = (1.0 + mean_daily) ** 252 - 1.0
-        annualized_vol = std_daily * float(np.sqrt(252))
-
-        return {
-            "symbols": symbols_in,
-            "weights": w.tolist(),
-            # Nested metrics (Android Risk Lab preferred shape)
-            "metrics": {
-                "var95": round(var_95 * 100, 2),
-                "var99": round(var_99 * 100, 2),
-                "maxDrawdown": round(max_drawdown * 100, 2),
-                "sharpeRatio": round(sharpe, 2),
-                "annualizedReturn": round(annualized_return * 100, 2),
-                "annualizedVolatility": round(annualized_vol * 100, 2),
-            },
-            # Flat fields kept for older clients / debugging
-            "var95": round(var_95 * 100, 2),
-            "var99": round(var_99 * 100, 2),
-            "maxDrawdown": round(max_drawdown * 100, 2),
-            "sharpeRatio": round(sharpe, 2),
-            "annualizedReturn": round(annualized_return * 100, 2),
-            "annualizedVolatility": round(annualized_vol * 100, 2),
-            "correlationMatrix": corr,
-            "monteCarlo": {
-                "horizonDays": horizon_days,
-                "simulations": 500,
-                "p5": round(mc_5th * 100, 2),
-                "p50": round(mc_50th * 100, 2),
-                "p95": round(mc_95th * 100, 2),
-            },
-            "monteCarloP5": round(mc_5th * 100, 2),
-            "monteCarloMedian": round(mc_50th * 100, 2),
-            "monteCarloP95": round(mc_95th * 100, 2),
-            "riskLevel": "Low" if var_95 > -0.01 else "Medium" if var_95 > -0.025 else "High",
-            "demoBasket": used_demo,
-            "disclaimer": (
-                "Educational demo basket (RELIANCE/TCS/INFY) — not your live paper portfolio."
-                if used_demo
-                else "Computed on the symbols you provided (paper portfolio when supplied by the app)."
-            ),
-        }
+        try:
+            return _build_risk_payload_from_returns(
+                returns_dict,
+                sym_list,
+                weight_list,
+                horizon_days,
+                used_demo,
+            )
+        except Exception as exc:
+            logger.warning("risk.compute_fallback symbols=%s reason=%s", ",".join(sym_list), exc)
+            return _illustrative_risk_payload(
+                list(returns_dict.keys()) or sym_list,
+                horizon_days,
+                reason="Risk computation failed; showing sample Risk Lab numbers.",
+            )
     except HTTPException:
         raise
     except Exception as exc:
         logger.exception("risk.error symbols=%s reason=%s", symbols, exc)
-        raise HTTPException(status_code=500, detail="Failed to compute risk analysis")
+        # Never hard-fail the Risk Lab screen — educational shell is better than an empty error.
+        fallback_syms = [s.strip().upper() for s in symbols.split(",") if s.strip()] or [
+            "RELIANCE",
+            "TCS",
+            "INFY",
+        ]
+        return _illustrative_risk_payload(
+            fallback_syms,
+            max(5, min(int(horizon_days or 30), 90)),
+            reason="Risk service hit an error; showing sample Risk Lab numbers.",
+        )
 
 
 # ==================== QUARTERLY RESULTS CALENDAR ====================
+
+# Approximate next results windows for major NSE names when Yahoo calendar/info
+# is blocked (common on Render). Marked estimated=true in the payload.
+_CURATED_EARNINGS_DATES = {
+    "RELIANCE": ("2026-10-16", "Energy"),
+    "TCS": ("2026-10-08", "Technology"),
+    "INFY": ("2026-10-23", "Technology"),
+    "HDFCBANK": ("2026-10-18", "Financial Services"),
+    "ICICIBANK": ("2026-10-25", "Financial Services"),
+    "ITC": ("2026-10-30", "Consumer Defensive"),
+    "WIPRO": ("2026-10-15", "Technology"),
+    "SBIN": ("2026-11-05", "Financial Services"),
+    "AXISBANK": ("2026-10-22", "Financial Services"),
+    "LT": ("2026-10-28", "Industrials"),
+    "BHARTIARTL": ("2026-10-28", "Communication Services"),
+    "KOTAKBANK": ("2026-10-26", "Financial Services"),
+}
+
+
+def _parse_yahoo_earnings_date(cal) -> Optional[str]:
+    if cal is None:
+        return None
+    try:
+        if hasattr(cal, "empty") and cal.empty:
+            return None
+        if hasattr(cal, "columns") and "Earnings Date" in cal.columns:
+            ed = cal["Earnings Date"].iloc[0]
+            if hasattr(ed, "date"):
+                return ed.date().isoformat()
+            return str(ed)[:10]
+        if isinstance(cal, dict) and "Earnings Date" in cal:
+            raw = cal["Earnings Date"]
+            if isinstance(raw, (list, tuple)) and raw:
+                raw = raw[0]
+            if hasattr(raw, "isoformat"):
+                return raw.isoformat()[:10]
+            if hasattr(raw, "date"):
+                return raw.date().isoformat()
+            return str(raw)[:10]
+    except Exception:
+        return None
+    return None
+
+
+def _fetch_one_earnings_row(sym: str) -> Dict:
+    """Best-effort Yahoo row; never raises."""
+    from datetime import date as date_cls
+
+    from ..market_data import get_stock_name
+
+    row: Dict = {
+        "symbol": sym,
+        "name": get_stock_name(sym),
+        "nextEarningsDate": None,
+        "epsTrailing": None,
+        "epsForward": None,
+        "revenueGrowth": None,
+        "pe": None,
+        "sector": "",
+        "estimated": False,
+    }
+    try:
+        import yfinance as yf
+
+        ticker = yf.Ticker(sym if sym.endswith((".NS", ".BO")) else f"{sym}.NS")
+        next_earnings = _parse_yahoo_earnings_date(getattr(ticker, "calendar", None))
+        info = {}
+        try:
+            # ticker.info is often blocked/slow on cloud hosts — keep optional.
+            info = ticker.info or {}
+        except Exception:
+            info = {}
+
+        if not next_earnings:
+            for key in ("earningsTimestamp", "earningsDate"):
+                raw = info.get(key)
+                if raw is None:
+                    continue
+                try:
+                    if isinstance(raw, (list, tuple)) and raw:
+                        raw = raw[0]
+                    if isinstance(raw, (int, float)):
+                        next_earnings = date_cls.fromtimestamp(int(raw)).isoformat()
+                    else:
+                        next_earnings = str(raw)[:10]
+                    break
+                except Exception:
+                    continue
+
+        eps_trailing = info.get("trailingEps")
+        eps_forward = info.get("forwardEps")
+        revenue_growth = info.get("revenueGrowth")
+        pe = info.get("trailingPE")
+        row.update(
+            {
+                "name": info.get("longName") or row["name"],
+                "nextEarningsDate": next_earnings,
+                "epsTrailing": round(float(eps_trailing), 2) if eps_trailing else None,
+                "epsForward": round(float(eps_forward), 2) if eps_forward else None,
+                "revenueGrowth": round(float(revenue_growth) * 100, 1) if revenue_growth else None,
+                "pe": round(float(pe), 1) if pe else None,
+                "sector": info.get("sector") or "",
+            }
+        )
+    except Exception as exc:
+        logger.debug("earnings.yahoo_row_failed symbol=%s reason=%s", sym, exc)
+
+    if not row.get("nextEarningsDate"):
+        curated = _CURATED_EARNINGS_DATES.get(sym)
+        if curated:
+            row["nextEarningsDate"] = curated[0]
+            row["sector"] = row.get("sector") or curated[1]
+            row["estimated"] = True
+    return row
+
 
 @router.get("/earnings-calendar")
 async def get_earnings_calendar(symbols: str = ""):
     """
     Upcoming earnings dates + EPS history for watchlist stocks.
-    Falls back to NSE calendar data via yfinance.
+    Uses Yahoo when available; curated approximate dates when Yahoo is blocked.
     """
-    try:
-        import yfinance as yf
-        from datetime import date, timedelta
+    import asyncio
+    from datetime import date
 
+    try:
         sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
         if not sym_list:
             sym_list = ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "ITC", "WIPRO", "SBIN"]
 
-        calendar_items = []
-        for sym in sym_list[:12]:
-            try:
-                ticker = yf.Ticker(sym if sym.endswith(".NS") else sym + ".NS")
-                info = ticker.info or {}
-                cal = ticker.calendar
-
-                next_earnings = None
-                if cal is not None and not (hasattr(cal, "empty") and cal.empty):
-                    try:
-                        if hasattr(cal, "columns") and "Earnings Date" in cal.columns:
-                            ed = cal["Earnings Date"].iloc[0]
-                            if hasattr(ed, "date"):
-                                next_earnings = ed.date().isoformat()
-                            else:
-                                next_earnings = str(ed)[:10]
-                        elif isinstance(cal, dict) and "Earnings Date" in cal:
-                            raw = cal["Earnings Date"]
-                            if isinstance(raw, (list, tuple)) and raw:
-                                raw = raw[0]
-                            if hasattr(raw, "isoformat"):
-                                next_earnings = raw.isoformat()[:10]
-                            elif hasattr(raw, "date"):
-                                next_earnings = raw.date().isoformat()
-                            else:
-                                next_earnings = str(raw)[:10]
-                    except Exception:
-                        pass
-
-                # Also try info fields when calendar is sparse.
-                if not next_earnings:
-                    for key in ("earningsTimestamp", "earningsDate"):
-                        raw = info.get(key)
-                        if raw is None:
-                            continue
-                        try:
-                            if isinstance(raw, (list, tuple)) and raw:
-                                raw = raw[0]
-                            if isinstance(raw, (int, float)):
-                                next_earnings = date.fromtimestamp(int(raw)).isoformat()
-                            else:
-                                next_earnings = str(raw)[:10]
-                            break
-                        except Exception:
-                            continue
-
-                eps_trailing = info.get("trailingEps")
-                eps_forward = info.get("forwardEps")
-                revenue_growth = info.get("revenueGrowth")
-
-                calendar_items.append({
-                    "symbol": sym,
-                    "name": info.get("longName", sym),
-                    "nextEarningsDate": next_earnings,
-                    "epsTrailing": round(float(eps_trailing), 2) if eps_trailing else None,
-                    "epsForward": round(float(eps_forward), 2) if eps_forward else None,
-                    "revenueGrowth": round(float(revenue_growth) * 100, 1) if revenue_growth else None,
-                    "pe": round(float(info.get("trailingPE", 0)), 1) if info.get("trailingPE") else None,
-                    "sector": info.get("sector", ""),
-                })
-            except Exception:
-                calendar_items.append({"symbol": sym, "nextEarningsDate": None})
-
+        rows = await asyncio.gather(
+            *[asyncio.to_thread(_fetch_one_earnings_row, sym) for sym in sym_list[:12]]
+        )
+        calendar_items = list(rows)
         calendar_items.sort(key=lambda x: x.get("nextEarningsDate") or "9999")
 
         return {
             "items": calendar_items,
             "count": len(calendar_items),
             "generatedAt": str(date.today()),
+            "disclaimer": (
+                "Some dates are approximate educational estimates when live calendar "
+                "data is unavailable."
+                if any(i.get("estimated") for i in calendar_items)
+                else None
+            ),
         }
     except Exception as exc:
         logger.exception("earnings_calendar.error reason=%s", exc)
-        raise HTTPException(status_code=500, detail="Failed to fetch earnings calendar")
+        # Never hard-fail the Android screen — return curated shell.
+        from datetime import date
+
+        fallback_syms = [s.strip().upper() for s in symbols.split(",") if s.strip()] or list(
+            _CURATED_EARNINGS_DATES.keys()
+        )[:8]
+        items = [_fetch_one_earnings_row(s) for s in fallback_syms[:12]]
+        return {
+            "items": items,
+            "count": len(items),
+            "generatedAt": str(date.today()),
+            "disclaimer": "Educational earnings calendar (live feed unavailable).",
+        }

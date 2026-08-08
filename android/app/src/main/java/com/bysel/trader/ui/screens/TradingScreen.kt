@@ -1,8 +1,19 @@
 package com.bysel.trader.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -38,9 +49,22 @@ import com.bysel.trader.ui.format.formatSignedPct
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.MarketStatus
 import com.bysel.trader.data.models.StockSearchResult
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import com.bysel.trader.ui.components.appOutlinedTextFieldColors
+import com.bysel.trader.ui.components.filterDecimalInput
+import com.bysel.trader.ui.components.filterDigitsOnly
 import com.bysel.trader.ui.components.InfoChip
+import com.bysel.trader.ui.theme.AnimatedAmountText
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.ScreenHeader
+import com.bysel.trader.ui.theme.TickPriceText
+import com.bysel.trader.ui.theme.MarqueeText
+import com.bysel.trader.ui.theme.TradeActionButton
+import com.bysel.trader.ui.theme.animatedChangeColor
+import com.bysel.trader.ui.theme.byselCardColors
 import com.bysel.trader.ui.components.PriceHistoryChart
 import com.bysel.trader.ui.components.PullToRefreshBox
 import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
@@ -182,6 +206,10 @@ fun TradingScreen(
             if (isActive) viewModel.stopFastRefresh()
         }
     }
+    // Prefetch browse catalog as soon as Trade is visible (not only when + Add opens).
+    LaunchedEffect(isActive) {
+        if (isActive) viewModel.ensureSymbolCatalogLoaded()
+    }
     val liveQuotes by viewModel.quotes.collectAsStateWithLifecycle()
     val watchlistSymbols by viewModel.watchlist.collectAsStateWithLifecycle()
     val selectedQuote by viewModel.selectedQuote.collectAsStateWithLifecycle()
@@ -269,22 +297,46 @@ fun TradingScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
-            colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
-            shape = RoundedCornerShape(14.dp)
+            colors = byselCardColors(),
+            shape = MaterialTheme.shapes.medium,
         ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = "Trade",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = LocalAppTheme.current.text,
-                )
-                Text(
-                    text = "Watchlist-first paper trading. Advanced tools stay one tap away.",
-                    fontSize = 12.sp,
-                    color = LocalAppTheme.current.textSecondary,
-                )
-            }
+            ScreenHeader(
+                title = "Trade",
+                subtitle = "Watchlist-first paper trading. Advanced tools stay one tap away.",
+                compact = true,
+                modifier = Modifier.padding(14.dp),
+                trailing = {
+                    // Practice wallet lives on the Trade header — not next to watchlist +Add.
+                    AssistChip(
+                        onClick = { showAddFundsDialog = true },
+                        label = {
+                            if (walletBalance > 0.0) {
+                                AnimatedAmountText(
+                                    amount = walletBalance,
+                                    formatter = { "₹${String.format("%,.0f", it)}" },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = LocalAppTheme.current.text,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            } else {
+                                Text(
+                                    "Add credit",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Filled.AccountBalanceWallet,
+                                contentDescription = "Practice wallet",
+                                modifier = Modifier.size(16.dp),
+                                tint = LocalAppTheme.current.primary,
+                            )
+                        },
+                    )
+                },
+            )
         }
 
         ScrollableTabRow(
@@ -314,46 +366,52 @@ fun TradingScreen(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            when (selectedWorkspaceIndex) {
-                0 -> SpotTradingWorkspace(
-                    isLoading = isLoading,
-                    error = error,
-                    walletBalance = walletBalance,
-                    marketStatus = marketStatus,
-                    onRefresh = onRefresh,
-                    onShowAddFunds = { showAddFundsDialog = true },
-                    onErrorDismiss = onErrorDismiss,
-                    onTraceSupportLookup = onTraceSupportLookup,
-                    onSelectQuote = { openTradeSheet(it) },
-                    onOpenSymbol = { symbol -> openTradeSheet(symbol) },
-                    onOpenAdvancedWorkspace = { selectedWorkspaceIndex = 1 },
-                    onOpenDerivativesWorkspace = { selectedWorkspaceIndex = 2 },
-                    viewModel = viewModel,
-                )
-                1 -> AdvancedOrdersScreen(viewModel)
-                2 -> DerivativesIntelligenceScreen(viewModel)
-                else -> FuturesRadarScreen(
-                    viewModel = viewModel,
-                    quotes = liveQuotes,
-                    marketStatus = marketStatus,
-                    watchlistSymbols = watchlistSymbols,
-                    onOpenSpotTrade = { openTradeSheet(it) },
-                    onOpenOptions = { selectedWorkspaceIndex = 2 },
-                    onOpenAdvanced = { selectedWorkspaceIndex = 1 },
-                )
+            AnimatedContent(
+                targetState = selectedWorkspaceIndex,
+                transitionSpec = {
+                    (fadeIn(tween(180)) + slideInVertically { it / 16 }) togetherWith
+                        (fadeOut(tween(120)) + slideOutVertically { -it / 20 })
+                },
+                label = "tradeWorkspace",
+            ) { workspace ->
+                when (workspace) {
+                    0 -> SpotTradingWorkspace(
+                        isLoading = isLoading,
+                        error = error,
+                        marketStatus = marketStatus,
+                        onRefresh = onRefresh,
+                        onErrorDismiss = onErrorDismiss,
+                        onTraceSupportLookup = onTraceSupportLookup,
+                        onSelectQuote = { openTradeSheet(it) },
+                        onOpenSymbol = { symbol -> openTradeSheet(symbol) },
+                        onOpenAdvancedWorkspace = { selectedWorkspaceIndex = 1 },
+                        onOpenDerivativesWorkspace = { selectedWorkspaceIndex = 2 },
+                        viewModel = viewModel,
+                    )
+                    1 -> AdvancedOrdersScreen(viewModel)
+                    2 -> DerivativesIntelligenceScreen(viewModel)
+                    else -> FuturesRadarScreen(
+                        viewModel = viewModel,
+                        quotes = liveQuotes,
+                        marketStatus = marketStatus,
+                        watchlistSymbols = watchlistSymbols,
+                        onOpenSpotTrade = { openTradeSheet(it) },
+                        onOpenOptions = { selectedWorkspaceIndex = 2 },
+                        onOpenAdvanced = { selectedWorkspaceIndex = 1 },
+                    )
+                }
             }
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SpotTradingWorkspace(
     isLoading: Boolean,
     error: String?,
-    walletBalance: Double,
     marketStatus: MarketStatus?,
     onRefresh: () -> Unit,
-    onShowAddFunds: () -> Unit,
     onErrorDismiss: () -> Unit,
     onTraceSupportLookup: ((String) -> Unit)? = null,
     onSelectQuote: (Quote) -> Unit,
@@ -373,6 +431,8 @@ private fun SpotTradingWorkspace(
     val activeWatchlistSymbols = remember(watchlistSymbols) {
         watchlistSymbols.map { it.trim().uppercase() }.filter { it.isNotBlank() }.distinct()
     }
+    val symbolCatalog by viewModel.symbolCatalog.collectAsStateWithLifecycle()
+    val symbolCatalogLoading by viewModel.symbolCatalogLoading.collectAsStateWithLifecycle()
     val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
     val isSearching by viewModel.isSearching.collectAsStateWithLifecycle()
     val liveQuotes by viewModel.quotes.collectAsStateWithLifecycle()
@@ -420,11 +480,61 @@ private fun SpotTradingWorkspace(
             .sortedByDescending { it.confidence }
     }
 
-    LaunchedEffect(watchSearchQuery) {
-        if (watchSearchQuery.isBlank()) {
+    LaunchedEffect(showAddWatchlistDialog) {
+        if (showAddWatchlistDialog) {
+            viewModel.ensureSymbolCatalogLoaded()
+        } else {
+            viewModel.clearSearchResults()
+        }
+    }
+
+    // Live /search while typing — catalog-only filter fails when /symbols didn't load
+    // (or for names ranked better by the search API, e.g. "kaynes" → KAYNES).
+    LaunchedEffect(showAddWatchlistDialog, watchSearchQuery) {
+        if (!showAddWatchlistDialog) return@LaunchedEffect
+        val q = watchSearchQuery.trim()
+        if (q.isBlank()) {
             viewModel.clearSearchResults()
         } else {
-            viewModel.searchStocks(watchSearchQuery)
+            viewModel.searchStocks(q)
+        }
+    }
+
+    val popularWatchlistPicks = remember {
+        listOf(
+            "RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK",
+            "SBIN", "BHARTIARTL", "ITC", "LT", "AXISBANK",
+            "BAJFINANCE", "HINDUNILVR", "KOTAKBANK", "ASIANPAINT", "MARUTI",
+            "WIPRO", "TITAN", "NTPC", "POWERGRID", "ULTRACEMCO",
+        )
+    }
+
+    val popularFallback = remember(popularWatchlistPicks) {
+        popularWatchlistPicks.map { sym ->
+            StockSearchResult(symbol = sym, name = sym, matchType = "popular")
+        }
+    }
+
+    val browsableStocks = remember(watchSearchQuery, symbolCatalog, searchResults, popularFallback) {
+        val query = watchSearchQuery.trim()
+        if (query.isBlank()) {
+            if (symbolCatalog.isEmpty()) {
+                // Never leave the sheet empty while /symbols loads or fails.
+                popularFallback
+            } else {
+                val popularSet = popularWatchlistPicks.toSet()
+                val popular = popularWatchlistPicks.mapNotNull { sym ->
+                    symbolCatalog.firstOrNull { it.symbol.equals(sym, ignoreCase = true) }
+                }
+                val rest = symbolCatalog.filterNot { it.symbol.uppercase() in popularSet }
+                popular + rest
+            }
+        } else {
+            mergeWatchlistSearchResults(
+                query = query,
+                catalog = symbolCatalog,
+                apiResults = searchResults,
+            )
         }
     }
 
@@ -455,25 +565,6 @@ private fun SpotTradingWorkspace(
                     color = LocalAppTheme.current.textSecondary,
                 )
             }
-            AssistChip(
-                onClick = onShowAddFunds,
-                label = {
-                    Text(
-                        if (walletBalance > 0.0) "₹${String.format("%,.0f", walletBalance)}" else "Add credit",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                },
-                leadingIcon = {
-                    Icon(
-                        Icons.Filled.AccountBalanceWallet,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = LocalAppTheme.current.primary,
-                    )
-                },
-            )
-            Spacer(modifier = Modifier.width(8.dp))
             Button(
                 onClick = { showAddWatchlistDialog = true },
                 modifier = Modifier.height(36.dp),
@@ -504,13 +595,15 @@ private fun SpotTradingWorkspace(
         }
 
         if (boardModeWatchlist && activeWatchlistSymbols.isNotEmpty()) {
-            LazyRow(
+            // FlowRow keeps every sort chip visible (wrap) instead of hiding them in a LazyRow.
+            FlowRow(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                items(WatchlistSortMode.entries, key = { it.name }) { mode ->
+                WatchlistSortMode.entries.forEach { mode ->
                     FilterChip(
                         selected = sortMode == mode,
                         onClick = { sortModeName = mode.name },
@@ -547,76 +640,20 @@ private fun SpotTradingWorkspace(
         }
 
         if (showAddWatchlistDialog) {
-            AlertDialog(
-                onDismissRequest = {
+            AddToWatchlistSheet(
+                query = watchSearchQuery,
+                onQueryChange = { watchSearchQuery = it },
+                stocks = browsableStocks,
+                catalogLoading = symbolCatalogLoading,
+                searching = isSearching,
+                catalogSize = symbolCatalog.size,
+                watchlistSymbols = activeWatchlistSymbols,
+                onAdd = { symbol -> viewModel.addToWatchlist(symbol) },
+                onRetryCatalog = { viewModel.ensureSymbolCatalogLoaded(force = true) },
+                onDismiss = {
                     showAddWatchlistDialog = false
                     watchSearchQuery = ""
                     viewModel.clearSearchResults()
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        showAddWatchlistDialog = false
-                        watchSearchQuery = ""
-                        viewModel.clearSearchResults()
-                    }) { Text("Done") }
-                },
-                title = { Text("Add to Watchlist") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = "Search the full NSE listed universe (~2,400+ names).",
-                            fontSize = 12.sp,
-                            color = LocalAppTheme.current.textSecondary,
-                        )
-                        OutlinedTextField(
-                            value = watchSearchQuery,
-                            onValueChange = { watchSearchQuery = it },
-                            label = { Text("Company or symbol") },
-                            leadingIcon = {
-                                Icon(Icons.Filled.Search, contentDescription = null)
-                            },
-                            singleLine = true,
-                            colors = appOutlinedTextFieldColors(containerColor = LocalAppTheme.current.surface),
-                        )
-                        if (isSearching && searchResults.isEmpty()) {
-                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        }
-                        LazyColumn(
-                            modifier = Modifier.heightIn(max = 260.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            items(searchResults.take(15), key = { it.symbol }) { result: StockSearchResult ->
-                                val already = activeWatchlistSymbols.any { it.equals(result.symbol, true) }
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable(enabled = !already) {
-                                            viewModel.addToWatchlist(result.symbol)
-                                        }
-                                        .padding(vertical = 8.dp, horizontal = 4.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(result.symbol, fontWeight = FontWeight.Bold, color = LocalAppTheme.current.text)
-                                        Text(
-                                            result.name,
-                                            fontSize = 11.sp,
-                                            color = LocalAppTheme.current.textSecondary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    }
-                                    Text(
-                                        text = if (already) "Added" else "Add",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = if (already) LocalAppTheme.current.positive else LocalAppTheme.current.primary,
-                                    )
-                                }
-                            }
-                        }
-                    }
                 },
             )
         }
@@ -1130,13 +1167,19 @@ private fun FuturesRadarScreen(
 }
 
 @Composable
-fun TradingQuoteCard(quote: Quote, onClick: () -> Unit) {
+fun TradingQuoteCard(
+    quote: Quote,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val theme = LocalAppTheme.current
     Card(
-        modifier = Modifier
+        onClick = onClick,
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 6.dp, vertical = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
-        shape = RoundedCornerShape(12.dp)
+        colors = byselCardColors(),
+        shape = MaterialTheme.shapes.medium,
     ) {
         Column(
             modifier = Modifier
@@ -1151,24 +1194,24 @@ fun TradingQuoteCard(quote: Quote, onClick: () -> Unit) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = quote.symbol,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = LocalAppTheme.current.text
+                        style = MaterialTheme.typography.titleSmall,
+                        color = theme.text,
                     )
-                    Text(
+                    TickPriceText(
+                        price = quote.last,
                         text = "₹${String.format("%.2f", quote.last)}",
-                        fontSize = 13.sp,
-                        color = LocalAppTheme.current.textSecondary,
-                        modifier = Modifier.padding(top = 4.dp)
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = theme.textSecondary,
+                        modifier = Modifier.padding(top = 4.dp),
+                        fontWeight = null,
                     )
                 }
 
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = "${if (quote.pctChange > 0) "+" else ""}${String.format("%.2f", quote.pctChange)}%",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (quote.pctChange > 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
+                        style = MaterialTheme.typography.titleSmall,
+                        color = animatedChangeColor(quote.pctChange),
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.End) {
@@ -1187,24 +1230,21 @@ fun TradingQuoteCard(quote: Quote, onClick: () -> Unit) {
                     .padding(top = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Button(
+                TradeActionButton(
                     onClick = onClick,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(40.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.positive)
+                    isBuy = true,
+                    modifier = Modifier.weight(1f),
+                    height = 40.dp,
                 ) {
-                    Text("Buy", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("Buy", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                 }
-
-                Button(
+                TradeActionButton(
                     onClick = onClick,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(40.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.negative)
+                    isBuy = false,
+                    modifier = Modifier.weight(1f),
+                    height = 40.dp,
                 ) {
-                    Text("Sell", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("Sell", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -1294,6 +1334,237 @@ private fun WatchlistInsightRow(
                 )
                 TextButton(onClick = onOpenTrade) {
                     Text("Trade")
+                }
+            }
+        }
+    }
+}
+
+/** Merge API /search hits (ranked) with local catalog substring matches. */
+private fun mergeWatchlistSearchResults(
+    query: String,
+    catalog: List<StockSearchResult>,
+    apiResults: List<StockSearchResult>,
+): List<StockSearchResult> {
+    val fromCatalog = catalog.filter { stock ->
+        stock.symbol.contains(query, ignoreCase = true) ||
+            stock.name.contains(query, ignoreCase = true)
+    }
+    val seen = LinkedHashSet<String>()
+    val merged = ArrayList<StockSearchResult>(apiResults.size + fromCatalog.size)
+    for (stock in apiResults + fromCatalog) {
+        val key = stock.symbol.trim().uppercase()
+        if (key.isBlank() || !seen.add(key)) continue
+        merged.add(stock)
+    }
+    return merged
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddToWatchlistSheet(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    stocks: List<StockSearchResult>,
+    catalogLoading: Boolean,
+    searching: Boolean,
+    catalogSize: Int,
+    watchlistSymbols: List<String>,
+    onAdd: (String) -> Unit,
+    onRetryCatalog: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val theme = LocalAppTheme.current
+    val queryBlank = query.isBlank()
+    val showSearchLoading = searching && stocks.isEmpty() && !queryBlank
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = theme.card,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.92f)
+                .padding(horizontal = 16.dp),
+        ) {
+            Text(
+                text = "Add to Watchlist",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = theme.text,
+            )
+            Text(
+                text = when {
+                    catalogSize > 0 ->
+                        "Browse $catalogSize listed stocks · type a company name or symbol"
+                    catalogLoading ->
+                        "Search by name anytime · full list loading in background"
+                    else ->
+                        "Type a company name or symbol to search (e.g. Kaynes, RELIANCE)"
+                },
+                fontSize = 12.sp,
+                color = theme.textSecondary,
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+            )
+
+            if (catalogLoading && catalogSize == 0) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp),
+                    color = theme.primary,
+                    trackColor = theme.textSecondary.copy(alpha = 0.2f),
+                )
+            }
+
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = {
+                    Text("Try Kaynes, Reliance, Infosys…", color = theme.textSecondary)
+                },
+                leadingIcon = {
+                    Icon(Icons.Filled.Search, contentDescription = null, tint = theme.textSecondary)
+                },
+                trailingIcon = {
+                    when {
+                        searching -> {
+                            CircularProgressIndicator(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .padding(end = 4.dp),
+                                strokeWidth = 2.dp,
+                                color = theme.primary,
+                            )
+                        }
+                        query.isNotEmpty() -> {
+                            IconButton(onClick = { onQueryChange("") }) {
+                                Icon(Icons.Filled.Close, contentDescription = "Clear", tint = theme.textSecondary)
+                            }
+                        }
+                    }
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Words,
+                    imeAction = ImeAction.Search,
+                ),
+                colors = appOutlinedTextFieldColors(containerColor = theme.surface),
+                shape = RoundedCornerShape(14.dp),
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            when {
+                showSearchLoading -> {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp,
+                            color = theme.primary,
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "Searching…",
+                            color = theme.textSecondary,
+                            fontSize = 13.sp,
+                        )
+                    }
+                }
+                stocks.isEmpty() -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 20.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            text = if (queryBlank) {
+                                "Stock list unavailable. Retry catalog load, or type a name to search."
+                            } else {
+                                "No matches for \"$query\". Try the company name (e.g. Kaynes Technology)."
+                            },
+                            fontSize = 13.sp,
+                            color = theme.textSecondary,
+                        )
+                        if (queryBlank || catalogSize == 0) {
+                            TextButton(onClick = onRetryCatalog) {
+                                Text("Retry stock list")
+                            }
+                        }
+                    }
+                }
+                else -> {
+                    Text(
+                        text = if (queryBlank) {
+                            "Popular names first · scroll for the full list (${stocks.size})"
+                        } else {
+                            "${stocks.size} match${if (stocks.size == 1) "" else "es"}" +
+                                if (searching) " · updating…" else ""
+                        },
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = theme.textSecondary,
+                        modifier = Modifier.padding(bottom = 6.dp),
+                    )
+                    // Box+fillMaxSize avoids ModalBottomSheet weight/measure quirks that
+                    // can clip the list to a few rows (or none) on some devices.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                    ) {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                            contentPadding = PaddingValues(bottom = 28.dp),
+                        ) {
+                            items(stocks, key = { it.symbol }) { result ->
+                                val already = watchlistSymbols.any {
+                                    it.equals(result.symbol, ignoreCase = true)
+                                }
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(enabled = !already) { onAdd(result.symbol) }
+                                        .padding(vertical = 10.dp, horizontal = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        MarqueeText(
+                                            text = result.name.ifBlank { result.symbol },
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = theme.text,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                        Text(
+                                            text = result.symbol,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = theme.textSecondary,
+                                        )
+                                    }
+                                    Text(
+                                        text = if (already) "Added" else "Add",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (already) theme.positive else theme.primary,
+                                        modifier = Modifier.padding(start = 12.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1477,11 +1748,22 @@ private fun TradeBottomSheetContent(
                     fontWeight = FontWeight.Bold,
                     color = LocalAppTheme.current.text
                 )
-                Text(
-                    text = "₹${String.format("%.2f", quote.last)}  ${if (quote.pctChange >= 0) "+" else ""}${String.format("%.2f", quote.pctChange)}%",
-                    fontSize = 13.sp,
-                    color = if (quote.pctChange >= 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    TickPriceText(
+                        price = quote.last,
+                        text = "₹${String.format("%.2f", quote.last)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = LocalAppTheme.current.text,
+                    )
+                    Text(
+                        text = "${if (quote.pctChange >= 0) "+" else ""}${String.format("%.2f", quote.pctChange)}%",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = animatedChangeColor(quote.pctChange),
+                    )
+                }
             }
             IconButton(onClick = onDismiss) {
                 Icon(Icons.Filled.Close, contentDescription = "Close", tint = LocalAppTheme.current.textSecondary)
@@ -1530,11 +1812,12 @@ private fun TradeBottomSheetContent(
                 Spacer(modifier = Modifier.width(6.dp))
                 Text("Wallet", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
             }
-            Text(
-                formatCurrency(walletBalance),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
+            AnimatedAmountText(
+                amount = walletBalance,
+                formatter = { formatCurrency(it) },
+                style = MaterialTheme.typography.labelLarge,
                 color = LocalAppTheme.current.primary,
+                fontWeight = FontWeight.Bold,
             )
         }
 
@@ -1656,9 +1939,14 @@ private fun TradeBottomSheetContent(
         if (orderType == "LIMIT") {
             OutlinedTextField(
                 value = limitPriceInput,
-                onValueChange = { limitPriceInput = it },
+                onValueChange = { limitPriceInput = filterDecimalInput(it) },
                 label = { Text("Limit Price", color = LocalAppTheme.current.textSecondary) },
                 modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Decimal,
+                    imeAction = ImeAction.Next,
+                ),
                 colors = appOutlinedTextFieldColors(containerColor = LocalAppTheme.current.surface),
             )
         }
@@ -1666,9 +1954,14 @@ private fun TradeBottomSheetContent(
         // Quantity
         OutlinedTextField(
             value = quantity,
-            onValueChange = { quantity = it },
+            onValueChange = { quantity = filterDigitsOnly(it) },
             label = { Text("Quantity", color = LocalAppTheme.current.textSecondary) },
             modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Number,
+                imeAction = ImeAction.Done,
+            ),
             colors = appOutlinedTextFieldColors(containerColor = LocalAppTheme.current.surface),
         )
         Row(
@@ -1848,7 +2141,12 @@ private fun TradeBottomSheetContent(
             }
         }
 
-        if (lastExecutedForSymbol != null) {
+        AnimatedVisibility(
+            visible = lastExecutedForSymbol != null,
+            enter = expandVertically() + fadeIn(tween(220)),
+            exit = shrinkVertically() + fadeOut(tween(160)),
+        ) {
+            val executed = lastExecutedForSymbol ?: return@AnimatedVisibility
             Card(
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.surface),
@@ -1872,12 +2170,12 @@ private fun TradeBottomSheetContent(
                     }
                     TradeSummaryLine(
                         label = "Last order",
-                        value = "${lastExecutedForSymbol.order.side} ${lastExecutedForSymbol.order.qty} • ${lastExecutedForSymbol.orderStatus ?: lastExecutedForSymbol.status.uppercase()}"
+                        value = "${executed.order.side} ${executed.order.qty} • ${executed.orderStatus ?: executed.status.uppercase()}"
                     )
-                    lastExecutedForSymbol.executedPrice?.let { executedPrice ->
+                    executed.executedPrice?.let { executedPrice ->
                         TradeSummaryLine(label = "Executed", value = formatCurrency(executedPrice))
                     }
-                    lastExecutedForSymbol.total?.let { total ->
+                    executed.total?.let { total ->
                         TradeSummaryLine(label = "Notional", value = formatCurrency(total))
                     }
                     lastOrderTraceId?.takeIf { it.isNotBlank() }?.let { traceId ->
@@ -1949,21 +2247,16 @@ private fun TradeBottomSheetContent(
                 modifier = Modifier.weight(1f).height(48.dp),
                 shape = RoundedCornerShape(12.dp)
             ) { Text("Close") }
-            Button(
+            TradeActionButton(
                 onClick = {
                     if (qty > 0) {
                         showConfirmDialog = true
                     }
                 },
+                isBuy = tradeType == "BUY",
                 enabled = qty > 0 && !limitInvalid && !limitDeviationHardBlock && !copilotBlocksTrade && !orderExecutionLoading && (tradeType == "SELL" || canAfford),
-                modifier = Modifier.weight(2f).height(48.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (tradeType == "BUY") LocalAppTheme.current.positive else LocalAppTheme.current.negative,
-                    contentColor = Color.White,
-                    disabledContainerColor = LocalAppTheme.current.mutedSurface,
-                    disabledContentColor = LocalAppTheme.current.textSecondary
-                ),
-                shape = RoundedCornerShape(12.dp)
+                modifier = Modifier.weight(2f),
+                height = 48.dp,
             ) {
                 if (orderExecutionLoading) {
                     CircularProgressIndicator(
@@ -1974,8 +2267,8 @@ private fun TradeBottomSheetContent(
                 } else {
                     Text(
                         if (orderType == "MARKET") tradeType else "LIMIT $tradeType",
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
                     )
                 }
             }
@@ -2006,16 +2299,15 @@ private fun TradeBottomSheetContent(
                 }
             },
             confirmButton = {
-                Button(
+                TradeActionButton(
                     onClick = {
                         showConfirmDialog = false
                         if (tradeType == "BUY") onBuy(qty) else onSell(qty)
                     },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (tradeType == "BUY") LocalAppTheme.current.positive else LocalAppTheme.current.negative
-                    )
+                    isBuy = tradeType == "BUY",
+                    height = 40.dp,
                 ) {
-                    Text("Confirm $tradeType")
+                    Text("Confirm $tradeType", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -2196,11 +2488,16 @@ fun AddFundsDialog(
                 )
                 OutlinedTextField(
                     value = amount,
-                    onValueChange = { amount = it },
+                    onValueChange = { amount = filterDecimalInput(it, maxFractionDigits = 0) },
                     label = { Text("Amount (\u20B9)", color = LocalAppTheme.current.textSecondary) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 16.dp),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done,
+                    ),
                     colors = appOutlinedTextFieldColors(containerColor = LocalAppTheme.current.surface),
                 )
 

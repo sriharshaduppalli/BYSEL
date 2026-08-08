@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,6 +30,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -42,6 +46,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -53,6 +59,9 @@ import com.bysel.trader.ui.format.formatInr
 import com.bysel.trader.ui.format.formatSignedPct
 import com.bysel.trader.ui.format.formatVolumeCompact
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.MarqueeText
+import com.bysel.trader.ui.theme.PriceChangeLine
+import com.bysel.trader.ui.theme.ScreenHeader
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 
@@ -65,6 +74,7 @@ private data class SearchJump(
     val keywords: List<String>,
 )
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SearchScreen(
     quotes: List<Quote>,
@@ -162,20 +172,10 @@ fun SearchScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = "Search Stocks",
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = theme.text,
-                    )
-                    Text(
-                        text = "Full NSE listed catalog (~2,400+). Add to watchlist or open detail.",
-                        fontSize = 13.sp,
-                        color = theme.textSecondary,
-                        lineHeight = 18.sp,
-                    )
-                }
+                ScreenHeader(
+                    title = "Search Stocks",
+                    subtitle = "Full NSE listed catalog (~2,400+). Add to watchlist or open detail.",
+                )
             }
 
             item {
@@ -202,13 +202,21 @@ fun SearchScreen(
                     colors = appOutlinedTextFieldColors(containerColor = theme.card),
                     shape = RoundedCornerShape(14.dp),
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Characters,
+                        imeAction = ImeAction.Search,
+                    ),
                 )
             }
 
             if (normalizedQuery.isBlank()) {
                 item {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(jumps, key = { it.title }) { jump ->
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        jumps.forEach { jump ->
                             AssistChip(
                                 onClick = { onRouteClick(jump.tab) },
                                 label = { Text(jump.title) },
@@ -456,16 +464,16 @@ private fun DiscoveryQuoteCard(
                     fontWeight = FontWeight.Bold,
                     color = LocalAppTheme.current.text,
                 )
-                Text(
+                MarqueeText(
                     text = subtitle,
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = LocalAppTheme.current.textSecondary,
                 )
-                Text(
-                    text = "${formatInr(quote.last)} · ${formatSignedPct(quote.pctChange)}",
-                    fontSize = 13.sp,
-                    color = if (quote.pctChange >= 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative,
+                PriceChangeLine(
+                    last = quote.last,
+                    pctChange = quote.pctChange,
                     modifier = Modifier.padding(top = 4.dp),
+                    style = MaterialTheme.typography.bodyMedium,
                 )
                 quote.volume?.let { vol ->
                     Text(
@@ -525,24 +533,27 @@ private fun SearchResultCard(
                     fontWeight = FontWeight.Bold,
                     color = LocalAppTheme.current.text,
                 )
-                Text(
+                MarqueeText(
                     text = result.name,
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = LocalAppTheme.current.textSecondary,
-                    lineHeight = 17.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 3.dp),
                 )
-                Text(
-                    text = quote?.let { "${formatInr(it.last)} · ${formatSignedPct(it.pctChange)}" }
-                        ?: "Tap Open for live quote",
-                    fontSize = 12.sp,
-                    color = quote?.let {
-                        if (it.pctChange >= 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
-                    } ?: LocalAppTheme.current.textSecondary,
-                    modifier = Modifier.padding(top = 5.dp),
-                )
+                if (quote != null) {
+                    PriceChangeLine(
+                        last = quote.last,
+                        pctChange = quote.pctChange,
+                        modifier = Modifier.padding(top = 5.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else {
+                    Text(
+                        text = "Tap Open for live quote",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = LocalAppTheme.current.textSecondary,
+                        modifier = Modifier.padding(top = 5.dp),
+                    )
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 when {

@@ -23,6 +23,7 @@ import com.bysel.trader.data.models.RegisterRequest
 import com.bysel.trader.data.models.UserProfile
 import com.bysel.trader.data.models.UserProfileUpdateRequest
 import android.util.Log
+import com.bysel.trader.util.CredentialHelper
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -298,20 +299,26 @@ class AuthRepository(
     /**
      * Firebase keeps its own signed-in user after phone auth. Leaving it behind means the next
      * OTP sign-in can silently reuse the previous number.
+     * Also clears Credential Manager provider session state so the next sign-in shows all options.
      */
-    private fun clearLocalIdentity() {
+    private suspend fun clearLocalIdentity() {
         AuthSessionManager.clearSession()
         try {
             FirebaseAuth.getInstance().signOut()
         } catch (e: Exception) {
-            Log.w(TAG, "Firebase sign-out failed", e)
+            if (com.bysel.trader.BuildConfig.DEBUG) {
+                Log.w(TAG, "Firebase sign-out failed", e)
+            }
+        }
+        AuthSessionManager.applicationContextOrNull()?.let { ctx ->
+            CredentialHelper.clearCredentialState(ctx)
         }
     }
 
     suspend fun deleteAccount(password: String): Result<Unit> {
         return try {
             apiService.deleteAccount(DeleteAccountRequest(password = password))
-            AuthSessionManager.clearSession()
+            clearLocalIdentity()
             Result.Success(Unit)
         } catch (e: Exception) {
             Result.Error(toAuthErrorMessage(e, "Account deletion failed"))

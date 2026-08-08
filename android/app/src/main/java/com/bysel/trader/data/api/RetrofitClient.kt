@@ -41,10 +41,11 @@ object RetrofitClient {
     }
 
     val httpClient: OkHttpClient by lazy {
+        // BASIC still logs headers (incl. Authorization). Keep network logs off in release.
         val loggingLevel = if (BuildConfig.DEBUG) {
             HttpLoggingInterceptor.Level.BODY
         } else {
-            HttpLoggingInterceptor.Level.BASIC
+            HttpLoggingInterceptor.Level.NONE
         }
 
         val builder = OkHttpClient.Builder()
@@ -100,6 +101,19 @@ object RetrofitClient {
             .build()
     }
 
+    /**
+     * Short-timeout client for /warmup and /health wake pings.
+     * Fail fast instead of holding the shared pool for a full cold-start window.
+     */
+    val warmHttpClient: OkHttpClient by lazy {
+        httpClient.newBuilder()
+            .callTimeout(20, TimeUnit.SECONDS)
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+            .build()
+    }
+
     private val gson by lazy { SafeGsonFactory.create() }
 
     private val retrofit: Retrofit by lazy {
@@ -126,6 +140,14 @@ object RetrofitClient {
             .build()
     }
 
+    private val warmRetrofit: Retrofit by lazy {
+        Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(warmHttpClient)
+            .addConverterFactory(GsonConverterFactory.create(gson))
+            .build()
+    }
+
     val apiService: BYSELApiService by lazy {
         retrofit.create(BYSELApiService::class.java)
     }
@@ -136,5 +158,9 @@ object RetrofitClient {
 
     val authApiService: BYSELApiService by lazy {
         authRetrofit.create(BYSELApiService::class.java)
+    }
+
+    val warmApiService: BYSELApiService by lazy {
+        warmRetrofit.create(BYSELApiService::class.java)
     }
 }

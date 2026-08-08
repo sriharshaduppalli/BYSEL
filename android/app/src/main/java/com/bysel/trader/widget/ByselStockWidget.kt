@@ -13,15 +13,14 @@ import androidx.glance.layout.*
 import androidx.glance.text.*
 import androidx.glance.unit.ColorProvider
 import androidx.glance.GlanceModifier
-import androidx.glance.appwidget.cornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.glance.color.ColorProviders
 import androidx.compose.runtime.Composable
 import androidx.glance.LocalContext
 import com.bysel.trader.MainActivity
 import com.bysel.trader.data.api.RetrofitClient
+import com.bysel.trader.data.models.Quote
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -126,26 +125,56 @@ class ByselStockWidget : GlanceAppWidget() {
                 val api = RetrofitClient.apiService
                 val portfolio = api.getPortfolioValue()
                 val heatmap = api.getMarketHeatmap()
+                val niftyQuote = fetchNiftyQuote()
 
                 val allStocks = heatmap.sectors.flatMap { it.stocks }
-                val sortedByChange = allStocks.sortedByDescending { it.pctChange }
+                val sortedByChange = equityStocksForMovers(allStocks).sortedByDescending { it.pctChange }
 
                 val pnlPositive = portfolio.pnl >= 0
+                val nifty = resolveNiftyLevel(
+                    quotes = listOfNotNull(niftyQuote),
+                    heatmapStocks = allStocks,
+                )
+                val niftyLevel = nifty?.first
+                val niftyChange = nifty?.second ?: 0.0
 
                 WidgetData(
                     portfolioValue = "₹${String.format("%,.0f", portfolio.value)}",
                     pnlText = "${if (pnlPositive) "+" else ""}${String.format("%.2f", portfolio.pnlPercent)}% today",
                     pnlPositive = pnlPositive,
-                    niftyLevel = String.format("%,.0f", allStocks.firstOrNull()?.price ?: 0.0),
-                    niftyChange = "${String.format("%.2f", allStocks.firstOrNull()?.pctChange ?: 0.0)}%",
-                    niftyPositive = (allStocks.firstOrNull()?.pctChange ?: 0.0) >= 0,
-                    topGainer = sortedByChange.firstOrNull()?.let { s -> "${s.symbol} +${String.format("%.1f", s.pctChange)}%" } ?: "--",
-                    topLoser = sortedByChange.lastOrNull()?.let { s -> "${s.symbol} ${String.format("%.1f", s.pctChange)}%" } ?: "--",
-                    lastUpdated = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date()),
+                    niftyLevel = niftyLevel?.let { String.format("%,.0f", it) } ?: "--",
+                    niftyChange = "${String.format("%+.2f", niftyChange)}%",
+                    niftyPositive = niftyChange >= 0,
+                    topGainer = sortedByChange.firstOrNull()?.let { s ->
+                        "${s.symbol} +${String.format("%.1f", s.pctChange)}%"
+                    } ?: "--",
+                    topLoser = sortedByChange.lastOrNull()?.let { s ->
+                        "${s.symbol} ${String.format("%.1f", s.pctChange)}%"
+                    } ?: "--",
+                    lastUpdated = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                        .format(java.util.Date()),
                 )
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 WidgetData()
             }
+        }
+    }
+
+    private suspend fun fetchNiftyQuote(): Quote? {
+        val api = RetrofitClient.apiService
+        for (symbol in WIDGET_INDEX_SYMBOLS) {
+            try {
+                val quote = api.getQuote(symbol)
+                if (quote.last > 0) return quote
+            } catch (_: Exception) {
+                // try next symbol alias
+            }
+        }
+        return try {
+            api.getQuotes(WIDGET_INDEX_SYMBOLS.joinToString(","))
+                .firstOrNull { it.last > 0 }
+        } catch (_: Exception) {
+            null
         }
     }
 }

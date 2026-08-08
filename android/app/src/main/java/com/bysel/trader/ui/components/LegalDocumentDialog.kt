@@ -1,6 +1,6 @@
 package com.bysel.trader.ui.components
 
-import android.annotation.SuppressLint
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Column
@@ -34,8 +34,9 @@ enum class LegalDocument(val title: String, val assetFile: String) {
  * Large dialog that renders a legal HTML document shipped in app assets.
  * Avoids AlertDialog + WebView sizing bugs (blank content) and works offline
  * even when marketing-site legal URLs are not deployed.
+ *
+ * Security: JS off; navigation limited to bundled `file:///android_asset/` pages.
  */
-@SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun LegalDocumentDialog(
     document: LegalDocument,
@@ -78,9 +79,19 @@ fun LegalDocumentDialog(
                         .fillMaxWidth(),
                     factory = { context ->
                         WebView(context).apply {
-                            webViewClient = WebViewClient()
+                            webViewClient = object : WebViewClient() {
+                                override fun shouldOverrideUrlLoading(
+                                    view: WebView?,
+                                    request: WebResourceRequest?,
+                                ): Boolean {
+                                    val url = request?.url?.toString().orEmpty()
+                                    return !url.startsWith("file:///android_asset/")
+                                }
+                            }
                             settings.javaScriptEnabled = false
                             settings.domStorageEnabled = false
+                            settings.allowFileAccess = true
+                            settings.allowContentAccess = false
                             settings.loadWithOverviewMode = true
                             settings.useWideViewPort = true
                             setBackgroundColor(android.graphics.Color.TRANSPARENT)

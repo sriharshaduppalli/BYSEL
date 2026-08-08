@@ -2,10 +2,11 @@ package com.bysel.trader.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,7 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.automirrored.filled.Assignment
@@ -41,6 +41,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -61,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.BuildConfig
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.ScreenHeader
 
 private data class MoreMenuEntry(
     val icon: ImageVector,
@@ -68,10 +71,13 @@ private data class MoreMenuEntry(
     val subtitle: String,
     val gradientColors: List<Color>,
     val onClick: () -> Unit,
+    val badgeCount: Int = 0,
 )
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MoreScreen(
+    activeAlertCount: Int = 0,
     onSearchClick: () -> Unit,
     onAlertsClick: () -> Unit,
     onSettingsClick: () -> Unit,
@@ -158,9 +164,14 @@ fun MoreScreen(
         MoreMenuEntry(
             icon = Icons.Filled.Notifications,
             title = "Price Alerts",
-            subtitle = "Real-time trigger notifications",
+            subtitle = if (activeAlertCount > 0) {
+                "$activeAlertCount active · real-time trigger notifications"
+            } else {
+                "Real-time trigger notifications"
+            },
             gradientColors = listOf(Color(0xFFE65100), Color(0xFFFFB300)),
             onClick = onAlertsClick,
+            badgeCount = activeAlertCount,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.EventAvailable,
@@ -255,28 +266,17 @@ fun MoreScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Text(
-                text = "More",
-                fontSize = 30.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = LocalAppTheme.current.text,
+            ScreenHeader(
+                title = "More",
+                subtitle = "Practice labs first — Invest explorers are educational, not live brokerage rails.",
             )
         }
 
         item {
-            Text(
-                text = "Practice labs first — Invest explorers are educational, not live brokerage rails.",
-                color = LocalAppTheme.current.textSecondary,
-                fontSize = 12.sp,
-            )
-        }
-
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 QuickInfoChip(label = "Signal Lab", onClick = onSignalLabClick)
                 QuickInfoChip(label = "Risk Lab", onClick = onRiskLabClick)
@@ -388,21 +388,37 @@ private fun MoreMenuItem(entry: MoreMenuEntry) {
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(42.dp)
-                    .background(
-                        brush = Brush.linearGradient(entry.gradientColors),
-                        shape = CircleShape,
-                    ),
-                contentAlignment = Alignment.Center,
+            BadgedBox(
+                badge = {
+                    if (entry.badgeCount > 0) {
+                        Badge(
+                            containerColor = LocalAppTheme.current.primary,
+                            contentColor = LocalAppTheme.current.onPrimary,
+                        ) {
+                            Text(
+                                text = if (entry.badgeCount > 99) "99+" else entry.badgeCount.toString(),
+                                fontSize = 10.sp,
+                            )
+                        }
+                    }
+                },
             ) {
-                Icon(
-                    imageVector = entry.icon,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp),
-                )
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .background(
+                            brush = Brush.linearGradient(entry.gradientColors),
+                            shape = CircleShape,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = entry.icon,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {

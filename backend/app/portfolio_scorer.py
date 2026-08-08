@@ -49,7 +49,7 @@ SECTOR_MAP = {
     "APOLLOHOSP": "Healthcare", "MAXHEALTH": "Healthcare", "FORTIS": "Healthcare",
 
     # Auto
-    "TATAMOTORS": "Auto", "MARUTI": "Auto", "BAJAJ-AUTO": "Auto",
+    "TMPV": "Auto", "TMCV": "Auto", "MARUTI": "Auto", "BAJAJ-AUTO": "Auto",
     "HEROMOTOCO": "Auto", "EICHERMOT": "Auto", "TVSMOTOR": "Auto",
     "ASHOKLEY": "Auto", "MOTHERSON": "Auto", "BHARATFORG": "Auto",
     "MRF": "Auto", "BALKRISIND": "Auto", "BOSCHLTD": "Auto",
@@ -339,7 +339,7 @@ def _quality_score(portfolio: List[Dict]) -> Tuple[int, str]:
         "SBIN", "BHARTIARTL", "ITC", "KOTAKBANK", "LT", "AXISBANK",
         "TITAN", "BAJFINANCE", "ASIANPAINT", "MARUTI", "HCLTECH",
         "SUNPHARMA", "NTPC", "TATASTEEL", "WIPRO", "NESTLEIND",
-        "TATAMOTORS", "BAJAJ-AUTO", "POWERGRID", "ONGC",
+        "TMPV", "BAJAJ-AUTO", "POWERGRID", "ONGC",
         "ADANIPORTS", "ULTRACEMCO", "DRREDDY", "CIPLA",
         "DIVISLAB", "BRITANIA", "EICHERMOT", "HAL",
     }

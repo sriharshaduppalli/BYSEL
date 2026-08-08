@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,15 +29,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.Intent
 import com.bysel.trader.viewmodel.ChatMessage
 import com.bysel.trader.ai.LlmDownloadState
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.PulsingDots
 import com.bysel.trader.ui.components.ConfidenceCard
 import com.bysel.trader.ui.components.PredictionReasoningCard
 import com.bysel.trader.ui.components.EventRiskCard
@@ -62,6 +66,8 @@ fun AiAssistantScreen(
     likelyColdStart: Boolean = false,
     onWarmAi: () -> Unit = {},
     onAiFeedback: ((query: String, answer: String, helpful: Boolean) -> Unit)? = null,
+    /** Only warm while the AI tab is visible — avoids competing with wallet/holdings on Home. */
+    isActive: Boolean = true,
 ) {
     var query by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -71,8 +77,9 @@ fun AiAssistantScreen(
         buildAdaptiveSuggestions(selectedSymbol, chatHistory)
     }
 
-    // Keep the free-tier host warm while chat is open.
-    LaunchedEffect(Unit) {
+    // Keep the free-tier host warm while chat is open (not while merely prefetched off-screen).
+    LaunchedEffect(isActive) {
+        if (!isActive) return@LaunchedEffect
         onWarmAi()
         while (true) {
             kotlinx.coroutines.delay(4 * 60_000L)
@@ -292,10 +299,11 @@ fun AiAssistantScreen(
             }
         }
 
-        // Input bar
+        // Input bar — imePadding keeps send field above the keyboard under edge-to-edge.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .background(appTheme.card)
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -841,6 +849,7 @@ private fun ChatBubble(
     priorUserQuery: String = "",
 ) {
     var feedbackSent by remember(message.timestamp) { mutableStateOf<Boolean?>(null) }
+    val shareContext = LocalContext.current
     val contextSymbol = message.symbol?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
 
     // Parse trade intents from AI responses
@@ -895,13 +904,15 @@ private fun ChatBubble(
                 containerColor = if (message.isUser) LocalAppTheme.current.primary else LocalAppTheme.current.card
             )
         ) {
-            Text(
-                text = message.text,
-                color = if (message.isUser) LocalAppTheme.current.onPrimary else LocalAppTheme.current.text,
-                fontSize = 14.sp,
-                modifier = Modifier.padding(12.dp),
-                lineHeight = 20.sp
-            )
+            // Long-press select/copy — especially useful for AI answers (share alone isn't enough).
+            SelectionContainer {
+                Text(
+                    text = message.text,
+                    color = if (message.isUser) LocalAppTheme.current.onPrimary else LocalAppTheme.current.text,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(12.dp),
+                )
+            }
         }
 
         // Source + confidence badge for AI responses
@@ -931,16 +942,15 @@ private fun ChatBubble(
         if (!message.isUser) {
             Text(
                 text = "AI analysis is for educational purposes only. Not financial advice. Always do your own research.",
-                fontSize = 9.sp,
+                style = MaterialTheme.typography.labelSmall,
                 color = LocalAppTheme.current.textSecondary.copy(alpha = 0.6f),
                 modifier = Modifier.padding(start = 8.dp, top = 4.dp, end = 8.dp),
-                lineHeight = 12.sp
             )
-            if (onAiFeedback != null && priorUserQuery.isNotBlank()) {
-                Row(
-                    modifier = Modifier.padding(start = 4.dp, top = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+            Row(
+                modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (onAiFeedback != null && priorUserQuery.isNotBlank()) {
                     Text(
                         text = if (feedbackSent != null) "Thanks for the feedback" else "Helpful?",
                         fontSize = 10.sp,
@@ -977,6 +987,32 @@ private fun ChatBubble(
                             )
                         }
                     }
+                }
+                IconButton(
+                    onClick = {
+                        val shareText = buildString {
+                            if (priorUserQuery.isNotBlank()) {
+                                append("Q: ").append(priorUserQuery.trim()).append("\n\n")
+                            }
+                            append("A: ").append(message.text.trim())
+                            append("\n\n— Shared from BYSEL (educational, not financial advice)")
+                        }
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, shareText)
+                        }
+                        shareContext.startActivity(
+                            Intent.createChooser(intent, "Share AI answer"),
+                        )
+                    },
+                    modifier = Modifier.size(28.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.Share,
+                        contentDescription = "Share answer",
+                        tint = LocalAppTheme.current.textSecondary.copy(alpha = 0.7f),
+                        modifier = Modifier.size(16.dp),
+                    )
                 }
             }
         }
@@ -1204,19 +1240,10 @@ private fun TypingIndicator(likelyColdStart: Boolean = false) {
                 containerColor = LocalAppTheme.current.card
             )
         ) {
-            Row(
+            PulsingDots(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                repeat(3) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(LocalAppTheme.current.primary.copy(alpha = 0.6f))
-                    )
-                }
-            }
+                color = LocalAppTheme.current.primary,
+            )
         }
         Spacer(modifier = Modifier.width(8.dp))
         Text(

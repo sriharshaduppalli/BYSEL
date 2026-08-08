@@ -43,7 +43,7 @@ fun RiskLabScreen(
                 null
             }
             if (riskData == null) {
-                errorMsg = "Could not load risk data. Check connection and retry (demo basket loads when portfolio is empty)."
+                errorMsg = "Could not load risk data. Check connection and retry."
             }
             isLoading = false
         }
@@ -82,8 +82,22 @@ fun RiskLabScreen(
                 }
             }
             errorMsg != null -> {
-                Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                    Text(errorMsg.orEmpty(), color = appTheme.textSecondary, fontSize = 14.sp)
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        errorMsg.orEmpty(),
+                        color = appTheme.textSecondary,
+                        fontSize = 14.sp,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(onClick = { load() }, enabled = !isLoading) {
+                        Text("Retry")
+                    }
                 }
             }
             else -> {

@@ -27,10 +27,12 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import com.bysel.trader.alerts.AlertsManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.cachedIn
@@ -47,6 +49,9 @@ class TradingViewModel(
 ) : AndroidViewModel(application) {
 
     private companion object {
+        /** Keep Add-to-watchlist responsive; full /symbols can wait on cold start. */
+        private const val CATALOG_LOAD_TIMEOUT_MS = 15_000L
+
         val TRACE_ID_PATTERN =
             Regex("(?i)(?:trace(?:\\s*id)?|traceId)\\s*[:=]\\s*([A-Za-z0-9._-]+)")
     }
@@ -88,6 +93,15 @@ class TradingViewModel(
     private val _searchResults = MutableStateFlow<List<StockSearchResult>>(emptyList())
     val searchResults: StateFlow<List<StockSearchResult>> = _searchResults.asStateFlow()
 
+    /** Full NSE/BSE searchable catalog (symbol + company name) for watchlist browse. */
+    private val _symbolCatalog = MutableStateFlow<List<StockSearchResult>>(emptyList())
+    val symbolCatalog: StateFlow<List<StockSearchResult>> = _symbolCatalog.asStateFlow()
+
+    private val _symbolCatalogLoading = MutableStateFlow(false)
+    val symbolCatalogLoading: StateFlow<Boolean> = _symbolCatalogLoading.asStateFlow()
+
+    private var symbolCatalogJob: Job? = null
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
@@ -106,7 +120,9 @@ class TradingViewModel(
     private val _orderExecutionLoading = MutableStateFlow(false)
     val orderExecutionLoading: StateFlow<Boolean> = _orderExecutionLoading.asStateFlow()
 
-    private val _walletBalance = MutableStateFlow(0.0)
+    private val walletCachePrefs = getApplication<Application>()
+        .getSharedPreferences("bysel_wallet_cache", Context.MODE_PRIVATE)
+    private val _walletBalance = MutableStateFlow(readCachedWalletBalance())
     val walletBalance: StateFlow<Double> = _walletBalance.asStateFlow()
 
     private val _marketStatus = MutableStateFlow<MarketStatus?>(null)
@@ -308,20 +324,29 @@ class TradingViewModel(
     private val AUTO_REFRESH_INTERVAL = 15_000L
     private val FAST_REFRESH_INTERVAL = 1_000L
     private val FOREGROUND_WARMUP_DEBOUNCE = 3_000L
-    private val INITIAL_STATUS_WARMUP_DELAY = 250L
-    private val INITIAL_HOLDINGS_WARMUP_DELAY = 600L
+    private val INITIAL_STATUS_WARMUP_DELAY = 150L
+    private val INITIAL_HOLDINGS_WARMUP_DELAY = 350L
     private val QUOTE_STALE_THRESHOLD = 20_000L
+    private val HOLDINGS_STALE_THRESHOLD = 45_000L
+    private val WALLET_STALE_THRESHOLD = 30_000L
     private val QUOTE_REFRESH_DEBOUNCE = 1_250L
     private val ALL_QUOTES_WARMUP_INTERVAL = 10 * 60_000L
     private val SIGNAL_LAB_REFRESH_DEBOUNCE = 15_000L
     private val HEATMAP_REFRESH_DEBOUNCE = 4_000L
-    private val HEATMAP_STALE_THRESHOLD = 20_000L
+    private val HEATMAP_STALE_THRESHOLD = 45_000L
+    private val RESUME_HEATMAP_DELAY = 500L
+    private val WARM_BACKEND_BUDGET_MS = 12_000L
     private var lastForegroundWarmupAt = 0L
     private var lastQuotesRefreshAt = 0L
     private var lastQuotesRefreshRequestAt = 0L
     private var lastAllQuotesWarmupAt = 0L
     private var lastSignalLabRefreshAt = 0L
     private var lastHeatmapRefreshAt = 0L  // Track heatmap cache timestamp
+    private var lastHoldingsRefreshAt = 0L
+    private var lastWalletRefreshAt = 0L
+    /** Bumped on local wallet mutations so in-flight getWallet cannot overwrite fresher UI state. */
+    private var walletEpoch = 0
+    private var walletMutationsInFlight = 0
     private var activeHistoryRequestKey: String? = null
     private var quotesRefreshJob: Job? = null
     private var heatmapJob: Job? = null
@@ -433,8 +458,9 @@ class TradingViewModel(
 
     init {
         loadAchievements()
-        // Initialize on-device LLM if already downloaded from a previous session
+        // On-device LLM is heavy — defer well past first Home paint / TTFD.
         viewModelScope.launch {
+            kotlinx.coroutines.delay(6_000)
             if (OnDeviceLlmManager.isModelDownloaded(getApplication())) {
                 OnDeviceLlmManager.initialize(getApplication())
             }
@@ -449,14 +475,21 @@ class TradingViewModel(
                 .collectLatest { list -> _alerts.value = list }
         }
         // conservative initial refreshes (non-blocking)
-        // Load cached quotes immediately to improve cold-start UX
+        // Load cached quotes + holdings immediately so reopen is not blank while network wakes.
         viewModelScope.launch {
             try {
-                // prefer watchlist symbols if available
                 val wl = readNormalizedWatchlist()
-                val symbolsToLoad = trackedSymbols(wl)
+                val symbolsToLoad = homePrioritySymbols(wl)
                 repository.getCachedQuotes(symbolsToLoad).collectLatest { cached ->
                     if (cached.isNotEmpty()) _quotes.value = cached
+                }
+            } catch (_: Exception) { }
+        }
+        viewModelScope.launch {
+            try {
+                val cachedHoldings = repository.getCachedHoldings().firstOrNull().orEmpty()
+                if (cachedHoldings.isNotEmpty() && _holdings.value.isEmpty()) {
+                    _holdings.value = cachedHoldings
                 }
             } catch (_: Exception) { }
         }
@@ -465,8 +498,42 @@ class TradingViewModel(
         val restoredWatchlist = readNormalizedWatchlist()
         _watchlist.value = restoredWatchlist
         watchlistPrefs.edit().putStringSet("symbols", restoredWatchlist.toSet()).apply()
-        refreshQuotes(force = true)
+        // Smaller first network burst (indices + watchlist + holdings), then expand.
+        refreshQuotes(force = true, symbolsOverride = homePrioritySymbols(restoredWatchlist))
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(1_200)
+            refreshQuotes(force = false)
+        }
         scheduleInitialWarmup()
+    }
+
+    /** Symbols needed for Home first paint — keep cold-start quote fan-out small. */
+    private fun homePrioritySymbols(additional: List<String> = emptyList()): List<String> {
+        val fromHoldings = _holdings.value.map { it.symbol.trim().uppercase() }.filter { it.isNotBlank() }
+        val merged = (indexSymbols + _watchlist.value + additional + fromHoldings)
+            .map { it.trim().uppercase() }
+            .filter { it.isNotBlank() }
+            .distinct()
+        return if (merged.size <= 8) {
+            (merged + defaultSymbols.take(8)).distinct()
+        } else {
+            merged.take(24)
+        }
+    }
+
+    private fun walletCacheKey(): String {
+        val uid = AuthSessionManager.getUserId()
+        return if (uid != null && uid > 0) "balance_$uid" else "balance_anon"
+    }
+
+    private fun readCachedWalletBalance(): Double {
+        val raw = walletCachePrefs.getString(walletCacheKey(), null) ?: return 0.0
+        return raw.toDoubleOrNull()?.takeIf { it >= 0.0 } ?: 0.0
+    }
+
+    private fun persistCachedWalletBalance(balance: Double) {
+        if (balance < 0.0) return
+        walletCachePrefs.edit().putString(walletCacheKey(), balance.toString()).apply()
     }
 
     
@@ -517,6 +584,8 @@ class TradingViewModel(
      */
     private fun scheduleInitialWarmup() {
         viewModelScope.launch {
+            // Wake market host first (short timeout), then pull user-critical data.
+            launch { repository.warmMarketBackend() }
             kotlinx.coroutines.delay(INITIAL_STATUS_WARMUP_DELAY)
             refreshMarketStatus()
             refreshWallet()
@@ -524,9 +593,8 @@ class TradingViewModel(
             kotlinx.coroutines.delay(INITIAL_HOLDINGS_WARMUP_DELAY)
             refreshHoldings()
         }
-        // Wake the Render free-tier AI host in the background so the first chat
-        // message does not pay the full cold-start cost.
-        warmAiBackend()
+        // AI warm stays on the AI tab — same host, so an early AI /health
+        // would compete with wallet/holdings during cold start.
     }
 
     private fun defaultAchievementsFromCode() = listOf(
@@ -552,6 +620,7 @@ class TradingViewModel(
             }
 
             _walletBalance.value = 100000.0
+            persistCachedWalletBalance(100000.0)
             val demoHoldings = listOf(
                 Holding(symbol = "RELIANCE", qty = 10, avgPrice = 2500.0, last = 2550.0, pnl = 500.0),
                 Holding(symbol = "TCS", qty = 5, avgPrice = 3500.0, last = 3550.0, pnl = 250.0),
@@ -571,8 +640,8 @@ class TradingViewModel(
     }
 
     // --- Quotes / holdings / wallet ---
-    fun refreshQuotes(force: Boolean = false) {
-        val symbols = trackedSymbols()
+    fun refreshQuotes(force: Boolean = false, symbolsOverride: List<String>? = null) {
+        val symbols = symbolsOverride?.takeIf { it.isNotEmpty() } ?: trackedSymbols()
         val now = System.currentTimeMillis()
         if (!force && now - lastQuotesRefreshRequestAt < QUOTE_REFRESH_DEBOUNCE) return
         lastQuotesRefreshRequestAt = now
@@ -677,7 +746,10 @@ class TradingViewModel(
     fun refreshHoldings() {
         viewModelScope.launch {
             repository.getHoldings().collectLatest { result ->
-                if (result is Result.Success) _holdings.value = result.data
+                if (result is Result.Success) {
+                    _holdings.value = result.data
+                    lastHoldingsRefreshAt = System.currentTimeMillis()
+                }
             }
         }
     }
@@ -724,11 +796,23 @@ class TradingViewModel(
     }
 
 
-    fun refreshWallet() {
+    fun refreshWallet(force: Boolean = true) {
         viewModelScope.launch {
+            if (!force && System.currentTimeMillis() - lastWalletRefreshAt <= WALLET_STALE_THRESHOLD) {
+                return@launch
+            }
+            // Avoid clobbering an optimistic top-up with a slower getWallet round-trip.
+            if (walletMutationsInFlight > 0) return@launch
+            val epochAtStart = walletEpoch
             when (val r = repository.getWallet()) {
-                is Result.Success -> _walletBalance.value = r.data.balance
-                is Result.Error -> { /* ignore */ }
+                is Result.Success -> {
+                    // Drop stale responses if the user topped up while this fetch was in flight.
+                    if (epochAtStart != walletEpoch || walletMutationsInFlight > 0) return@launch
+                    _walletBalance.value = r.data.balance
+                    persistCachedWalletBalance(r.data.balance)
+                    lastWalletRefreshAt = System.currentTimeMillis()
+                }
+                is Result.Error -> { /* keep cached balance on screen */ }
                 else -> { }
             }
         }
@@ -784,6 +868,64 @@ class TradingViewModel(
     }
 
     fun clearSearchResults() { _searchResults.value = emptyList() }
+
+    /**
+     * Loads the full listed-symbol catalog once (cached in memory) so users can browse
+     * by company name without knowing tickers.
+     *
+     * Bounded by [CATALOG_LOAD_TIMEOUT_MS] so Add-to-watchlist never sits on
+     * "Loading catalog…" through a full OkHttp/Render cold-start window.
+     * Typed search still works via /search even when this fails.
+     */
+    fun ensureSymbolCatalogLoaded(force: Boolean = false) {
+        if (!force && _symbolCatalog.value.isNotEmpty()) return
+        if (!force && symbolCatalogJob?.isActive == true) return
+        if (force) {
+            symbolCatalogJob?.cancel()
+        }
+        symbolCatalogJob = viewModelScope.launch {
+            _symbolCatalogLoading.value = true
+            try {
+                val r = withTimeoutOrNull(CATALOG_LOAD_TIMEOUT_MS) {
+                    repository.getAllSymbols()
+                }
+                when (r) {
+                    is Result.Success -> {
+                        // Rebuild via normalized() — never .copy() on Gson-deserialized rows.
+                        // /symbols omits matchType; Gson null + non-null copy() crashed Trade browse.
+                        _symbolCatalog.value = r.data
+                            .map { it.normalized() }
+                            .filter { it.symbol.isNotBlank() }
+                            .distinctBy { it.symbol }
+                            .sortedBy { it.name.lowercase() }
+                    }
+                    is Result.Error -> {
+                        if (_symbolCatalog.value.isEmpty()) {
+                            _error.value = r.message ?: "Could not load stock list"
+                        }
+                    }
+                    null -> {
+                        // Timed out — leave catalog empty; sheet falls back to typed /search.
+                        if (_symbolCatalog.value.isEmpty()) {
+                            android.util.Log.w(
+                                "TradingViewModel",
+                                "Symbol catalog load timed out after ${CATALOG_LOAD_TIMEOUT_MS}ms",
+                            )
+                        }
+                    }
+                    else -> {}
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (_symbolCatalog.value.isEmpty()) {
+                    _error.value = e.message ?: "Could not load stock list"
+                }
+            } finally {
+                _symbolCatalogLoading.value = false
+            }
+        }
+    }
 
     // --- Single quote ---
     fun setSelectedQuote(quote: Quote) {
@@ -968,25 +1110,47 @@ class TradingViewModel(
         lastForegroundWarmupAt = now
 
         viewModelScope.launch {
-            // Auth refresh in parallel — do not block quotes/wallet on a 90s wake.
+            // Instant local seed if process was killed / state empty.
+            if (_walletBalance.value <= 0.0) {
+                val cached = readCachedWalletBalance()
+                if (cached > 0.0) _walletBalance.value = cached
+            }
+            if (_holdings.value.isEmpty()) {
+                try {
+                    val cachedHoldings = repository.getCachedHoldings().firstOrNull().orEmpty()
+                    if (cachedHoldings.isNotEmpty()) _holdings.value = cachedHoldings
+                } catch (_: Exception) { }
+            }
+
+            // Auth refresh in parallel — do not block quotes/wallet on a long wake.
             launch(kotlinx.coroutines.Dispatchers.IO) {
                 AuthTokenRefresher.refreshIfNeeded()
             }
-            // Wake market API cheaply; AI warm stays on the AI tab.
-            launch { repository.warmMarketBackend() }
 
+            // Phase 1: wake host with a budget so user fetches are not starved forever.
+            kotlinx.coroutines.withTimeoutOrNull(WARM_BACKEND_BUDGET_MS) {
+                repository.warmMarketBackend()
+            }
+
+            // Phase 2: user-critical info first.
             refreshMarketStatus()
-            refreshWallet()
+            val walletStale = System.currentTimeMillis() - lastWalletRefreshAt > WALLET_STALE_THRESHOLD
+            if (force || walletStale) {
+                refreshWallet(force = true)
+            }
 
             val quotesAreStale = System.currentTimeMillis() - lastQuotesRefreshAt > QUOTE_STALE_THRESHOLD
             if (force || _quotes.value.isEmpty() || quotesAreStale) {
                 refreshQuotes()
             }
 
-            if (force || _holdings.value.isEmpty()) {
+            val holdingsStale = System.currentTimeMillis() - lastHoldingsRefreshAt > HOLDINGS_STALE_THRESHOLD
+            if (force || _holdings.value.isEmpty() || holdingsStale) {
                 refreshHoldings()
             }
 
+            // Phase 3: heavier market surfaces after user data is in flight.
+            kotlinx.coroutines.delay(RESUME_HEATMAP_DELAY)
             val heatmapStale = _marketHeatmap.value == null ||
                 System.currentTimeMillis() - lastHeatmapRefreshAt > HEATMAP_STALE_THRESHOLD
             if (force || heatmapStale) {
@@ -1824,11 +1988,45 @@ class TradingViewModel(
     }
 
     fun addFunds(amount: Double) {
+        if (amount <= 0.0) return
         viewModelScope.launch {
-            when (val r = repository.addFunds(amount)) {
-                is Result.Success -> if (r.data.status == "ok") _walletBalance.value = r.data.balance else _error.value = r.data.message
-                is Result.Error -> _error.value = r.message
-                else -> { }
+            val previous = _walletBalance.value
+            val optimistic = previous + amount
+            val epoch = ++walletEpoch
+            walletMutationsInFlight++
+            // Instant UI sync across Home / Trade / sheet — don't wait on Render.
+            _walletBalance.value = optimistic
+            persistCachedWalletBalance(optimistic)
+            lastWalletRefreshAt = System.currentTimeMillis()
+
+            try {
+                when (val r = repository.addFunds(amount)) {
+                    is Result.Success -> {
+                        if (epoch != walletEpoch) return@launch
+                        val ok = r.data.status.equals("ok", ignoreCase = true)
+                        if (ok) {
+                            _walletBalance.value = r.data.balance
+                            persistCachedWalletBalance(r.data.balance)
+                            lastWalletRefreshAt = System.currentTimeMillis()
+                            _error.value = null
+                            _productActionMessage.value = r.data.message?.takeIf { it.isNotBlank() }
+                                ?: "Practice credit added · ₹${String.format("%,.0f", r.data.balance)} available"
+                        } else {
+                            _walletBalance.value = previous
+                            persistCachedWalletBalance(previous)
+                            _error.value = r.data.message ?: "Could not add practice credit"
+                        }
+                    }
+                    is Result.Error -> {
+                        if (epoch != walletEpoch) return@launch
+                        _walletBalance.value = previous
+                        persistCachedWalletBalance(previous)
+                        _error.value = r.message
+                    }
+                    else -> { }
+                }
+            } finally {
+                walletMutationsInFlight--
             }
         }
     }
@@ -1855,7 +2053,10 @@ class TradingViewModel(
                     it.isActive
             }
             if (duplicate) {
-                _error.value = "Alert already exists for $normalizedSymbol at ₹${String.format("%.2f", price)}"
+                // Informational — never put this on shared _error (it was blocking My Watchlist).
+                _error.value = null
+                _productActionMessage.value =
+                    "Alert already set for $normalizedSymbol at ₹${String.format("%.2f", price)}"
                 return@launch
             }
 
@@ -1863,8 +2064,7 @@ class TradingViewModel(
             when (val r = repository.createAlert(a)) {
                 is Result.Success -> {
                     _error.value = null
-                    _productActionMessage.value =
-                        "Alert set: $normalizedSymbol $normalizedType ₹${String.format("%.2f", price)}"
+                    _productActionMessage.value = alertCreatedUserMessage(normalizedSymbol, normalizedType, price)
                 }
                 is Result.Error -> {
                     // Offline/local insert may still succeed inside repository — confirm via Room flow.
@@ -1876,7 +2076,7 @@ class TradingViewModel(
                     if (saved) {
                         _error.value = null
                         _productActionMessage.value =
-                            "Alert set: $normalizedSymbol $normalizedType ₹${String.format("%.2f", price)}"
+                            alertCreatedUserMessage(normalizedSymbol, normalizedType, price)
                     } else {
                         _error.value = r.message ?: "Failed to create alert"
                         _productActionMessage.value = _error.value
@@ -1884,6 +2084,16 @@ class TradingViewModel(
                 }
                 else -> Unit
             }
+        }
+    }
+
+    /** Alert still saves without notification permission — nudge only when banners can't fire. */
+    private fun alertCreatedUserMessage(symbol: String, alertType: String, price: Double): String {
+        val base = "Alert set: $symbol $alertType ₹${String.format("%.2f", price)}"
+        return if (alertsManager.canDeliverNotifications()) {
+            base
+        } else {
+            "$base — enable notifications in Settings for banners"
         }
     }
 
@@ -2599,9 +2809,57 @@ class TradingViewModel(
         } else ""
         return try {
             com.bysel.trader.data.api.RetrofitClient.apiService.getPortfolioRisk(symbols, weights)
-        } catch (_: Exception) {
-            null
+        } catch (e: Exception) {
+            // Production used to 404 when raw yfinance history failed on Render.
+            // Keep Risk Lab usable with an explicit educational shell until backend is healthy.
+            android.util.Log.w("TradingViewModel", "fetchPortfolioRisk failed: ${e.message}")
+            illustrativePortfolioRiskFallback(
+                symbols = if (held.isNotEmpty()) held.map { it.symbol.uppercase() }
+                else listOf("RELIANCE", "TCS", "INFY"),
+            )
         }
+    }
+
+    private fun illustrativePortfolioRiskFallback(
+        symbols: List<String>,
+    ): com.bysel.trader.data.api.PortfolioRiskResponse {
+        val n = symbols.size.coerceAtLeast(1)
+        val equal = List(n) { 1.0 / n }
+        val corr = List(n) { i ->
+            List(n) { j -> if (i == j) 1.0 else 0.55 }
+        }
+        return com.bysel.trader.data.api.PortfolioRiskResponse(
+            symbols = symbols,
+            weights = equal,
+            metrics = com.bysel.trader.data.api.PortfolioRiskMetrics(
+                var95 = -1.8,
+                var99 = -2.9,
+                maxDrawdown = -12.5,
+                sharpeRatio = 0.85,
+                annualizedReturn = 14.2,
+                annualizedVolatility = 18.0,
+            ),
+            var95 = -1.8,
+            var99 = -2.9,
+            maxDrawdown = -12.5,
+            sharpeRatio = 0.85,
+            annualizedReturn = 14.2,
+            annualizedVolatility = 18.0,
+            monteCarlo = com.bysel.trader.data.api.MonteCarloResult(
+                horizonDays = 30,
+                simulations = 500,
+                p5 = -8.5,
+                p50 = 2.1,
+                p95 = 12.4,
+            ),
+            monteCarloP5 = -8.5,
+            monteCarloMedian = 2.1,
+            monteCarloP95 = 12.4,
+            correlationMatrix = corr,
+            riskLevel = "Medium",
+            demoBasket = true,
+            disclaimer = "Illustrative educational metrics — live risk service unavailable. Not your paper portfolio.",
+        )
     }
 
     fun submitAiFeedback(query: String, answer: String, helpful: Boolean) {
@@ -2619,15 +2877,57 @@ class TradingViewModel(
     }
 
     suspend fun fetchEarningsCalendar(): com.bysel.trader.data.api.EarningsCalendarResponse? {
-        val symbols = watchlist.value
-            .mapNotNull { it.takeIf { symbol -> symbol.isNotBlank() } }
+        val symbolList = watchlist.value
+            .map { it.trim().uppercase() }
+            .filter { it.isNotBlank() }
+            .distinct()
             .take(12)
-            .joinToString(",")
+            .ifEmpty {
+                listOf(
+                    "RELIANCE", "TCS", "INFY", "HDFCBANK",
+                    "ICICIBANK", "ITC", "WIPRO", "SBIN",
+                )
+            }
+        val symbols = symbolList.joinToString(",")
         return try {
             com.bysel.trader.data.api.RetrofitClient.apiService.getEarningsCalendar(symbols)
-        } catch (_: Exception) {
-            null
+        } catch (e: Exception) {
+            // Release R8 previously stripped data.api DTOs → Gson parse failures looked like
+            // "network" errors. Keep the screen usable with an educational shell.
+            android.util.Log.w("TradingViewModel", "fetchEarningsCalendar failed: ${e.message}")
+            illustrativeEarningsCalendarFallback(symbolList)
         }
+    }
+
+    private fun illustrativeEarningsCalendarFallback(
+        symbols: List<String>,
+    ): com.bysel.trader.data.api.EarningsCalendarResponse {
+        val curated = mapOf(
+            "RELIANCE" to ("2026-10-16" to "Energy"),
+            "TCS" to ("2026-10-08" to "Technology"),
+            "INFY" to ("2026-10-23" to "Technology"),
+            "HDFCBANK" to ("2026-10-18" to "Financial Services"),
+            "ICICIBANK" to ("2026-10-25" to "Financial Services"),
+            "ITC" to ("2026-10-30" to "Consumer Defensive"),
+            "WIPRO" to ("2026-10-15" to "Technology"),
+            "SBIN" to ("2026-11-05" to "Financial Services"),
+        )
+        val items = symbols.map { sym ->
+            val pair = curated[sym]
+            com.bysel.trader.data.api.EarningsEntry(
+                symbol = sym,
+                name = sym,
+                nextEarningsDate = pair?.first,
+                sector = pair?.second,
+                estimated = true,
+            )
+        }.sortedBy { it.nextEarningsDate ?: "9999" }
+        return com.bysel.trader.data.api.EarningsCalendarResponse(
+            items = items,
+            count = items.size,
+            generatedAt = java.time.LocalDate.now().toString(),
+            disclaimer = "Educational earnings dates — live calendar unavailable. Not official company guidance.",
+        )
     }
 
     suspend fun fetchJournalEntries(): List<Map<String, Any>> {

@@ -300,6 +300,9 @@ fun ColorScheme.toAppTheme(name: String = "Dynamic"): AppTheme {
 fun AppTheme.toMaterialColorScheme(): ColorScheme {
     val onPrimaryColor = onPrimary
     val outlineColor = textSecondary.copy(alpha = 0.65f)
+    // Tertiary carries "up / positive" so Material components can tint gains without hardcoding.
+    val onPositive = if (positive.luminance() > 0.55f) Color(0xFF121212) else Color.White
+    val onNegative = if (negative.luminance() > 0.55f) Color(0xFF121212) else Color.White
 
     return if (isLight) {
         lightColorScheme(
@@ -307,6 +310,8 @@ fun AppTheme.toMaterialColorScheme(): ColorScheme {
             onPrimary = onPrimaryColor,
             secondary = primary,
             onSecondary = onPrimaryColor,
+            tertiary = positive,
+            onTertiary = onPositive,
             background = surface,
             onBackground = text,
             surface = card,
@@ -315,7 +320,7 @@ fun AppTheme.toMaterialColorScheme(): ColorScheme {
             onSurfaceVariant = textSecondary,
             outline = outlineColor,
             error = negative,
-            onError = Color.White,
+            onError = onNegative,
         )
     } else {
         darkColorScheme(
@@ -323,6 +328,8 @@ fun AppTheme.toMaterialColorScheme(): ColorScheme {
             onPrimary = onPrimaryColor,
             secondary = primary,
             onSecondary = onPrimaryColor,
+            tertiary = positive,
+            onTertiary = onPositive,
             background = surface,
             onBackground = text,
             surface = card,
@@ -331,7 +338,7 @@ fun AppTheme.toMaterialColorScheme(): ColorScheme {
             onSurfaceVariant = textSecondary,
             outline = outlineColor,
             error = negative,
-            onError = Color.White,
+            onError = onNegative,
         )
     }
 }

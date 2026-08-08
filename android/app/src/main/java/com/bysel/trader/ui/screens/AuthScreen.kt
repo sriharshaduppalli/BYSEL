@@ -1,13 +1,18 @@
 package com.bysel.trader.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -30,7 +35,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.AutofillType
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -41,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.repository.AuthRepository
 import com.bysel.trader.data.repository.Result
 import com.bysel.trader.data.auth.AuthSessionManager
+import com.bysel.trader.ui.components.byselAutofill
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.util.CredentialHelper
 import android.app.Activity
@@ -67,6 +75,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.util.concurrent.TimeUnit
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun AuthScreen(
     onAuthenticated: () -> Unit
@@ -109,9 +118,13 @@ fun AuthScreen(
         }
     }
 
-    // Credential Manager: offer saved username/password when available.
+    // Credential Manager: one-tap fill from local password managers when available.
     LaunchedEffect(Unit) {
-        val saved = CredentialHelper.loadPassword(context)
+        val host = activity ?: context
+        val saved = CredentialHelper.loadPassword(
+            context = host,
+            preferImmediatelyAvailable = true,
+        )
         if (saved != null) {
             username = saved.id
             password = saved.password
@@ -219,10 +232,20 @@ fun AuthScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(appTheme.surface)
+            .safeDrawingPadding()
+            .imePadding()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
+        // Cap form width on tablets / landscape — avoid stretched inputs & CTAs.
+        Column(
+            modifier = Modifier
+                .widthIn(max = 420.dp)
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
         Text(
             text = "BYSEL",
             fontSize = 36.sp,
@@ -245,6 +268,15 @@ fun AuthScreen(
                 modifier = Modifier.fillMaxWidth()
             )
         }
+        if (!isLoginMode) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "Just a username, email, and password to start. You can add a phone number later in Profile.",
+                fontSize = 12.sp,
+                color = appTheme.textSecondary,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
 
         Spacer(modifier = Modifier.height(20.dp))
 
@@ -256,7 +288,19 @@ fun AuthScreen(
                     username = it
                     message = null
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .byselAutofill(
+                        *(if (isLoginMode) {
+                            arrayOf(AutofillType.Username, AutofillType.EmailAddress)
+                        } else {
+                            arrayOf(AutofillType.NewUsername, AutofillType.Username)
+                        }),
+                        onFill = {
+                            username = it
+                            message = null
+                        },
+                    ),
                 label = { Text(if (isLoginMode) "Username or Email" else "Username") },
                 isError = !message.isNullOrBlank() && username.trim().isEmpty(),
                 enabled = !loading,
@@ -272,7 +316,16 @@ fun AuthScreen(
                         email = it
                         message = null
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .byselAutofill(
+                            AutofillType.EmailAddress,
+                            AutofillType.NewUsername,
+                            onFill = {
+                                email = it
+                                message = null
+                            },
+                        ),
                     label = { Text("Email") },
                     isError = !message.isNullOrBlank() && email.trim().isEmpty(),
                     enabled = !loading,
@@ -530,7 +583,19 @@ fun AuthScreen(
                     password = it
                     message = null
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .byselAutofill(
+                        *(if (isLoginMode) {
+                            arrayOf(AutofillType.Password)
+                        } else {
+                            arrayOf(AutofillType.NewPassword, AutofillType.Password)
+                        }),
+                        onFill = {
+                            password = it
+                            message = null
+                        },
+                    ),
                 label = { Text("Password") },
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
@@ -544,7 +609,18 @@ fun AuthScreen(
                 isError = !message.isNullOrBlank() && password.isEmpty(),
                 enabled = !loading,
                 singleLine = true,
-                colors = textFieldColors
+                colors = textFieldColors,
+                supportingText = if (!isLoginMode) {
+                    {
+                        Text(
+                            "At least 6 characters",
+                            fontSize = 12.sp,
+                            color = appTheme.textSecondary,
+                        )
+                    }
+                } else {
+                    null
+                },
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -638,7 +714,7 @@ fun AuthScreen(
                         modifier = Modifier.height(20.dp)
                     )
                 } else {
-                    Text(if (isLoginMode) "Login" else "Register")
+                    Text(if (isLoginMode) "Sign in" else "Create account")
                 }
             }
         }
@@ -663,12 +739,37 @@ fun AuthScreen(
                 modifier = Modifier.align(Alignment.End)
             ) {
                 Text(
-                    if (isOtpMode) "Sign in with password" else "Sign in with OTP",
+                    if (isOtpMode) "Other options · password" else "Other options · OTP",
                     color = appTheme.primary
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))
             if (!isOtpMode) {
+                TextButton(
+                    onClick = {
+                        if (loading) return@TextButton
+                        val host = activity ?: context
+                        scope.launch {
+                            val saved = CredentialHelper.loadPassword(
+                                context = host,
+                                preferImmediatelyAvailable = false,
+                            )
+                            if (saved != null) {
+                                username = saved.id
+                                password = saved.password
+                                message = "Saved password filled"
+                                messageIsError = false
+                            } else {
+                                message = "No saved password available"
+                                messageIsError = true
+                            }
+                        }
+                    },
+                    enabled = !loading,
+                    modifier = Modifier.align(Alignment.End),
+                ) {
+                    Text("Use saved password", color = appTheme.primary)
+                }
                 TextButton(
                     onClick = {
                         if (!loading) {
@@ -697,7 +798,7 @@ fun AuthScreen(
             enabled = !loading
         ) {
             Text(
-                if (isLoginMode) "New user? Register" else "Already registered? Login",
+                if (isLoginMode) "New user? Create account" else "Already registered? Sign in",
                 color = appTheme.primary
             )
         }
@@ -718,9 +819,10 @@ fun AuthScreen(
                 },
                 enabled = !loading
             ) {
-                Text("Skip Login (Guest Mode)", color = appTheme.textSecondary)
+                Text("Skip sign-in (Guest Mode)", color = appTheme.textSecondary)
             }
         }
+        } // capped-width auth column
     }
 }
 
@@ -728,12 +830,12 @@ private fun firebaseOtpErrorMessage(exception: Exception): String {
     if (exception is FirebaseAuthException) {
         return when (exception.errorCode) {
             "ERROR_INVALID_PHONE_NUMBER" -> "Enter a valid phone number."
-            "ERROR_TOO_MANY_REQUESTS" -> "Firebase rate limit reached. Please try again later."
-            "ERROR_QUOTA_EXCEEDED" -> "Firebase SMS quota exceeded for today. Try again later or upgrade Firebase billing."
-            "ERROR_SESSION_EXPIRED" -> "OTP session expired. Request a new OTP."
-            "ERROR_INVALID_VERIFICATION_CODE" -> "Invalid OTP code. Please check the SMS and try again."
-            "ERROR_INVALID_VERIFICATION_ID" -> "Verification session expired. Request a new OTP."
-            "ERROR_APP_NOT_AUTHORIZED" -> "Firebase is not authorized for this app. Check SHA-1/SHA-256 in Firebase Console."
+            "ERROR_TOO_MANY_REQUESTS" -> "Too many attempts. Wait a bit, then try again — or sign in with a password."
+            "ERROR_QUOTA_EXCEEDED" -> "SMS sign-in is temporarily unavailable. Try again later or use password sign-in."
+            "ERROR_SESSION_EXPIRED" -> "That code expired. Request a new OTP and try again."
+            "ERROR_INVALID_VERIFICATION_CODE" -> "That code doesn’t match. Check the SMS and try again."
+            "ERROR_INVALID_VERIFICATION_ID" -> "Verification timed out. Request a new OTP and try again."
+            "ERROR_APP_NOT_AUTHORIZED" -> "Phone sign-in isn’t available on this build. Use password sign-in instead."
             else -> exception.localizedMessage ?: "Phone verification failed"
         }
     }
@@ -741,6 +843,7 @@ private fun firebaseOtpErrorMessage(exception: Exception): String {
     return exception.localizedMessage ?: "Phone verification failed"
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun ForgotPasswordDialog(
     authRepository: AuthRepository,
@@ -790,7 +893,16 @@ private fun ForgotPasswordDialog(
                         label = { Text("Username or Email") },
                         enabled = !loading,
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .byselAutofill(
+                                AutofillType.Username,
+                                AutofillType.EmailAddress,
+                                onFill = {
+                                    identifier = it
+                                    feedback = null
+                                },
+                            ),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = appTheme.text,
                             unfocusedTextColor = appTheme.text,
@@ -847,7 +959,16 @@ private fun ForgotPasswordDialog(
                         enabled = !loading,
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .byselAutofill(
+                                AutofillType.NewPassword,
+                                AutofillType.Password,
+                                onFill = {
+                                    newPassword = it
+                                    feedback = null
+                                },
+                            ),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = appTheme.text,
                             unfocusedTextColor = appTheme.text,

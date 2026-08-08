@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -22,9 +21,8 @@ import com.bysel.trader.ui.theme.LocalAppTheme
 /**
  * A read-only status badge.
  *
- * Visually matches Material's `AssistChip` but carries no click handler, so it does not
- * ripple or announce itself as a button. Use this for counts, market status and other
- * labels; use `AssistChip` only when a tap actually does something.
+ * Visuals from theme tokens; no click/gesture logic (use AssistChip when a tap does something).
+ * Optional [containerColor]/[contentColor] override defaults at the call site — prefer theme.
  */
 @Composable
 fun InfoChip(
@@ -42,7 +40,7 @@ fun InfoChip(
             // Merge the label into a single read-only node so screen readers announce the
             // badge as one piece of text rather than an actionable element.
             .semantics(mergeDescendants = true) {},
-        shape = RoundedCornerShape(8.dp),
+        shape = MaterialTheme.shapes.small,
         color = background,
         border = if (containerColor == null) {
             BorderStroke(1.dp, theme.textSecondary.copy(alpha = 0.35f))

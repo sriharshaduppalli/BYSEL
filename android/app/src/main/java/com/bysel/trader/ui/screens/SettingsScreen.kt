@@ -45,9 +45,15 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.Manifest
+import android.app.Activity
+import android.content.pm.PackageManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+
+private const val PREF_NOTIF_PERMISSION_ASKED = "notif_permission_requested"
 
 @Composable
 fun SettingsScreen(
@@ -131,12 +137,31 @@ fun SettingsScreen(
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
+        prefs.edit().putBoolean(PREF_NOTIF_PERMISSION_ASKED, true).apply()
         notificationStatusTick++
         Toast.makeText(
             context,
-            if (granted) "Notification permission granted" else "Notification permission denied",
+            if (granted) {
+                "Notification permission granted"
+            } else {
+                "Alerts still work in-app. Enable notifications in Settings for banners."
+            },
             Toast.LENGTH_SHORT,
         ).show()
+    }
+
+    fun openAppNotificationSettings() {
+        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            putExtra("android.provider.extra.APP_PACKAGE", context.packageName)
+        }
+        runCatching { context.startActivity(intent) }.onFailure {
+            context.startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.fromParts("package", context.packageName, null)
+                }
+            )
+        }
     }
 
     if (showNotificationsDialog) {
@@ -150,24 +175,39 @@ fun SettingsScreen(
                 onOpenPriceAlerts()
             },
             onRequestPermission = {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                } else {
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
                     notificationStatusTick++
+                    return@NotificationsSettingsDialog
+                }
+                val granted = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS,
+                ) == PackageManager.PERMISSION_GRANTED
+                if (granted) {
+                    notificationStatusTick++
+                    return@NotificationsSettingsDialog
+                }
+                val activity = context as? Activity
+                val askedBefore = prefs.getBoolean(PREF_NOTIF_PERMISSION_ASKED, false)
+                val showRationale = activity != null &&
+                    ActivityCompat.shouldShowRequestPermissionRationale(
+                        activity,
+                        Manifest.permission.POST_NOTIFICATIONS,
+                    )
+                // After permanent deny, the system ignores re-requests — send user to Settings.
+                if (askedBefore && !showRationale) {
+                    Toast.makeText(
+                        context,
+                        "Enable notifications in system settings",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                    openAppNotificationSettings()
+                } else {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
             },
             onOpenSystemSettings = {
-                val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                    putExtra("android.provider.extra.APP_PACKAGE", context.packageName)
-                }
-                runCatching { context.startActivity(intent) }.onFailure {
-                    context.startActivity(
-                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                            data = Uri.fromParts("package", context.packageName, null)
-                        }
-                    )
-                }
+                openAppNotificationSettings()
                 notificationStatusTick++
             },
             onStatusChanged = { notificationStatusTick++ },
@@ -828,8 +868,9 @@ private fun NotificationsSettingsDialog(
                     color = if (alertsManager.canDeliverNotifications()) theme.positive else theme.negative,
                 )
                 Text(
-                    text = "Price alerts can notify you when a stock crosses your target. " +
-                        "Server push for remote delivery is not required for on-device alerts.",
+                    text = "BYSEL uses notifications only for price alerts you create. " +
+                        "We request permission when you turn banners on — alerts still save " +
+                        "and show in the app if you deny. On-device checks do not require server push.",
                     fontSize = 12.sp,
                     color = theme.textSecondary,
                 )
@@ -919,6 +960,8 @@ fun ThemeSelectionDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState())
                     .padding(vertical = 16.dp)
             ) {
                 allThemes.forEach { themeName ->
