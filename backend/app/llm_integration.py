@@ -833,7 +833,8 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
                 r"short delivery|auction market|bonus issue|stock split|rights issue|"
                 r"corporate actions?|\bstcg\b|\bltcg\b|capital gains|tax on|"
                 r"\bipo\b|investor protection|\bsebi\b|fii|dii|"
-                r"3-5-7|3–5–7|357 rule|three five seven|risk management|position sizing)\b",
+                r"3-5-7|3–5–7|357 rule|three five seven|risk management|position sizing|"
+                r"15-15-15|15–15–15|151515|1 crore sip|crorepati sip)\b",
                 cleaned.lower(),
             )
         )
@@ -885,6 +886,7 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
                     r"treasury bill|t-bills?|bond yield|"
                     r"risk management|position sizing|value at risk|kelly|trading bias|"
                     r"3-5-7|3–5–7|357 rule|three five seven|"
+                    r"15-15-15|15–15–15|151515|1 crore sip|crorepati sip|"
                     r"equity curve|portfolio variance|recovery trauma|"
                     r"trading system|pair trading|momentum portfolio|adf test|cointegration|"
                     r"personal finance|time value of money|retirement|mutual fund|\bnav\b|"

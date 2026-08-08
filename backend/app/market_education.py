@@ -322,7 +322,27 @@ _TERM_ANSWERS: dict[str, str] = {
         "Benefit comes from rupee-cost averaging and compounding — not from timing one perfect entry.\n\n"
         "FV of SIP (ordinary annuity, educational):\n"
         "`FV ≈ PMT × [((1+r)^n − 1) / r] × (1+r)` where r = monthly rate, n = months.\n\n"
+        "Popular teaching shortcut: the **15-15-15 rule** "
+        "(₹15,000/month × 15 years × ~15% p.a. ≈ ~₹1 crore) — illustrative, not a promise.\n\n"
         "**Common mistake:** Stopping SIPs only because markets fell (often the best averaging period)."
+    ),
+    "15-15-15 rule": (
+        "**15-15-15 Rule (SIP wealth illustration) — educational**\n\n"
+        "A popular mutual-fund planning thumb rule for compounding via SIP:\n\n"
+        "• **₹15,000** invested every month through a **SIP**\n"
+        "• For **15 years** (n = 180 months)\n"
+        "• At an assumed average **~15% annualised** return\n"
+        "• Illustrative corpus ≈ **~₹1 crore**\n\n"
+        "**Rough math (educational SIP FV):**\n"
+        "Monthly rate `r ≈ 0.15/12`, months `n = 180`, `PMT = 15000`:\n"
+        "`FV ≈ PMT × [((1+r)^n − 1) / r] × (1+r)` → about **₹1 crore** under a steady 15% path.\n\n"
+        "**What to remember:**\n"
+        "• 15% every year is an **assumption**, not a guarantee (equity returns vary by fund/era)\n"
+        "• Inflation, taxes, exit loads, and TER reduce real take-home wealth\n"
+        "• Consistency (not pausing SIPs in drawdowns) matters as much as the headline rate\n"
+        "• Scale the same idea: change PMT / years / expected return for your goal\n\n"
+        "**Common mistake:** Treating ₹1 crore as assured if you simply start any SIP.\n"
+        "_Illustrative financial-planning concept — not a return promise or SEBI RA advice._"
     ),
     "personal finance": (
         "**Personal Finance (Mutual Funds) — map**\n\n"
@@ -1998,6 +2018,14 @@ _TERM_ANSWERS["357 rule"] = _TERM_ANSWERS["3-5-7 rule"]
 _TERM_ANSWERS["3–5–7 rule"] = _TERM_ANSWERS["3-5-7 rule"]
 _TERM_ANSWERS["three five seven rule"] = _TERM_ANSWERS["3-5-7 rule"]
 _TERM_ANSWERS["3% 5% 7% rule"] = _TERM_ANSWERS["3-5-7 rule"]
+_TERM_ANSWERS["15 15 15 rule"] = _TERM_ANSWERS["15-15-15 rule"]
+_TERM_ANSWERS["15-15-15"] = _TERM_ANSWERS["15-15-15 rule"]
+_TERM_ANSWERS["151515 rule"] = _TERM_ANSWERS["15-15-15 rule"]
+_TERM_ANSWERS["15–15–15 rule"] = _TERM_ANSWERS["15-15-15 rule"]
+_TERM_ANSWERS["fifteen fifteen fifteen"] = _TERM_ANSWERS["15-15-15 rule"]
+_TERM_ANSWERS["1 crore sip"] = _TERM_ANSWERS["15-15-15 rule"]
+_TERM_ANSWERS["1 crore sip rule"] = _TERM_ANSWERS["15-15-15 rule"]
+_TERM_ANSWERS["crorepati sip"] = _TERM_ANSWERS["15-15-15 rule"]
 _TERM_ANSWERS["cognitive bias"] = _TERM_ANSWERS["trading biases"]
 _TERM_ANSWERS["anchoring bias"] = _TERM_ANSWERS["trading biases"]
 _TERM_ANSWERS["confirmation bias"] = _TERM_ANSWERS["trading biases"]
@@ -2125,6 +2153,7 @@ def get_education_answer(query: str) -> Optional[str]:
             r"rolling returns|asset allocation|smart beta|emergency fund|"
             r"index fund|\betf\b|arbitrage fund|debt fund|equity fund|"
             r"fund factsheet|financial planning|"
+            r"15-15-15|15–15–15|151515|1 crore sip|crorepati sip|"
             # Retail mechanics — allow without forcing "what is"
             r"\bdemat\b|\bipo\b|\basba\b|\bgtt\b|brokerage|trading charges|"
             r"\bstcg\b|\bltcg\b|capital gains|tax on (equity|shares|profit)|"
@@ -2237,6 +2266,17 @@ def get_education_answer(query: str) -> Optional[str]:
     # Prefer specific 3-5-7 framework over broad "risk management" umbrella.
     if re.search(r"\b(3\s*[-–—]?\s*5\s*[-–—]?\s*7|357\s*rule|three\s+five\s+seven)\b", q):
         return _TERM_ANSWERS["3-5-7 rule"]
+
+    # Prefer 15-15-15 SIP corpus rule over bare SIP / mutual-fund umbrella.
+    if re.search(
+        r"\b(15\s*[-–—]?\s*15\s*[-–—]?\s*15|151515\s*rule|fifteen\s+fifteen\s+fifteen|"
+        r"1\s*crore\s*sip|crorepati\s*sip)\b",
+        q,
+    ) or (
+        re.search(r"\b(1\s*crore|₹?\s*1\s*crore|one\s*crore)\b", q)
+        and re.search(r"\b(sip|mutual\s*fund)\b", q)
+    ):
+        return _TERM_ANSWERS["15-15-15 rule"]
 
     for term in sorted(_TERM_ANSWERS.keys(), key=len, reverse=True):
         answer = _TERM_ANSWERS.get(term)

@@ -422,7 +422,8 @@ class StockMarketAssistant:
             r"stcg|ltcg|capital gains|tax on (equity|shares|profits?)|"
             r"ipo (process|allotment|apply)|what is (an? )?ipo|"
             r"fii/?\s*dii|investor protection|"
-            r"3-5-7|3–5–7|357 rule|three five seven|risk management)\b",
+            r"3-5-7|3–5–7|357 rule|three five seven|risk management|"
+            r"15-15-15|15–15–15|151515|1 crore sip|crorepati sip)\b",
             qlow,
         ):
             return "market_literacy"
