@@ -482,7 +482,30 @@ _TERM_ANSWERS: dict[str, str] = {
         "Liquid buffer for job loss, medical shocks, repairs — typically **~3–12 months** of "
         "essential expenses in safe, accessible instruments (savings/liquid funds), **before** "
         "aggressive equity SIPs.\n\n"
+        "A common sizing shortcut is the **3-6-9 rule of money**: hold **3, 6, or 9 months** "
+        "of essential living expenses based on job stability / financial risk.\n\n"
         "**Common mistake:** Fully invested in equity with zero liquid buffer."
+    ),
+    "3-6-9 rule": (
+        "**3-6-9 Rule of Money (emergency fund) — educational**\n\n"
+        "A personal-finance guideline for sizing your **emergency fund** from essential "
+        "monthly living costs (rent/EMI essentials, food, utilities, school fees, insurance "
+        "premiums — not discretionary lifestyle spend):\n\n"
+        "• **3 months** — more stable income (e.g. dual income, secure job, low fixed costs, "
+        "strong family/backup support)\n"
+        "• **6 months** — typical default for many salaried households (moderate job risk, "
+        "single primary earner, normal fixed obligations)\n"
+        "• **9 months** — higher uncertainty (self-employed / commission income, industry "
+        "layoff risk, single income, dependents, variable cashflows)\n\n"
+        "**How to use it:**\n"
+        "1. List **essential** monthly expenses only\n"
+        "2. Multiply by 3 / 6 / 9 for your risk band\n"
+        "3. Keep the corpus in **liquid, low-volatility** options (savings, liquid/overnight "
+        "funds — not locked equity or speculative bets)\n"
+        "4. Build this **before** stretching aggressive equity SIPs\n\n"
+        "**Common mistake:** Counting mutual-fund equity corpus as an emergency fund "
+        "(it can fall when you need cash most).\n"
+        "_Educational guideline — not a one-size guarantee; adapt to your household._"
     ),
     "personal finance review": (
         "**Personal Finance Review Checklist**\n\n"
@@ -2026,6 +2049,14 @@ _TERM_ANSWERS["fifteen fifteen fifteen"] = _TERM_ANSWERS["15-15-15 rule"]
 _TERM_ANSWERS["1 crore sip"] = _TERM_ANSWERS["15-15-15 rule"]
 _TERM_ANSWERS["1 crore sip rule"] = _TERM_ANSWERS["15-15-15 rule"]
 _TERM_ANSWERS["crorepati sip"] = _TERM_ANSWERS["15-15-15 rule"]
+_TERM_ANSWERS["3 6 9 rule"] = _TERM_ANSWERS["3-6-9 rule"]
+_TERM_ANSWERS["3-6-9"] = _TERM_ANSWERS["3-6-9 rule"]
+_TERM_ANSWERS["369 rule"] = _TERM_ANSWERS["3-6-9 rule"]
+_TERM_ANSWERS["3–6–9 rule"] = _TERM_ANSWERS["3-6-9 rule"]
+_TERM_ANSWERS["3-6-9 rule of money"] = _TERM_ANSWERS["3-6-9 rule"]
+_TERM_ANSWERS["three six nine rule"] = _TERM_ANSWERS["3-6-9 rule"]
+_TERM_ANSWERS["3 6 9 emergency"] = _TERM_ANSWERS["3-6-9 rule"]
+_TERM_ANSWERS["months of expenses"] = _TERM_ANSWERS["3-6-9 rule"]
 _TERM_ANSWERS["cognitive bias"] = _TERM_ANSWERS["trading biases"]
 _TERM_ANSWERS["anchoring bias"] = _TERM_ANSWERS["trading biases"]
 _TERM_ANSWERS["confirmation bias"] = _TERM_ANSWERS["trading biases"]
@@ -2154,6 +2185,7 @@ def get_education_answer(query: str) -> Optional[str]:
             r"index fund|\betf\b|arbitrage fund|debt fund|equity fund|"
             r"fund factsheet|financial planning|"
             r"15-15-15|15–15–15|151515|1 crore sip|crorepati sip|"
+            r"3-6-9|3–6–9|369 rule|three six nine|rule of money|"
             # Retail mechanics — allow without forcing "what is"
             r"\bdemat\b|\bipo\b|\basba\b|\bgtt\b|brokerage|trading charges|"
             r"\bstcg\b|\bltcg\b|capital gains|tax on (equity|shares|profit)|"
@@ -2277,6 +2309,20 @@ def get_education_answer(query: str) -> Optional[str]:
         and re.search(r"\b(sip|mutual\s*fund)\b", q)
     ):
         return _TERM_ANSWERS["15-15-15 rule"]
+
+    # Prefer 3-6-9 emergency-fund rule over bare "emergency fund" umbrella.
+    if re.search(
+        r"\b(3\s*[-–—]?\s*6\s*[-–—]?\s*9|369\s*rule|three\s+six\s+nine|"
+        r"3-6-9\s*rule\s*of\s*money|rule\s*of\s*money)\b",
+        q,
+    ) or (
+        re.search(r"\b(3|6|9)\s*months?\b", q)
+        and re.search(r"\b(emergency|expenses?|job\s*stability|living\s*cost)\b", q)
+    ) or re.search(
+        r"\bhow many months\b.{0,40}\bemergency\b|\bemergency\b.{0,40}\bhow many months\b",
+        q,
+    ):
+        return _TERM_ANSWERS["3-6-9 rule"]
 
     for term in sorted(_TERM_ANSWERS.keys(), key=len, reverse=True):
         answer = _TERM_ANSWERS.get(term)

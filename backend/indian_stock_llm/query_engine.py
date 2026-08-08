@@ -423,7 +423,8 @@ class StockMarketAssistant:
             r"ipo (process|allotment|apply)|what is (an? )?ipo|"
             r"fii/?\s*dii|investor protection|"
             r"3-5-7|3–5–7|357 rule|three five seven|risk management|"
-            r"15-15-15|15–15–15|151515|1 crore sip|crorepati sip)\b",
+            r"15-15-15|15–15–15|151515|1 crore sip|crorepati sip|"
+            r"3-6-9|3–6–9|369 rule|three six nine|rule of money|emergency fund)\b",
             qlow,
         ):
             return "market_literacy"
