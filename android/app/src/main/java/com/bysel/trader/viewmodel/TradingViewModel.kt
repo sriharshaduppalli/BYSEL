@@ -49,6 +49,13 @@ class TradingViewModel(
 ) : AndroidViewModel(application) {
 
     private companion object {
+        private val SECTOR_SUGGESTION_STOPWORDS = setOf(
+            "TOP", "BEST", "STOCK", "STOCKS", "SECTOR", "THE", "AND", "FOR", "WITH",
+            "BUY", "SELL", "HOLD", "ANALYZE", "COMPARE", "VS", "INDIA", "NSE", "BSE",
+            "DEFENCE", "DEFENSE", "PHARMA", "BANK", "AUTO", "ENERGY", "FMCG", "METAL",
+            "INFRA", "PSU", "REALTY", "RAILWAY", "IT", "LIVE", "QUOTE", "PRICE",
+        )
+
         /** Keep Add-to-watchlist responsive; full /symbols can wait on cold start. */
         private const val CATALOG_LOAD_TIMEOUT_MS = 15_000L
 
@@ -2154,6 +2161,50 @@ class TradingViewModel(
         }
     }
 
+    /** Theme/sector screens — must not inherit the selected quote ticker. */
+    private fun isSectorThemeQuery(query: String): Boolean {
+        val q = query.lowercase()
+        if (Regex("""\b(defence|defense|pharma|banking|fmcg|realty|railway|infra|psu|metal|cement|auto|energy|it|telecom|insurance|nbfc|fintech|shipping|shipyard|ev)\b""").containsMatchIn(q) &&
+            Regex("""\b(stocks?|sector|theme|names|companies|picks?|basket)\b""").containsMatchIn(q)
+        ) {
+            return true
+        }
+        return Regex(
+            """\b(best|top|good)\s+(bank|pharma|auto|it|defence|defense|energy|fmcg|metal|infra|psu|realty|railway|cement)\b"""
+        ).containsMatchIn(q) ||
+            Regex("""\b(bank|pharma|auto|it|defence|defense|energy|fmcg|metal|infra|psu|realty|railway)\s+stocks?\b""")
+                .containsMatchIn(q)
+    }
+
+    /**
+     * Drop follow-ups that mention tickers absent from the sector answer
+     * (e.g. "Should I buy INFY?" after a defence screen).
+     */
+    private fun filterSuggestionsForSector(
+        query: String,
+        answer: String,
+        suggestions: List<String>,
+    ): List<String> {
+        val corpus = "$query\n$answer".uppercase()
+        val tickerRe = Regex("""\b[A-Z]{2,15}\b""")
+        val mentioned = tickerRe.findAll(corpus)
+            .map { it.value }
+            .filter { it !in SECTOR_SUGGESTION_STOPWORDS }
+            .toSet()
+        val cleaned = suggestions.map { it.trim() }.filter { it.isNotBlank() }.filter { tip ->
+            val tipTickers = tickerRe.findAll(tip.uppercase()).map { it.value }.toList()
+            tipTickers.isEmpty() || tipTickers.any { it in mentioned }
+        }
+        if (cleaned.isNotEmpty()) return cleaned.take(6)
+        // Fallback: build from names actually listed in the answer.
+        return mentioned
+            .filter { it.length in 2..12 && it !in SECTOR_SUGGESTION_STOPWORDS }
+            .take(3)
+            .flatMap { listOf("Analyze $it", "Should I buy $it?") }
+            .distinct()
+            .take(6)
+    }
+
     // --- AI assistant ---
     fun askAi(query: String) {
         val cleanedQuery = query.trim()
@@ -2187,11 +2238,16 @@ class TradingViewModel(
             contextParts.add("wallet=$wallet")
             portfolio?.let { contextParts.add("portfolioScore=${it.overallScore}") }
 
-            val symbol = _selectedQuote.value?.symbol
+            // Sector/theme asks must not inherit the currently selected quote (e.g. INFY
+            // while the user asked "defence stocks") — that leaks Buy/Alert CTAs.
+            val sectorThemeAsk = isSectorThemeQuery(cleanedQuery)
+            val symbol = _selectedQuote.value?.symbol?.takeUnless { sectorThemeAsk }
             symbol?.let { contextParts.add("symbol=$it") }
-            _selectedQuote.value?.let { q ->
-                contextParts.add("price=${q.last}")
-                q.pctChange.let { contextParts.add("pctChange=${it}") }
+            if (!sectorThemeAsk) {
+                _selectedQuote.value?.let { q ->
+                    contextParts.add("price=${q.last}")
+                    q.pctChange.let { contextParts.add("pctChange=${it}") }
+                }
             }
 
             // Prefer in-memory candles only — never block the chat send on a DB/network history read.
@@ -2214,8 +2270,8 @@ class TradingViewModel(
                 holdingsSummary,
                 wallet,
                 portfolio?.overallScore,
-                _selectedQuote.value,
-                recentHistory
+                if (sectorThemeAsk) null else _selectedQuote.value,
+                if (sectorThemeAsk) emptyList() else recentHistory
             )
 
             // Prefer the server (better Indian-market routing). On-device Gemma is
@@ -2228,17 +2284,25 @@ class TradingViewModel(
                     lastAiWarmAtMs = lastAiSuccessAtMs
                     refreshAiColdStartFlag()
                     _aiResponse.value = r.data
-                    val replySymbol = r.data.symbol?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
-                        ?: symbol?.trim()?.uppercase()
-                    val replyPrice = extractAiReferencePrice(r.data)
+                    val replySymbol = when {
+                        sectorThemeAsk -> null // keep CTAs on names from the sector answer
+                        else -> r.data.symbol?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
+                            ?: symbol?.trim()?.uppercase()
+                    }
+                    val replyPrice = if (sectorThemeAsk) null else extractAiReferencePrice(r.data)
+                    val replySuggestions = if (sectorThemeAsk) {
+                        filterSuggestionsForSector(cleanedQuery, r.data.answer, r.data.suggestions)
+                    } else {
+                        r.data.suggestions
+                    }
                     _chatHistory.value = _chatHistory.value + ChatMessage(
                         r.data.answer,
                         isUser = false,
-                        suggestions = r.data.suggestions,
+                        suggestions = replySuggestions,
                         source = r.data.source,
                         confidence = r.data.confidence,
                         symbol = replySymbol,
-                        signal = r.data.signal,
+                        signal = if (sectorThemeAsk) null else r.data.signal,
                         lastPrice = replyPrice,
                     )
                     // Optionally enrich the last bubble with v2 cards when a symbol is in focus.

@@ -3303,15 +3303,33 @@ def _handle_screening_query(query_lower: str, symbols: List[str]) -> Dict:
     screen_suggestions: List[str] = []
     for r in results[:3]:
         screen_suggestions.append(f"Analyze {r['symbol']}")
+        screen_suggestions.append(f"Should I buy {r['symbol']}?")
     if len(results) >= 2:
         screen_suggestions.append(f"Compare {results[0]['symbol']} and {results[1]['symbol']}")
+    if target_sector:
+        screen_suggestions.append(f"Risks in {target_sector} stocks right now")
     if not screen_suggestions:
-        screen_suggestions = ["Analyze RELIANCE", "Best bank stocks"]
+        screen_suggestions = [
+            "defence stocks",
+            "best pharma stocks",
+            "banking stocks",
+        ]
+    # Deduplicate while preserving order
+    deduped_tips: List[str] = []
+    seen_tips: set[str] = set()
+    for tip in screen_suggestions:
+        key = tip.lower().strip()
+        if key in seen_tips:
+            continue
+        seen_tips.add(key)
+        deduped_tips.append(tip)
     return {
         "type": "screening",
         "answer": "\n".join(answer_parts),
         "stocks": results,
-        "suggestions": screen_suggestions[:5],
+        "suggestions": deduped_tips[:6],
+        # Sector screens are multi-name — never attach a single focus symbol.
+        "symbol": None,
     }
 
 

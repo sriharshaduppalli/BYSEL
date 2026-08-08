@@ -457,17 +457,35 @@ private fun suggestionMentionsOtherSymbol(text: String, primary: String, seconda
     return false
 }
 
+private fun isSectorThemePrompt(text: String): Boolean {
+    val q = text.lowercase()
+    val themedNoun = Regex(
+        """\b(defence|defense|pharma|banking|fmcg|realty|railway|infra|psu|metal|cement|auto|energy|telecom|insurance)\b"""
+    ).containsMatchIn(q) &&
+        Regex("""\b(stocks?|sector|theme|names|companies|picks?)\b""").containsMatchIn(q)
+    val bestTop = Regex(
+        """\b(best|top|good)\s+(bank|pharma|auto|it|defence|defense|energy|fmcg|metal|infra|psu|realty|railway)\b"""
+    ).containsMatchIn(q)
+    val stocksSuffix = Regex(
+        """\b(bank|pharma|auto|it|defence|defense|energy|fmcg|metal|infra|psu|realty|railway)\s+stocks?\b"""
+    ).containsMatchIn(q)
+    return themedNoun || bestTop || stocksSuffix
+}
+
 private fun buildAdaptiveSuggestions(
     selectedSymbol: String?,
     chatHistory: List<ChatMessage>
 ): List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>> {
     val userPrompts = chatHistory.filter { it.isUser }.map { it.text.trim() }.filter { it.isNotBlank() }
     val askedPrompts = userPrompts.map { normalizePrompt(it) }.toSet()
-    val focusSymbol = selectedSymbol?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
+    val latestUser = userPrompts.lastOrNull().orEmpty()
+    val sectorTheme = isSectorThemePrompt(latestUser)
+    // For sector asks, ignore the currently selected quote ticker (avoids Buy INFY after defence).
+    val focusSymbol = selectedSymbol?.trim()?.uppercase()?.takeIf { it.isNotBlank() && !sectorTheme }
 
     val allMentioned = extractMentionedSymbols(userPrompts, focusSymbol)
-    val primarySymbol = allMentioned.firstOrNull()
-    val secondarySymbol = allMentioned.drop(1).firstOrNull()
+    val primarySymbol = if (sectorTheme) null else allMentioned.firstOrNull()
+    val secondarySymbol = if (sectorTheme) null else allMentioned.drop(1).firstOrNull()
 
     // Prefer server follow-ups attached to the latest assistant reply when present.
     val lastAssistant = chatHistory.lastOrNull { !it.isUser }
@@ -480,6 +498,19 @@ private fun buildAdaptiveSuggestions(
 
     val suggestions = linkedSetOf<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>>()
     serverFollowUps.forEach { suggestions.add(it) }
+
+    if (sectorTheme) {
+        buildSectorThemeSuggestions(latestUser, lastAssistant?.text.orEmpty()).forEach {
+            suggestions.add(it)
+        }
+        val sectorOnly = suggestions
+            .asSequence()
+            .filterNot { normalizePrompt(it.first) in askedPrompts }
+            .distinctBy { normalizePrompt(it.first) }
+            .take(8)
+            .toList()
+        if (sectorOnly.isNotEmpty()) return sectorOnly
+    }
 
     // Always start with symbol-specific follow-ups if a stock is in focus
     if (primarySymbol != null) {
@@ -592,6 +623,50 @@ private fun buildAdaptiveSuggestions(
 
 private fun textContainsAny(source: String, keywords: List<String>): Boolean {
     return keywords.any { source.contains(it, ignoreCase = true) }
+}
+
+private fun buildSectorThemeSuggestions(
+    query: String,
+    answer: String,
+): List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>> {
+    val q = query.lowercase()
+    val sector = when {
+        "defence" in q || "defense" in q -> "defence"
+        "pharma" in q -> "pharma"
+        "bank" in q -> "bank"
+        "auto" in q -> "auto"
+        "fmcg" in q -> "FMCG"
+        "energy" in q -> "energy"
+        "metal" in q -> "metal"
+        "infra" in q -> "infra"
+        "realty" in q || "real estate" in q -> "realty"
+        "railway" in q || "rail" in q -> "railway"
+        "psu" in q -> "PSU"
+        "it " in q || q.endsWith(" it") || " it stocks" in q || "top it" in q -> "IT"
+        else -> "this sector"
+    }
+    val out = linkedSetOf<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>>()
+    // Prefer tickers actually listed in the assistant answer.
+    val answerTickers = Regex("""\*\*([A-Z][A-Z0-9.&-]{1,14})\*\*""")
+        .findAll(answer)
+        .map { it.groupValues[1] }
+        .distinct()
+        .take(3)
+        .toList()
+    answerTickers.forEach { sym ->
+        out.add("Analyze $sym" to Icons.Filled.Analytics)
+        out.add("Should I buy $sym?" to Icons.AutoMirrored.Filled.TrendingUp)
+    }
+    if (answerTickers.size >= 2) {
+        out.add(
+            "Compare ${answerTickers[0]} and ${answerTickers[1]}" to
+                Icons.AutoMirrored.Filled.CompareArrows,
+        )
+    }
+    out.add("Top $sector stocks by momentum" to Icons.AutoMirrored.Filled.TrendingUp)
+    out.add("Risks in $sector stocks right now" to Icons.Filled.Warning)
+    out.add("Best $sector stock for long-term holding" to Icons.Filled.Analytics)
+    return out.toList()
 }
 
 private fun normalizePrompt(text: String): String {

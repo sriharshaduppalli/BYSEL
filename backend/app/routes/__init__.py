@@ -1894,24 +1894,33 @@ async def ai_ask_endpoint(
 
         # Keep follow-up chips linked to the answered stock / query.
         # Never invent stock chips for greetings / education / clarifiers.
+        # Never invent single-stock chips for sector screens.
         suggestions = result.get("suggestions") or []
-        if source not in {"small-talk", "clarifier", "education"} and not suggestions:
+        intent_name = (intent_result or {}).get("intent", "")
+        if (
+            source not in {"small-talk", "clarifier", "education"}
+            and not suggestions
+            and intent_name != "SECTOR_SCREEN"
+            and result.get("type") != "screening"
+        ):
             try:
                 from ..ai_engine import _build_stock_suggestions
                 symbol = str(result.get("symbol") or "").strip().upper()
                 if not symbol:
                     symbol = str(extract_symbol_from_query(normalized_query) or "").strip().upper()
                 if symbol:
-                    intent = (intent_result or {}).get("intent", "")
                     exclude = {
                         "PREDICT": "prediction",
                         "BUY_SELL": "buy_sell",
                         "TECHNICAL": "analysis",
                         "FUNDAMENTAL": "analysis",
-                    }.get(intent, "")
+                    }.get(intent_name, "")
                     suggestions = _build_stock_suggestions(symbol, exclude=exclude)
             except Exception:
                 suggestions = []
+        if intent_name == "SECTOR_SCREEN" or result.get("type") == "screening":
+            user_response.pop("symbol", None)
+            user_response.pop("signal", None)
         if suggestions:
             user_response["suggestions"] = list(suggestions)[:8]
 
@@ -2203,6 +2212,16 @@ async def ai_ask_endpoint(
             )
         )
         if rule_answer and looks_like_sector and "popular stocks" not in answer_l:
+            # Never let a selected-quote ticker (e.g. INFY) become the sector CTA.
+            rule_result = {**rule_result, "symbol": None, "signal": None}
+            if not rule_result.get("suggestions") and rule_result.get("stocks"):
+                tips = []
+                for row in (rule_result.get("stocks") or [])[:3]:
+                    sym = str((row or {}).get("symbol") or "").upper()
+                    if sym:
+                        tips.append(f"Analyze {sym}")
+                        tips.append(f"Should I buy {sym}?")
+                rule_result["suggestions"] = tips[:6]
             return _validated(rule_result, "rule-engine", requested_tier)
 
     # Tier 1 (default): Indian Stock LLM — custom grounded model (no paid API).
@@ -2248,34 +2267,51 @@ async def ai_ask_endpoint(
                         merged["confidence"] = llm_result.get("confidence")
                     if llm_result.get("citations"):
                         merged["citations"] = llm_result.get("citations")
-                    if not merged.get("symbol"):
-                        merged["symbol"] = (
-                            llm_result.get("symbol")
-                            or llm_context.get("symbol")
-                        )
-                    if merged.get("current_price") in (None, "", 0, 0.0):
-                        price = llm_context.get("current_price")
-                        if price not in (None, "", 0, 0.0):
-                            merged["current_price"] = price
-                    if not merged.get("signal"):
-                        # Surface paper-plan action for the Android profit card.
-                        try:
-                            import re as _re
-                            m = _re.search(
-                                r"\*\*Action:\*\*\s*(BUY|SELL|HOLD|TRIM|WAIT)",
-                                str(llm_result.get("answer") or ""),
-                                flags=_re.I,
+                    if detected_intent == "SECTOR_SCREEN":
+                        # Sector answers must not inherit selected-quote context (Buy INFY leak).
+                        merged["symbol"] = None
+                        merged["signal"] = None
+                        if rule_result.get("suggestions"):
+                            merged["suggestions"] = list(rule_result.get("suggestions") or [])[:6]
+                        elif rule_result.get("stocks"):
+                            tips = []
+                            for row in (rule_result.get("stocks") or [])[:3]:
+                                sym = str((row or {}).get("symbol") or "").upper()
+                                if sym:
+                                    tips.append(f"Analyze {sym}")
+                                    tips.append(f"Should I buy {sym}?")
+                            merged["suggestions"] = tips[:6]
+                    else:
+                        if not merged.get("symbol"):
+                            merged["symbol"] = (
+                                llm_result.get("symbol")
+                                or llm_context.get("symbol")
                             )
-                            if m:
-                                merged["signal"] = m.group(1).upper()
-                        except Exception:
-                            pass
-                    if not merged.get("suggestions") and merged.get("symbol"):
-                        try:
-                            from ..ai_engine import _build_stock_suggestions
-                            merged["suggestions"] = _build_stock_suggestions(str(merged["symbol"]).upper())
-                        except Exception:
-                            pass
+                        if merged.get("current_price") in (None, "", 0, 0.0):
+                            price = llm_context.get("current_price")
+                            if price not in (None, "", 0, 0.0):
+                                merged["current_price"] = price
+                        if not merged.get("signal"):
+                            # Surface paper-plan action for the Android profit card.
+                            try:
+                                import re as _re
+                                m = _re.search(
+                                    r"\*\*Action:\*\*\s*(BUY|SELL|HOLD|TRIM|WAIT)",
+                                    str(llm_result.get("answer") or ""),
+                                    flags=_re.I,
+                                )
+                                if m:
+                                    merged["signal"] = m.group(1).upper()
+                            except Exception:
+                                pass
+                        if not merged.get("suggestions") and merged.get("symbol"):
+                            try:
+                                from ..ai_engine import _build_stock_suggestions
+                                merged["suggestions"] = _build_stock_suggestions(
+                                    str(merged["symbol"]).upper()
+                                )
+                            except Exception:
+                                pass
                     return _validated(merged, "indian-stock-llm", requested_tier)
                 else:
                     low_conf = llm_result.get("confidence", 0) if llm_result else 0
@@ -2315,23 +2351,29 @@ async def ai_ask_endpoint(
                             merged.pop("suggestions", None)
                     except Exception:
                         pass
-                    if not merged.get("symbol") and enriched_ctx.get("symbol"):
-                        merged["symbol"] = enriched_ctx["symbol"]
-                    if not merged.get("suggestions") and merged.get("symbol"):
-                        try:
-                            from ..ai_engine import _build_stock_suggestions
-                            intent = (intent_result or {}).get("intent", "")
-                            exclude = {
-                                "PREDICT": "prediction",
-                                "BUY_SELL": "buy_sell",
-                                "TECHNICAL": "analysis",
-                                "FUNDAMENTAL": "analysis",
-                            }.get(intent, "")
-                            merged["suggestions"] = _build_stock_suggestions(
-                                str(merged["symbol"]).upper(), exclude=exclude
-                            )
-                        except Exception:
-                            pass
+                    if detected_intent == "SECTOR_SCREEN":
+                        merged["symbol"] = None
+                        merged["signal"] = None
+                        if rule_result.get("suggestions"):
+                            merged["suggestions"] = list(rule_result.get("suggestions") or [])[:6]
+                    else:
+                        if not merged.get("symbol") and enriched_ctx.get("symbol"):
+                            merged["symbol"] = enriched_ctx["symbol"]
+                        if not merged.get("suggestions") and merged.get("symbol"):
+                            try:
+                                from ..ai_engine import _build_stock_suggestions
+                                intent = (intent_result or {}).get("intent", "")
+                                exclude = {
+                                    "PREDICT": "prediction",
+                                    "BUY_SELL": "buy_sell",
+                                    "TECHNICAL": "analysis",
+                                    "FUNDAMENTAL": "analysis",
+                                }.get(intent, "")
+                                merged["suggestions"] = _build_stock_suggestions(
+                                    str(merged["symbol"]).upper(), exclude=exclude
+                                )
+                            except Exception:
+                                pass
                     return _validated(merged, "groq", requested_tier)
                 else:
                     logger.info("DEBUG: Groq returned empty, falling back")
