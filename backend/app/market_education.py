@@ -1487,10 +1487,11 @@ _TERM_ANSWERS: dict[str, str] = {
         "**Fundamental analysis (FA)** studies business quality and valuation.\n\n"
         "TA adapts across stocks, indices, commodities and timeframes — but expects **probabilistic** "
         "edges with stops, not guaranteed multi-year wealth.\n\n"
-        "**Building blocks BYSEL covers:** candlesticks, S/R, volume, MAs, RSI, MACD, Bollinger, "
-        "Fibonacci, Dow-style trends, pivots/CPR, ATR stops.\n\n"
+        "**Building blocks BYSEL covers:** candlesticks, **chart patterns**, S/R, volume, MAs, "
+        "RSI, MACD, Bollinger, Fibonacci, Dow-style trends, pivots/CPR, ATR stops, "
+        "breakout confirmation & protective stops.\n\n"
         "**Common mistake:** Using every indicator at once with no written risk plan.\n"
-        "_Educational — Varsity-style TA literacy, paraphrased._"
+        "_Educational — Varsity / classic CMT-style TA literacy, paraphrased._"
     ),
     "market timings": (
         "**Indian market timings (from 3 Aug 2026)**\n\n"
@@ -1526,8 +1527,10 @@ _TERM_ANSWERS: dict[str, str] = {
         "• Body = open→close · Wicks = extremes beyond the body\n"
         "• Traders prefer candles over plain bars because body vs wick shows conviction vs indecision fast\n\n"
         "**Single patterns (literacy):** Marubozu (strong body), Doji (indecision), "
-        "Spinning top, Hammer / Hanging man (reversal *cues*).\n"
-        "**Multi patterns:** Engulfing, Harami, Morning/Evening star; gaps around news.\n\n"
+        "Spinning top, Hammer / Hanging man, Shooting star / Inverted hammer.\n"
+        "**Multi patterns:** Engulfing, Harami, Morning/Evening star, Dark cloud / Piercing; "
+        "gaps around news.\n"
+        "For multi-bar structures (H&S, triangles, flags), ask about **chart patterns**.\n\n"
         "**Common mistake:** Trading a pattern in the middle of nowhere without S/R or trend context."
     ),
     "marubozu": (
@@ -1555,12 +1558,38 @@ _TERM_ANSWERS: dict[str, str] = {
         "**Common mistake:** Treating every hammer mid-trend as a must-buy."
     ),
     "engulfing": (
-        "**Engulfing & Harami Patterns**\n\n"
-        "**Bullish engulfing:** green body fully covers prior red body → buyers take over.\n"
-        "**Bearish engulfing:** red body covers prior green → sellers take over.\n"
-        "**Harami:** small candle inside prior large body → possible exhaustion / pause.\n\n"
-        "Best near S/R with volume expansion on the engulfing day.\n\n"
+        "**Engulfing Candlestick**\n\n"
+        "**Bullish engulfing:** tall green body fully covers prior red body → buyers take over.\n"
+        "**Bearish engulfing:** tall red body covers prior green → sellers take over.\n\n"
+        "Best near S/R after a clear prior trend, with volume expansion on the engulfing day. "
+        "Wait for the pattern to complete (close) before acting.\n\n"
         "**Common mistake:** Taking engulfing signals against a strong higher-timeframe trend blindly."
+    ),
+    "harami": (
+        "**Harami Candlestick**\n\n"
+        "Two-candle pattern: a **large body** followed by a **small body** completely inside "
+        "the first body (a “spinning top” inside). Colour often opposite.\n\n"
+        "Often treated as a pause / possible reversal cue, but breakouts can go either way — "
+        "confirm with the next break of the large candle’s range. A doji as the second candle "
+        "is a common variation.\n\n"
+        "**Common mistake:** Shorting/buying on harami alone without waiting for confirmation."
+    ),
+    "shooting star": (
+        "**Shooting Star & Inverted Hammer**\n\n"
+        "Small body near the low with a **long upper wick** (inverted hammer/hanging-man shape).\n"
+        "• After a rally → **Shooting star** (potential bearish warning)\n"
+        "• After a decline → **Inverted hammer** (potential bullish cue)\n\n"
+        "Confirm with next candle; stop beyond the wick extreme.\n\n"
+        "**Common mistake:** Fading every long upper wick in a strong trend."
+    ),
+    "dark cloud cover": (
+        "**Dark Cloud Cover & Piercing Line**\n\n"
+        "**Dark cloud cover:** after an up move, a bearish candle opens above prior close/high "
+        "zone and closes well into the prior bullish body — potential downward reversal cue.\n"
+        "**Piercing line:** mirror image after a decline — bullish candle closes well into "
+        "prior bearish body — potential upward reversal cue.\n\n"
+        "Confirm with follow-through; manage risk with a stop beyond the pattern extreme.\n\n"
+        "**Common mistake:** Acting before the second candle closes."
     ),
     "morning star": (
         "**Morning Star & Evening Star**\n\n"
@@ -1614,6 +1643,141 @@ _TERM_ANSWERS: dict[str, str] = {
         "• Low ADX → chop / range — breakout systems suffer\n\n"
         "BYSEL includes an ADX approximation in the quant score stack.\n\n"
         "**Common mistake:** Buying solely because ADX is high without checking direction."
+    ),
+    "chart patterns": (
+        "**Identifying Chart Patterns (TA literacy) — educational**\n\n"
+        "A **pattern** is price structure bounded by at least two trend lines (straight or curved), "
+        "with entry/exit ideas. Patterns are **continuation** or **reversal**, and **fractal** "
+        "(visible on weekly, daily, or intraday charts).\n\n"
+        "**Activation rule:** a pattern is not complete until a real **breakout** occurs "
+        "(violation of trend line / S/R / key swing).\n\n"
+        "**Multi-bar families:**\n"
+        "• Horizontal congestion — double/triple tops & bottoms, rectangles\n"
+        "• Triangles — symmetrical, ascending, descending; wedges\n"
+        "• Other — head & shoulders, cup & handle\n"
+        "• Short-term — flags/pennants, gaps, pipe bottoms, narrow-range / inside bars\n\n"
+        "**Candles** (doji, engulfing, hammer, harami, etc.) are shorter patterns — still wait "
+        "for completion/confirmation.\n\n"
+        "**Limits:** humans see patterns that aren’t there, cling to old targets after conditions "
+        "change, and trust “market lore” without evidence. Use filters + stops.\n\n"
+        "Ask BYSEL about a named pattern (e.g. *what is a head and shoulders?*, *double top*, "
+        "*how to trade breakouts*).\n\n"
+        "**Common mistake:** Entering before the breakout “because it looks almost done.”\n"
+        "_Educational paraphrase of classic TA pattern literacy (CMT / Kirkpatrick-style frameworks) "
+        "— not a broker recommendation._"
+    ),
+    "trading breakouts": (
+        "**Breakouts, Filters & Stops (pattern trading) — educational**\n\n"
+        "A **breakout** is a violation of a trend line, support/resistance, or prior reversal "
+        "point — it signals a possible shift in buyer/seller behaviour.\n\n"
+        "**Confirmation filters** (reduce noise):\n"
+        "• Intrabar vs close beyond level · multiple closes · time beyond level · "
+        "% / points / rupee buffer\n\n"
+        "**False breakout:** price breaks out then quickly returns through the breakout level.\n"
+        "**Failed breakout (trap):** false break, then breaks the other way.\n\n"
+        "**Trading toolkit:**\n"
+        "• **Entry stops** — buy/sell stop beyond breakout to enter only if level is taken\n"
+        "• **Protective stops** — define capital risk *before* entry (filter, or beyond "
+        "opposite side of breakout bar / S/R)\n"
+        "• **Stop-and-reverse** idea — protective stop that also flips if the breakout fails\n\n"
+        "**Retracements after breakout:**\n"
+        "• **Throwback** — pullback toward breakout after upside break\n"
+        "• **Pullback** — bounce toward breakout after downside break\n"
+        "They don’t always occur; waiting can improve location but may miss moves.\n\n"
+        "**Common mistake:** Chasing every wick beyond resistance with no filter or stop.\n"
+        "_Educational — stop orders do not guarantee fill price in fast markets._"
+    ),
+    "double top": (
+        "**Double Top & Double Bottom**\n\n"
+        "**Double top:** two peaks near the same resistance, separated by a trough. "
+        "Pattern activates on break of the middle trough (support). "
+        "Educational target ≈ height (peak−trough) projected down from breakout.\n\n"
+        "**Double bottom:** two troughs near support, separated by a peak. "
+        "Activates on break of the middle peak. Target ≈ height projected up from breakout.\n\n"
+        "Watch for throwbacks/pullbacks after breakout; confirm with volume when possible.\n\n"
+        "**Common mistake:** Calling every two peaks a double top without a completed breakout."
+    ),
+    "triple top": (
+        "**Triple Top & Triple Bottom**\n\n"
+        "**Triple top:** three peaks near resistance with two intervening troughs; "
+        "breakout below the troughs / connecting support. "
+        "Target cue ≈ pattern height subtracted from the breakout area.\n\n"
+        "**Triple bottom:** three troughs near support; breakout above intervening peaks. "
+        "Target cue ≈ height added above the breakout area.\n\n"
+        "**Common mistake:** Forcing a triple label on noisy sideways chop without clear levels."
+    ),
+    "rectangle pattern": (
+        "**Rectangle (trading range) Pattern**\n\n"
+        "Price oscillates between roughly horizontal **support** and **resistance** "
+        "(a channel-like box). Many false breaks — use confirmation filters.\n\n"
+        "Target cue (educational): box height added above resistance (up break) or "
+        "subtracted below support (down break).\n\n"
+        "**Common mistake:** Buying every touch of support in a rectangle without a breakout plan."
+    ),
+    "triangle pattern": (
+        "**Triangle Patterns (symmetrical / ascending / descending)**\n\n"
+        "• **Symmetrical:** falling upper + rising lower bounds; touches each side ≥2×; "
+        "break either way — confirm\n"
+        "• **Ascending:** flat resistance + rising support — often resolves up, but either way possible\n"
+        "• **Descending:** flat support + falling resistance — often resolves down, either way possible\n\n"
+        "Educational target: pattern height (highest peak − lowest trough) added/subtracted "
+        "from the breakout price.\n\n"
+        "**Common mistake:** Entering mid-triangle before a breakout filter triggers."
+    ),
+    "wedge pattern": (
+        "**Rising & Falling Wedges**\n\n"
+        "Both bounds slope the **same direction**; price should touch the lines multiple times "
+        "(often ~5 touches across both sides) before a breakout.\n\n"
+        "Rising wedges after climactic rallies often break down; falling wedges after panics "
+        "often break up — but confirm. Retracements after breakout are common.\n\n"
+        "**Common mistake:** Shorting every rising wedge without waiting for the break."
+    ),
+    "head and shoulders": (
+        "**Head and Shoulders (Top & Inverse)**\n\n"
+        "**Top:** left shoulder → higher **head** → right shoulder ≈ left; "
+        "**neckline** joins the two troughs. Pattern completes only on **neckline break**. "
+        "Target cue ≈ head-to-neckline distance projected down from the break.\n\n"
+        "**Inverse (bottom):** inverted structure; completes on neckline break upward; "
+        "throwbacks are common.\n\n"
+        "Classic top pattern with relatively low failure rates in TA literature — still use stops.\n\n"
+        "**Common mistake:** Calling every three peaks H&S when shoulders aren’t aligned / "
+        "neckline unbroken."
+    ),
+    "cup and handle": (
+        "**Cup and Handle (Saucer)**\n\n"
+        "Rounded **cup** (not a sharp V), two “lips,” then a smaller consolidating **handle** "
+        "(flag-like). Completes on breakout above the lips/handle resistance. "
+        "Throwbacks are common.\n\n"
+        "Educational target: depth of cup (lip to bottom) added to the breakout price.\n\n"
+        "**Common mistake:** Treating a V-spike bottom with no handle as a completed cup."
+    ),
+    "flag pattern": (
+        "**Flag & Pennant**\n\n"
+        "After a steep “flagpole” move, a short consolidation slopes slightly against the trend "
+        "(flag = parallel channel; pennant = small triangle).\n\n"
+        "Breakout often continues in the pole direction; educational target ≈ pole height "
+        "projected from the breakout/consolidation.\n\n"
+        "**Common mistake:** Holding a flag that morphs into a full reversal without a stop."
+    ),
+    "price gaps": (
+        "**Price Gaps**\n\n"
+        "A **gap** is a price zone with no trading between one close and the next open "
+        "(supply/demand jump). Gaps can be up or down.\n\n"
+        "Gaps on breakouts from patterns/S/R can be meaningful. One educational method: "
+        "after a gap-up, wait for a throwback that does **not** fully fill the gap "
+        "(“pivot low”), then consider entries above the gap bar with stops under the pivot/gap.\n\n"
+        "On NSE, gaps often appear around results, news, or overnight global cues.\n\n"
+        "**Common mistake:** Assuming every gap “must fill” immediately."
+    ),
+    "narrow range": (
+        "**Narrow Range, Inside Bar & Pipe Bottom**\n\n"
+        "• **Narrow range (e.g. NR4):** a bar with smaller high−low than the prior few bars → "
+        "volatility compression; breakout above/below the NR bar’s range is the cue\n"
+        "• **Inside bar:** entirely within prior bar’s range — often traded on break of that range\n"
+        "• **Pipe / two-bar reversal bottom:** two wide-range bars at a decline’s end "
+        "(more studied on weekly); action on break of the second bar\n\n"
+        "Low volatility often precedes new trends — still define risk before entry.\n\n"
+        "**Common mistake:** Buying every inside bar in a chop without a directional filter."
     ),
     "gtt": (
         "**GTT (Good Till Triggered) — educational**\n\n"
@@ -1857,11 +2021,53 @@ _TERM_ANSWERS["candle stick"] = _TERM_ANSWERS["candlestick"]
 _TERM_ANSWERS["chart types"] = _TERM_ANSWERS["candlestick"]
 _TERM_ANSWERS["hanging man"] = _TERM_ANSWERS["hammer"]
 _TERM_ANSWERS["spinning top"] = _TERM_ANSWERS["doji"]
-_TERM_ANSWERS["harami"] = _TERM_ANSWERS["engulfing"]
 _TERM_ANSWERS["bullish engulfing"] = _TERM_ANSWERS["engulfing"]
 _TERM_ANSWERS["bearish engulfing"] = _TERM_ANSWERS["engulfing"]
 _TERM_ANSWERS["evening star"] = _TERM_ANSWERS["morning star"]
-_TERM_ANSWERS["price gap"] = _TERM_ANSWERS["morning star"]
+_TERM_ANSWERS["inverted hammer"] = _TERM_ANSWERS["shooting star"]
+_TERM_ANSWERS["piercing line"] = _TERM_ANSWERS["dark cloud cover"]
+_TERM_ANSWERS["piercing pattern"] = _TERM_ANSWERS["dark cloud cover"]
+_TERM_ANSWERS["dark cloud"] = _TERM_ANSWERS["dark cloud cover"]
+_TERM_ANSWERS["chart pattern"] = _TERM_ANSWERS["chart patterns"]
+_TERM_ANSWERS["identifying chart patterns"] = _TERM_ANSWERS["chart patterns"]
+_TERM_ANSWERS["what is a chart pattern"] = _TERM_ANSWERS["chart patterns"]
+_TERM_ANSWERS["common chart patterns"] = _TERM_ANSWERS["chart patterns"]
+_TERM_ANSWERS["trading patterns"] = _TERM_ANSWERS["chart patterns"]
+_TERM_ANSWERS["false breakout"] = _TERM_ANSWERS["trading breakouts"]
+_TERM_ANSWERS["failed breakout"] = _TERM_ANSWERS["trading breakouts"]
+_TERM_ANSWERS["confirmation filter"] = _TERM_ANSWERS["trading breakouts"]
+_TERM_ANSWERS["confirmation filters"] = _TERM_ANSWERS["trading breakouts"]
+_TERM_ANSWERS["entry stops"] = _TERM_ANSWERS["trading breakouts"]
+_TERM_ANSWERS["protective stops"] = _TERM_ANSWERS["trading breakouts"]
+_TERM_ANSWERS["throwback"] = _TERM_ANSWERS["trading breakouts"]
+_TERM_ANSWERS["pullback after breakout"] = _TERM_ANSWERS["trading breakouts"]
+_TERM_ANSWERS["how to trade breakouts"] = _TERM_ANSWERS["trading breakouts"]
+_TERM_ANSWERS["double bottom"] = _TERM_ANSWERS["double top"]
+_TERM_ANSWERS["triple bottom"] = _TERM_ANSWERS["triple top"]
+_TERM_ANSWERS["trading range pattern"] = _TERM_ANSWERS["rectangle pattern"]
+_TERM_ANSWERS["rectangle chart pattern"] = _TERM_ANSWERS["rectangle pattern"]
+_TERM_ANSWERS["symmetrical triangle"] = _TERM_ANSWERS["triangle pattern"]
+_TERM_ANSWERS["ascending triangle"] = _TERM_ANSWERS["triangle pattern"]
+_TERM_ANSWERS["descending triangle"] = _TERM_ANSWERS["triangle pattern"]
+_TERM_ANSWERS["triangle chart pattern"] = _TERM_ANSWERS["triangle pattern"]
+_TERM_ANSWERS["rising wedge"] = _TERM_ANSWERS["wedge pattern"]
+_TERM_ANSWERS["falling wedge"] = _TERM_ANSWERS["wedge pattern"]
+_TERM_ANSWERS["wedge chart pattern"] = _TERM_ANSWERS["wedge pattern"]
+_TERM_ANSWERS["inverse head and shoulders"] = _TERM_ANSWERS["head and shoulders"]
+_TERM_ANSWERS["head & shoulders"] = _TERM_ANSWERS["head and shoulders"]
+_TERM_ANSWERS["cup & handle"] = _TERM_ANSWERS["cup and handle"]
+_TERM_ANSWERS["saucer pattern"] = _TERM_ANSWERS["cup and handle"]
+_TERM_ANSWERS["pennant"] = _TERM_ANSWERS["flag pattern"]
+_TERM_ANSWERS["flag and pennant"] = _TERM_ANSWERS["flag pattern"]
+_TERM_ANSWERS["pennant pattern"] = _TERM_ANSWERS["flag pattern"]
+_TERM_ANSWERS["price gap"] = _TERM_ANSWERS["price gaps"]
+_TERM_ANSWERS["explosion gap"] = _TERM_ANSWERS["price gaps"]
+_TERM_ANSWERS["gap trading"] = _TERM_ANSWERS["price gaps"]
+_TERM_ANSWERS["inside bar"] = _TERM_ANSWERS["narrow range"]
+_TERM_ANSWERS["nr4"] = _TERM_ANSWERS["narrow range"]
+_TERM_ANSWERS["narrow range bar"] = _TERM_ANSWERS["narrow range"]
+_TERM_ANSWERS["pipe bottom"] = _TERM_ANSWERS["narrow range"]
+_TERM_ANSWERS["two bar reversal"] = _TERM_ANSWERS["narrow range"]
 _TERM_ANSWERS["fibonacci retracement"] = _TERM_ANSWERS["fibonacci"]
 _TERM_ANSWERS["fib retracement"] = _TERM_ANSWERS["fibonacci"]
 _TERM_ANSWERS["central pivot range"] = _TERM_ANSWERS["cpr"]
@@ -2153,7 +2359,14 @@ def get_education_answer(query: str) -> Optional[str]:
             r"trader vs investor|day trader|scalper|swing trader|holding period|"
             r"where do you fit|after you (own|buy)|how to calculate returns|"
             r"technical analysis|candlestick|marubozu|doji|hammer|engulfing|harami|"
+            r"shooting star|inverted hammer|dark cloud|piercing line|"
             r"morning star|evening star|fibonacci|dow theory|central pivot|\bcpr\b|"
+            r"chart patterns?|trading breakouts?|false breakout|failed breakout|"
+            r"double tops?|double bottoms?|triple tops?|triple bottoms?|"
+            r"head and shoulders|cup and handle|flag and pennant|pennant|"
+            r"symmetrical triangle|ascending triangle|descending triangle|"
+            r"rising wedge|falling wedge|rectangle pattern|pipe bottom|"
+            r"narrow range|\bnr4\b|inside bar|price gaps?|throwback|"
             r"support and resistance|sentiment analysis|market sentiment|news sentiment|"
             r"stock sentiment|investor sentiment|market timings|market hours|trading hours|"
             r"closing auction|\bcas\b|nse timings|bse timings|"
@@ -2240,6 +2453,72 @@ def get_education_answer(query: str) -> Optional[str]:
     )
     if stock_specific_levels and not formula_cue:
         return None
+
+    # Live pattern asks for a named symbol → skip glossary (detector / analysis path).
+    stock_specific_pattern = bool(
+        re.search(
+            r"\b(double tops?|double bottoms?|triple tops?|triple bottoms?|"
+            r"head and shoulders|cup and handle|chart patterns?|"
+            r"ascending triangle|descending triangle|symmetrical triangle|"
+            r"flag pattern|pennant|rising wedge|falling wedge)\b",
+            q,
+        )
+        and re.search(
+            r"\b(of|for)\s+[a-z0-9]|bse:|nse:|\b\d{6}\b|"
+            r"\b(reliance|tcs|infy|hdfc|wipro|sbin|nifty|sensex)\b",
+            q,
+        )
+    )
+    if stock_specific_pattern and not formula_cue:
+        return None
+
+    # Prefer chart-pattern family over the broad "technical analysis" umbrella.
+    if re.search(
+        r"\b(chart patterns?|identifying chart patterns|common chart patterns|"
+        r"trading patterns)\b",
+        q,
+    ):
+        return _TERM_ANSWERS["chart patterns"]
+    if re.search(
+        r"\b(false breakout|failed breakout|confirmation filters?|"
+        r"trading breakouts?|how to trade breakouts?|entry stops?|"
+        r"protective stops?|throwback)\b",
+        q,
+    ):
+        return _TERM_ANSWERS["trading breakouts"]
+    if re.search(r"\b(head and shoulders|inverse head and shoulders|head\s*&\s*shoulders)\b", q):
+        return _TERM_ANSWERS["head and shoulders"]
+    if re.search(r"\b(cup and handle|cup\s*&\s*handle|saucer pattern)\b", q):
+        return _TERM_ANSWERS["cup and handle"]
+    if re.search(r"\b(double tops?|double bottoms?)\b", q):
+        return _TERM_ANSWERS["double top"]
+    if re.search(r"\b(triple tops?|triple bottoms?)\b", q):
+        return _TERM_ANSWERS["triple top"]
+    if re.search(
+        r"\b(symmetrical triangle|ascending triangle|descending triangle|"
+        r"triangle (chart )?pattern)\b",
+        q,
+    ):
+        return _TERM_ANSWERS["triangle pattern"]
+    if re.search(r"\b(rising wedge|falling wedge|wedge (chart )?pattern)\b", q):
+        return _TERM_ANSWERS["wedge pattern"]
+    if re.search(r"\b(flag and pennant|flag pattern|pennant pattern|\bpennant\b)\b", q):
+        return _TERM_ANSWERS["flag pattern"]
+    if re.search(r"\b(rectangle (chart )?pattern|trading range pattern)\b", q):
+        return _TERM_ANSWERS["rectangle pattern"]
+    if re.search(r"\b(price gaps?|gap trading|explosion gap)\b", q):
+        return _TERM_ANSWERS["price gaps"]
+    if re.search(
+        r"\b(narrow range|\bnr4\b|inside bar|pipe bottom|two[- ]bar reversal)\b",
+        q,
+    ):
+        return _TERM_ANSWERS["narrow range"]
+    if re.search(r"\b(harami)\b", q):
+        return _TERM_ANSWERS["harami"]
+    if re.search(r"\b(shooting star|inverted hammer)\b", q):
+        return _TERM_ANSWERS["shooting star"]
+    if re.search(r"\b(dark cloud|piercing line|piercing pattern)\b", q):
+        return _TERM_ANSWERS["dark cloud cover"]
 
     # Prefer NAV / TER specifics over broad mutual-fund umbrella.
     if re.search(r"\b(net asset value|\bnav\b)\b", q):

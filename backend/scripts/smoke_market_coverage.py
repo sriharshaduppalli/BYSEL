@@ -32,6 +32,12 @@ QUERIES = [
     ("What are market timings?", ["9:15", "cas"]),
     ("What is RSI?", ["rsi"]),
     ("Corporate actions in Indian stocks", ["dividend", "bonus", "corporate"]),
+    ("Identifying chart patterns with technical analysis", ["pattern", "breakout"]),
+    ("What is a head and shoulders pattern?", ["neckline", "shoulder"]),
+    ("How to trade breakouts and false breakouts?", ["false breakout", "protective"]),
+    ("What is a double top?", ["double top", "breakout"]),
+    ("Explain cup and handle pattern", ["cup", "handle"]),
+    ("What is a harami candlestick?", ["harami", "spinning"]),
 ]
 
 
