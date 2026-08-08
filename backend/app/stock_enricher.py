@@ -1310,6 +1310,12 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
         "DEFENCE", "DEFENSE", "PHARMA", "FMCG", "INFRA", "REALTY",
         "SETTLEMENT", "CIRCUIT", "LIMIT", "LIMITS", "RATIO", "RATIOS",
         "UNDER", "NIFTY", "INDEX",
+        # Retail literacy tokens often mistaken for tickers
+        "OPEN", "CLOSE", "MARGIN", "LOT", "LOTS", "DEMAT", "ACCOUNT", "ACCOUNTS",
+        "PLEDGE", "BROKERAGE", "CHARGES", "GTT", "ASBA", "ALLOTMENT",
+        "CNC", "MIS", "NRML", "BONUS", "SPLIT", "RIGHTS", "AUCTION",
+        "STCG", "LTCG", "TAX", "TAXES", "SIP", "NAVS", "PROTECTION",
+        "ORDER", "ORDERS", "TRIGGER", "BLOCKED", "KYC", "PAN",
     }
     q_upper = query.upper().strip()
     # Prefer "… of/for/on TICKER" so "full math for KAYNES" resolves KAYNES, not FULL.

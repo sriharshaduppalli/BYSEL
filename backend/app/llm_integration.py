@@ -157,7 +157,8 @@ def _is_definitional_query(query: str) -> bool:
     q = (query or "").lower()
     return bool(
         re.search(
-            r"\b(what is|what are|define|definition|meaning of|explain|formula|equation)\b",
+            r"\b(what is|what are|define|definition|meaning of|explain|formula|equation|"
+            r"how to open|how to start|difference between|tell me about)\b",
             q,
         )
     )
@@ -825,9 +826,19 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
             except Exception:
                 pass
 
+        retail_literacy_ask = bool(
+            re.search(
+                r"\b(demat|how to open|gtt|brokerage|trading charges|asba|allotment|"
+                r"\bcnc\b|\bmis\b|\bnrml\b|delivery vs|intraday vs|pledge|"
+                r"short delivery|auction market|bonus issue|stock split|rights issue|"
+                r"corporate actions?|\bstcg\b|\bltcg\b|capital gains|tax on|"
+                r"\bipo\b|investor protection|\bsebi\b|fii|dii)\b",
+                cleaned.lower(),
+            )
+        )
         education = None
         if (
-            not wants_live_indicator
+            (not wants_live_indicator or retail_literacy_ask)
             and not stock_specific_metric
             and not stock_specific_fo
             and not stock_specific_levels
@@ -839,9 +850,9 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
             education = get_education_answer(cleaned)
         # Pure definitions only (no "of SYMBOL").
         if (
-            definitional
+            (definitional or retail_literacy_ask)
             and not has_of_symbol
-            and not wants_live_indicator
+            and (not wants_live_indicator or retail_literacy_ask)
             and not stock_specific_fo
             and not stock_specific_levels
             and not stock_specific_beta
@@ -876,10 +887,13 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
                     r"trading system|pair trading|momentum portfolio|adf test|cointegration|"
                     r"personal finance|time value of money|retirement|mutual fund|\bnav\b|"
                     r"expense ratio|\bter\b|asset allocation|smart beta|emergency fund|"
-                    r"rolling returns|index fund|\betf\b|financial planning)\b",
+                    r"rolling returns|index fund|\betf\b|financial planning|"
+                    r"demat|gtt|brokerage|asba|cnc|mis|nrml|pledge|short delivery|"
+                    r"bonus|stock split|rights issue|corporate action|stcg|ltcg|ipo|"
+                    r"sebi|fii|dii|auction)\b",
                     cleaned.lower(),
                 )
-            )
+            ) or retail_literacy_ask
             return {
                 "answer": education,
                 "intent": "market_literacy" if lit else "market_calculations",

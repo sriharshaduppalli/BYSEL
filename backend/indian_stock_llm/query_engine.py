@@ -64,14 +64,16 @@ INTENT_KEYWORDS = {
         "ncdex", "gold", "silver", "crude", "gsec", "g-sec", "tbill",
     },
     "stock_analysis": {"analyze", "analysis", "technical", "trend", "momentum", "checklist"},
-    "compare": {"compare", "vs", "versus", "against", "comparison", "which"},
+    "compare": {"compare", "vs", "versus", "against", "comparison"},
     "overbought_check": {
         "overbought", "oversold", "over", "bought", "sold", "extended", "stretched",
     },
     "sector_screen": {
         "sector", "sectors", "defence", "defense", "pharma", "banking", "fmcg",
-        "realty", "railway", "psu", "metal", "cement", "top", "best",
+        "realty", "railway", "psu", "metal", "cement",
     },
+    # Keep literacy keyword surface for retail mechanics (phrase overrides also set this).
+    # "top"/"best" alone must not force sector_screen — require sector phrase override.
     "market_calculations": {
         "calculate", "calculation", "cagr", "return", "volatility", "beta", "indicator",
         "indicators", "rsi", "sma", "ema", "macd", "bollinger", "formula", "equation",
@@ -411,6 +413,18 @@ class StockMarketAssistant:
         # Phrase-level overrides beat sparse keyword ties.
         if re.search(r"\b(overbought|oversold|over.?bought|over.?sold)\b", qlow):
             return "overbought_check"
+        # Retail mechanics / tax / IPO / demat → literacy (not events_news / fundamentals).
+        if re.search(
+            r"\b(gtt|brokerage|trading charges|asba|allotment|"
+            r"cnc|mis|nrml|pledge|short delivery|auction market|"
+            r"bonus issue|stock split|share split|rights issue|"
+            r"corporate actions?|how to open (a )?demat|demat account|"
+            r"stcg|ltcg|capital gains|tax on (equity|shares|profits?)|"
+            r"ipo (process|allotment|apply)|what is (an? )?ipo|"
+            r"fii/?\s*dii|investor protection)\b",
+            qlow,
+        ):
+            return "market_literacy"
         if re.search(
             r"\b(how does the (stock|share) market work|how the (stock|share) market works|"
             r"stock market meaning|key participants|depository participant|"
@@ -424,7 +438,11 @@ class StockMarketAssistant:
             qlow,
         ):
             return "market_literacy"
-        if re.search(r"\bcompare\b|\bvs\b|\bversus\b", qlow):
+        # Compare only when explicit — bare "which" used to steal literacy/MF asks.
+        if re.search(r"\bcompare\b|\bvs\b|\bversus\b", qlow) and not re.search(
+            r"\b(stcg|ltcg|cnc|mis|delivery vs|intraday vs|futures vs|gtt)\b",
+            qlow,
+        ):
             return "compare"
         if re.search(
             r"\b(top|best|list)\b.{0,24}\b(defence|defense|pharma|bank|banking|it|auto|fmcg|energy|metal|realty|psu|railway)\b"

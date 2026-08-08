@@ -458,9 +458,15 @@ _TERM_ANSWERS: dict[str, str] = {
     ),
     "ipo": (
         "**IPO (Initial Public Offering)**\n\n"
-        "When a private company lists shares for the public on NSE/BSE, regulated by SEBI.\n\n"
-        "Retail applies via UPI/ASBA; allotment can be lottery-based for oversubscribed issues.\n\n"
-        "**Common mistake:** Treating listing gains as guaranteed."
+        "A private company offers shares to the public and lists on NSE/BSE under SEBI rules.\n\n"
+        "**Retail process (educational):**\n"
+        "1. Read RHP / prospectus — business, risks, use of proceeds, valuations\n"
+        "2. Apply via broker app using **ASBA / UPI** (funds blocked, not paid upfront)\n"
+        "3. Choose category (retail / HNI / employee as eligible) and lots\n"
+        "4. **Allotment** — if oversubscribed, retail often gets lottery / proportionate allotment\n"
+        "5. Listing day — price can gap up or down; not a guaranteed listing gain\n\n"
+        "**GMP** (grey-market premium) is unofficial chatter — not exchange data.\n\n"
+        "**Common mistake:** Applying only because GMP looks high, without reading risks."
     ),
     "beta": (
         "**Beta**\n\n"
@@ -1087,21 +1093,36 @@ _TERM_ANSWERS: dict[str, str] = {
         "**Common mistake:** Trading multiple lots without checking SPAN/exposure margin."
     ),
     "stcg": (
-        "**STCG (Equity — educational overview)**\n\n"
-        "Short-term capital gains on listed equity generally apply when holding period is **≤ 12 months** "
-        "(rules/rates can change — verify current tax law). Often taxed at a special equity STCG rate.\n\n"
-        "**Common mistake:** Planning trades only for tax without considering risk and liquidity."
+        "**STCG vs listed equity (educational overview)**\n\n"
+        "For **listed equity** (delivery), short-term capital gains generally apply when the "
+        "holding period is **≤ 12 months**. Equity STCG has often been taxed at a special rate "
+        "(historically discussed around **15%** plus surcharge/cess — **verify the latest Budget / IT rules**).\n\n"
+        "**Also note:**\n"
+        "• Intraday / F&O P&L is usually treated under **business income** rules, not equity LTCG/STCG delivery slabs\n"
+        "• Mutual-fund tax depends on fund type and holding period\n"
+        "• Broker contract notes + CA advice beat chat summaries\n\n"
+        "**Common mistake:** Planning trades only for tax without considering risk and liquidity.\n"
+        "_Not tax advice — rates and exemptions change._"
     ),
     "ltcg": (
-        "**LTCG (Equity — educational overview)**\n\n"
-        "Long-term capital gains on listed equity generally apply when holding period is **> 12 months** "
-        "(rules/exemptions/rates can change — verify current tax law).\n\n"
-        "**Common mistake:** Holding a weak thesis only to ‘wait for LTCG’."
+        "**LTCG vs listed equity (educational overview)**\n\n"
+        "For **listed equity** (delivery), long-term capital gains generally apply when holding "
+        "period is **> 12 months**. Equity LTCG has often used a special rate with an annual "
+        "exemption threshold (historically discussed around **10%** above a yearly exemption — "
+        "**verify current Budget / IT rules**; thresholds have changed over years).\n\n"
+        "**Common mistake:** Holding a weak thesis only to ‘wait for LTCG’.\n"
+        "_Not tax advice — confirm with a CA for your case._"
     ),
     "demat": (
-        "**Demat Account**\n\n"
-        "Electronic account that holds shares in dematerialised form. Needed for delivery investing "
-        "on NSE/BSE. Linked with a trading account for order placement.\n\n"
+        "**Demat Account (how it works in India)**\n\n"
+        "Electronic account that holds shares in dematerialised form via **NSDL/CDSL** through a "
+        "**Depository Participant (DP)** — usually your broker.\n\n"
+        "**How to open (typical retail path):**\n"
+        "1. Pick a SEBI-registered broker / DP\n"
+        "2. Complete KYC (PAN, Aadhaar, bank proof, photo/signature)\n"
+        "3. Open linked **trading + demat** (and bank for payouts)\n"
+        "4. E-sign / wet-ink as required; enable UPI/ASBA for IPOs if needed\n\n"
+        "Delivery buys credit shares to demat after **T+1** settlement.\n\n"
         "**Common mistake:** Confusing trading ledger cash with settled withdrawable balance."
     ),
     "gamma": (
@@ -1531,6 +1552,114 @@ _TERM_ANSWERS: dict[str, str] = {
         "BYSEL includes an ADX approximation in the quant score stack.\n\n"
         "**Common mistake:** Buying solely because ADX is high without checking direction."
     ),
+    "gtt": (
+        "**GTT (Good Till Triggered) — educational**\n\n"
+        "A broker facility: you set a **trigger price**; when LTP crosses it, an order "
+        "(limit/market as configured) is placed automatically. Useful for target exits or "
+        "buy-on-dip plans without watching the screen all day.\n\n"
+        "• Validity is broker-defined (often months) — check your broker’s GTT rules\n"
+        "• Trigger ≠ guaranteed fill at that exact price in fast markets\n"
+        "• Cancel/replace if your thesis changes\n\n"
+        "**Common mistake:** Setting GTT and forgetting risk events (results, circuits)."
+    ),
+    "brokerage": (
+        "**Brokerage & trading charges (India equity — educational)**\n\n"
+        "On NSE/BSE cash trades, total cost is more than brokerage:\n"
+        "• **Brokerage** — broker fee (flat or %; many discount brokers are low/zero on delivery)\n"
+        "• **STT** — Securities Transaction Tax (govt)\n"
+        "• **Exchange / clearing / SEBI** turnover fees\n"
+        "• **Stamp duty** — state levy (often on buy side)\n"
+        "• **GST** — on brokerage + some fees\n\n"
+        "Intraday / F&O usually have different STT and brokerage schedules than delivery.\n"
+        "BYSEL paper-trade estimates show an educational charges stack — live broker bills can differ.\n\n"
+        "**Common mistake:** Ignoring charges when scalping tiny moves."
+    ),
+    "delivery vs intraday": (
+        "**Delivery vs Intraday (CNC / MIS / NRML)**\n\n"
+        "• **Delivery (CNC)** — you take/give shares; settles **T+1**; needs full funds "
+        "(or margin as per broker product); shares hit demat\n"
+        "• **Intraday (MIS / similar)** — square-off same day; broker may give leverage; "
+        "auto square-off near close if open\n"
+        "• **NRML** — often used for overnight F&O / carry-forward positions (product names vary by broker)\n\n"
+        "Delivery % on exchanges is a **volume statistic** (how much was delivery vs traded) — "
+        "not the same as choosing CNC vs MIS on your order ticket.\n\n"
+        "**Common mistake:** Holding an MIS position overnight by accident."
+    ),
+    "pledge": (
+        "**Pledge for margin (shares with broker) — educational**\n\n"
+        "You can **pledge** demat holdings with your broker to get **margin** for trading "
+        "(as per broker/exchange haircuts). Shares stay beneficially yours but are locked "
+        "until unpledged.\n\n"
+        "Different from **promoter pledge** news (promoters pledging shares to lenders) — "
+        "that is a company/ownership risk signal, not your trading margin product.\n\n"
+        "**Common mistake:** Over-leveraging against pledged shares into a sharp drawdown."
+    ),
+    "auction": (
+        "**Auction / short delivery (educational)**\n\n"
+        "If a seller fails to deliver shares for a delivery trade, the exchange runs a "
+        "**auction / close-out** process so the buyer can still receive shares (or cash "
+        "close-out as per rules). Short-delivery can mean penalty costs for the defaulting side.\n\n"
+        "Separate from the **closing auction (CAS)** that helps discover the official closing price.\n\n"
+        "**Common mistake:** Confusing closing auction (CAS) with short-delivery auction."
+    ),
+    "bonus": (
+        "**Bonus Issue**\n\n"
+        "Company issues free additional shares to existing shareholders from reserves "
+        "(e.g. 1:1 bonus → you get 1 new share per share held). Price adjusts downward "
+        "roughly with the ratio; your **economic value** is similar before/after ignoring "
+        "market reaction.\n\n"
+        "**Common mistake:** Treating bonus as ‘free money’ without price adjustment."
+    ),
+    "stock split": (
+        "**Stock Split**\n\n"
+        "Company reduces face value and increases share count (e.g. ₹10 → ₹2 face, 1 share "
+        "becomes 5). Price adjusts; ownership % unchanged. Often done to improve retail "
+        "lot affordability.\n\n"
+        "**Common mistake:** Expecting wealth to multiply solely because share count rose."
+    ),
+    "rights issue": (
+        "**Rights Issue**\n\n"
+        "Company offers new shares to existing shareholders at a stated ratio/price "
+        "(often at a discount to market) to raise capital. You may subscribe, renounce, "
+        "or let rights lapse (as per offer rules).\n\n"
+        "**Common mistake:** Ignoring dilution / use-of-proceeds when deciding to subscribe."
+    ),
+    "asba": (
+        "**ASBA / UPI for IPOs**\n\n"
+        "**ASBA** (Applications Supported by Blocked Amount): IPO application money is "
+        "**blocked** in your bank/UPI mandate and debited only if shares are allotted.\n\n"
+        "Retail IPO bids commonly use UPI mandates via broker apps. If not allotted, the "
+        "block is released.\n\n"
+        "**Common mistake:** Applying in multiple demat accounts beyond SEBI rules."
+    ),
+    "corporate actions": (
+        "**Corporate Actions (India — map)**\n\n"
+        "Events that change shares/cash for holders:\n"
+        "• **Dividend** — cash (or sometimes stock) to shareholders\n"
+        "• **Bonus / split** — share count & price adjust\n"
+        "• **Rights** — offer to buy more shares\n"
+        "• **Buyback / delisting / merger** — special processes under SEBI/company law\n\n"
+        "Watch **ex-date / record date** — you generally need to hold before ex-date for entitlement.\n\n"
+        "**Common mistake:** Buying on ex-date expecting the dividend still."
+    ),
+    "fii dii flows": (
+        "**FII / DII Flows (educational)**\n\n"
+        "**FIIs/FPIs** (foreign) and **DIIs** (mutual funds, insurers, etc.) publish "
+        "daily/periodic buy-sell activity. Persistent FII selling with DII buying is a "
+        "common tape narrative — useful context, not a standalone buy/sell signal.\n\n"
+        "Flows interact with rupee, global risk, valuations, and earnings season.\n\n"
+        "**Common mistake:** Blindly fading FII selling without checking levels and news."
+    ),
+    "sebi investor protection": (
+        "**SEBI investor basics (educational)**\n\n"
+        "SEBI regulates securities markets in India. Practical retail points:\n"
+        "• Use **SEBI-registered** brokers / advisors\n"
+        "• Beware tips on social media promising guaranteed returns\n"
+        "• IPO, mutual funds, and listed equity have disclosure rules — read them\n"
+        "• Complaints: SCORES / exchange grievance mechanisms\n\n"
+        "**Common mistake:** Sharing OTP/password or trading via unregistered ‘tips’ channels.\n"
+        "_Educational summary — not a legal opinion._"
+    ),
 }
 
 # Aliases
@@ -1561,7 +1690,50 @@ _TERM_ANSWERS["f&o lot"] = _TERM_ANSWERS["lot size"]
 _TERM_ANSWERS["short term capital gains"] = _TERM_ANSWERS["stcg"]
 _TERM_ANSWERS["long term capital gains"] = _TERM_ANSWERS["ltcg"]
 _TERM_ANSWERS["demat account"] = _TERM_ANSWERS["demat"]
+_TERM_ANSWERS["how to open demat"] = _TERM_ANSWERS["demat"]
+_TERM_ANSWERS["how to open a demat account"] = _TERM_ANSWERS["demat"]
+_TERM_ANSWERS["open demat account"] = _TERM_ANSWERS["demat"]
 _TERM_ANSWERS["fii dii"] = _TERM_ANSWERS["fii"]
+_TERM_ANSWERS["fii vs dii"] = _TERM_ANSWERS["fii dii flows"]
+_TERM_ANSWERS["fii and dii"] = _TERM_ANSWERS["fii dii flows"]
+_TERM_ANSWERS["dii fii"] = _TERM_ANSWERS["fii dii flows"]
+_TERM_ANSWERS["good till triggered"] = _TERM_ANSWERS["gtt"]
+_TERM_ANSWERS["gtt order"] = _TERM_ANSWERS["gtt"]
+_TERM_ANSWERS["what is gtt"] = _TERM_ANSWERS["gtt"]
+_TERM_ANSWERS["brokerage charges"] = _TERM_ANSWERS["brokerage"]
+_TERM_ANSWERS["trading charges"] = _TERM_ANSWERS["brokerage"]
+_TERM_ANSWERS["transaction charges"] = _TERM_ANSWERS["brokerage"]
+_TERM_ANSWERS["cnc vs mis"] = _TERM_ANSWERS["delivery vs intraday"]
+_TERM_ANSWERS["mis vs cnc"] = _TERM_ANSWERS["delivery vs intraday"]
+_TERM_ANSWERS["delivery vs mis"] = _TERM_ANSWERS["delivery vs intraday"]
+_TERM_ANSWERS["intraday vs delivery"] = _TERM_ANSWERS["delivery vs intraday"]
+_TERM_ANSWERS["cnc"] = _TERM_ANSWERS["delivery vs intraday"]
+_TERM_ANSWERS["mis"] = _TERM_ANSWERS["delivery vs intraday"]
+_TERM_ANSWERS["nrml"] = _TERM_ANSWERS["delivery vs intraday"]
+_TERM_ANSWERS["pledge for margin"] = _TERM_ANSWERS["pledge"]
+_TERM_ANSWERS["pledging shares"] = _TERM_ANSWERS["pledge"]
+_TERM_ANSWERS["share pledge"] = _TERM_ANSWERS["pledge"]
+_TERM_ANSWERS["short delivery"] = _TERM_ANSWERS["auction"]
+_TERM_ANSWERS["auction market"] = _TERM_ANSWERS["auction"]
+_TERM_ANSWERS["bonus issue"] = _TERM_ANSWERS["bonus"]
+_TERM_ANSWERS["bonus share"] = _TERM_ANSWERS["bonus"]
+_TERM_ANSWERS["bonus shares"] = _TERM_ANSWERS["bonus"]
+_TERM_ANSWERS["split"] = _TERM_ANSWERS["stock split"]
+_TERM_ANSWERS["share split"] = _TERM_ANSWERS["stock split"]
+_TERM_ANSWERS["rights"] = _TERM_ANSWERS["rights issue"]
+_TERM_ANSWERS["right issue"] = _TERM_ANSWERS["rights issue"]
+_TERM_ANSWERS["ipo allotment"] = _TERM_ANSWERS["ipo"]
+_TERM_ANSWERS["ipo process"] = _TERM_ANSWERS["ipo"]
+_TERM_ANSWERS["upi ipo"] = _TERM_ANSWERS["asba"]
+_TERM_ANSWERS["asba ipo"] = _TERM_ANSWERS["asba"]
+_TERM_ANSWERS["corporate action"] = _TERM_ANSWERS["corporate actions"]
+_TERM_ANSWERS["stcg vs ltcg"] = _TERM_ANSWERS["stcg"]
+_TERM_ANSWERS["ltcg vs stcg"] = _TERM_ANSWERS["ltcg"]
+_TERM_ANSWERS["capital gains tax"] = _TERM_ANSWERS["stcg"]
+_TERM_ANSWERS["tax on shares"] = _TERM_ANSWERS["stcg"]
+_TERM_ANSWERS["tax on equity"] = _TERM_ANSWERS["stcg"]
+_TERM_ANSWERS["sebi"] = _TERM_ANSWERS["sebi investor protection"]
+_TERM_ANSWERS["investor protection"] = _TERM_ANSWERS["sebi investor protection"]
 _TERM_ANSWERS["delta gamma"] = _TERM_ANSWERS["gamma"]
 _TERM_ANSWERS["nifty p/e"] = _TERM_ANSWERS["nifty pe"]
 _TERM_ANSWERS["index pe"] = _TERM_ANSWERS["nifty pe"]
@@ -1683,7 +1855,9 @@ _TERM_ANSWERS["portfolio hedge"] = _TERM_ANSWERS["hedging with futures"]
 _TERM_ANSWERS["beta hedge"] = _TERM_ANSWERS["hedging with futures"]
 _TERM_ANSWERS["short selling"] = _TERM_ANSWERS["shorting futures"]
 _TERM_ANSWERS["shorting"] = _TERM_ANSWERS["shorting futures"]
-_TERM_ANSWERS["short delivery"] = _TERM_ANSWERS["shorting futures"]
+# Keep auction primer for "short delivery" (do not overwrite with shorting futures).
+_TERM_ANSWERS["short delivery"] = _TERM_ANSWERS["auction"]
+_TERM_ANSWERS["short-delivery"] = _TERM_ANSWERS["auction"]
 _TERM_ANSWERS["bid ask spread"] = _TERM_ANSWERS["impact cost"]
 _TERM_ANSWERS["bid ask"] = _TERM_ANSWERS["impact cost"]
 _TERM_ANSWERS["calendar spreads"] = _TERM_ANSWERS["calendar spread"]
@@ -1877,8 +2051,8 @@ def get_education_answer(query: str) -> Optional[str]:
     educational_cue = bool(
         re.search(
             r"\b(what is|what are|what happens|explain|define|definition|meaning of|formula|equation|"
-            r"how to calculate|tell me about|how does|how do|how are|how to start|"
-            r"complete guide|beginner|difference between)\b",
+            r"how to calculate|tell me about|how does|how do|how are|how to start|how to open|"
+            r"complete guide|beginner|difference between|vs\.?|versus)\b",
             q,
         )
     )
@@ -1923,7 +2097,15 @@ def get_education_answer(query: str) -> Optional[str]:
             r"mutual fund|\bnav\b|expense ratio|\bter\b|direct vs regular|"
             r"rolling returns|asset allocation|smart beta|emergency fund|"
             r"index fund|\betf\b|arbitrage fund|debt fund|equity fund|"
-            r"fund factsheet|financial planning)\b",
+            r"fund factsheet|financial planning|"
+            # Retail mechanics — allow without forcing "what is"
+            r"\bdemat\b|\bipo\b|\basba\b|\bgtt\b|brokerage|trading charges|"
+            r"\bstcg\b|\bltcg\b|capital gains|tax on (equity|shares|profit)|"
+            r"\bfii\b|\bdii\b|fii/?dii|"
+            r"\bbonus\b|stock split|share split|rights issue|"
+            r"\bcnc\b|\bmis\b|\bnrml\b|delivery vs|intraday vs|"
+            r"pledge|short delivery|auction market|corporate actions?|"
+            r"lot size|circuit limit|investor protection|\bsebi\b)\b",
             q,
         )
     )
@@ -1933,7 +2115,13 @@ def get_education_answer(query: str) -> Optional[str]:
         for term in _TERM_ANSWERS
         if term and _TERM_ANSWERS.get(term)
     )
-    if not educational_cue and not formula_cue and not bare_term and not literacy_cue:
+    # Multi-word / known glossary hits count as cues (fixes "how to open demat account").
+    glossary_hit = any(
+        (term in q) if (" " in term) else bool(re.search(r"\b" + re.escape(term) + r"\b", q))
+        for term, answer in _TERM_ANSWERS.items()
+        if answer and term and len(term) >= 3
+    )
+    if not educational_cue and not formula_cue and not bare_term and not literacy_cue and not glossary_hit:
         return None
 
     # Prefer specific TA terms over the broad "technical analysis" umbrella.
