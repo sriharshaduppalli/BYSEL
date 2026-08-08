@@ -143,10 +143,28 @@ _TERM_ANSWERS: dict[str, str] = {
         "(variance, correlation, VaR) differ.\n\n"
         "**Core toolkit BYSEL covers:** systematic vs unsystematic risk · expected portfolio return · "
         "variance/covariance/correlation · equity curve / drawdowns · VaR · position sizing "
-        "(% risk, % volatility, equity models) · Kelly · trading biases.\n\n"
+        "(% risk, % volatility, equity models) · **3-5-7 rule** · Kelly · trading biases.\n\n"
         "Stay solvent first — recovery after large losses is nonlinear.\n\n"
         "**Common mistake:** Focusing on entries while risking too much capital per trade.\n"
         "_Educational — Varsity-style Risk Management literacy, paraphrased._"
+    ),
+    "3-5-7 rule": (
+        "**3-5-7 Rule (risk management framework) — educational**\n\n"
+        "A simple capital-preservation checklist used by many active traders:\n\n"
+        "• **3% — single-trade risk:** risk no more than **~3% of capital** on one trade "
+        "(loss if the stop is hit, not full notional). "
+        "`Risk ₹ ≈ Equity × 0.03` → `Qty ≈ Risk ₹ / |Entry − Stop|`\n"
+        "• **5% — total open risk:** keep **combined open risk** across all positions "
+        "at or below **~5% of capital** (sum of per-trade stop risks)\n"
+        "• **7% — win payoff target:** aim for winners that deliver at least "
+        "**~7% favorable move / return** (or an edge that compounds enough to outrun "
+        "the smaller, controlled losses) so expectancy stays positive over many trades\n\n"
+        "**BYSEL paper-practice tip:** size with the stop distance first (3%), refuse "
+        "new entries that push total open risk past 5%, and prefer setups with room "
+        "toward ~7% upside vs the entry (or solid R:R).\n\n"
+        "**Common mistake:** Risking 3% of *notional position value* instead of 3% of "
+        "*account equity if stopped out*.\n"
+        "_Educational framework — not a guarantee; adapt to your risk profile._"
     ),
     "systematic risk": (
         "**Systematic vs Unsystematic Risk**\n\n"
@@ -199,7 +217,9 @@ _TERM_ANSWERS: dict[str, str] = {
         "**Position Sizing (Active Trader)**\n\n"
         "Answers: **how much** capital/risk for this trade — not where to enter.\n\n"
         "**Ideas:**\n"
-        "• Cap risk per trade (often ~0.5–2% of equity as *loss if stopped*, not full notional)\n"
+        "• Cap risk per trade (often ~0.5–2% of equity as *loss if stopped*, not full notional; "
+        "the **3-5-7 rule** uses a **3%** single-trade cap as a stricter beginner-friendly ceiling)\n"
+        "• Cap **total open risk** (e.g. **5%** across all open stops — see 3-5-7 rule)\n"
         "• Equity models: **core equity**, **total equity**, **reduced total equity** "
         "(locks only *locked-in* profits)\n"
         "• Van Tharp-style methods: units per fixed amount · % margin · **% volatility** (ATR)\n"
@@ -1972,6 +1992,12 @@ _TERM_ANSWERS["position size"] = _TERM_ANSWERS["position sizing"]
 _TERM_ANSWERS["kelly"] = _TERM_ANSWERS["kelly criterion"]
 _TERM_ANSWERS["kellys criterion"] = _TERM_ANSWERS["kelly criterion"]
 _TERM_ANSWERS["kelly's criterion"] = _TERM_ANSWERS["kelly criterion"]
+_TERM_ANSWERS["3 5 7 rule"] = _TERM_ANSWERS["3-5-7 rule"]
+_TERM_ANSWERS["3-5-7"] = _TERM_ANSWERS["3-5-7 rule"]
+_TERM_ANSWERS["357 rule"] = _TERM_ANSWERS["3-5-7 rule"]
+_TERM_ANSWERS["3–5–7 rule"] = _TERM_ANSWERS["3-5-7 rule"]
+_TERM_ANSWERS["three five seven rule"] = _TERM_ANSWERS["3-5-7 rule"]
+_TERM_ANSWERS["3% 5% 7% rule"] = _TERM_ANSWERS["3-5-7 rule"]
 _TERM_ANSWERS["cognitive bias"] = _TERM_ANSWERS["trading biases"]
 _TERM_ANSWERS["anchoring bias"] = _TERM_ANSWERS["trading biases"]
 _TERM_ANSWERS["confirmation bias"] = _TERM_ANSWERS["trading biases"]
@@ -2089,6 +2115,7 @@ def get_education_answer(query: str) -> Optional[str]:
             r"natural gas|government securities|\bg-?sec\b|treasury bill|t-bills?|"
             r"bond yield|\bsdl\b|cross currency|"
             r"risk management|position sizing|value at risk|\bvar\b|kelly criterion|"
+            r"3-5-7|3–5–7|357 rule|three five seven|"
             r"trading biases|equity curve|portfolio variance|expected return|"
             r"systematic risk|recovery trauma|portfolio optimization|"
             r"trading system|pair trading|pairs trading|density curve|adf test|"
@@ -2206,6 +2233,10 @@ def get_education_answer(query: str) -> Optional[str]:
                 r"\s*var\s*", q
             ) or re.search(r"\b(var|value at risk).{0,20}(95|99|portfolio|risk)\b", q):
                 return _TERM_ANSWERS["value at risk"]
+
+    # Prefer specific 3-5-7 framework over broad "risk management" umbrella.
+    if re.search(r"\b(3\s*[-–—]?\s*5\s*[-–—]?\s*7|357\s*rule|three\s+five\s+seven)\b", q):
+        return _TERM_ANSWERS["3-5-7 rule"]
 
     for term in sorted(_TERM_ANSWERS.keys(), key=len, reverse=True):
         answer = _TERM_ANSWERS.get(term)

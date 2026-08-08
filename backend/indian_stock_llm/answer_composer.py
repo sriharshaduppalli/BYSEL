@@ -1107,6 +1107,8 @@ def compose_structured_answer(
                     f"Target 2: {_fmt(plan.get('target_2'))}",
                     f"• Risk/reward: {_fmt(plan.get('risk_reward'))} | "
                     f"suggested qty (risk budget): {plan.get('position_qty_for_risk')}",
+                    "• Risk frame (3-5-7): ≤3% capital risk / trade · ≤5% total open risk · "
+                    "prefer ~7%+ favorable room on winners (paper checklist)",
                 ]
             )
             if plan.get("invalidation"):

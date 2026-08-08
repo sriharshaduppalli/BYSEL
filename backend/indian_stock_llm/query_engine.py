@@ -413,7 +413,7 @@ class StockMarketAssistant:
         # Phrase-level overrides beat sparse keyword ties.
         if re.search(r"\b(overbought|oversold|over.?bought|over.?sold)\b", qlow):
             return "overbought_check"
-        # Retail mechanics / tax / IPO / demat → literacy (not events_news / fundamentals).
+        # Retail mechanics / tax / IPO / demat / risk frameworks → literacy.
         if re.search(
             r"\b(gtt|brokerage|trading charges|asba|allotment|"
             r"cnc|mis|nrml|pledge|short delivery|auction market|"
@@ -421,7 +421,8 @@ class StockMarketAssistant:
             r"corporate actions?|how to open (a )?demat|demat account|"
             r"stcg|ltcg|capital gains|tax on (equity|shares|profits?)|"
             r"ipo (process|allotment|apply)|what is (an? )?ipo|"
-            r"fii/?\s*dii|investor protection)\b",
+            r"fii/?\s*dii|investor protection|"
+            r"3-5-7|3–5–7|357 rule|three five seven|risk management)\b",
             qlow,
         ):
             return "market_literacy"
