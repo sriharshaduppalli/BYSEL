@@ -98,8 +98,37 @@ class TemplateModelBackend:
             )
             if structured:
                 return structured
+
+            # Retry as stock_analysis when a live symbol is present — bare asks
+            # previously fell through to a raw grounding dump.
+            symbol = ""
+            if isinstance(market_context, dict):
+                symbol = str(market_context.get("symbol") or "").strip().upper()
+            if symbol and intent != "stock_analysis":
+                structured = compose_structured_answer(
+                    query=query,
+                    intent="stock_analysis",
+                    market_context=market_context,
+                    context_lines=context_lines,
+                    deterministic=deterministic,
+                )
+                if structured:
+                    return structured
         except Exception:
             pass
+
+        # Never dump Live quote / Full math / Live enrich bullets as the user answer.
+        symbol = ""
+        if isinstance(market_context, dict):
+            symbol = str(market_context.get("symbol") or "").strip().upper()
+        if symbol:
+            return (
+                f"**{symbol}**\n\n"
+                "I couldn't build a clean paper-practice summary from live feeds just now.\n\n"
+                f"Try: “Should I buy {symbol}?”, “{symbol} sentiment”, or "
+                f"“full math for {symbol}”.\n\n"
+                "_Educational only — not investment advice._"
+            )
 
         headers = {
             "market_calculations": "Indian market equations & calculations",
@@ -119,27 +148,40 @@ class TemplateModelBackend:
         title = headers.get(intent, f"Indian market insight ({category})")
         parts = [f"**{title}**", ""]
 
-        # Prefer live / sector lines; trim noisy NSE status dumps from bullets.
+        # Literacy / education only: keep short, non-raw snippets (skip live dumps).
         cleaned: list[str] = []
-        for line in context_lines:
+        for line in context_lines[:6]:
             text = line[2:].strip() if line.startswith("- ") else line
+            low = text.lower()
+            if any(
+                bad in low
+                for bad in (
+                    "live quote",
+                    "live enrich",
+                    "full math for",
+                    "quantitative + trade plan",
+                    "wilder rsi",
+                    "data_degraded",
+                )
+            ):
+                continue
             if "NSE market status" in text:
                 text = text.split("NSE market status")[0].strip().rstrip(".")
-            if text:
+            if text and len(text) < 280:
                 cleaned.append(text)
         if cleaned:
-            for text in cleaned[:8]:
+            for text in cleaned[:4]:
                 parts.append(f"• {text}")
         else:
-            parts.append("No grounded knowledge snippets matched this query.")
-
-        if deterministic:
-            parts.extend(["", "**Computed checks**", deterministic])
+            parts.append(
+                "Ask about a specific NSE/BSE symbol (e.g. “KAYNES sentiment”) "
+                "or a market concept (e.g. “what is RSI?”)."
+            )
 
         parts.extend(
             [
                 "",
-                "_Grounded by BYSEL Indian Stock LLM knowledge pack (equations, terms, sectors, symbols)._",
+                "_Grounded by BYSEL Indian Stock LLM — educational only._",
             ]
         )
         return "\n".join(parts)

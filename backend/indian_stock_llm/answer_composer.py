@@ -1022,15 +1022,25 @@ def compose_structured_answer(
         )
         return "\n".join(parts)
 
-    # ── Buy / sell / swing / analysis / prediction ──────────────────
+    # ── Buy / sell / swing / analysis / prediction / bare symbol asks ──
     if symbol and intent in {
         "price_action",
         "stock_analysis",
         "prediction",
         "fundamentals",
         "overbought_check",
+        "general_query",
+        "events_news",
     }:
         weekly = bool(re.search(r"\b(this week|weekly|swing)\b", q))
+        want_full_math = bool(
+            re.search(
+                r"\b(full math|all indicators|quant(?:itative)? stack|indicator stack|"
+                r"show (all )?math|p0 math|every indicator)\b",
+                q,
+            )
+            or intent in {"overbought_check", "market_calculations"}
+        )
         plan = p0.get("trade_plan") if isinstance(p0.get("trade_plan"), dict) else {}
         # Also accept trade_plan injected at market_context root.
         root_plan = ctx.get("trade_plan") if isinstance(ctx.get("trade_plan"), dict) else {}
@@ -1069,8 +1079,10 @@ def compose_structured_answer(
             stance = "SELL bias for short-term / avoid chasing; wait for cool-off toward support"
             rationale = f"{rationale}; short-horizon ask + overbought RSI"
 
+        company = str(ctx.get("company_name") or "").strip()
+        header = f"**{symbol}**" + (f" — {company}" if company else "") + " — paper-practice view"
         parts = [
-            f"**{symbol} — paper-practice trade plan**",
+            header,
             "",
             f"**Direct answer:** {stance}",
             f"**Why:** {rationale}",
@@ -1081,60 +1093,20 @@ def compose_structured_answer(
             parts.extend(
                 [
                     "",
-                    f"**Action:** {plan.get('action')} | score={plan.get('score')} | "
-                    f"confidence={_fmt(plan.get('confidence'), 2)} | horizon={plan.get('horizon')}",
+                    f"**Action:** {plan.get('action')} "
+                    f"(score {plan.get('score')}, confidence {_fmt(plan.get('confidence'), 2)}, "
+                    f"{plan.get('horizon') or 'swing'})",
                     f"• Entry zone: {entry_txt}",
                     f"• Stop: {_fmt(stop)} | Target 1: {_fmt(plan.get('target_1'))} | "
                     f"Target 2: {_fmt(plan.get('target_2'))}",
-                    f"• R:R={_fmt(plan.get('risk_reward'))} | qty for risk budget="
-                    f"{plan.get('position_qty_for_risk')} | kelly_frac(capped)="
-                    f"{_fmt(plan.get('kelly_fraction_capped'), 3)}",
-                    f"• Invalidation: {plan.get('invalidation')}",
+                    f"• Risk/reward: {_fmt(plan.get('risk_reward'))} | "
+                    f"suggested qty (risk budget): {plan.get('position_qty_for_risk')}",
                 ]
             )
-        parts.extend(
-            [
-                "",
-                f"• Price: {_fmt(price)}",
-                f"• RSI: {_fmt(tech.get('rsi'))}"
-                + (f" — {tech.get('rsi_interpretation')}" if tech.get("rsi_interpretation") else ""),
-                f"• Supertrend: {tech.get('supertrend') or (p0.get('supertrend') or {}).get('direction') or 'n/a'} "
-                f"| MACD hist: {_fmt(tech.get('macd_hist') or (p0.get('macd') or {}).get('histogram'))}",
-                f"• Trend: {tech.get('trend') or 'n/a'} | MAs: {tech.get('moving_averages') or 'n/a'}",
-                f"• Support: {_fmt(support)} | Resistance: {_fmt(resistance)}",
-                f"• Stop idea: {_fmt(stop)} | Target idea: {_fmt(take)}",
-            ]
-        )
-        if levels.get("risk_reward") or plan.get("risk_reward"):
-            parts.append(f"• Risk/reward cue: {plan.get('risk_reward') or levels.get('risk_reward')}")
-        if fund.get("pe") or fund.get("market_cap"):
-            parts.append(
-                f"• Fundamentals: P/E={_fmt(fund.get('pe'))}, "
-                f"mcap={fund.get('market_cap') or 'n/a'}, "
-                f"div={_safe_div_yield(fund.get('dividend_yield'))}"
-            )
-        if pre_signals:
-            parts.append("")
-            parts.append("**Signal stack:**")
-            # Accept both enrich keys and composer aliases.
-            seen: set[str] = set()
-            for key in (
-                "rsi_signal",
-                "trend_signal",
-                "ma_signal",
-                "macd_signal",
-                "valuation_signal",
-                "pe_signal",
-                "levels_signal",
-                "level_signal",
-                "week52_signal",
-                "sentiment_signal",
-            ):
-                val = pre_signals.get(key)
-                if val and val not in seen:
-                    parts.append(f"• {val}")
-                    seen.add(str(val))
-        # Multi-factor sentiment analysis (custom LLM).
+            if plan.get("invalidation"):
+                parts.append(f"• Invalidation: {plan.get('invalidation')}")
+
+        # Multi-factor sentiment — surface early so chat isn't buried in math.
         if sentiment_pack.get("ok") or sentiment.get("overall") or sentiment.get("composite_score") is not None:
             parts.append("")
             parts.append("**Sentiment analysis:**")
@@ -1145,12 +1117,12 @@ def compose_structured_answer(
             conf = sentiment_pack.get("confidence") or sentiment.get("confidence")
             score_txt = f"{score:+.2f}" if isinstance(score, (int, float)) else "n/a"
             conf_txt = f"{conf}" if conf is not None else "n/a"
-            parts.append(f"• Overall: {label} (score {score_txt}, confidence {conf_txt})")
+            parts.append(f"• Overall: **{label}** (score {score_txt}, confidence {conf_txt})")
             summary = sentiment_pack.get("summary") or sentiment.get("summary")
             if summary:
                 parts.append(f"• Read: {summary}")
             factors = sentiment_pack.get("factors") or sentiment.get("factors") or []
-            for fac in factors[:5]:
+            for fac in factors[:4]:
                 if isinstance(fac, dict) and fac.get("label"):
                     parts.append(f"• {fac.get('name')}: {fac.get('label')}")
             news_bd = (sentiment_pack.get("news") or {}).get("breakdown") or sentiment.get(
@@ -1163,7 +1135,57 @@ def compose_structured_answer(
                 if isinstance(ev, str) and ev.strip():
                     parts.append(f"  – {ev.strip()[:140]}")
 
-        if p0.get("ok"):
+        parts.extend(
+            [
+                "",
+                "**Key levels & tape:**",
+                f"• Price: {_fmt(price)}",
+                f"• RSI: {_fmt(tech.get('rsi'))}"
+                + (f" — {tech.get('rsi_interpretation')}" if tech.get("rsi_interpretation") else ""),
+                f"• Trend: {tech.get('trend') or 'n/a'}",
+                f"• Support: {_fmt(support)} | Resistance: {_fmt(resistance)}",
+                f"• Stop idea: {_fmt(stop)} | Target idea: {_fmt(take)}",
+            ]
+        )
+        st_dir = tech.get("supertrend") or (p0.get("supertrend") or {}).get("direction")
+        macd_h = tech.get("macd_hist") or (p0.get("macd") or {}).get("histogram")
+        if st_dir or macd_h is not None:
+            parts.append(
+                f"• Supertrend: {st_dir or 'n/a'} | MACD hist: {_fmt(macd_h)}"
+            )
+        if fund.get("pe") or fund.get("market_cap"):
+            parts.append(
+                f"• Fundamentals: P/E={_fmt(fund.get('pe'))}, "
+                f"mcap={fund.get('market_cap') or 'n/a'}, "
+                f"div={_safe_div_yield(fund.get('dividend_yield'))}"
+            )
+
+        # Compact signals (skip the noisy raw enrich dump).
+        if pre_signals:
+            parts.append("")
+            parts.append("**Signal highlights:**")
+            seen: set[str] = set()
+            for key in (
+                "sentiment_signal",
+                "rsi_signal",
+                "trend_signal",
+                "macd_signal",
+                "ma_signal",
+                "levels_signal",
+                "level_signal",
+                "valuation_signal",
+                "pe_signal",
+                "week52_signal",
+            ):
+                val = pre_signals.get(key)
+                if val and val not in seen:
+                    parts.append(f"• {val}")
+                    seen.add(str(val))
+                if len(seen) >= 5:
+                    break
+
+        # Full math only when the user asks for it — default chat stays readable.
+        if p0.get("ok") and want_full_math:
             parts.append("")
             parts.append("**Quantitative stack (computed):**")
             bb = p0.get("bollinger") or {}
@@ -1184,9 +1206,7 @@ def compose_structured_answer(
             )
             parts.append(
                 f"• ATR(14)={_fmt(p0.get('atr_14'))} | ATR stop={_fmt(atr_s.get('stop'))} | "
-                f"1R target={_fmt(atr_s.get('target_1r'))} | "
-                f"qty for ₹{atr_s.get('risk_rupees') or 5000} risk={atr_s.get('qty_for_risk', 'n/a')} | "
-                f"R:R={_fmt(atr_s.get('risk_reward'))} | E[R]@45%WR={_fmt(atr_s.get('expectancy_r_at_45pct_wr'), 3)}"
+                f"qty for ₹{atr_s.get('risk_rupees') or 5000} risk={atr_s.get('qty_for_risk', 'n/a')}"
             )
             parts.append(
                 f"• Supertrend={st.get('direction')} @{_fmt(st.get('line'))} | "
@@ -1196,43 +1216,33 @@ def compose_structured_answer(
                 f"• Pivots P={_fmt(piv.get('P'))} | S1={_fmt(piv.get('S1'))} | R1={_fmt(piv.get('R1'))}"
             )
             parts.append(
-                f"• Volume z20={_fmt(vol.get('zscore_20'))} | vs 20d avg={_fmt(vol.get('ratio_vs_20d_avg'))}x | "
-                f"delivery%={_fmt(vol.get('delivery_pct'))}"
+                f"• vs Nifty: RS20={_fmt(vs.get('rs_20d'), 3)} | β60="
+                f"{_fmt(vs.get('beta_60d') or vs.get('beta_fallback'), 3)}"
             )
             parts.append(
-                f"• vs Nifty: RS20={_fmt(vs.get('rs_20d'), 3)} RS60={_fmt(vs.get('rs_60d'), 3)} "
-                f"β60={_fmt(vs.get('beta_60d') or vs.get('beta_fallback'), 3)} "
-                f"β120={_fmt(vs.get('beta_120d'), 3)}"
+                f"• Sortino60={_fmt(rs.get('sortino_60d'), 3)} | maxDD60="
+                f"{_fmt(rs.get('max_drawdown_60d_pct'))}% | Vol z20={_fmt(vol.get('zscore_20'))}"
             )
-            parts.append(
-                f"• EY={_fmt(val.get('earnings_yield_pct'))}% | PEG={_fmt(val.get('peg'))} | "
-                f"EV/EBITDA={_fmt(val.get('ev_ebitda'))} | sector PE prem="
-                f"{_fmt(val.get('sector_pe_premium_pct'))}%"
-            )
-            parts.append(
-                f"• Sortino60={_fmt(rs.get('sortino_60d'), 3)} | maxDD60={_fmt(rs.get('max_drawdown_60d_pct'))}% | "
-                f"Calmar={_fmt(rs.get('calmar_60d'), 3)} | ADX≈{_fmt(p0.get('adx_approx'))} | "
-                f"StochK={_fmt((p0.get('stochastic') or {}).get('k'))}"
-            )
-            fo = p0.get("fo") or {}
-            if fo.get("lot_size"):
-                parts.append(
-                    f"• F&O: lot={fo.get('lot_size')} | notional/lot={_fmt(fo.get('notional_per_lot'))} | "
-                    f"margin≈{_fmt(fo.get('indicative_margin_per_lot'))} | HV20={_fmt(fo.get('hv20_pct'))}%"
-                )
-            costs = p0.get("india_costs") or {}
-            if costs.get("roundtrip_cost_pct_note"):
-                parts.append(f"• Costs: {costs.get('roundtrip_cost_pct_note')}")
             dq = p0.get("data_quality") or {}
             if dq.get("degraded"):
                 parts.append(
-                    f"• Data quality: partial feeds (ohlcv={dq.get('ohlcv_source')}, "
-                    f"delivery_ok={dq.get('delivery_ok')}, β120_ok={dq.get('beta120_ok')}) — confidence capped"
+                    "• Data quality: partial feeds — treat confidence as capped"
                 )
+        elif p0.get("ok"):
+            atr_s = p0.get("atr_stop") or {}
+            vs = p0.get("vs_nifty") or {}
+            parts.append("")
+            parts.append("**Quick math:**")
+            parts.append(
+                f"• ATR stop≈{_fmt(atr_s.get('stop') or stop)} | "
+                f"vs Nifty RS20≈{_fmt(vs.get('rs_20d'), 3)} | "
+                f"Wilder RSI≈{_fmt(p0.get('wilder_rsi_14') or tech.get('rsi'))}"
+            )
+            parts.append("_Ask “full math for {sym}” for the complete indicator stack._".format(sym=symbol))
 
         parts.append("")
         parts.append("**For (setup):**")
-        for item in (plan.get("reasons_for") or [])[:4]:
+        for item in (plan.get("reasons_for") or [])[:3]:
             parts.append(f"• {item}")
         if not plan.get("reasons_for"):
             if rsi is not None and rsi <= 30:
@@ -1242,20 +1252,21 @@ def compose_structured_answer(
 
         parts.append("")
         parts.append("**Against:**")
-        for item in (plan.get("reasons_against") or [])[:4]:
+        for item in (plan.get("reasons_against") or [])[:3]:
             parts.append(f"• {item}")
         if not plan.get("reasons_against"):
             parts.append("• Single-indicator calls fail in strong trends; confirm with volume/news.")
         if fund.get("pe") and _num(fund.get("pe")) and _num(fund.get("pe")) > 40:
             parts.append("• Rich valuation leaves less margin of safety on disappointment.")
 
-        if deterministic:
+        if deterministic and want_full_math:
             parts.extend(["", "**Computed checks**", deterministic])
         parts.extend(
             [
                 "",
-                "Paper-practice plan from deterministic math — not investment advice / not a price guarantee.",
-                "_Grounded by BYSEL Indian Stock LLM quantitative engine._",
+                "Paper-practice view from live quotes + sentiment + deterministic math — "
+                "not investment advice / not a price guarantee.",
+                "_Grounded by BYSEL Indian Stock LLM._",
             ]
         )
         return "\n".join(parts)

@@ -539,6 +539,15 @@ class StockMarketAssistant:
 
     def ask(self, query: str, market_context: dict | None = None) -> AssistantResponse:
         intent = self.classify_intent(query)
+        # Bare/vague stock asks ("KAYNES", "about INFY") classify as general_query and
+        # used to dump raw grounding bullets. Remap to stock_analysis when a live symbol
+        # is in play so the readable trade-plan + sentiment composer runs.
+        if (
+            intent == "general_query"
+            and isinstance(market_context, dict)
+            and str(market_context.get("symbol") or "").strip()
+        ):
+            intent = "stock_analysis"
         category = self._category_for_intent(intent)
         # prediction_signals is only filled for prediction intent below; keep defined.
         prediction_signals = None
@@ -856,6 +865,9 @@ class StockMarketAssistant:
                             "peers": market_context.get("peers") or [],
                             "pre_signals": market_context.get("pre_signals") or {},
                             "sentiment": market_context.get("sentiment") or {},
+                            "sentiment_pack": market_context.get("sentiment_pack")
+                            or normalized.get("sentiment_pack")
+                            or {},
                             "p0_math": market_context.get("p0_math") or {},
                             "trade_plan": (
                                 market_context.get("trade_plan")
