@@ -1274,7 +1274,10 @@ def compose_structured_answer(
                 f"vs Nifty RS20≈{_fmt(vs.get('rs_20d'), 3)} | "
                 f"Wilder RSI≈{_fmt(p0.get('wilder_rsi_14') or tech.get('rsi'))}"
             )
-            parts.append("_Ask “full math for {sym}” for the complete indicator stack._".format(sym=symbol))
+            # Plain text — Android AI chat renders raw Text (no markdown italics).
+            parts.append(
+                f'Tip: ask "full math for {symbol}" to see the complete indicator stack.'
+            )
 
         parts.append("")
         parts.append("**For (setup):**")
