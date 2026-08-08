@@ -178,6 +178,12 @@ def normalize_market_context(ctx: dict[str, Any] | None) -> dict[str, Any]:
         "sentiment_pack": (
             raw.get("sentiment_pack") if isinstance(raw.get("sentiment_pack"), dict) else {}
         ),
+        "news_headlines": (
+            list(raw.get("news_headlines") or [])
+            if isinstance(raw.get("news_headlines"), list)
+            else []
+        ),
+        "news_summary": raw.get("news_summary"),
         "p0_math": p0,
         "trade_plan": trade_plan,
     }
@@ -1130,10 +1136,38 @@ def compose_structured_answer(
             )
             if news_bd:
                 parts.append(f"• News mix: {news_bd}")
-            events = sentiment.get("recent_events") or []
+            events = list(sentiment.get("recent_events") or [])
+            if not events:
+                pack_heads = (sentiment_pack.get("news") or {}).get("headlines") or []
+                for h in pack_heads[:3]:
+                    if isinstance(h, dict) and h.get("title"):
+                        events.append(str(h.get("title")))
+                    elif isinstance(h, str) and h.strip():
+                        events.append(h.strip())
             for ev in events[:2]:
                 if isinstance(ev, str) and ev.strip():
                     parts.append(f"  – {ev.strip()[:140]}")
+
+        # Live news & sector trend — keep analysis grounded in current tape + headlines.
+        news_heads = list(ctx.get("news_headlines") or [])
+        if not news_heads:
+            for ev in sentiment.get("recent_events") or []:
+                if isinstance(ev, str) and ev.strip():
+                    news_heads.append(ev.strip())
+        if not news_heads:
+            for h in (sentiment_pack.get("news") or {}).get("headlines") or []:
+                if isinstance(h, dict) and h.get("title"):
+                    news_heads.append(str(h.get("title")))
+                elif isinstance(h, str) and h.strip():
+                    news_heads.append(h.strip())
+        sector_trend = sentiment.get("sector_trend")
+        if news_heads or sector_trend:
+            parts.append("")
+            parts.append("**News & trends:**")
+            if sector_trend:
+                parts.append(f"• Sector/tape cue: {sector_trend}")
+            for h in news_heads[:3]:
+                parts.append(f"• {str(h).strip()[:160]}")
 
         parts.extend(
             [

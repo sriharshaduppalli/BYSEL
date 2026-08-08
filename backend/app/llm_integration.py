@@ -740,9 +740,16 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
                     raise ValueError("no symbol for live sentiment")
                 filled = {}
                 if sent_sym not in {"NIFTY50", "NIFTY", "MARKET", "SENSEX"}:
-                    filled = ctx if (ctx.get("sentiment") or {}).get("overall") else _enrich_symbol_sync(
-                        sent_sym
+                    # Always sync-enrich so news headlines stay fresh even when a
+                    # prior sentiment label already exists on the request context.
+                    needs_headlines = not (
+                        ctx.get("news_headlines")
+                        or (ctx.get("sentiment") or {}).get("recent_events")
                     )
+                    if needs_headlines or not (ctx.get("technical") or {}).get("rsi"):
+                        filled = _enrich_symbol_sync(sent_sym)
+                    else:
+                        filled = ctx
                     if filled:
                         for key in (
                             "current_price",
@@ -756,6 +763,11 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
                         ):
                             if filled.get(key) not in (None, {}, [], ""):
                                 ctx[key] = filled.get(key)
+                        if filled.get("news_headlines"):
+                            sent = dict(ctx.get("sentiment") or {})
+                            if not sent.get("recent_events"):
+                                sent["recent_events"] = list(filled.get("news_headlines") or [])[:5]
+                            ctx["sentiment"] = sent
                 p0_for_sent = None
                 try:
                     p0_for_sent = build_p0_analysis_pack(sent_sym or "NIFTY50")
@@ -913,8 +925,13 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
         return None
 
     try:
-        # Always hydrate live enrich for stock asks when technicals are missing.
-        if symbol_hint and not (ctx.get("technical") or {}).get("rsi"):
+        # Hydrate live enrich when technicals OR news/sentiment headlines are missing.
+        needs_tech = symbol_hint and not (ctx.get("technical") or {}).get("rsi")
+        has_news = bool(ctx.get("news_headlines")) or bool(
+            (ctx.get("sentiment") or {}).get("recent_events")
+        )
+        needs_news = bool(symbol_hint) and not has_news
+        if symbol_hint and (needs_tech or needs_news):
             filled = _enrich_symbol_sync(symbol_hint)
             if filled:
                 for key in (
@@ -926,12 +943,32 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
                     "company_name",
                     "sector",
                     "pre_signals",
+                    "news_headlines",
                 ):
                     if filled.get(key) not in (None, {}, [], ""):
                         # Prefer fresh enrich for technical/levels; keep caller price if set.
                         if key == "current_price" and ctx.get("current_price") not in (None, "", "n/a"):
                             continue
+                        if key == "sentiment":
+                            # Merge so existing rule sentiment isn't wiped without news.
+                            merged_sent = dict(ctx.get("sentiment") or {})
+                            merged_sent.update(
+                                {k: v for k, v in (filled.get("sentiment") or {}).items() if v}
+                            )
+                            if filled.get("news_headlines") and not merged_sent.get("recent_events"):
+                                merged_sent["recent_events"] = list(filled.get("news_headlines") or [])[:5]
+                            ctx["sentiment"] = merged_sent
+                            continue
                         ctx[key] = filled.get(key)
+                if filled.get("news_headlines") and not ctx.get("news_headlines"):
+                    ctx["news_headlines"] = filled.get("news_headlines")
+                if ctx.get("news_headlines") and not ctx.get("news_summary"):
+                    try:
+                        from .stock_enricher import format_news_for_prompt
+
+                        ctx["news_summary"] = format_news_for_prompt(ctx["news_headlines"])
+                    except Exception:
+                        pass
 
         peers = []
         if re.search(r"\bcompare\b|\bvs\b|\bversus\b", cleaned.lower()):
@@ -1103,6 +1140,14 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
                     sent_ctx["confidence"] = sentiment_pack.get("confidence")
                     sent_ctx["summary"] = sentiment_pack.get("summary")
                     sent_ctx["factors"] = sentiment_pack.get("factors")
+                    # Prefer tagged/live headlines from the pack when enrich events are thin.
+                    pack_heads = (sentiment_pack.get("news") or {}).get("headlines") or []
+                    if pack_heads and not sent_ctx.get("recent_events"):
+                        sent_ctx["recent_events"] = [
+                            (h.get("title") if isinstance(h, dict) else str(h))
+                            for h in pack_heads[:5]
+                            if h
+                        ]
                     ctx["sentiment"] = sent_ctx
                     pre = dict(ctx.get("pre_signals") or {})
                     pre["sentiment_signal"] = (
@@ -1110,6 +1155,30 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
                         f"(score {sentiment_pack.get('composite_score'):+.2f})"
                     )
                     ctx["pre_signals"] = pre
+                    # Soft-bias paper trade plan with live news tone.
+                    plan = (p0_pack or {}).get("trade_plan") if p0_pack else None
+                    if isinstance(plan, dict) and plan.get("action"):
+                        n_score = float((sentiment_pack.get("news") or {}).get("score") or 0.0)
+                        n_ok = bool((sentiment_pack.get("news") or {}).get("ok"))
+                        if n_ok:
+                            fors = list(plan.get("reasons_for") or [])
+                            against = list(plan.get("reasons_against") or [])
+                            score = int(plan.get("score") or 0)
+                            if n_score >= 0.25:
+                                score += 1
+                                fors.append(
+                                    f"News tone constructive ({(sentiment_pack.get('news') or {}).get('breakdown') or 'positive bias'})"
+                                )
+                            elif n_score <= -0.25:
+                                score -= 1
+                                against.append(
+                                    f"News tone cautious ({(sentiment_pack.get('news') or {}).get('breakdown') or 'negative bias'})"
+                                )
+                            plan["score"] = score
+                            plan["reasons_for"] = fors[:8]
+                            plan["reasons_against"] = against[:8]
+                            if p0_pack is not None:
+                                p0_pack["trade_plan"] = plan
             except Exception as exc:
                 logger.debug("Sentiment pack attach failed: %s", exc)
                 sentiment_pack = None
@@ -1126,6 +1195,7 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
             "sector": ctx.get("sector"),
             "all_symbols": ctx.get("all_symbols") or [],
             "news_summary": ctx.get("news_summary"),
+            "news_headlines": ctx.get("news_headlines") or [],
             "pre_signals": ctx.get("pre_signals"),
             "peers": peers,
             "p0_math": p0_pack if p0_pack and p0_pack.get("ok") else None,

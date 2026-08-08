@@ -868,6 +868,11 @@ class StockMarketAssistant:
                             "sentiment_pack": market_context.get("sentiment_pack")
                             or normalized.get("sentiment_pack")
                             or {},
+                            "news_headlines": market_context.get("news_headlines")
+                            or normalized.get("news_headlines")
+                            or [],
+                            "news_summary": market_context.get("news_summary")
+                            or normalized.get("news_summary"),
                             "p0_math": market_context.get("p0_math") or {},
                             "trade_plan": (
                                 market_context.get("trade_plan")

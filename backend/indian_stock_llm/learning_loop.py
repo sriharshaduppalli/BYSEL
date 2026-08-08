@@ -386,8 +386,9 @@ class FeedbackLearningPipeline:
     ) -> bool:
         """Upsert a truncated grounded answer into the learned KB when quality gates pass.
 
-        Gates: confidence ≥ 0.55 and at least one citation. Content is truncated (~800 chars)
+        Gates: confidence ≥ 0.55 and at least one citation. Content is truncated (~1200 chars)
         and framed as educational retrieval material — not LoRA weights / tip guarantees.
+        Raw grounding dumps and empty shells are rejected so the KB only learns readable answers.
         """
         if learned_knowledge_path is None:
             return False
@@ -397,13 +398,43 @@ class FeedbackLearningPipeline:
         cleaned_answer = (answer or "").strip()
         if not cleaned_answer:
             return False
-        truncated = cleaned_answer[:800]
-        if len(cleaned_answer) > 800:
+        # Never promote the old raw grounding dump style into learned memory.
+        dump_markers = (
+            "Live quote snapshot for",
+            "Full math for ",
+            "| Wilder RSI(14)=",
+            "TRADE PLAN action=",
+            "• **Live quote ",
+            "• **Quantitative + trade plan",
+            "• **Live enrich ",
+        )
+        if any(m in cleaned_answer for m in dump_markers):
+            return False
+        if "**Indian market knowledge**" in cleaned_answer and "Live quote" in cleaned_answer:
+            return False
+        # Prefer richer structured answers for learning (plan + sentiment/news).
+        max_chars = 1200
+        if any(
+            marker in cleaned_answer
+            for marker in (
+                "**Sentiment analysis:**",
+                "**News & trends:**",
+                "**Direct answer:**",
+                "sentiment analysis",
+            )
+        ):
+            max_chars = 1600
+        truncated = cleaned_answer[:max_chars]
+        if len(cleaned_answer) > max_chars:
             truncated = truncated.rstrip() + "…"
         item_id = _slug_id("learned_ans", f"{intent}|{query.strip().lower()}")
         tags = list(_INTENT_TOP_TAGS.get(intent, [intent, "education"]))
         if "education" not in tags:
             tags.append("education")
+        if "Sentiment analysis" in cleaned_answer or "News & trends" in cleaned_answer:
+            for t in ("sentiment", "news", "live_context"):
+                if t not in tags:
+                    tags.append(t)
         item = {
             "id": item_id,
             "title": f"Grounded answer note: {query.strip()[:72]}",

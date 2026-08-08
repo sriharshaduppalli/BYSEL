@@ -2085,18 +2085,20 @@ async def ai_ask_endpoint(
             "sentiment": data.get("sentiment", {}),
         }
 
-        # Skip enrich when rule-engine already supplied tech+fund (avoids duplicate Yahoo).
-        # Fast path (no rule data) always enriches once — cached ~3 min.
-        has_rule_depth = bool(ctx["technical"]) and bool(ctx["fundamental"])
-        if symbol and not has_rule_depth:
+        # Always enrich when we have a symbol — cache (~3 min) keeps this cheap.
+        # Previously skipped when rule-engine already had tech+fund, which dropped
+        # live news headlines / news sentiment from Indian Stock LLM answers.
+        if symbol:
             try:
                 live = await enrich(symbol)
                 if live:
                     # Price
                     if not ctx["current_price"]:
                         ctx["current_price"] = live.get("current_price")
-                    ctx["company_name"] = live.get("company_name")
-                    ctx["sector"] = live.get("sector")
+                    if live.get("company_name"):
+                        ctx["company_name"] = live.get("company_name")
+                    if live.get("sector"):
+                        ctx["sector"] = live.get("sector")
 
                     # Fundamentals: live wins, rule-engine fills gaps
                     live_fund = live.get("fundamental", {})
@@ -2118,9 +2120,15 @@ async def ai_ask_endpoint(
                     rule_sent = {k: v for k, v in ctx["sentiment"].items() if v}
                     ctx["sentiment"] = {**live_sent, **rule_sent}
 
-                    headlines = live.get("news_headlines", [])
+                    headlines = live.get("news_headlines", []) or []
                     if headlines:
+                        ctx["news_headlines"] = headlines
                         ctx["news_summary"] = format_news_for_prompt(headlines)
+                        # Keep recent_events populated for composer + sentiment pack.
+                        sent = dict(ctx.get("sentiment") or {})
+                        if not sent.get("recent_events"):
+                            sent["recent_events"] = list(headlines[:5])
+                        ctx["sentiment"] = sent
 
                     # Pre-computed signal conclusions from enricher
                     if live.get("pre_signals"):
@@ -2156,7 +2164,7 @@ async def ai_ask_endpoint(
                     try:
                         from ..stock_enricher import link_news_to_price_moves
                         pct_change = rule_result.get("pct_change", 0)
-                        headlines = live.get("news_headlines", []) if 'live' in locals() else []
+                        headlines = live.get("news_headlines", []) if 'live' in locals() and live else []
 
                         if headlines and pct_change:
                             catalyst = link_news_to_price_moves(symbol, headlines, pct_change)
@@ -2212,7 +2220,9 @@ async def ai_ask_endpoint(
                         "sector",
                         "all_symbols",
                         "news_summary",
+                        "news_headlines",
                         "pre_signals",
+                        "catalyst_info",
                     ):
                         if enriched_ctx.get(key) not in (None, {}, [], ""):
                             llm_context[key] = enriched_ctx.get(key)
