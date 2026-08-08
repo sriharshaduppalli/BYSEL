@@ -1294,10 +1294,12 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
         "NEAR", "STRONG", "WEAK", "QUICK", "FAIR", "FAIRLY",
         "BLUE", "CHIP", "CHIPS", "ENTRY", "SETUP", "WITH", "FROM",
         "ABOUT", "AFTER", "BEFORE",
-        # non-stock nouns
+        # non-stock nouns / prompt filler mistaken for tickers
         "OUTLOOK", "IMPACT", "EFFECT", "POINT", "POINTS",
         "MONEY", "GAINS", "PAYING", "QUARTER", "QUARTERLY",
         "ANNUAL", "MONTHLY", "PEERS", "SECTOR",
+        "FULL", "MATH", "COMPLETE", "DETAILED", "QUANT", "QUANTITATIVE",
+        "STACK", "PLAN", "VIEW", "ZONE", "BIAS", "SCORE", "CHECK",
         # Android prompt-wrapper tokens
         "CONTEXT", "WALLET", "HOLDINGS", "HISTORY", "SYMBOL", "USER",
         "QUERY", "PORTFOLIOSCORE", "PCTCHANGE", "MARKETCAP",
@@ -1310,6 +1312,15 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
         "UNDER", "NIFTY", "INDEX",
     }
     q_upper = query.upper().strip()
+    # Prefer "… of/for/on TICKER" so "full math for KAYNES" resolves KAYNES, not FULL.
+    of_for = re.search(
+        r"\b(?:OF|FOR|ON)\s+([A-Z][A-Z0-9\-]{1,14})\b",
+        q_upper,
+    )
+    if of_for:
+        cand = of_for.group(1)
+        if cand not in _SKIP and len(cand) >= 2:
+            return _resolve_listed_symbol(cand)
     tokens = re.findall(r'\b[A-Z][A-Z0-9\-]{1,9}\b', q_upper)
     for tok in tokens:
         if tok not in _SKIP and len(tok) >= 3:
