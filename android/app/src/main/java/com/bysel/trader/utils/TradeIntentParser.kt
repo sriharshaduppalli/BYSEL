@@ -17,13 +17,20 @@ object TradeIntentParser {
 
     enum class Action { BUY, SELL, ALERT, ANALYZE }
 
-    private val KNOWN_FALSE_SYMBOLS = setOf(
+    /** Words that appear in AI prose / sentiment blocks but are not NSE tickers. */
+    val KNOWN_FALSE_SYMBOLS = setOf(
         "ONLY", "AFTER", "BEFORE", "WITH", "FROM", "THIS", "THAT", "THE", "AND",
         "FOR", "NEAR", "AROUND", "ABOVE", "BELOW", "WHEN", "THEN", "NOW", "BUY",
-        "SELL", "HOLD", "STRONG", "SIGNAL", "SCORE", "PRICE", "ENTRY", "TARGET",
-        "STOP", "LOSS", "ALERT", "TRADE", "DECISION", "BIAS", "ACTION", "NOTE",
-        "CONFIDENCE", "CONVICTION", "SWING", "INTRADAY", "ZONE", "SCORE", "PAPER",
-        "RISK", "REWARD", "QTY", "BUDGET", "INVALIDATION"
+        "SELL", "HOLD", "TRIM", "WAIT", "ACCUMULATE", "NEUTRAL", "STRONG",
+        "SIGNAL", "SCORE", "PRICE", "ENTRY", "TARGET", "STOP", "LOSS", "ALERT",
+        "TRADE", "DECISION", "BIAS", "ACTION", "NOTE", "CONFIDENCE", "CONVICTION",
+        "SWING", "INTRADAY", "ZONE", "PAPER", "RISK", "REWARD", "QTY", "BUDGET",
+        "INVALIDATION", "OVERALL", "DIRECT", "ANSWER", "WHY", "MEANING",
+        "SENTIMENT", "ANALYSIS", "LEGEND", "PRACTICE", "MILDLY", "BULLISH",
+        "BEARISH", "QUICK", "MATH", "FULL", "KEY", "LEVELS", "TAPE", "VIEW",
+        "CHART", "STACK", "QUANTITATIVE", "HORIZON", "STRENGTH", "REDUCE",
+        "LIGHTEN", "FRESH", "LONG", "SHORT", "STAGED", "ADDS", "DIPS", "CLEAR",
+        "EDGE", "EXIT", "AVOID", "SKIP", "SETUP", "IMPROVES",
     )
 
     private val BUY_PATTERN = Regex(
@@ -47,8 +54,9 @@ object TradeIntentParser {
     private val ALERT_ME = Regex(
         """(?i)\balert\s+me\b[^.]*?\b([A-Z]{2,20})\b[^.]*?(above|below|crosses?|at)\s*₹?\s*(\d+(?:\.\d+)?)"""
     )
+    // Avoid bare "analysis" — it false-matches "Sentiment analysis: … Overall …"
     private val ANALYZE_PATTERN = Regex(
-        """(?i)\b(?:analyze|analysis|technical analysis|fundamental analysis)\b[^.]*?([A-Z]{2,20})\b"""
+        """(?i)\b(?:analyze|technical analysis of|fundamental analysis of|chart for|view chart(?:\s+for)?)\b[^.]*?\b([A-Z][A-Z0-9.&-]{1,15})\b"""
     )
     private val PAREN_SYMBOL = Regex("""\(([A-Z][A-Z0-9.&-]{1,19})\)""")
     private val DECISION_BIAS = Regex("""(?i)decision\s+bias\s*:\s*\**\s*(strong[\s_]?buy|buy|accumulate|strong[\s_]?sell|sell|hold)""")

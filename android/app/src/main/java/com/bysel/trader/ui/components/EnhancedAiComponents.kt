@@ -8,6 +8,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -71,8 +75,12 @@ object ProfitSignalExtractor {
     private val TIMEFRAME_RE = Regex(
         """(?i)(?:timeframe|horizon|term|holding[\s-]?period)\s*[:\-]?\s*(short[\s-]?term|medium[\s-]?term|long[\s-]?term|swing|intraday|\d+\s*(?:day|week|month|year)s?)"""
     )
+    // Prefer header "**TICKER** — Company" / parenthetical tickers. Avoid prose bold like **Mildly**.
+    private val HEADER_SYMBOL_RE = Regex(
+        """(?m)^\*\*([A-Z][A-Z0-9.&-]{1,19})\*\*(?:\s*[—\-–].*)?$"""
+    )
     private val SYMBOL_RE = Regex(
-        """(?i)(?:for|analysis of|stock|symbol|trade decision)[:\s][^()\n]*\(([A-Z][A-Z0-9.&-]{1,19})\)|(?:for|analysis of|stock|symbol)[:\s]*([A-Z]{2,15})\b|\*\*([A-Z][A-Z0-9.&-]{1,19})\*\*|\(([A-Z][A-Z0-9.&-]{1,19})\)"""
+        """(?:for|analysis of|stock|symbol|trade decision)[:\s][^()\n]*\(([A-Z][A-Z0-9.&-]{1,19})\)|(?:for|analysis of|stock|symbol)[:\s]*([A-Z]{2,15})\b|\(([A-Z][A-Z0-9.&-]{1,19})\)"""
     )
 
     private fun parsePrice(raw: String?): Double? =
@@ -121,13 +129,54 @@ object ProfitSignalExtractor {
             ).uppercase().replace("_", " ")
         val confidence = parseConfidencePercent(CONFIDENCE_RE.find(text)?.groupValues?.getOrNull(1))
         val timeframe = TIMEFRAME_RE.find(text)?.groupValues?.getOrNull(1)
-        val matchedSymbol = SYMBOL_RE.find(text)?.groupValues
+        val matchedSymbol = resolveSymbol(text, contextSymbol)
+        val symbol = matchedSymbol.orEmpty()
+
+        return ProfitSignal(symbol, signal, entry, target, stopLoss, confidence, timeframe)
+    }
+
+    private fun resolveSymbol(text: String, contextSymbol: String?): String? {
+        contextSymbol?.trim()?.uppercase()?.takeIf { it.isNotBlank() && isPlausibleSymbol(it) }?.let {
+            return it
+        }
+        HEADER_SYMBOL_RE.find(text)?.groupValues?.getOrNull(1)?.uppercase()
+            ?.takeIf { isPlausibleSymbol(it) }
+            ?.let { return it }
+        return SYMBOL_RE.find(text)?.groupValues
             ?.drop(1)
             ?.firstOrNull { it.isNotBlank() }
             ?.uppercase()
-        val symbol = contextSymbol?.trim()?.uppercase()?.takeIf { it.isNotBlank() } ?: matchedSymbol.orEmpty()
+            ?.takeIf { isPlausibleSymbol(it) }
+    }
 
-        return ProfitSignal(symbol, signal, entry, target, stopLoss, confidence, timeframe)
+    private fun isPlausibleSymbol(symbol: String): Boolean {
+        if (symbol.length !in 2..20) return false
+        if (symbol in com.bysel.trader.utils.TradeIntentParser.KNOWN_FALSE_SYMBOLS) return false
+        // Reject Title Case prose that slipped through (real tickers are uppercase tokens).
+        if (symbol.any { it.isLowerCase() }) return false
+        return true
+    }
+}
+
+private val ACTION_STATE_MEANINGS = listOf(
+    "BUY" to "Fresh long bias — look for entries in the zone (paper)",
+    "ACCUMULATE" to "Staged adds on dips — avoid chasing strength (paper)",
+    "HOLD" to "No clear edge — stay flat or keep what you have (paper)",
+    "TRIM" to "Lighten / reduce on strength — not a full exit (paper)",
+    "SELL" to "Avoid fresh buys / cut exposure (paper)",
+    "WAIT" to "Skip for now — setup or data quality not ready (paper)",
+)
+
+fun actionStateMeaning(signal: String): String? {
+    val key = signal.trim().uppercase().replace('_', ' ')
+    return when {
+        key.contains("ACCUMULATE") -> ACTION_STATE_MEANINGS[1].second
+        key.contains("STRONG BUY") || key == "BUY" || key.startsWith("BUY ") -> ACTION_STATE_MEANINGS[0].second
+        key.contains("TRIM") -> ACTION_STATE_MEANINGS[3].second
+        key.contains("STRONG SELL") || key.contains("SELL") -> ACTION_STATE_MEANINGS[4].second
+        key.contains("WAIT") -> ACTION_STATE_MEANINGS[5].second
+        key.contains("HOLD") || key.contains("NEUTRAL") -> ACTION_STATE_MEANINGS[2].second
+        else -> null
     }
 }
 
@@ -139,8 +188,23 @@ fun ProfitSignalCard(
     onViewChart: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val isBullish = signal.signal.contains("BUY") || signal.signal.contains("ACCUMULATE")
-    val accentColor = if (isBullish) Color(0xFF00C853) else Color(0xFFE53935)
+    val signalKey = signal.signal.uppercase()
+    val isBullish = signalKey.contains("BUY") || signalKey.contains("ACCUMULATE")
+    val isNeutral = signalKey.contains("HOLD") || signalKey.contains("WAIT") || signalKey.contains("NEUTRAL")
+    val isTrim = signalKey.contains("TRIM")
+    val accentColor = when {
+        isBullish -> Color(0xFF00C853)
+        isTrim -> Color(0xFFF57C00)
+        isNeutral -> Color(0xFF757575)
+        else -> Color(0xFFE53935)
+    }
+    val trendIcon = when {
+        isBullish -> Icons.Default.TrendingUp
+        isNeutral -> Icons.Default.Remove
+        else -> Icons.Default.TrendingDown
+    }
+    val meaning = remember(signal.signal) { actionStateMeaning(signal.signal) }
+    var showLegend by remember { mutableStateOf(false) }
     val riskReward = if (signal.entry != null && signal.target != null && signal.stopLoss != null && signal.entry != signal.stopLoss) {
         kotlin.math.abs(signal.target - signal.entry) / kotlin.math.abs(signal.entry - signal.stopLoss)
     } else null
@@ -162,7 +226,7 @@ fun ProfitSignalCard(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Icon(
-                        imageVector = if (isBullish) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
+                        imageVector = trendIcon,
                         contentDescription = null,
                         tint = accentColor,
                         modifier = Modifier.size(18.dp)
@@ -185,6 +249,51 @@ fun ProfitSignalCard(
                             fontWeight = FontWeight.SemiBold,
                             color = accentColor,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+            }
+
+            meaning?.let {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = it,
+                    fontSize = 11.sp,
+                    color = Color(0xFF555555),
+                    lineHeight = 14.sp
+                )
+            }
+
+            TextButton(
+                onClick = { showLegend = !showLegend },
+                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+                modifier = Modifier.padding(top = 2.dp)
+            ) {
+                Text(
+                    text = if (showLegend) "Hide action legend" else "What do BUY / TRIM / HOLD mean?",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = accentColor
+                )
+            }
+            if (showLegend) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "Paper-practice states (not SEBI advice):",
+                        fontSize = 10.sp,
+                        color = Color(0xFF777777)
+                    )
+                    ACTION_STATE_MEANINGS.forEach { (label, desc) ->
+                        Text(
+                            text = "$label — ${desc.removeSuffix(" (paper)")}",
+                            fontSize = 10.sp,
+                            color = Color(0xFF444444),
+                            lineHeight = 13.sp
                         )
                     }
                 }

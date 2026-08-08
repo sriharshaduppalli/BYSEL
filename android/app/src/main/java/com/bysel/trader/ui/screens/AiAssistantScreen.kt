@@ -46,10 +46,13 @@ import com.bysel.trader.ui.components.PredictionReasoningCard
 import com.bysel.trader.ui.components.EventRiskCard
 import com.bysel.trader.ui.components.SentimentCard
 import com.bysel.trader.ui.components.QueryUnderstandingCard
+import com.bysel.trader.ui.components.AiChatStyledText
 import com.bysel.trader.ui.components.ProfitSignal
 import com.bysel.trader.ui.components.ProfitSignalCard
 import com.bysel.trader.ui.components.ProfitSignalExtractor
 import com.bysel.trader.utils.TradeIntentParser
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.IntrinsicSize
 @Composable
 fun AiAssistantScreen(
     chatHistory: List<ChatMessage>,
@@ -987,17 +990,26 @@ private fun ChatBubble(
         }
     }
 
-    val actionSymbol = profitSignal?.symbol?.takeIf { it.isNotBlank() }
-        ?: contextSymbol
+    // Prefer backend-attached symbol over text extraction (avoids OVERALL/TRIM false tickers).
+    val actionSymbol = contextSymbol
+        ?: profitSignal?.symbol?.takeIf { it.isNotBlank() }
+        ?: tradeIntents.firstOrNull { it.action == TradeIntentParser.Action.ANALYZE }?.symbol
         ?: tradeIntents.firstOrNull()?.symbol
 
+    val appTheme = LocalAppTheme.current
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (message.isUser) Alignment.End else Alignment.Start
     ) {
         Card(
             modifier = Modifier
-                .widthIn(max = 320.dp),
+                .widthIn(
+                    min = if (message.isUser) 0.dp else 0.dp,
+                    max = if (message.isUser) 320.dp else 420.dp,
+                )
+                .then(
+                    if (message.isUser) Modifier else Modifier.fillMaxWidth(0.96f)
+                ),
             shape = RoundedCornerShape(
                 topStart = 16.dp,
                 topEnd = 16.dp,
@@ -1005,17 +1017,46 @@ private fun ChatBubble(
                 bottomEnd = if (message.isUser) 4.dp else 16.dp
             ),
             colors = CardDefaults.cardColors(
-                containerColor = if (message.isUser) LocalAppTheme.current.primary else LocalAppTheme.current.card
-            )
+                containerColor = if (message.isUser) {
+                    appTheme.primary
+                } else {
+                    appTheme.card.copy(alpha = 0.96f)
+                }
+            ),
+            border = if (message.isUser) {
+                null
+            } else {
+                BorderStroke(1.dp, appTheme.primary.copy(alpha = 0.22f))
+            }
         ) {
             // Long-press select/copy — especially useful for AI answers (share alone isn't enough).
             SelectionContainer {
-                Text(
-                    text = message.text,
-                    color = if (message.isUser) LocalAppTheme.current.onPrimary else LocalAppTheme.current.text,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(12.dp),
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min)
+                ) {
+                    if (!message.isUser) {
+                        Box(
+                            modifier = Modifier
+                                .width(3.dp)
+                                .fillMaxHeight()
+                                .background(appTheme.primary.copy(alpha = 0.7f))
+                        )
+                    }
+                    AiChatStyledText(
+                        text = message.text,
+                        isUser = message.isUser,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(
+                                start = if (message.isUser) 12.dp else 12.dp,
+                                end = 14.dp,
+                                top = 12.dp,
+                                bottom = 14.dp,
+                            ),
+                    )
+                }
             }
         }
 
@@ -1175,7 +1216,7 @@ private fun ChatBubble(
         }
 
         // Profit Signal Card (extracted from AI response text)
-        if (profitSignal != null && profitSignal.symbol.isNotBlank()) {
+        if (profitSignal != null && (actionSymbol != null || profitSignal.symbol.isNotBlank())) {
             Spacer(modifier = Modifier.height(8.dp))
             val signalUpper = profitSignal.signal.uppercase()
             val isBearish = signalUpper.contains("SELL")
@@ -1183,16 +1224,21 @@ private fun ChatBubble(
                 ?: profitSignal.entry?.times(1.02)
                 ?: message.lastPrice?.times(1.02)
             val alertType = if (isBearish) "BELOW" else "ABOVE"
+            val cardSignal = if (actionSymbol != null && profitSignal.symbol != actionSymbol) {
+                profitSignal.copy(symbol = actionSymbol)
+            } else {
+                profitSignal
+            }
             ProfitSignalCard(
-                signal = profitSignal,
+                signal = cardSignal,
                 onBuy = if (onTradeAction != null && !isBearish) {
-                    { onTradeAction.invoke(profitSignal.symbol, "BUY", null) }
+                    { onTradeAction.invoke(cardSignal.symbol, "BUY", null) }
                 } else null,
                 onSetAlert = if (onAlertAction != null) {
-                    { onAlertAction.invoke(profitSignal.symbol, alertPrice, alertType) }
+                    { onAlertAction.invoke(cardSignal.symbol, alertPrice, alertType) }
                 } else null,
-                onViewChart = if (onNavigateToStock != null) {
-                    { onNavigateToStock.invoke(profitSignal.symbol) }
+                onViewChart = if (onNavigateToStock != null && cardSignal.symbol.isNotBlank()) {
+                    { onNavigateToStock.invoke(cardSignal.symbol) }
                 } else null,
                 modifier = Modifier.widthIn(max = 320.dp)
             )

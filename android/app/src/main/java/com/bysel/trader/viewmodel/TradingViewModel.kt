@@ -946,10 +946,17 @@ class TradingViewModel(
             _error.value = "Symbol is required"
             return
         }
+        if (!isPlausibleNseSymbol(normalizedSymbol)) {
+            _error.value = "Couldn't open chart — \"$normalizedSymbol\" is not a stock symbol"
+            return
+        }
 
+        // Set loading synchronously so Stock Detail never flashes "Stock not found"
+        // before the coroutine starts (common when opening Chart from AI replies).
+        _detailLoading.value = true
+        _selectedQuote.value = null
         resetStockDetailContext()
         viewModelScope.launch {
-            _detailLoading.value = true
             when (val r = repository.getQuote(normalizedSymbol)) {
                 is Result.Success -> {
                     _selectedQuote.value = r.data
@@ -961,6 +968,14 @@ class TradingViewModel(
             }
             _detailLoading.value = false
         }
+    }
+
+    /** Reject prose words that chat parsers sometimes treat as tickers (e.g. OVERALL). */
+    private fun isPlausibleNseSymbol(symbol: String): Boolean {
+        if (symbol.length !in 2..20) return false
+        if (!symbol.all { it.isLetterOrDigit() || it == '&' || it == '-' || it == '.' }) return false
+        if (symbol in com.bysel.trader.utils.TradeIntentParser.KNOWN_FALSE_SYMBOLS) return false
+        return true
     }
 
     fun fetchQuoteHistory(symbol: String, period: String = "1mo", interval: String = "1d") {

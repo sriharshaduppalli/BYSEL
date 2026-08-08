@@ -118,10 +118,29 @@ fun StockDetailScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(theme.surface),
+                .background(theme.surface)
+                .padding(24.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text("Stock not found", color = theme.text)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    "Stock not found",
+                    color = theme.text,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "That chart link didn’t resolve to a valid NSE symbol. Go back and try again from a stock-specific reply.",
+                    color = theme.textSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                OutlinedButton(onClick = onBackPress) {
+                    Text("Go back")
+                }
+            }
         }
         return
     }

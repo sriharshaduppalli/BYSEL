@@ -64,6 +64,34 @@ def _fmt(value: Any, digits: int = 2) -> str:
     return f"{n:.{digits}f}"
 
 
+# Paper-practice action states from signal_engine → shown in chat + UI legend.
+_ACTION_MEANINGS: dict[str, str] = {
+    "BUY": "Fresh long bias — look for entries in the zone (paper)",
+    "ACCUMULATE": "Staged adds on dips — avoid chasing strength (paper)",
+    "HOLD": "No clear edge — stay flat or keep what you have (paper)",
+    "TRIM": "Lighten / reduce on strength — not a full exit (paper)",
+    "SELL": "Avoid fresh buys / cut exposure (paper)",
+    "WAIT": "Skip for now — setup or data quality not ready (paper)",
+    "STRONG BUY": "High-conviction fresh long bias (paper)",
+    "STRONG SELL": "High-conviction exit / avoid (paper)",
+    "NEUTRAL": "No directional edge (paper)",
+}
+
+_ACTION_LEGEND_LINE = (
+    "**Action legend (paper practice):** "
+    "BUY = fresh long · ACCUMULATE = staged adds on dips · "
+    "HOLD = no clear edge · TRIM = lighten/reduce on strength · "
+    "SELL = exit/avoid · WAIT = skip until setup improves"
+)
+
+
+def _action_meaning(action: Any) -> str | None:
+    key = str(action or "").strip().upper().replace("_", " ")
+    if not key:
+        return None
+    return _ACTION_MEANINGS.get(key)
+
+
 def _safe_div_yield(value: Any) -> str:
     """Hide absurd yield strings from bad upstream scaling."""
     if value in (None, "", "N/A", "Not declared"):
@@ -1019,6 +1047,10 @@ def compose_structured_answer(
                 f"• Current paper stance: {plan.get('action')} | stop={_fmt(plan.get('stop'))} | "
                 f"T1={_fmt(plan.get('target_1'))}"
             )
+            meaning = _action_meaning(plan.get("action"))
+            if meaning:
+                parts.append(f"• Meaning: {meaning}")
+            parts.append(_ACTION_LEGEND_LINE)
         parts.extend(
             [
                 "",
@@ -1096,12 +1128,19 @@ def compose_structured_answer(
         if plan.get("action"):
             ez = plan.get("entry_zone") or []
             entry_txt = f"{_fmt(ez[0])} – {_fmt(ez[1])}" if len(ez) == 2 else "n/a"
+            meaning = _action_meaning(plan.get("action"))
             parts.extend(
                 [
                     "",
                     f"**Action:** {plan.get('action')} "
                     f"(score {plan.get('score')}, confidence {_fmt(plan.get('confidence'), 2)}, "
                     f"{plan.get('horizon') or 'swing'})",
+                ]
+            )
+            if meaning:
+                parts.append(f"• Meaning: {meaning}")
+            parts.extend(
+                [
                     f"• Entry zone: {entry_txt}",
                     f"• Stop: {_fmt(stop)} | Target 1: {_fmt(plan.get('target_1'))} | "
                     f"Target 2: {_fmt(plan.get('target_2'))}",
@@ -1113,6 +1152,7 @@ def compose_structured_answer(
             )
             if plan.get("invalidation"):
                 parts.append(f"• Invalidation: {plan.get('invalidation')}")
+            parts.extend(["", _ACTION_LEGEND_LINE])
 
         # Multi-factor sentiment — surface early so chat isn't buried in math.
         if sentiment_pack.get("ok") or sentiment.get("overall") or sentiment.get("composite_score") is not None:

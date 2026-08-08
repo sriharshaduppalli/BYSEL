@@ -49,4 +49,11 @@ class ProfitSignalExtractorTest {
         assertNotNull(signal)
         assertEquals(150.5, signal!!.target!!, 0.01)
     }
+
+    @Test
+    fun `header ticker wins over sentiment Overall or Mildly prose`() {
+        val signal = ProfitSignalExtractor.extract(sampleAnswer, contextSymbol = null)
+        assertNotNull(signal)
+        assertEquals("KAYNES", signal!!.symbol)
+    }
 }
