@@ -2317,18 +2317,39 @@ class TradingViewModel(
     @Suppress("UNCHECKED_CAST")
     private fun extractAiReferencePrice(response: AiAssistantResponse): Double? {
         fun asPositive(value: Any?): Double? = when (value) {
-            is Number -> value.toDouble().takeIf { it > 0.0 }
-            is String -> value.replace(",", "").toDoubleOrNull()?.takeIf { it > 0.0 }
+            is Number -> value.toDouble().takeIf { it >= 10.0 }
+            is String -> value.replace(",", "").toDoubleOrNull()?.takeIf { it >= 10.0 }
             else -> null
         }
 
-        val data = response.data ?: return null
-        asPositive(data["currentPrice"])?.let { return it }
-        asPositive(data["last"])?.let { return it }
-        asPositive(data["price"])?.let { return it }
-        val nested = data["quote"] as? Map<*, *>
-        asPositive(nested?.get("last"))?.let { return it }
-        asPositive(nested?.get("currentPrice"))?.let { return it }
+        // Top-level fields from /ai/ask (preferred).
+        asPositive(response.currentPrice)?.let { return it }
+
+        val data = response.data
+        if (data != null) {
+            asPositive(data["currentPrice"])?.let { return it }
+            asPositive(data["current_price"])?.let { return it }
+            asPositive(data["last"])?.let { return it }
+            asPositive(data["price"])?.let { return it }
+            val nested = data["quote"] as? Map<*, *>
+            asPositive(nested?.get("last"))?.let { return it }
+            asPositive(nested?.get("currentPrice"))?.let { return it }
+        }
+
+        // Fallback: parse "Price: 1334.8" / "Entry zone: …" from answer text.
+        val answer = response.answer
+        Regex("""(?i)(?:price|last)\s*[:\-]?\s*₹?\s*([\d,]{2,}(?:\.\d+)?)""")
+            .find(answer)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.let { asPositive(it) }
+            ?.let { return it }
+        Regex("""(?i)entry\s*zone\s*[:\-]?\s*₹?\s*([\d,]{2,}(?:\.\d+)?)""")
+            .find(answer)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.let { asPositive(it) }
+            ?.let { return it }
         return null
     }
 

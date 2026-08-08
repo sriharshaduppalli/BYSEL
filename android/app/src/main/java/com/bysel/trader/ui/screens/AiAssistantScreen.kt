@@ -858,16 +858,45 @@ private fun ChatBubble(
     }
 
     // Extract profit signal from AI response text (or synthesize from API symbol/price).
-    val profitSignal = remember(message.text, message.isUser, contextSymbol, message.lastPrice, message.signal) {
+    val profitSignal = remember(
+        message.text,
+        message.isUser,
+        contextSymbol,
+        message.lastPrice,
+        message.signal,
+        message.confidence,
+    ) {
         if (message.isUser) return@remember null
+        val apiConfidencePct = message.confidence
+            ?.takeIf { it > 0.0 }
+            ?.let { value ->
+                val pct = if (value <= 1.0) value * 100.0 else value
+                pct.toInt().coerceIn(1, 99)
+            }
         val extracted = ProfitSignalExtractor.extract(message.text, contextSymbol)
         when {
             extracted != null -> {
                 val symbol = extracted.symbol.ifBlank { contextSymbol.orEmpty() }
                 val signal = message.signal?.takeIf { it.isNotBlank() } ?: extracted.signal
-                extracted.copy(symbol = symbol, signal = signal)
+                val entry = when {
+                    extracted.entry != null && extracted.entry >= 10.0 -> extracted.entry
+                    message.lastPrice != null && message.lastPrice >= 10.0 -> message.lastPrice
+                    else -> extracted.entry
+                }
+                val target = extracted.target?.takeIf { it >= 10.0 }
+                    ?: entry?.times(1.05)
+                val stopLoss = extracted.stopLoss?.takeIf { it >= 10.0 }
+                    ?: entry?.times(0.97)
+                extracted.copy(
+                    symbol = symbol,
+                    signal = signal,
+                    entry = entry,
+                    target = target,
+                    stopLoss = stopLoss,
+                    confidence = extracted.confidence ?: apiConfidencePct,
+                )
             }
-            contextSymbol != null && message.lastPrice != null && message.lastPrice > 0.0 -> {
+            contextSymbol != null && message.lastPrice != null && message.lastPrice >= 10.0 -> {
                 val entry = message.lastPrice
                 ProfitSignal(
                     symbol = contextSymbol,
@@ -875,7 +904,7 @@ private fun ChatBubble(
                     entry = entry,
                     target = entry * 1.05,
                     stopLoss = entry * 0.97,
-                    confidence = null,
+                    confidence = apiConfidencePct,
                     timeframe = null,
                 )
             }

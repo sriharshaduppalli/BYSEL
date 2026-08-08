@@ -21,7 +21,9 @@ object TradeIntentParser {
         "ONLY", "AFTER", "BEFORE", "WITH", "FROM", "THIS", "THAT", "THE", "AND",
         "FOR", "NEAR", "AROUND", "ABOVE", "BELOW", "WHEN", "THEN", "NOW", "BUY",
         "SELL", "HOLD", "STRONG", "SIGNAL", "SCORE", "PRICE", "ENTRY", "TARGET",
-        "STOP", "LOSS", "ALERT", "TRADE", "DECISION", "BIAS", "ACTION", "NOTE"
+        "STOP", "LOSS", "ALERT", "TRADE", "DECISION", "BIAS", "ACTION", "NOTE",
+        "CONFIDENCE", "CONVICTION", "SWING", "INTRADAY", "ZONE", "SCORE", "PAPER",
+        "RISK", "REWARD", "QTY", "BUDGET", "INVALIDATION"
     )
 
     private val BUY_PATTERN = Regex(

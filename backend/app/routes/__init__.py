@@ -1882,8 +1882,15 @@ async def ai_ask_endpoint(
         # Optionally include other user-relevant fields if present
         if "symbol" in result and result.get("symbol"):
             user_response["symbol"] = result["symbol"]
-        if "current_price" in result:
+        if "current_price" in result and result.get("current_price") not in (None, "", 0, 0.0):
             user_response["current_price"] = result["current_price"]
+            # Also expose under data.* so older Android clients can read a reference price.
+            data = dict(user_response.get("data") or {})
+            data["currentPrice"] = result["current_price"]
+            data["price"] = result["current_price"]
+            user_response["data"] = data
+        if result.get("signal"):
+            user_response["signal"] = result.get("signal")
 
         # Keep follow-up chips linked to the answered stock / query.
         # Never invent stock chips for greetings / education / clarifiers.
@@ -2235,8 +2242,34 @@ async def ai_ask_endpoint(
                         **rule_result,
                         "answer": llm_result["answer"],
                     }
-                    if not merged.get("symbol") and llm_context.get("symbol"):
-                        merged["symbol"] = llm_context["symbol"]
+                    # Prefer ISM confidence / symbol / live price — rule_result often
+                    # has no confidence (or 0), which previously made the app show 0%.
+                    if llm_result.get("confidence") is not None:
+                        merged["confidence"] = llm_result.get("confidence")
+                    if llm_result.get("citations"):
+                        merged["citations"] = llm_result.get("citations")
+                    if not merged.get("symbol"):
+                        merged["symbol"] = (
+                            llm_result.get("symbol")
+                            or llm_context.get("symbol")
+                        )
+                    if merged.get("current_price") in (None, "", 0, 0.0):
+                        price = llm_context.get("current_price")
+                        if price not in (None, "", 0, 0.0):
+                            merged["current_price"] = price
+                    if not merged.get("signal"):
+                        # Surface paper-plan action for the Android profit card.
+                        try:
+                            import re as _re
+                            m = _re.search(
+                                r"\*\*Action:\*\*\s*(BUY|SELL|HOLD|TRIM|WAIT)",
+                                str(llm_result.get("answer") or ""),
+                                flags=_re.I,
+                            )
+                            if m:
+                                merged["signal"] = m.group(1).upper()
+                        except Exception:
+                            pass
                     if not merged.get("suggestions") and merged.get("symbol"):
                         try:
                             from ..ai_engine import _build_stock_suggestions

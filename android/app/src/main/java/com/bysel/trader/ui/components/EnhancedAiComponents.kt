@@ -45,18 +45,65 @@ data class ProfitSignal(
 )
 
 object ProfitSignalExtractor {
-    private val ENTRY_RE = Regex("""(?i)(?:entry|buy(?:\s+at)?|enter(?:\s+at)?|accumulate(?:\s+(?:near|around|at))?|current\s+price)[:\s]*₹?\s*([\d,]+(?:\.\d+)?)""")
-    private val TARGET_RE = Regex("""(?i)(?:target|upside|tp|take[\s-]?profit|price[\s-]?target|1[\s-]?month(?:\s+model)?(?:\s+move)?(?:\s+to)?)[:\s]*₹?\s*([\d,]+(?:\.\d+)?)""")
-    private val SL_RE = Regex("""(?i)(?:stop[\s-]?loss|sl|stop|downside[\s-]?risk|risk[\s-]?at)[:\s]*₹?\s*([\d,]+(?:\.\d+)?)""")
-    private val SIGNAL_RE = Regex("""(?i)(?:decision\s+bias\s*:\s*\**\s*)?(STRONG[\s_]?BUY|BUY|STRONG[\s_]?SELL|SELL|HOLD|ACCUMULATE|NEUTRAL)""")
-    private val CONFIDENCE_RE = Regex("""(?i)(?:confidence|conviction)[:\s]*(\d{1,3})%?""")
-    private val TIMEFRAME_RE = Regex("""(?i)(?:timeframe|horizon|term|holding[\s-]?period)[:\s]*(short[\s-]?term|medium[\s-]?term|long[\s-]?term|\d+\s*(?:day|week|month|year)s?)""")
-    private val SYMBOL_RE = Regex("""(?i)(?:for|analysis of|stock|symbol|trade decision)[:\s][^()\n]*\(([A-Z][A-Z0-9.&-]{1,19})\)|(?:for|analysis of|stock|symbol)[:\s]*([A-Z]{2,15})\b|\(([A-Z][A-Z0-9.&-]{1,19})\)""")
+    // Prefer structured Indian Stock LLM lines:
+    //   Entry zone: 3791.8 – 3856.3
+    //   Stop: 3669.2 | Target 1: 4136.9 | Target 2: 4324.0
+    //   Action: BUY (score 4, confidence 0.72, swing)
+    private val ENTRY_ZONE_RE = Regex(
+        """(?i)entry\s*zone\s*[:\-]?\s*₹?\s*([\d,]+(?:\.\d+)?)\s*(?:–|-|—|to)\s*₹?\s*([\d,]+(?:\.\d+)?)"""
+    )
+    private val ENTRY_RE = Regex(
+        """(?i)(?:^|\n|\*|•)\s*(?:entry(?:\s+price)?|buy\s+at|enter\s+at|accumulate\s+(?:near|around|at)|current\s+price)\s*[:\-]?\s*₹?\s*([\d,]{2,}(?:\.\d+)?)"""
+    )
+    private val TARGET_RE = Regex(
+        """(?i)(?:target\s*[12]|take[\s-]?profit|price[\s-]?target|upside(?:\s+target)?)\s*[:\-]?\s*₹?\s*([\d,]{2,}(?:\.\d+)?)"""
+    )
+    private val SL_RE = Regex(
+        """(?i)(?:stop[\s-]?loss|\bsl\b|atr\s*stop|stop\s*idea|\bstop\b)\s*[:\-]?\s*₹?\s*([\d,]{2,}(?:\.\d+)?)"""
+    )
+    private val PRICE_RE = Regex("""(?i)(?:^|\n|\*|•)\s*price\s*[:\-]?\s*₹?\s*([\d,]{2,}(?:\.\d+)?)""")
+    private val SIGNAL_RE = Regex(
+        """(?i)(?:\*\*Action:\*\*|decision\s+bias\s*:|Direct answer:\**)\s*\**\s*(STRONG[\s_]?BUY|BUY|STRONG[\s_]?SELL|SELL|HOLD|TRIM|WAIT|ACCUMULATE|NEUTRAL)"""
+    )
+    private val SIGNAL_FALLBACK_RE = Regex("""(?i)\b(STRONG[\s_]?BUY|STRONG[\s_]?SELL|ACCUMULATE|BUY|SELL|HOLD|TRIM|WAIT)\b""")
+    // Matches "confidence 0.72", "confidence: 72%", "conviction 72"
+    private val CONFIDENCE_RE = Regex("""(?i)(?:confidence|conviction)\s*[=:]?\s*(\d+(?:\.\d+)?)\s*%?""")
+    private val TIMEFRAME_RE = Regex(
+        """(?i)(?:timeframe|horizon|term|holding[\s-]?period)\s*[:\-]?\s*(short[\s-]?term|medium[\s-]?term|long[\s-]?term|swing|intraday|\d+\s*(?:day|week|month|year)s?)"""
+    )
+    private val SYMBOL_RE = Regex(
+        """(?i)(?:for|analysis of|stock|symbol|trade decision)[:\s][^()\n]*\(([A-Z][A-Z0-9.&-]{1,19})\)|(?:for|analysis of|stock|symbol)[:\s]*([A-Z]{2,15})\b|\*\*([A-Z][A-Z0-9.&-]{1,19})\*\*|\(([A-Z][A-Z0-9.&-]{1,19})\)"""
+    )
+
+    private fun parsePrice(raw: String?): Double? =
+        raw?.replace(",", "")?.toDoubleOrNull()?.takeIf { it >= 10.0 }
+
+    /** Convert "0.72" / "72" / "72%" style captures into 0–100 percent. */
+    fun parseConfidencePercent(raw: String?): Int? {
+        val value = raw?.toDoubleOrNull() ?: return null
+        val pct = when {
+            value <= 0.0 -> return null
+            value <= 1.0 -> value * 100.0 // 0.72 → 72
+            value <= 100.0 -> value
+            else -> return null
+        }
+        return pct.toInt().coerceIn(1, 99)
+    }
 
     fun extract(text: String, contextSymbol: String? = null): ProfitSignal? {
-        var entry = ENTRY_RE.find(text)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
-        var target = TARGET_RE.find(text)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
-        var stopLoss = SL_RE.find(text)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
+        val zone = ENTRY_ZONE_RE.find(text)
+        val zoneLow = parsePrice(zone?.groupValues?.getOrNull(1))
+        val zoneHigh = parsePrice(zone?.groupValues?.getOrNull(2))
+        var entry = when {
+            zoneLow != null && zoneHigh != null -> (zoneLow + zoneHigh) / 2.0
+            zoneLow != null -> zoneLow
+            else -> parsePrice(ENTRY_RE.find(text)?.groupValues?.getOrNull(1))
+        }
+        var target = parsePrice(TARGET_RE.find(text)?.groupValues?.getOrNull(1))
+        var stopLoss = parsePrice(SL_RE.find(text)?.groupValues?.getOrNull(1))
+        if (entry == null) {
+            entry = parsePrice(PRICE_RE.find(text)?.groupValues?.getOrNull(1))
+        }
 
         // Derive actionable levels from current price when AI reply only has price + signal.
         if (entry != null && target == null && stopLoss == null) {
@@ -67,9 +114,13 @@ object ProfitSignalExtractor {
         // Need at least entry+target or target+stopLoss to show a useful card
         if (entry == null && target == null && stopLoss == null) return null
 
-        val signal = SIGNAL_RE.find(text)?.groupValues?.get(1)?.uppercase()?.replace("_", " ") ?: "HOLD"
-        val confidence = CONFIDENCE_RE.find(text)?.groupValues?.get(1)?.toIntOrNull()
-        val timeframe = TIMEFRAME_RE.find(text)?.groupValues?.get(1)
+        val signal = (
+            SIGNAL_RE.find(text)?.groupValues?.getOrNull(1)
+                ?: SIGNAL_FALLBACK_RE.find(text)?.groupValues?.getOrNull(1)
+                ?: "HOLD"
+            ).uppercase().replace("_", " ")
+        val confidence = parseConfidencePercent(CONFIDENCE_RE.find(text)?.groupValues?.getOrNull(1))
+        val timeframe = TIMEFRAME_RE.find(text)?.groupValues?.getOrNull(1)
         val matchedSymbol = SYMBOL_RE.find(text)?.groupValues
             ?.drop(1)
             ?.firstOrNull { it.isNotBlank() }

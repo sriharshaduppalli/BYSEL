@@ -221,6 +221,8 @@ data class AiAssistantResponse(
     val stocks: List<Map<String, Any>>? = null,
     val source: String = "rule-engine",
     val confidence: Double? = null,
+    @com.google.gson.annotations.SerializedName("current_price")
+    val currentPrice: Double? = null,
     @com.google.gson.annotations.SerializedName("tier_requested")
     val tierRequested: String? = null,
     val citations: List<String>? = null,
