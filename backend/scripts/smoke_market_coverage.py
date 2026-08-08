@@ -38,6 +38,13 @@ QUERIES = [
     ("What is a double top?", ["double top", "breakout"]),
     ("Explain cup and handle pattern", ["cup", "handle"]),
     ("What is a harami candlestick?", ["harami", "spinning"]),
+    ("What is Dow Theory?", ["primary", "volume"]),
+    ("Explain Elliott Wave theory", ["impulse", "corrective"]),
+    ("What are breakaway and exhaustion gaps?", ["breakaway", "exhaustion"]),
+    ("Leading vs lagging indicators", ["leading", "lagging"]),
+    ("Day trading strategies scalping and momentum", ["scalping", "momentum"]),
+    ("Trading psychology and risk management", ["stop", "risk"]),
+    ("What is the NCFM Technical Analysis module?", ["ncfm", "candle"]),
 ]
 
 

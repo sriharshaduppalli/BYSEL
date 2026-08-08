@@ -12,29 +12,33 @@ from typing import Optional
 _TERM_ANSWERS: dict[str, str] = {
     "rsi": (
         "**RSI (Relative Strength Index)**\n\n"
-        "RSI measures recent price strength on a 0–100 scale.\n\n"
+        "RSI is a **momentum oscillator** (0–100) — best as a *leading* cue in ranging markets; "
+        "less reliable alone in strong trends.\n\n"
         "**Equation:**\n"
         "`RSI = 100 − (100 / (1 + RS))`\n"
         "`RS = Average Gain / Average Loss` over N periods (commonly 14)\n\n"
-        "**How to read:**\n"
-        "• Above 70 → often overbought\n"
-        "• Below 30 → often oversold\n"
-        "• Around 50 → neutral momentum\n\n"
-        "**NSE tip:** Use RSI with support/resistance — alone it can stay overbought in strong trends "
-        "(common in momentum names like RELIANCE during rallies).\n\n"
-        "**Common mistake:** Buying only because RSI < 30 without checking trend and volume."
+        "**Classic reads:**\n"
+        "• Cross back below ~70 after overbought → short/fade cue (with structure)\n"
+        "• Cross back above ~30 after oversold → long cue\n"
+        "• **Divergence:** price new high + RSI lower high → bearish warning; "
+        "price new low + RSI higher low → bullish warning\n\n"
+        "**Advanced zone idea (literacy):** in bull phases some watch ~70 / ~40; "
+        "in bear phases ~60 / ~30 — RSI can stay “overbought” for long stretches in trends.\n\n"
+        "**NSE tip:** Pair with S/R and volume; use ADX/trend filter before fading extremes.\n\n"
+        "**Common mistake:** Shorting every RSI > 70 in a strong Nifty bull leg."
     ),
     "macd": (
         "**MACD (Moving Average Convergence Divergence)**\n\n"
-        "MACD tracks trend and momentum using EMAs.\n\n"
+        "Hybrid **trend + momentum** tool (Gerald Appel). Uses EMAs so it lags less than "
+        "simple two-MA systems, but still lags sharp turns.\n\n"
         "**Equations:**\n"
         "`MACD Line = EMA(12) − EMA(26)`\n"
         "`Signal Line = EMA(9) of MACD Line`\n"
         "`Histogram = MACD Line − Signal Line`\n\n"
-        "**How to use:**\n"
-        "• MACD crossing above Signal → bullish momentum shift\n"
-        "• Crossing below → bearish shift\n"
-        "• Histogram expanding → momentum strengthening\n\n"
+        "**Signal families:**\n"
+        "• Fast/slow **crossover** (best when away from the zero line)\n"
+        "• **Centerline** cross — above 0 bullish momentum bias; below 0 bearish\n"
+        "• **Divergence** vs price — often rarer but more meaningful for turns\n\n"
         "**Common mistake:** Trading every tiny cross in a sideways market."
     ),
     "pe": (
@@ -102,7 +106,10 @@ _TERM_ANSWERS: dict[str, str] = {
         "`Middle Band = SMA(N)` (often 20)\n"
         "`Upper Band = Middle + k × StdDev`\n"
         "`Lower Band = Middle − k × StdDev` (k often 2)\n\n"
-        "Bands widen in high volatility and contract in quiet markets.\n\n"
+        "**Literacy cues:** squeeze (bands contract) often precedes a larger move; "
+        "walks outside the band can continue a breakout; a top/bottom *outside* the band "
+        "followed by a top/bottom *inside* can warn of reversal. Upper/lower act as "
+        "dynamic resistance/support zones — not hard walls.\n\n"
         "**Common mistake:** Fading every touch of the upper band in a strong uptrend."
     ),
     "sharpe": (
@@ -742,22 +749,30 @@ _TERM_ANSWERS: dict[str, str] = {
         "**SMA (Simple Moving Average)**\n\n"
         "**Equation:**\n"
         "`SMA(N) = (P1 + P2 + … + PN) / N`\n\n"
-        "Common lengths: 20, 50, 200. Price above rising 200-SMA is often treated as a long-term uptrend.\n\n"
-        "**Common mistake:** Acting on every tiny SMA cross without volume/trend context."
+        "Equal weight on each bar — a classic **lagging / trend-following** tool. "
+        "Common lengths: 21, 50, 89, 150, 200 (and weekly analogues).\n\n"
+        "**Uses:** trend direction (MA rising/falling), price vs MA location, "
+        "price↔MA or dual-MA **crossovers**, dynamic S/R. Longer MAs (e.g. 200-day) "
+        "are watched on Nifty/Sensex as major pivots.\n\n"
+        "**Common mistake:** Using MAs in tight trading ranges (many whipsaws)."
     ),
     "ema": (
         "**EMA (Exponential Moving Average)**\n\n"
-        "Like SMA but weights recent prices more heavily. Used in MACD (12/26/9).\n\n"
+        "Like SMA but weights recent prices more (`Multiplier ≈ 2/(N+1)`). "
+        "Reacts faster — useful for shorter horizons; used in MACD (12/26/9).\n\n"
+        "Trade-off: more sensitivity → earlier signals **and** more false breaks. "
+        "Pick length/type per stock behaviour; always pair with risk rules.\n\n"
         "**Common mistake:** Assuming EMA is always better than SMA — both lag in choppy markets."
     ),
     "support": (
         "**Support & Resistance**\n\n"
-        "**Support:** zone where demand historically appears and declines may pause/reverse "
-        "(prior swing lows, bases, volume nodes).\n"
-        "**Resistance:** zone where supply appears and rallies may stall.\n\n"
-        "Construction: swing highs/lows, round numbers, prior congestions. "
-        "Targets often next S/R; breakouts prefer volume. Drawbacks: zones are fuzzy; "
-        "obvious levels attract stop clusters.\n\n"
+        "**Support:** horizontal (or angled) floor where demand can halt a decline.\n"
+        "**Resistance:** ceiling where supply can halt a rally.\n"
+        "Think **zones**, not single ticks — especially on weekly charts. "
+        "Break of support often turns that zone into resistance (and vice versa).\n\n"
+        "Construction: swing highs/lows, congestions, round numbers, prior gaps. "
+        "Markets “remember” levels traded with time and volume. Breakouts prefer "
+        "participation (volume); failed breaks reverse fast.\n\n"
         "**Common mistake:** Stops exactly on round-number support, or shorting first touch "
         "of resistance in a strong uptrend."
     ),
@@ -1482,16 +1497,39 @@ _TERM_ANSWERS: dict[str, str] = {
         "**Common mistake:** Expecting dividends every quarter from every company."
     ),
     "technical analysis": (
-        "**Technical Analysis (TA) — beginner**\n\n"
-        "TA studies **price and volume** history (charts, candles, indicators) to frame timing and risk.\n"
-        "**Fundamental analysis (FA)** studies business quality and valuation.\n\n"
-        "TA adapts across stocks, indices, commodities and timeframes — but expects **probabilistic** "
-        "edges with stops, not guaranteed multi-year wealth.\n\n"
-        "**Building blocks BYSEL covers:** candlesticks, **chart patterns**, S/R, volume, MAs, "
-        "RSI, MACD, Bollinger, Fibonacci, Dow-style trends, pivots/CPR, ATR stops, "
-        "breakout confirmation & protective stops.\n\n"
+        "**Technical Analysis (TA) — beginner (NCFM-style literacy)**\n\n"
+        "TA forecasts probable price behaviour from **past price, volume, and (for F&O) open interest** "
+        "on charts — across intraday to multi-year frames. FA asks *why* a price should be fair; "
+        "TA focuses on *what* price is doing (supply vs demand).\n\n"
+        "**Three classic assumptions:**\n"
+        "1. **Market discounts everything** — known news, psychology, and fundamentals are in the price\n"
+        "2. **Prices move in trends** — once a trend is established, continuation is more likely than random flips\n"
+        "3. **History tends to rhyme** — crowd reactions create repeating chart patterns\n\n"
+        "**Strengths:** universal across instruments; focuses on timing/entry; maps S/R and risk; "
+        "charts are a fast pictorial history. **Weaknesses:** subjective, open to bias, signals can "
+        "arrive late, “always another level,” and not every pattern works the same on every stock.\n\n"
+        "**Top-down idea:** index → promising sectors → shortlist stocks → manage risk.\n"
+        "Many practitioners treat markets as heavily **psychological** — capital preservation "
+        "beats maximising every profit.\n\n"
+        "**Building blocks BYSEL covers:** candles, chart patterns, S/R, volume, MAs, RSI, MACD, "
+        "Stochastic, Bollinger, MFI, Fib, Dow / Elliott literacy, pivots/CPR, ATR / 3-5-7 risk.\n\n"
         "**Common mistake:** Using every indicator at once with no written risk plan.\n"
-        "_Educational — Varsity / classic CMT-style TA literacy, paraphrased._"
+        "_Educational paraphrase of classic / NCFM TA frameworks — not NSE copyrighted text "
+        "and not investment advice._"
+    ),
+    "ncfm technical analysis": (
+        "**NCFM Technical Analysis Module (NSE education path) — educational**\n\n"
+        "NSE’s **NCFM** programme includes a **Technical Analysis** certification module "
+        "(curriculum on nseindia.com → Education → Certifications). Typical exam style: "
+        "objective questions, timed test, pass marks and certificate validity as published by NSE "
+        "(verify live fee/duration/pass % on the exchange site — they change).\n\n"
+        "**Curriculum weight (classic outline):** Intro to TA · Candle charts · Pattern study · "
+        "Indicators & oscillators · Trading strategies · Dow & Elliott · Psychology & risk.\n\n"
+        "Related paths often mentioned alongside: other NCFM modules, **NISM** exams "
+        "(e.g. equity derivatives for sales/approved users), FPSB/CFP tracks — each has its own "
+        "rules. BYSEL teaches the *concepts* for paper practice; a certificate is separate.\n\n"
+        "**Common mistake:** Treating a certificate as a guaranteed trading edge without a risk plan.\n"
+        "_Check www.nseindia.com for current modules, fees, and updates._"
     ),
     "market timings": (
         "**Indian market timings (from 3 Aug 2026)**\n\n"
@@ -1543,9 +1581,11 @@ _TERM_ANSWERS: dict[str, str] = {
     ),
     "doji": (
         "**Doji & Spinning Top**\n\n"
-        "**Doji:** open ≈ close → indecision. After a strong trend it can warn of pause/reversal "
-        "(needs confirmation).\n"
-        "**Spinning top:** small body, longer wicks → buyers and sellers both active, balance.\n\n"
+        "**Doji:** open ≈ close (or nearly) → indecision / tug-of-war. Meaningful mainly when "
+        "dojis are *not* common on that chart (very short intraday frames print many near-dojis). "
+        "After a long white candle in an uptrend, a doji is a stronger warning that buyers are "
+        "hesitant — still wait for confirmation. Bottoms often need more confirmation than tops.\n"
+        "**Spinning top:** small body, longer wicks → balance / pause.\n\n"
         "**Common mistake:** Exiting a healthy trend on a single Doji with no follow-through."
     ),
     "hammer": (
@@ -1618,11 +1658,19 @@ _TERM_ANSWERS: dict[str, str] = {
         "**Common mistake:** Treating 61.8% as destiny without confluence or a stop."
     ),
     "dow theory": (
-        "**Dow Theory (trend framework)**\n\n"
-        "• **Primary trend** — months to years (main tide)\n"
-        "• **Secondary trend** — weeks to months (corrective waves)\n"
-        "• **Minor trend** — days (noise)\n\n"
-        "Also watch consolidations / flag-like pauses and always check **risk:reward** before entry.\n\n"
+        "**Dow Theory (Charles Dow — trend framework)**\n\n"
+        "Six classic principles (literacy):\n"
+        "1. **Price discounts information** (ex-natural disasters)\n"
+        "2. Market has **three trends** — primary (main tide, often >1 year), secondary "
+        "(weeks–months corrections/pullbacks), minor (days — noise)\n"
+        "3. Primary trend has **three phases** — accumulation → public participation → distribution\n"
+        "4. **Averages should confirm** each other (Dow used Industrials + Rails/Transports)\n"
+        "5. **Volume confirms** the primary trend (expanding with the trend’s direction)\n"
+        "6. Trend stays until a **clear reversal** (higher highs/lows vs lower highs/lows)\n\n"
+        "Bullish primary: successive higher peaks and higher troughs. "
+        "Bearish primary: lower peaks and lower troughs.\n\n"
+        "**Limits:** confirmation can be late; today’s economy is more than industrials+transports "
+        "(tech/banks matter for Nifty). Still the root of HH/HL trend language.\n\n"
         "**Common mistake:** Fighting the primary trend with every minor dip."
     ),
     "cpr": (
@@ -1689,13 +1737,16 @@ _TERM_ANSWERS: dict[str, str] = {
     ),
     "double top": (
         "**Double Top & Double Bottom**\n\n"
-        "**Double top:** two peaks near the same resistance, separated by a trough. "
-        "Pattern activates on break of the middle trough (support). "
-        "Educational target ≈ height (peak−trough) projected down from breakout.\n\n"
-        "**Double bottom:** two troughs near support, separated by a peak. "
-        "Activates on break of the middle peak. Target ≈ height projected up from breakout.\n\n"
-        "Watch for throwbacks/pullbacks after breakout; confirm with volume when possible.\n\n"
-        "**Common mistake:** Calling every two peaks a double top without a completed breakout."
+        "**Double top (“M”):** after an uptrend, two peaks near the same area (within ~3% is often "
+        "“close enough”), trough between them. Completes when price **breaks the reaction low** "
+        "(ideally with expanding volume). Target cue ≈ peak-to-trough height projected down. "
+        "Peaks usually weeks–months apart; a shallow dip may just be ordinary resistance.\n\n"
+        "**Double bottom (“W”):** after a downtrend, two lows near the same area; completes on "
+        "**break of the reaction high** with volume. Target cue ≈ height projected up. "
+        "Bottoms often take longer to form than tops.\n\n"
+        "**Rounded top/bottom:** gradual U-turn; volume typically dries in the base then expands "
+        "on the turn — ask *rounded top* for more.\n\n"
+        "**Common mistake:** Jumping the gun before the support/resistance break is convincing."
     ),
     "triple top": (
         "**Triple Top & Triple Bottom**\n\n"
@@ -1734,12 +1785,14 @@ _TERM_ANSWERS: dict[str, str] = {
     ),
     "head and shoulders": (
         "**Head and Shoulders (Top & Inverse)**\n\n"
-        "**Top:** left shoulder → higher **head** → right shoulder ≈ left; "
-        "**neckline** joins the two troughs. Pattern completes only on **neckline break**. "
-        "Target cue ≈ head-to-neckline distance projected down from the break.\n\n"
-        "**Inverse (bottom):** inverted structure; completes on neckline break upward; "
-        "throwbacks are common.\n\n"
-        "Classic top pattern with relatively low failure rates in TA literature — still use stops.\n\n"
+        "Needs a prior trend to reverse. **Top:** left shoulder → higher **head** → right shoulder "
+        "≈ left; **neckline** joins the two troughs. Completes only on **neckline break** "
+        "(ideally with volume). Target cue ≈ head-to-neckline height projected from the break; "
+        "broken neckline often acts as resistance on a retest.\n\n"
+        "**Volume literacy (top):** ideally heavier on left-shoulder advance than the head; "
+        "rising volume on declines from head/right shoulder supports the reverse.\n\n"
+        "**Inverse (bottom):** same geometry flipped; **volume expansion on the upside neckline "
+        "break is more critical** than for tops. Throwbacks to new support are common.\n\n"
         "**Common mistake:** Calling every three peaks H&S when shoulders aren’t aligned / "
         "neckline unbroken."
     ),
@@ -1760,14 +1813,20 @@ _TERM_ANSWERS: dict[str, str] = {
         "**Common mistake:** Holding a flag that morphs into a full reversal without a stop."
     ),
     "price gaps": (
-        "**Price Gaps**\n\n"
-        "A **gap** is a price zone with no trading between one close and the next open "
-        "(supply/demand jump). Gaps can be up or down.\n\n"
-        "Gaps on breakouts from patterns/S/R can be meaningful. One educational method: "
-        "after a gap-up, wait for a throwback that does **not** fully fill the gap "
-        "(“pivot low”), then consider entries above the gap bar with stops under the pivot/gap.\n\n"
-        "On NSE, gaps often appear around results, news, or overnight global cues.\n\n"
-        "**Common mistake:** Assuming every gap “must fill” immediately."
+        "**Price Gaps (gap theory) — educational**\n\n"
+        "A **gap** is a chart zone with no trades between one close and the next open "
+        "(results, news, global cues on NSE).\n\n"
+        "**Types (literacy):**\n"
+        "• **Common / area gap** — inside congestion; often fills quickly; low opportunity\n"
+        "• **Breakaway gap** — leaves a range/pattern with enthusiasm + volume; new S/R at the gap; "
+        "may take long to fill — don’t assume instant fill\n"
+        "• **Runaway / measuring / continuation gap** — mid-trend acceleration (late joiners / "
+        "liquidation); sometimes used to roughly measure remaining move\n"
+        "• **Exhaustion gap** — near trend end; large gap + very high volume; often fills as trend turns\n"
+        "• **Island cluster** — exhaustion gap then opposite breakaway gap — strong reversal cue\n\n"
+        "One trading idea after a valid gap-up: wait for a throwback that does **not** fully cover "
+        "the gap (“pivot”), then plan entries with stops under the pivot/gap low.\n\n"
+        "**Common mistake:** Assuming every gap “must fill” immediately — especially breakaway/runaway."
     ),
     "narrow range": (
         "**Narrow Range, Inside Bar & Pipe Bottom**\n\n"
@@ -1778,6 +1837,107 @@ _TERM_ANSWERS: dict[str, str] = {
         "(more studied on weekly); action on break of the second bar\n\n"
         "Low volatility often precedes new trends — still define risk before entry.\n\n"
         "**Common mistake:** Buying every inside bar in a chop without a directional filter."
+    ),
+    "rounded top": (
+        "**Rounded Top & Rounded Bottom (saucer)**\n\n"
+        "Gradual shift from bullish to bearish (**rounded top**) or bearish to bullish "
+        "(**rounded bottom**) — bowl-shaped, not a sharp V. Volume typically shrinks into "
+        "the quiet middle, then expands as the new direction asserts.\n\n"
+        "Harder to time than H&S or double patterns; use volume + break of the rim as confirmation.\n\n"
+        "**Common mistake:** Forcing a “saucer” label on every slow sideways grind."
+    ),
+    "leading indicators": (
+        "**Leading vs Lagging Indicators — educational**\n\n"
+        "A technical indicator is a formula on price/volume/OI used to **alert, confirm, or predict**.\n\n"
+        "• **Leading** (momentum family): RSI, Stochastic, Williams %R, CCI, ROC — earlier signals, "
+        "more trades, more false alarms; shine in ranges\n"
+        "• **Lagging / trend-following**: moving averages, MACD — stay with trends longer; "
+        "late at turns; suffer in chop\n\n"
+        "**Tips:** don’t ignore price for the indicator; use 2–3 complementary tools "
+        "(not two overbought oscillators); always with structure and stops.\n\n"
+        "**Common mistake:** Stacking RSI + Stochastic + Williams and treating every extreme as a must-fade."
+    ),
+    "stochastic": (
+        "**Stochastic Oscillator (%K / %D)**\n\n"
+        "Compares close to the recent high–low range (often 14 periods). "
+        "`%K` is the raw reading; `%D` is a short MA of `%K` (often 3).\n\n"
+        "**Literacy uses:**\n"
+        "• Above ~80 overbought / below ~20 oversold — book/avoid adds, don’t blindly reverse\n"
+        "• `%K` cross of `%D` in those zones as timing cue\n"
+        "• Bullish/bearish **divergences** vs price\n\n"
+        "Like RSI, can stay extreme in strong trends — filter with trend/ADX.\n\n"
+        "**Common mistake:** Shorting every %K > 80 on a momentum breakout day."
+    ),
+    "williams %r": (
+        "**Williams %R**\n\n"
+        "Larry Williams’ oscillator — conceptually close to Stochastic but scaled **0 to −100**. "
+        "Roughly −20 to 0 = overbought zone; −80 to −100 = oversold zone.\n\n"
+        "Uses: fade extremes with structure, watch **divergences**, avoid fighting a strong trend.\n\n"
+        "**Common mistake:** Treating %R alone as a buy/sell system without S/R or risk rules."
+    ),
+    "money flow index": (
+        "**Money Flow Index (MFI)**\n\n"
+        "Volume-weighted RSI-style oscillator (“always watch the smart money” literacy). "
+        "Uses typical price × volume to build positive vs negative money flow, then:\n"
+        "`MFI = 100 − 100 / (1 + money ratio)`\n\n"
+        "Common reads: >80 overbought / <20 oversold; positive/negative **divergences** "
+        "when price makes new extremes but MFI does not.\n\n"
+        "**Common mistake:** Ignoring MFI divergence that confirms an RSI/MACD warning."
+    ),
+    "elliott wave": (
+        "**Elliott Wave Theory — educational**\n\n"
+        "Ralph Nelson Elliott’s idea: prices swing with crowd psychology in **fractal** waves.\n\n"
+        "• **Impulse (dominant):** 5 waves in trend direction (1–2–3–4–5); 1/3/5 motive, 2/4 corrective\n"
+        "• **Correction:** 3 waves (A–B–C) against the prior impulse\n\n"
+        "**Hard rules (literacy):** Wave 2 does not retrace beyond start of Wave 1; "
+        "Wave 3 is never the shortest impulse; Wave 4 should not overlap Wave 1 in cash "
+        "(futures/FX often allow small overlap).\n\n"
+        "Fibonacci ratios guide typical retracements/extensions (e.g. Wave 2 ~50–61.8% of Wave 1; "
+        "Wave 3 often 1.618× Wave 1). Counting is subjective — prefer clear patterns, "
+        "trade with R:R ≥ ~1.5, and use stops (e.g. beyond invalidation of the count).\n\n"
+        "**Common mistake:** Forcing a perfect 1–5 count on every Nifty wiggle.\n"
+        "_Educational — not a prediction engine._"
+    ),
+    "day trading": (
+        "**Day Trading Strategies — educational**\n\n"
+        "Day trading = open and close within the same session (no overnight gap risk on that position). "
+        "Uses leverage/margins; profits and losses can both be large. Discipline > excitement.\n\n"
+        "**Style literacy:**\n"
+        "• **Scalping** — many tiny gains; ruthless exits; costs matter on NSE\n"
+        "• **Fading** — fade climactic spikes (overbought + early profit-taking); high risk\n"
+        "• **Daily pivots** — trade LOD/HOD / pivot S/R in range days; break levels for trend days\n"
+        "• **Momentum** — ride news/volume thrusts; exit when volume fades / opposing candles appear\n\n"
+        "**Risks:** large losses, screen time/stress, overtrading, margin debt, tech failures. "
+        "Never risk money you can’t afford to lose. BYSEL is paper-first for practice.\n\n"
+        "**Common mistake:** Averaging losers intraday because “it has to come back.”\n"
+        "_Educational — not a recommendation to day-trade._"
+    ),
+    "momentum trading": (
+        "**Momentum Trading (incl. Elder impulse idea) — educational**\n\n"
+        "Trade stocks already moving on **news + volume**, not quiet fundamentals debates.\n\n"
+        "**Impulse-system literacy (Elder-style):** combine a short **EMA** (trend inertia) with "
+        "**MACD histogram** (momentum). Enter when both point the same way; exit when they diverge. "
+        "Many focus on the first and last hour of the cash session when liquidity is richer; "
+        "midday can be choppier.\n\n"
+        "Exits must be planned before entry — momentum reverses violently.\n\n"
+        "**Common mistake:** Chasing mid-move without a stop because “it’s in the news.”"
+    ),
+    "trading psychology": (
+        "**Trading Psychology & Risk Management — educational**\n\n"
+        "Even a decent system may only win ~60% of the time — risk control keeps you alive "
+        "through the other 40%. Seed capital is scarce; opportunities are plentiful.\n\n"
+        "**Core toolkit:**\n"
+        "• **Stop-loss** on every trade · size so a stop is a small % of equity (often ~1–2% risk)\n"
+        "• Check **reward:risk** before entry (many require ≥ ~1.5)\n"
+        "• **Trail** stops as trades work · book profits at planned targets\n"
+        "• Prefer **3-5-7** / position-sizing rules over “all-in” conviction\n\n"
+        "**Behaviour traps:** revenge trading, no plan, counting chickens before exit, "
+        "complexity addiction, overtrading for excitement, fighting the trend, ignoring warnings.\n\n"
+        "**Discipline ideas:** trade with the trend until evidence flips; wait for the market "
+        "(flat is a position); keep size small enough to think clearly; choose a few markets "
+        "you actually follow.\n\n"
+        "**Common mistake:** Risking the account to “get even” after a loss streak.\n"
+        "_Educational — paper trade until rules are automatic._"
     ),
     "gtt": (
         "**GTT (Good Till Triggered) — educational**\n\n"
@@ -2003,6 +2163,45 @@ _TERM_ANSWERS["ta"] = _TERM_ANSWERS["technical analysis"]
 _TERM_ANSWERS["what is technical analysis"] = _TERM_ANSWERS["technical analysis"]
 _TERM_ANSWERS["technical vs fundamental"] = _TERM_ANSWERS["technical analysis"]
 _TERM_ANSWERS["fundamental vs technical"] = _TERM_ANSWERS["technical analysis"]
+_TERM_ANSWERS["ncfm ta"] = _TERM_ANSWERS["ncfm technical analysis"]
+_TERM_ANSWERS["ncfm technical analysis module"] = _TERM_ANSWERS["ncfm technical analysis"]
+_TERM_ANSWERS["nse technical analysis module"] = _TERM_ANSWERS["ncfm technical analysis"]
+_TERM_ANSWERS["ncfm technical analysis certification"] = _TERM_ANSWERS["ncfm technical analysis"]
+_TERM_ANSWERS["elliot wave"] = _TERM_ANSWERS["elliott wave"]
+_TERM_ANSWERS["elliott wave theory"] = _TERM_ANSWERS["elliott wave"]
+_TERM_ANSWERS["elliot wave theory"] = _TERM_ANSWERS["elliott wave"]
+_TERM_ANSWERS["stochastic oscillator"] = _TERM_ANSWERS["stochastic"]
+_TERM_ANSWERS["stochastics"] = _TERM_ANSWERS["stochastic"]
+_TERM_ANSWERS["williams percent r"] = _TERM_ANSWERS["williams %r"]
+_TERM_ANSWERS["william %r"] = _TERM_ANSWERS["williams %r"]
+_TERM_ANSWERS["williams r"] = _TERM_ANSWERS["williams %r"]
+_TERM_ANSWERS["mfi"] = _TERM_ANSWERS["money flow index"]
+_TERM_ANSWERS["lagging indicators"] = _TERM_ANSWERS["leading indicators"]
+_TERM_ANSWERS["leading vs lagging"] = _TERM_ANSWERS["leading indicators"]
+_TERM_ANSWERS["types of indicators"] = _TERM_ANSWERS["leading indicators"]
+_TERM_ANSWERS["rounded bottom"] = _TERM_ANSWERS["rounded top"]
+_TERM_ANSWERS["saucer top"] = _TERM_ANSWERS["rounded top"]
+_TERM_ANSWERS["saucer bottom"] = _TERM_ANSWERS["rounded top"]
+_TERM_ANSWERS["breakaway gap"] = _TERM_ANSWERS["price gaps"]
+_TERM_ANSWERS["exhaustion gap"] = _TERM_ANSWERS["price gaps"]
+_TERM_ANSWERS["runaway gap"] = _TERM_ANSWERS["price gaps"]
+_TERM_ANSWERS["measuring gap"] = _TERM_ANSWERS["price gaps"]
+_TERM_ANSWERS["common gap"] = _TERM_ANSWERS["price gaps"]
+_TERM_ANSWERS["island reversal"] = _TERM_ANSWERS["price gaps"]
+_TERM_ANSWERS["island cluster"] = _TERM_ANSWERS["price gaps"]
+_TERM_ANSWERS["gap theory"] = _TERM_ANSWERS["price gaps"]
+_TERM_ANSWERS["day trade"] = _TERM_ANSWERS["day trading"]
+_TERM_ANSWERS["intraday trading strategies"] = _TERM_ANSWERS["day trading"]
+_TERM_ANSWERS["scalping"] = _TERM_ANSWERS["day trading"]
+_TERM_ANSWERS["fading"] = _TERM_ANSWERS["day trading"]
+_TERM_ANSWERS["momentum trade"] = _TERM_ANSWERS["momentum trading"]
+_TERM_ANSWERS["elder impulse"] = _TERM_ANSWERS["momentum trading"]
+_TERM_ANSWERS["trading psychology and risk"] = _TERM_ANSWERS["trading psychology"]
+_TERM_ANSWERS["trader psychology"] = _TERM_ANSWERS["trading psychology"]
+_TERM_ANSWERS["risk management in trading"] = _TERM_ANSWERS["trading psychology"]
+_TERM_ANSWERS["golden rules for traders"] = _TERM_ANSWERS["trading psychology"]
+_TERM_ANSWERS["principles of dow theory"] = _TERM_ANSWERS["dow theory"]
+_TERM_ANSWERS["what is dow theory"] = _TERM_ANSWERS["dow theory"]
 _TERM_ANSWERS["market hours"] = _TERM_ANSWERS["market timings"]
 _TERM_ANSWERS["trading hours"] = _TERM_ANSWERS["market timings"]
 _TERM_ANSWERS["nse timings"] = _TERM_ANSWERS["market timings"]
@@ -2225,8 +2424,8 @@ _TERM_ANSWERS["state development loan"] = _TERM_ANSWERS["government securities"]
 _TERM_ANSWERS["ytm"] = _TERM_ANSWERS["bond yield"]
 _TERM_ANSWERS["yield to maturity"] = _TERM_ANSWERS["bond yield"]
 _TERM_ANSWERS["electricity derivative"] = _TERM_ANSWERS["electricity derivatives"]
-_TERM_ANSWERS["risk management and trading psychology"] = _TERM_ANSWERS["risk management"]
-_TERM_ANSWERS["trading psychology"] = _TERM_ANSWERS["trading biases"]
+_TERM_ANSWERS["risk management map"] = _TERM_ANSWERS["risk management"]
+_TERM_ANSWERS["portfolio risk management"] = _TERM_ANSWERS["risk management"]
 _TERM_ANSWERS["unsystematic risk"] = _TERM_ANSWERS["systematic risk"]
 _TERM_ANSWERS["idiosyncratic risk"] = _TERM_ANSWERS["systematic risk"]
 _TERM_ANSWERS["market risk"] = _TERM_ANSWERS["systematic risk"]
@@ -2358,15 +2557,19 @@ def get_education_answer(query: str) -> Optional[str]:
             r"what moves (the )?stock|why do stock prices|absolute return|cagr vs|"
             r"trader vs investor|day trader|scalper|swing trader|holding period|"
             r"where do you fit|after you (own|buy)|how to calculate returns|"
-            r"technical analysis|candlestick|marubozu|doji|hammer|engulfing|harami|"
+            r"technical analysis|\bncfm\b|candlestick|marubozu|doji|hammer|engulfing|harami|"
             r"shooting star|inverted hammer|dark cloud|piercing line|"
-            r"morning star|evening star|fibonacci|dow theory|central pivot|\bcpr\b|"
+            r"morning star|evening star|fibonacci|dow theory|elliott wave|elliot wave|"
+            r"central pivot|\bcpr\b|stochastic|williams\s*%?r|money flow|\bmfi\b|"
+            r"leading indicators?|lagging indicators?|rounded top|rounded bottom|"
+            r"day trading|momentum trading|scalping|trading psychology|"
             r"chart patterns?|trading breakouts?|false breakout|failed breakout|"
             r"double tops?|double bottoms?|triple tops?|triple bottoms?|"
             r"head and shoulders|cup and handle|flag and pennant|pennant|"
             r"symmetrical triangle|ascending triangle|descending triangle|"
             r"rising wedge|falling wedge|rectangle pattern|pipe bottom|"
-            r"narrow range|\bnr4\b|inside bar|price gaps?|throwback|"
+            r"narrow range|\bnr4\b|inside bar|price gaps?|gap theory|breakaway gap|"
+            r"exhaustion gap|throwback|"
             r"support and resistance|sentiment analysis|market sentiment|news sentiment|"
             r"stock sentiment|investor sentiment|market timings|market hours|trading hours|"
             r"closing auction|\bcas\b|nse timings|bse timings|"
@@ -2471,6 +2674,53 @@ def get_education_answer(query: str) -> Optional[str]:
     )
     if stock_specific_pattern and not formula_cue:
         return None
+
+    # Prefer NCFM module / specific TA topics over the broad "technical analysis" umbrella.
+    if re.search(
+        r"\b(ncfm\s*technical|ncfm\s*ta|nse\s*technical\s*analysis\s*module|"
+        r"technical\s*analysis\s*module)\b",
+        q,
+    ):
+        return _TERM_ANSWERS["ncfm technical analysis"]
+    if re.search(r"\b(elliott\s*wave|elliot\s*wave)\b", q):
+        return _TERM_ANSWERS["elliott wave"]
+    if re.search(r"\b(dow\s*theory|principles of dow)\b", q):
+        return _TERM_ANSWERS["dow theory"]
+    if re.search(
+        r"\b(day\s*trading|scalping|intraday\s*trading\s*strateg)",
+        q,
+    ) and not re.search(r"\b(of|for)\s+[a-z0-9]", q):
+        return _TERM_ANSWERS["day trading"]
+    if re.search(r"\b(momentum\s*trading|elder\s*impulse)\b", q):
+        return _TERM_ANSWERS["momentum trading"]
+    if re.search(
+        r"\b(trading\s*psychology|trader\s*psychology|golden\s*rules\s*for\s*traders|"
+        r"risk\s*management\s*in\s*trading|dos?\s*and\s*don'?ts\s*in\s*trading)\b",
+        q,
+    ):
+        return _TERM_ANSWERS["trading psychology"]
+    if re.search(r"\b(trading\s*biases|cognitive\s*bias|confirmation\s*bias|gamblers?\s*fallacy)\b", q):
+        return _TERM_ANSWERS["trading biases"]
+    if re.search(r"\b(stochastic|stochastics)\b", q):
+        return _TERM_ANSWERS["stochastic"]
+    if re.search(r"\b(williams?\s*%?r|williams\s*percent)\b", q):
+        return _TERM_ANSWERS["williams %r"]
+    if re.search(r"\b(money\s*flow\s*index|\bmfi\b)\b", q):
+        return _TERM_ANSWERS["money flow index"]
+    if re.search(
+        r"\b(leading\s*(vs\.?\s*)?lagging|lagging\s*indicators?|leading\s*indicators?|"
+        r"types of (technical )?indicators)\b",
+        q,
+    ):
+        return _TERM_ANSWERS["leading indicators"]
+    if re.search(r"\b(rounded\s*tops?|rounded\s*bottoms?|saucer\s*tops?|saucer\s*bottoms?)\b", q):
+        return _TERM_ANSWERS["rounded top"]
+    if re.search(
+        r"\b(gap\s*theory|breakaway\s*gap|exhaustion\s*gap|runaway\s*gap|"
+        r"measuring\s*gap|common\s*gap|island\s*(cluster|reversal))\b",
+        q,
+    ):
+        return _TERM_ANSWERS["price gaps"]
 
     # Prefer chart-pattern family over the broad "technical analysis" umbrella.
     if re.search(
