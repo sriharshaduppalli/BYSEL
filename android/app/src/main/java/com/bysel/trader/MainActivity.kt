@@ -1017,6 +1017,8 @@ fun BYSELApp(
                                         onNavigateToStock = { symbol ->
                                             previousTab = selectedTab
                                             viewModel.fetchAndSelectQuote(symbol)
+                                            // Warm candles so Stock Detail chart paints quickly.
+                                            viewModel.fetchQuoteHistory(symbol, period = "1mo", interval = "1d")
                                             selectedTab = 9
                                         },
                                         onAiFeedback = { query, answer, helpful ->

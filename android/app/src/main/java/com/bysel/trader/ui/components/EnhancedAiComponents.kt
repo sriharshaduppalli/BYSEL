@@ -136,6 +136,7 @@ fun ProfitSignalCard(
     signal: ProfitSignal,
     onBuy: (() -> Unit)? = null,
     onSetAlert: (() -> Unit)? = null,
+    onViewChart: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isBullish = signal.signal.contains("BUY") || signal.signal.contains("ACCUMULATE")
@@ -244,7 +245,7 @@ fun ProfitSignalCard(
             }
 
             // Action buttons
-            if (onBuy != null || onSetAlert != null) {
+            if (onBuy != null || onSetAlert != null || onViewChart != null) {
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -261,6 +262,21 @@ fun ProfitSignalCard(
                             contentPadding = PaddingValues(0.dp)
                         ) {
                             Text("Buy ${signal.symbol}", fontSize = 12.sp)
+                        }
+                    }
+                    if (onViewChart != null) {
+                        OutlinedButton(
+                            onClick = onViewChart,
+                            modifier = Modifier.weight(1f).height(34.dp),
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.ShowChart,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Chart", fontSize = 12.sp)
                         }
                     }
                     if (onSetAlert != null) {

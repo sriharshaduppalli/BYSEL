@@ -1116,9 +1116,16 @@ private fun ChatBubble(
                 onSetAlert = if (onAlertAction != null) {
                     { onAlertAction.invoke(profitSignal.symbol, alertPrice, alertType) }
                 } else null,
+                onViewChart = if (onNavigateToStock != null) {
+                    { onNavigateToStock.invoke(profitSignal.symbol) }
+                } else null,
                 modifier = Modifier.widthIn(max = 320.dp)
             )
-        } else if (!message.isUser && actionSymbol != null && (onTradeAction != null || onAlertAction != null)) {
+        } else if (
+            !message.isUser &&
+            actionSymbol != null &&
+            (onTradeAction != null || onAlertAction != null || onNavigateToStock != null)
+        ) {
             // Fallback when reply has a symbol but no Entry/Target formatting.
             Spacer(modifier = Modifier.height(8.dp))
             val signalUpper = (message.signal ?: "").uppercase()
@@ -1140,6 +1147,15 @@ private fun ChatBubble(
                         Text("Buy $actionSymbol", fontSize = 11.sp)
                     }
                 }
+                if (onNavigateToStock != null) {
+                    OutlinedButton(
+                        onClick = { onNavigateToStock.invoke(actionSymbol) },
+                        modifier = Modifier.height(32.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                    ) {
+                        Text("View chart", fontSize = 11.sp)
+                    }
+                }
                 if (onAlertAction != null) {
                     OutlinedButton(
                         onClick = {
@@ -1157,6 +1173,12 @@ private fun ChatBubble(
                 }
             }
         }
+
+        // Avoid a second "View chart" when ProfitSignal / symbol row already has one.
+        val chartCtaShown = onNavigateToStock != null && actionSymbol != null && (
+            (profitSignal != null && profitSignal.symbol.isNotBlank()) ||
+                (profitSignal == null)
+            )
 
         // Trade intent action buttons (parsed from AI messages)
         if (tradeIntents.isNotEmpty()) {
@@ -1203,12 +1225,19 @@ private fun ChatBubble(
                             }
                         }
                         TradeIntentParser.Action.ANALYZE -> {
-                            OutlinedButton(
-                                onClick = { onNavigateToStock?.invoke(intent.symbol) },
-                                modifier = Modifier.height(32.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
-                            ) {
-                                Text("View ${intent.symbol}", fontSize = 11.sp)
+                            val duplicateChart = chartCtaShown &&
+                                intent.symbol.equals(actionSymbol, ignoreCase = true)
+                            if (!duplicateChart) {
+                                OutlinedButton(
+                                    onClick = { onNavigateToStock?.invoke(intent.symbol) },
+                                    modifier = Modifier.height(32.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                                ) {
+                                    Text(
+                                        intent.displayText.ifBlank { "View chart ${intent.symbol}" },
+                                        fontSize = 11.sp,
+                                    )
+                                }
                             }
                         }
                     }

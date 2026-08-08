@@ -201,14 +201,26 @@ object TradeIntentParser {
                 )
             }
             if (intents.none { it.action == Action.ANALYZE }) {
-                intents.add(TradeIntent(Action.ANALYZE, fallbackSymbol, displayText = "View $fallbackSymbol"))
+                intents.add(
+                    TradeIntent(
+                        Action.ANALYZE,
+                        fallbackSymbol,
+                        displayText = "View chart $fallbackSymbol",
+                    )
+                )
             }
         }
 
         ANALYZE_PATTERN.find(message)?.let { match ->
             val symbol = sanitizeSymbol(match.groupValues[1]) ?: return@let
             if (intents.none { it.action == Action.ANALYZE && it.symbol == symbol }) {
-                intents.add(TradeIntent(Action.ANALYZE, symbol, displayText = "View $symbol"))
+                intents.add(
+                    TradeIntent(
+                        Action.ANALYZE,
+                        symbol,
+                        displayText = "View chart $symbol",
+                    )
+                )
             }
         }
 

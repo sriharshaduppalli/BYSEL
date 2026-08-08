@@ -888,6 +888,25 @@ private fun PriceStoryCard(
                 )
             }
 
+            if (patterns.isNotEmpty()) {
+                Text(
+                    text = "Detected patterns",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = theme.text,
+                )
+                patterns.take(5).forEach { detected ->
+                    val label = detected.pattern.ifBlank { detected.type }
+                    val signal = detected.signal.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
+                    val conf = detected.confidence.takeIf { it > 0 }?.let { " · $it% conf" }.orEmpty()
+                    Text(
+                        text = "• $label$signal$conf",
+                        fontSize = 12.sp,
+                        color = theme.textSecondary,
+                    )
+                }
+            }
+
             // Sentiment bar — below chart
             com.bysel.trader.ui.components.SentimentBar(
                 sentiment = sentimentData,
