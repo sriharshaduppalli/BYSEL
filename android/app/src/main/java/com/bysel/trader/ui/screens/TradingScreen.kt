@@ -302,11 +302,11 @@ fun TradingScreen(
         ) {
             ScreenHeader(
                 title = "Trade",
-                subtitle = "Watchlist-first paper trading. Advanced tools stay one tap away.",
+                subtitle = "Practice wallet",
                 compact = true,
                 modifier = Modifier.padding(14.dp),
                 trailing = {
-                    // Practice wallet lives on the Trade header — not next to watchlist +Add.
+                    // Practice wallet amount — tap to add simulated credit.
                     AssistChip(
                         onClick = { showAddFundsDialog = true },
                         label = {
@@ -314,7 +314,7 @@ fun TradingScreen(
                                 AnimatedAmountText(
                                     amount = walletBalance,
                                     formatter = { "₹${String.format("%,.0f", it)}" },
-                                    style = MaterialTheme.typography.labelMedium,
+                                    style = MaterialTheme.typography.labelLarge,
                                     color = LocalAppTheme.current.text,
                                     fontWeight = FontWeight.Bold,
                                 )
@@ -330,10 +330,15 @@ fun TradingScreen(
                             Icon(
                                 Icons.Filled.AccountBalanceWallet,
                                 contentDescription = "Practice wallet",
-                                modifier = Modifier.size(16.dp),
+                                modifier = Modifier.size(18.dp),
                                 tint = LocalAppTheme.current.primary,
                             )
                         },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = LocalAppTheme.current.primary.copy(alpha = 0.14f),
+                            labelColor = LocalAppTheme.current.text,
+                            leadingIconContentColor = LocalAppTheme.current.primary,
+                        ),
                     )
                 },
             )
@@ -662,15 +667,17 @@ private fun SpotTradingWorkspace(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = if (boardModeWatchlist) "My list (tracked quotes)" else "Live board (loaded quotes)",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = LocalAppTheme.current.text
+                    color = LocalAppTheme.current.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = if (boardModeWatchlist) {
@@ -681,17 +688,19 @@ private fun SpotTradingWorkspace(
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
                     color = quoteFreshnessColor,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onOpenAdvancedWorkspace) { Text("Tools", fontSize = 11.sp) }
+                TextButton(onClick = onOpenAdvancedWorkspace) { Text("Tools", fontSize = 11.sp, maxLines = 1) }
                 Button(
                     onClick = onRefresh,
                     colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
                     modifier = Modifier.height(36.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp),
                 ) {
-                    Text("Refresh", fontSize = 12.sp)
+                    Text("Refresh", fontSize = 12.sp, maxLines = 1)
                 }
             }
         }
@@ -731,7 +740,7 @@ private fun SpotTradingWorkspace(
                         modifier = Modifier.weight(1f),
                         softWrap = true,
                         maxLines = 3,
-                        overflow = TextOverflow.Clip,
+                        overflow = TextOverflow.Ellipsis,
                         lineHeight = 18.sp,
                     )
                 }
@@ -1207,20 +1216,28 @@ fun TradingQuoteCard(
                     )
                 }
 
-                Column(horizontalAlignment = Alignment.End) {
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    modifier = Modifier.weight(1f, fill = false),
+                ) {
                     Text(
                         text = "${if (quote.pctChange > 0) "+" else ""}${String.format("%.2f", quote.pctChange)}%",
                         style = MaterialTheme.typography.titleSmall,
                         color = animatedChangeColor(quote.pctChange),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(modifier = Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.End) {
-                        Text(text = "O: ₹${String.format("%.2f", quote.open ?: quote.prevClose ?: quote.last)}", fontSize = 11.sp, color = LocalAppTheme.current.textSecondary)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = "H/L: ₹${String.format("%.2f", quote.dayHigh ?: quote.last)}/${String.format("%.2f", quote.dayLow ?: quote.last)}", fontSize = 11.sp, color = LocalAppTheme.current.textSecondary)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = "Vol: ${formatVolume(quote.volume)}", fontSize = 11.sp, color = LocalAppTheme.current.textSecondary)
-                    }
+                    Text(
+                        text = "O ₹${String.format("%.2f", quote.open ?: quote.prevClose ?: quote.last)} · " +
+                            "H/L ₹${String.format("%.2f", quote.dayHigh ?: quote.last)}/${String.format("%.2f", quote.dayLow ?: quote.last)} · " +
+                            "Vol ${formatVolume(quote.volume)}",
+                        fontSize = 11.sp,
+                        color = LocalAppTheme.current.textSecondary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                    )
                 }
             }
 
@@ -1788,7 +1805,7 @@ private fun TradeBottomSheetContent(
                         .padding(10.dp),
                     softWrap = true,
                     maxLines = 4,
-                    overflow = TextOverflow.Clip,
+                    overflow = TextOverflow.Ellipsis,
                     lineHeight = 16.sp,
                 )
             }

@@ -1,5 +1,6 @@
 package com.bysel.trader.ui.theme
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,6 +32,22 @@ fun byselCardColors() = CardDefaults.cardColors(
     containerColor = LocalAppTheme.current.card,
     contentColor = LocalAppTheme.current.text,
 )
+
+/** Nested / elevated panel using M3-style surface step. */
+@Composable
+fun byselElevatedCardColors() = CardDefaults.cardColors(
+    containerColor = LocalAppTheme.current.surfaceElevated,
+    contentColor = LocalAppTheme.current.text,
+)
+
+/** Light themes keep a whisper of elevation; dark themes rely on [byselCardBorder]. */
+@Composable
+fun byselCardElevation() = CardDefaults.cardElevation(
+    defaultElevation = if (LocalAppTheme.current.isLight) 1.dp else 0.dp,
+)
+
+@Composable
+fun byselCardBorder(): BorderStroke = BorderStroke(1.dp, LocalAppTheme.current.cardOutline)
 
 /** Green / red / muted for price & PnL deltas. */
 fun AppTheme.colorForChange(change: Double): Color = when {

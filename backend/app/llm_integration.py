@@ -263,28 +263,48 @@ def _enrich_compare_leg(symbol: str) -> dict[str, Any]:
 
 
 def _build_peers(query: str, primary: str | None, ctx: dict[str, Any]) -> list[dict]:
-    """Enrich secondary tickers for compare asks (deep fundamentals)."""
+    """Enrich secondary tickers for compare asks (deep fundamentals).
+
+    Only tickers named in the user question are allowed — never portfolio /
+    selected-quote symbols that may ride along in `all_symbols` from the app wrapper.
+    """
     peers: list[dict] = []
     try:
         from .stock_enricher import extract_all_symbols_from_query
 
-        symbols = list(ctx.get("all_symbols") or []) or extract_all_symbols_from_query(query) or []
+        from_query = list(extract_all_symbols_from_query(query) or [])
     except Exception:
+        from_query = []
+
+    # Prefer query order (left → right). Fall back to ctx only if query had none.
+    if from_query:
+        q_up = (query or "").upper()
+        from_query = sorted(
+            from_query,
+            key=lambda s: (q_up.find(str(s).upper()) if q_up.find(str(s).upper()) >= 0 else 10_000),
+        )
+        symbols = from_query
+    else:
         symbols = list(ctx.get("all_symbols") or [])
 
-    cleaned = []
+    cleaned: list[str] = []
     for sym in symbols:
         s = _sanitize_symbol(str(sym), query)
         if s and s not in cleaned:
             cleaned.append(s)
-    if primary and primary not in cleaned:
+
+    # Primary must be one of the named compare legs when the user named tickers.
+    if from_query and primary and primary not in cleaned:
+        primary = cleaned[0] if cleaned else primary
+    elif primary and primary not in cleaned:
         cleaned.insert(0, primary)
 
     for sym in cleaned:
         if primary and sym == primary:
             continue
         peers.append(_enrich_compare_leg(sym))
-        if len(peers) >= 3:
+        # Pairwise compares should stay at 1 peer; allow up to 2 for "A vs B vs C".
+        if len(peers) >= (2 if len(cleaned) >= 3 else 1):
             break
     return peers
 
@@ -340,6 +360,16 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
         stock_specific_levels = bool(resolved_symbol) and bool(
             re.search(r"\b(support|resistance|s/?r|trading levels?|pivots?)\b", q_low := cleaned.lower())
         ) and (has_of_symbol or bool(re.search(rf"\b{re.escape(resolved_symbol.lower())}\b", q_low)))
+        # "Stop loss for INFY swing" → live plan/levels, not Stop Loss glossary.
+        stock_specific_stop = bool(resolved_symbol) and bool(
+            re.search(
+                r"\b(stop[\s-]?loss|take[\s-]?profit|entry price|target price|trade plan)\b",
+                cleaned.lower(),
+            )
+        ) and (
+            has_of_symbol
+            or bool(re.search(rf"\b{re.escape(resolved_symbol.lower())}\b", cleaned.lower()))
+        ) and not re.search(r"\b(what is|define|definition|meaning of)\b", cleaned.lower())
         stock_specific_beta = bool(resolved_symbol) and bool(
             re.search(r"\bbeta\b", cleaned.lower())
         ) and (has_of_symbol or bool(re.search(rf"\b{re.escape(resolved_symbol.lower())}\b", cleaned.lower())))
@@ -845,6 +875,7 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
             and not stock_specific_metric
             and not stock_specific_fo
             and not stock_specific_levels
+            and not stock_specific_stop
             and not stock_specific_beta
             and not nifty_outlook_ask
             and not live_ccg
@@ -858,6 +889,7 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
             and (not wants_live_indicator or retail_literacy_ask)
             and not stock_specific_fo
             and not stock_specific_levels
+            and not stock_specific_stop
             and not stock_specific_beta
             and not sentiment_live
         ):
@@ -999,7 +1031,30 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
                         pass
 
         peers = []
-        if re.search(r"\bcompare\b|\bvs\b|\bversus\b", cleaned.lower()):
+        if re.search(r"\bcompare\b|\bvs\b|\bversus\b|\bagainst\b", cleaned.lower()):
+            # Force primary from the user question so selected-quote/holdings
+            # cannot become the left side of the scorecard.
+            try:
+                from .stock_enricher import extract_all_symbols_from_query
+
+                named = list(extract_all_symbols_from_query(cleaned) or [])
+                if named:
+                    q_up = cleaned.upper()
+                    named = sorted(
+                        named,
+                        key=lambda s: (
+                            q_up.find(str(s).upper()) if q_up.find(str(s).upper()) >= 0 else 10_000
+                        ),
+                    )
+                    named = [_sanitize_symbol(str(s), cleaned) for s in named]
+                    named = [s for s in named if s]
+                    if named:
+                        symbol_hint = named[0]
+                        ctx["symbol"] = symbol_hint
+                        ctx["all_symbols"] = named
+            except Exception:
+                pass
+
             peers = _build_peers(cleaned, symbol_hint, ctx)
             # If primary missing but peers exist, promote first peer.
             if not symbol_hint and peers:

@@ -17,6 +17,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.automirrored.filled.CompareArrows
@@ -34,6 +35,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.content.Intent
@@ -64,6 +66,9 @@ fun AiAssistantScreen(
     onTradeAction: ((symbol: String, side: String, qty: Int?) -> Unit)? = null,
     onAlertAction: ((symbol: String, price: Double?, alertType: String) -> Unit)? = null,
     onNavigateToStock: ((symbol: String) -> Unit)? = null,
+    /** Return to Stock Detail / prior screen after Trust & Tools AI actions. */
+    onNavigateBack: (() -> Unit)? = null,
+    backLabel: String? = null,
     onDeviceLlmState: LlmDownloadState = LlmDownloadState.NotDownloaded,
     onDownloadModel: () -> Unit = {},
     likelyColdStart: Boolean = false,
@@ -112,7 +117,19 @@ fun AiAssistantScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f),
+            ) {
+                if (onNavigateBack != null) {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = backLabel ?: "Back",
+                            tint = appTheme.onPrimary,
+                        )
+                    }
+                }
                 Box(
                     modifier = Modifier
                         .size(40.dp)
@@ -133,12 +150,20 @@ fun AiAssistantScreen(
                         "BYSEL AI Assistant",
                         color = appTheme.onPrimary,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
+                        fontSize = 18.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        "Your smart stock advisor",
+                        text = when {
+                            !backLabel.isNullOrBlank() -> backLabel
+                            onNavigateBack != null -> "Swipe from left edge to go back"
+                            else -> "Your smart stock advisor"
+                        },
                         color = appTheme.onPrimary.copy(alpha = 0.82f),
-                        fontSize = 12.sp
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -910,12 +935,14 @@ private fun SuggestionChip(
                 color = LocalAppTheme.current.text,
                 fontSize = 12.sp,
                 maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
                 lineHeight = 16.sp
             )
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ChatBubble(
     message: ChatMessage,
@@ -1088,7 +1115,7 @@ private fun ChatBubble(
             Text(
                 text = "AI analysis is for educational purposes only. Not financial advice. Always do your own research.",
                 style = MaterialTheme.typography.labelSmall,
-                color = LocalAppTheme.current.textSecondary.copy(alpha = 0.6f),
+                color = LocalAppTheme.current.textSecondary,
                 modifier = Modifier.padding(start = 8.dp, top = 4.dp, end = 8.dp),
             )
             Row(
@@ -1251,21 +1278,22 @@ private fun ChatBubble(
             Spacer(modifier = Modifier.height(8.dp))
             val signalUpper = (message.signal ?: "").uppercase()
             val isBearish = signalUpper.contains("SELL")
-            Row(
+            FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.widthIn(max = 320.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 if (onTradeAction != null && !isBearish) {
                     Button(
                         onClick = { onTradeAction.invoke(actionSymbol, "BUY", null) },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = LocalAppTheme.current.positive,
-                            contentColor = Color.White,
+                            contentColor = LocalAppTheme.current.onPositive,
                         ),
                         modifier = Modifier.height(32.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                     ) {
-                        Text("Buy $actionSymbol", fontSize = 11.sp)
+                        Text("Buy $actionSymbol", fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
                 if (onNavigateToStock != null) {
@@ -1274,7 +1302,7 @@ private fun ChatBubble(
                         modifier = Modifier.height(32.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                     ) {
-                        Text("View chart", fontSize = 11.sp)
+                        Text("View chart", fontSize = 11.sp, maxLines = 1)
                     }
                 }
                 if (onAlertAction != null) {
@@ -1289,7 +1317,7 @@ private fun ChatBubble(
                         modifier = Modifier.height(32.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                     ) {
-                        Text("Set Alert", fontSize = 11.sp)
+                        Text("Set Alert", fontSize = 11.sp, maxLines = 1)
                     }
                 }
             }
@@ -1304,9 +1332,10 @@ private fun ChatBubble(
         // Trade intent action buttons (parsed from AI messages)
         if (tradeIntents.isNotEmpty()) {
             Spacer(modifier = Modifier.height(8.dp))
-            Row(
+            FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.widthIn(max = 320.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 tradeIntents.forEach { intent ->
                     when (intent.action) {
@@ -1315,12 +1344,12 @@ private fun ChatBubble(
                                 onClick = { onTradeAction?.invoke(intent.symbol, "BUY", intent.quantity) },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = LocalAppTheme.current.positive,
-                                    contentColor = Color.White,
+                                    contentColor = LocalAppTheme.current.onPositive,
                                 ),
                                 modifier = Modifier.height(32.dp),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                             ) {
-                                Text(intent.displayText, fontSize = 11.sp)
+                                Text(intent.displayText, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                         TradeIntentParser.Action.SELL -> {
@@ -1328,12 +1357,12 @@ private fun ChatBubble(
                                 onClick = { onTradeAction?.invoke(intent.symbol, "SELL", intent.quantity) },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = LocalAppTheme.current.negative,
-                                    contentColor = Color.White,
+                                    contentColor = LocalAppTheme.current.onNegative,
                                 ),
                                 modifier = Modifier.height(32.dp),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                             ) {
-                                Text(intent.displayText, fontSize = 11.sp)
+                                Text(intent.displayText, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                         TradeIntentParser.Action.ALERT -> {
@@ -1342,7 +1371,7 @@ private fun ChatBubble(
                                 modifier = Modifier.height(32.dp),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                             ) {
-                                Text(intent.displayText, fontSize = 11.sp)
+                                Text(intent.displayText, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                         TradeIntentParser.Action.ANALYZE -> {
@@ -1357,6 +1386,8 @@ private fun ChatBubble(
                                     Text(
                                         intent.displayText.ifBlank { "View chart ${intent.symbol}" },
                                         fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                     )
                                 }
                             }

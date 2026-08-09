@@ -550,9 +550,24 @@ def compose_structured_answer(
             return "\n".join(parts)
 
     # ── Compare two+ names ──────────────────────────────────────────
-    if intent == "compare" or re.search(r"\bcompare\b|\bvs\b|\bversus\b", q):
-        rows = []
+    if intent == "compare" or re.search(r"\bcompare\b|\bvs\b|\bversus\b|\bagainst\b", q):
+        # Only scorecard legs the user named — drop holdings/context leaks.
+        mentioned: set[str] = set()
+        try:
+            from app.stock_enricher import extract_all_symbols_from_query
+
+            mentioned = {
+                str(s).upper()
+                for s in (extract_all_symbols_from_query(query) or [])
+                if s
+            }
+        except Exception:
+            mentioned = set()
         if symbol:
+            mentioned.add(symbol)
+
+        rows = []
+        if symbol and (not mentioned or symbol in mentioned):
             rows.append(
                 {
                     "symbol": symbol,
@@ -567,6 +582,8 @@ def compose_structured_answer(
             psym = str(peer.get("symbol") or "").upper()
             if not psym or psym == symbol:
                 continue
+            if mentioned and psym not in mentioned:
+                continue
             rows.append(
                 {
                     "symbol": psym,
@@ -580,7 +597,7 @@ def compose_structured_answer(
         if len(rows) >= 2:
             parts.append("| Stock | Price | RSI | Trend | P/E | P/B | ROE% | Mcap | Notes |")
             parts.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- |")
-            for row in rows[:4]:
+            for row in rows[:3]:
                 t = row.get("technical") or {}
                 f = row.get("fundamental") or {}
                 rsi = _num(t.get("rsi"))
@@ -599,7 +616,7 @@ def compose_structured_answer(
             # Per-name fundamental bullets (second-name depth).
             parts.append("")
             parts.append("**Fundamental detail**")
-            for row in rows[:4]:
+            for row in rows[:3]:
                 f = row.get("fundamental") or {}
                 parts.append(
                     f"• **{row.get('symbol')}**: P/E={_fmt(f.get('pe'))} | "
@@ -654,8 +671,18 @@ def compose_structured_answer(
         )
         return "\n".join(parts)
 
+    # Trade-plan level asks must not fall into the bare fundamentals card.
+    stop_loss_ask = bool(
+        symbol
+        and re.search(
+            r"\b(stop[\s-]?loss|take[\s-]?profit|entry(?:\s+price)?|target(?:\s+price)?)\b",
+            q,
+        )
+        and not re.search(r"\b(what is|define|definition|meaning of)\b", q)
+    )
+
     # ── Stock-specific valuation ────────────────────────────────────
-    if symbol and (
+    if symbol and not stop_loss_ask and (
         intent == "fundamentals"
         or re.search(r"\b(p/?e|pe ratio|valuation|eps|roe|pb|p/b)\b", q)
     ):
@@ -1061,15 +1088,20 @@ def compose_structured_answer(
         return "\n".join(parts)
 
     # ── Buy / sell / swing / analysis / prediction / bare symbol asks ──
-    if symbol and intent in {
-        "price_action",
-        "stock_analysis",
-        "prediction",
-        "fundamentals",
-        "overbought_check",
-        "general_query",
-        "events_news",
-    }:
+    if symbol and (
+        intent in {
+            "price_action",
+            "stock_analysis",
+            "prediction",
+            "fundamentals",
+            "overbought_check",
+            "general_query",
+            "events_news",
+            "market_calculations",
+        }
+        or stop_loss_ask
+        or re.search(r"\b(should i buy|should i sell|buy or sell|trade plan|swing trade)\b", q)
+    ):
         weekly = bool(re.search(r"\b(this week|weekly|swing)\b", q))
         want_full_math = bool(
             re.search(

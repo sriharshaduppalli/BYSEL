@@ -2657,6 +2657,26 @@ def get_education_answer(query: str) -> Optional[str]:
     if stock_specific_levels and not formula_cue:
         return None
 
+    # "Stop loss for INFY swing trade" must return a stock plan, not the glossary.
+    named_symbol = None
+    try:
+        from .stock_enricher import extract_symbol_from_query
+
+        named_symbol = extract_symbol_from_query(query)
+    except Exception:
+        named_symbol = None
+    stock_specific_stop_or_plan = bool(named_symbol) and bool(
+        re.search(
+            r"\b(stop[\s-]?loss|take[\s-]?profit|entry|target price|trade plan|"
+            r"should i (buy|sell)|buy or sell|swing trade)\b",
+            q,
+        )
+    )
+    if stock_specific_stop_or_plan and not formula_cue and not re.search(
+        r"\b(what is|define|definition|meaning of|explain)\b", q
+    ):
+        return None
+
     # Live pattern asks for a named symbol → skip glossary (detector / analysis path).
     stock_specific_pattern = bool(
         re.search(

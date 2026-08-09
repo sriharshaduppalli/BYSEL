@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import com.bysel.trader.ui.components.MarketDataStatusBanner
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -42,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -434,7 +436,11 @@ fun BYSELApp(
         }
         mutableStateOf(normalized)
     }
-    val materialScheme = remember(currentThemeName) { getMaterialColorScheme(currentThemeName, context) }
+    // Recompute when system light/dark flips so Material You Dynamic stays in sync.
+    val configuration = LocalConfiguration.current
+    val materialScheme = remember(currentThemeName, configuration.uiMode) {
+        getMaterialColorScheme(currentThemeName, context)
+    }
     val appTheme = remember(currentThemeName, materialScheme) {
         if (isDynamicThemeId(currentThemeName)) materialScheme.toAppTheme("Dynamic")
         else getTheme(currentThemeName)
@@ -457,10 +463,46 @@ fun BYSELApp(
 
     var selectedTab by remember { mutableStateOf(initialTab) }
     var previousTab by remember { mutableIntStateOf(0) }
+    // Deep-link history (e.g. Stock Detail → AI Full Analysis) for swipe/back return.
+    var tabBackStack by remember { mutableStateOf<List<Int>>(emptyList()) }
+
+    fun pushTab(tab: Int) {
+        if (tabBackStack.lastOrNull() == tab) return
+        tabBackStack = (tabBackStack + tab).takeLast(16)
+    }
+
+    fun popTabBack(): Boolean {
+        val prev = tabBackStack.lastOrNull() ?: return false
+        tabBackStack = tabBackStack.dropLast(1)
+        selectedTab = prev
+        return true
+    }
+
+    fun navigatePushingCurrent(toTab: Int) {
+        if (selectedTab != toTab) {
+            pushTab(selectedTab)
+            if (toTab == 9) previousTab = selectedTab
+        }
+        selectedTab = toTab
+    }
+
+    fun openStockDetailTab() {
+        if (selectedTab != 9) {
+            previousTab = selectedTab
+            pushTab(selectedTab)
+        }
+        selectedTab = 9
+    }
+
+    fun selectRootTab(tab: Int) {
+        tabBackStack = emptyList()
+        selectedTab = tab
+    }
 
     // Warm start / notification tap: apply deep-link after composition is ready.
     LaunchedEffect(pendingShortcutAction) {
         val action = pendingShortcutAction ?: return@LaunchedEffect
+        tabBackStack = emptyList()
         selectedTab = ShortcutActions.tabForAction(action)
         onShortcutConsumed()
     }
@@ -518,6 +560,8 @@ fun BYSELApp(
     val signalLabBucketsLoading by viewModel.signalLabBucketsLoading.collectAsStateWithLifecycle()
     val selectedQuote by viewModel.selectedQuote.collectAsStateWithLifecycle()
     val detailLoading by viewModel.detailLoading.collectAsStateWithLifecycle()
+    val quoteHistory by viewModel.quoteHistory.collectAsStateWithLifecycle()
+    val quoteHistoryLoading by viewModel.quoteHistoryLoading.collectAsStateWithLifecycle()
     val walletBalance by viewModel.walletBalance.collectAsStateWithLifecycle()
     val marketStatus by viewModel.marketStatus.collectAsStateWithLifecycle()
     val lastQuoteUpdateAt by viewModel.lastQuoteUpdateAt.collectAsStateWithLifecycle()
@@ -619,6 +663,8 @@ fun BYSELApp(
         snapshotFlow { pagerState.settledPage }
             .collect { settledPage ->
                 if (selectedTab in 0..4 && selectedTab != settledPage) {
+                    // Manual pager swipe between root tabs clears deep-link history.
+                    if (tabBackStack.isNotEmpty()) tabBackStack = emptyList()
                     selectedTab = settledPage
                 }
             }
@@ -626,6 +672,8 @@ fun BYSELApp(
 
     BackHandler(enabled = true) {
         when {
+            popTabBack() -> Unit
+
             selectedTab == 9 -> {
                 selectedTab = previousTab
             }
@@ -753,7 +801,7 @@ fun BYSELApp(
                         icon = { Icon(Icons.Filled.Home, contentDescription = "Dashboard", modifier = Modifier.size(22.dp)) },
                         label = { Text("Home", fontSize = 10.sp) },
                         selected = navHighlightTab == 0,
-                        onClick = { selectedTab = 0 },
+                        onClick = { selectRootTab(0) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = appTheme.primary,
                             selectedTextColor = appTheme.primary,
@@ -767,7 +815,7 @@ fun BYSELApp(
                         icon = { Icon(Icons.Filled.Psychology, contentDescription = "AI", modifier = Modifier.size(22.dp)) },
                         label = { Text("AI", fontSize = 10.sp) },
                         selected = navHighlightTab == 1,
-                        onClick = { selectedTab = 1 },
+                        onClick = { selectRootTab(1) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = appTheme.primary,
                             selectedTextColor = appTheme.primary,
@@ -781,7 +829,7 @@ fun BYSELApp(
                         icon = { Icon(Icons.Filled.AttachMoney, contentDescription = "Trade", modifier = Modifier.size(22.dp)) },
                         label = { Text("Trade", fontSize = 10.sp) },
                         selected = navHighlightTab == 2,
-                        onClick = { selectedTab = 2 },
+                        onClick = { selectRootTab(2) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = appTheme.primary,
                             selectedTextColor = appTheme.primary,
@@ -795,7 +843,7 @@ fun BYSELApp(
                         icon = { Icon(Icons.AutoMirrored.Filled.ShowChart, contentDescription = "Portfolio", modifier = Modifier.size(22.dp)) },
                         label = { Text("Portfolio", fontSize = 10.sp) },
                         selected = navHighlightTab == 3,
-                        onClick = { selectedTab = 3 },
+                        onClick = { selectRootTab(3) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = appTheme.primary,
                             selectedTextColor = appTheme.primary,
@@ -809,7 +857,7 @@ fun BYSELApp(
                         icon = { Icon(Icons.Filled.GridView, contentDescription = "Heatmap", modifier = Modifier.size(22.dp)) },
                         label = { Text("Heatmap", fontSize = 10.sp) },
                         selected = navHighlightTab == 4,
-                        onClick = { selectedTab = 4 },
+                        onClick = { selectRootTab(4) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = appTheme.primary,
                             selectedTextColor = appTheme.primary,
@@ -849,7 +897,7 @@ fun BYSELApp(
                         },
                         label = { Text("More", fontSize = 10.sp) },
                         selected = navHighlightTab in 5..26,
-                        onClick = { selectedTab = 5 },
+                        onClick = { selectRootTab(5) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = appTheme.primary,
                             selectedTextColor = appTheme.primary,
@@ -861,8 +909,8 @@ fun BYSELApp(
                         }
                     }
                 ) { paddingValues ->
-                    val edgeGestureModifier = if (selectedTab !in 0..4) {
-                        Modifier.pointerInput(selectedTab, previousTab) {
+                    val edgeGestureModifier = if (selectedTab !in 0..4 || tabBackStack.isNotEmpty()) {
+                        Modifier.pointerInput(selectedTab, previousTab, tabBackStack.size) {
                             var dragStartX = 0f
                             var totalDragX = 0f
                             var handled = false
@@ -886,8 +934,12 @@ fun BYSELApp(
                                         return@detectHorizontalDragGestures
                                     }
 
-                                    val canSwipeBack = selectedTab == 9 || selectedTab in 6..8 || selectedTab in 10..26
-                                    val canSwipeForwardFromMore = selectedTab == 5
+                                    val canSwipeBack =
+                                        tabBackStack.isNotEmpty() ||
+                                            selectedTab == 9 ||
+                                            selectedTab in 6..8 ||
+                                            selectedTab in 10..26
+                                    val canSwipeForwardFromMore = selectedTab == 5 && tabBackStack.isEmpty()
                                     val startedFromLeftEdge = dragStartX <= edgeThresholdPx
                                     val startedFromRightEdge = dragStartX >= size.width - edgeThresholdPx
                                     val triggerDistance = kotlin.math.max(swipeTriggerPx, size.width * 0.14f)
@@ -897,7 +949,12 @@ fun BYSELApp(
                                     if (canSwipeBack && startedFromLeftEdge && totalDragX > triggerDistance) {
                                         handled = true
                                         change.consume()
-                                        selectedTab = if (selectedTab == 9) previousTab else 5
+                                        if (!popTabBack()) {
+                                            selectedTab = when {
+                                                selectedTab == 9 -> previousTab
+                                                else -> 5
+                                            }
+                                        }
                                     } else if (
                                         canSwipeForwardFromMore &&
                                         startedFromRightEdge &&
@@ -948,21 +1005,19 @@ fun BYSELApp(
                                         watchlistSymbols = watchlistSymbols,
                                         onRefresh = { viewModel.refreshQuotes(force = true) },
                                         onTradeClick = { symbol ->
-                                            previousTab = selectedTab
                                             viewModel.fetchAndSelectQuote(symbol)
-                                            selectedTab = 9
+                                            openStockDetailTab()
                                         },
                                         onErrorDismiss = { viewModel.clearError() },
-                                        onAiClick = { selectedTab = 1 },
+                                        onAiClick = { selectRootTab(1) },
                                         marketStatus = marketStatus,
                                         onQuickTradeClick = { symbol ->
                                             viewModel.fetchAndSelectQuote(symbol)
-                                            selectedTab = 2
+                                            selectRootTab(2)
                                         },
-                                        onSignalLabClick = { selectedTab = 20 },
+                                        onSignalLabClick = { navigatePushingCurrent(20) },
                                         onSmartMoneyClick = {
-                                            previousTab = selectedTab
-                                            selectedTab = 21
+                                            navigatePushingCurrent(21)
                                         },
                                         onAddPracticeFunds = {
                                             showHomeAddFundsDialog = true
@@ -1015,11 +1070,18 @@ fun BYSELApp(
                                             viewModel.createAlert(symbol, price, alertType)
                                         },
                                         onNavigateToStock = { symbol ->
-                                            previousTab = selectedTab
-                                            viewModel.fetchAndSelectQuote(symbol)
-                                            // Warm candles so Stock Detail chart paints quickly.
-                                            viewModel.fetchQuoteHistory(symbol, period = "1mo", interval = "1d")
-                                            selectedTab = 9
+                                            // Quote + 1M candles together; chart sits under the hero.
+                                            viewModel.openStockDetail(symbol, period = "1mo", interval = "1d")
+                                            openStockDetailTab()
+                                        },
+                                        onNavigateBack = if (tabBackStack.isNotEmpty()) {
+                                            { popTabBack() }
+                                        } else {
+                                            null
+                                        },
+                                        backLabel = when (tabBackStack.lastOrNull()) {
+                                            9 -> selectedQuote?.symbol?.let { "Back to $it" } ?: "Back to stock"
+                                            else -> if (tabBackStack.isNotEmpty()) "Back to previous" else null
                                         },
                                         onAiFeedback = { query, answer, helpful ->
                                             viewModel.submitAiFeedback(query, answer, helpful)
@@ -1077,9 +1139,8 @@ fun BYSELApp(
                                         onRefresh = { viewModel.loadMarketHeatmap(force = false) },
                                         onForceRefresh = { viewModel.loadMarketHeatmap(force = true) },
                                         onStockClick = { symbol ->
-                                            previousTab = selectedTab
                                             viewModel.fetchAndSelectQuote(symbol)
-                                            selectedTab = 9
+                                            openStockDetailTab()
                                         },
                                     )
                                 }
@@ -1131,9 +1192,8 @@ fun BYSELApp(
                                         viewModel.loadSignalLabBuckets(force = true)
                                     },
                                     onOpenSymbol = { symbol ->
-                                        previousTab = selectedTab
                                         viewModel.fetchAndSelectQuote(symbol)
-                                        selectedTab = 9
+                                        openStockDetailTab()
                                     },
                                 )
                                 21 -> InvestorPortfoliosScreen(
@@ -1147,9 +1207,8 @@ fun BYSELApp(
                                         viewModel.loadInvestorPortfolioInsights()
                                     },
                                     onOpenSymbol = { symbol ->
-                                        previousTab = selectedTab
                                         viewModel.fetchAndSelectQuote(symbol)
-                                        selectedTab = 9
+                                        openStockDetailTab()
                                     },
                                 )
                                 22 -> com.bysel.trader.ui.screens.RiskLabScreen(
@@ -1172,9 +1231,8 @@ fun BYSELApp(
                                     error = error,
                                     onRefresh = { viewModel.refreshQuotes(force = true) },
                                     onQuoteClick = { quote ->
-                                        previousTab = selectedTab
                                         viewModel.setSelectedQuote(quote)
-                                        selectedTab = 9
+                                        openStockDetailTab()
                                     },
                                     onErrorDismiss = { viewModel.clearError() }
                                 )
@@ -1188,14 +1246,12 @@ fun BYSELApp(
                                     onSearchQuery = { query -> viewModel.searchStocks(query) },
                                     onClearSearch = { viewModel.clearSearchResults() },
                                     onQuoteClick = { quote ->
-                                        previousTab = selectedTab
                                         viewModel.setSelectedQuote(quote)
-                                        selectedTab = 9
+                                        openStockDetailTab()
                                     },
                                     onSymbolClick = { symbol ->
-                                        previousTab = selectedTab
                                         viewModel.fetchAndSelectQuote(symbol)
-                                        selectedTab = 9
+                                        openStockDetailTab()
                                     },
                                     onAddToWatchlist = { symbol -> viewModel.addToWatchlist(symbol) },
                                     onRouteClick = { targetTab -> selectedTab = targetTab }
@@ -1230,8 +1286,7 @@ fun BYSELApp(
                                     onLogout = onLogout,
                                     onLogoutAllDevices = onLogoutAllDevices,
                                     onOpenPriceAlerts = {
-                                        previousTab = selectedTab
-                                        selectedTab = 7
+                                        navigatePushingCurrent(7)
                                     },
                                 )
                                 9 -> {
@@ -1247,8 +1302,11 @@ fun BYSELApp(
                                     } else {
                                         StockDetailScreen(
                                             quote = selectedQuote,
-                                            history = viewModel.quoteHistory.value,
-                                            onBackPress = { selectedTab = previousTab },
+                                            history = quoteHistory,
+                                            historyLoading = quoteHistoryLoading,
+                                            onBackPress = {
+                                                if (!popTabBack()) selectedTab = previousTab
+                                            },
                                             onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
                                             onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") },
                                             onOpenTrustCenter = { traceId ->
@@ -1256,17 +1314,55 @@ fun BYSELApp(
                                                     viewModel.seedTraceLookup(it)
                                                     viewModel.lookupOrderByTrace(it)
                                                 }
-                                                selectedTab = 19
+                                                navigatePushingCurrent(19)
                                             },
                                             onAiQuery = { query ->
+                                                // Keep Stock Detail under AI so swipe/back returns here.
                                                 viewModel.askAi(query)
-                                                selectedTab = 1
+                                                navigatePushingCurrent(1)
                                             },
                                             viewModel = viewModel
                                         )
                                     }
                                 }
                             }
+                        }
+
+                        // Left-edge swipe returns through deep-link history even on AI (pager) tab.
+                        if (tabBackStack.isNotEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.CenterStart)
+                                    .fillMaxHeight()
+                                    .width(36.dp)
+                                    .pointerInput(tabBackStack.size, selectedTab) {
+                                        var totalDragX = 0f
+                                        var handled = false
+                                        detectHorizontalDragGestures(
+                                            onDragStart = {
+                                                totalDragX = 0f
+                                                handled = false
+                                            },
+                                            onDragEnd = {
+                                                totalDragX = 0f
+                                                handled = false
+                                            },
+                                            onDragCancel = {
+                                                totalDragX = 0f
+                                                handled = false
+                                            },
+                                            onHorizontalDrag = { change, dragAmount ->
+                                                if (handled) return@detectHorizontalDragGestures
+                                                totalDragX += dragAmount
+                                                if (totalDragX > swipeTriggerPx) {
+                                                    handled = true
+                                                    change.consume()
+                                                    popTabBack()
+                                                }
+                                            },
+                                        )
+                                    },
+                            )
                         }
                     }
                     }

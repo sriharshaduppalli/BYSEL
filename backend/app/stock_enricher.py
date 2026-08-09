@@ -352,6 +352,13 @@ _NAME_TO_SYMBOL: dict[str, str] = {
     "nestle": "NESTLEIND",
     "ltimindtree": "LTIM", "lti": "LTIM",
     "tech mahindra": "TECHM",
+    "m&m": "M&M",
+    "m & m": "M&M",
+    "mahindra": "M&M",
+    "mahindra and mahindra": "M&M",
+    "mahindra & mahindra": "M&M",
+    "m&mfin": "M&MFIN",
+    "mahindra finance": "M&MFIN",
     "sun pharma": "SUNPHARMA", "sun pharmaceutical": "SUNPHARMA",
     "asian paints": "ASIANPAINT", "asianpaint": "ASIANPAINT",
     "bharti airtel": "BHARTIARTL", "airtel": "BHARTIARTL",
@@ -893,11 +900,46 @@ def extract_all_symbols_from_query(query: str) -> list[str]:
         "OUTLOOK", "IMPACT", "EFFECT", "POINT", "POINTS", "MONEY", "GAINS", "PAYING", "QUARTER", "QUARTERLY",
         "ANNUAL", "MONTHLY", "PEERS", "YEAR", "MONTH", "WEEK", "TERM", "LONG", "SHORT", "NEXT", "LAST",
         "TODAY", "DAILY", "WEEKLY", "MONTHLY", "VS", "VERSUS",
+        # Android PromptBuilder wrapper keys — never treat as tickers.
+        "CONTEXT", "HOLDINGS", "WALLET", "SYMBOL", "PRICE", "PCTCHANGE",
+        "PORTFOLIOSCORE", "HISTORY", "USER", "QUERY", "MARKETCAP", "VOLUME",
+        # English modal / filler words that match NSE-looking tokens.
+        "SHOULD", "COULD", "WOULD", "MIGHT", "SHALL", "MUST", "NEED",
+        "WANT", "PLEASE", "THANKS", "THANK", "HELLO", "ABOUT", "AFTER",
+        "BEFORE", "UNDER", "OVER", "INTO", "FROM", "WITH", "YOUR", "HAVE",
+        "DOES", "DID", "BEEN", "BEING", "JUST", "ONLY", "ALSO", "VERY",
+        "MUCH", "MANY", "SOME", "EACH", "BOTH", "SUCH", "THAN", "THEN",
+        "ONCE", "HERE", "THERE", "WHEN", "WHERE", "WHICH", "WHILE", "AGAIN",
+        # English verbs / fillers that collide with rare NSE codes.
+        "TAKE", "TAKES", "TAKEN", "GIVEN", "MAKE", "MADE", "COME", "CAME",
+        "LOOK", "LOOKS", "KEEP", "KEPT", "HELP", "HELD", "MOVE", "MOVES",
     }
+    known = None
+    try:
+        from app.market_data import INDIAN_STOCKS, get_stock_catalog
+
+        known = set(INDIAN_STOCKS) | set(get_stock_catalog())
+    except Exception:
+        known = None
+
+    # Ampersand tickers (M&M, M&MFIN) are missed by the plain A-Z0-9 pattern.
+    amp_tokens = re.findall(r"\b[A-Z]{1,6}&[A-Z]{1,6}\b", query.upper())
+    for tok in amp_tokens:
+        if tok in _SKIP:
+            continue
+        resolved = _resolve_listed_symbol(tok)
+        if known is not None and resolved not in known:
+            continue
+        if resolved not in symbols:
+            symbols.append(resolved)
+
     tokens = re.findall(r'\b[A-Z][A-Z0-9\-]{1,9}\b', query.upper())
     for tok in tokens:
         if tok not in _SKIP and len(tok) >= 3:
             resolved = _resolve_listed_symbol(tok)
+            # Reject English leftovers that are not real listed equities.
+            if known is not None and resolved not in known:
+                continue
             if resolved not in symbols:
                 symbols.append(resolved)
 
@@ -1316,17 +1358,23 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
         "CNC", "MIS", "NRML", "BONUS", "SPLIT", "RIGHTS", "AUCTION",
         "STCG", "LTCG", "TAX", "TAXES", "SIP", "NAVS", "PROTECTION",
         "ORDER", "ORDERS", "TRIGGER", "BLOCKED", "KYC", "PAN",
+        # English verbs / fillers that collide with rare NSE codes.
+        "TAKE", "TAKES", "TAKEN", "GIVEN", "MAKE", "MADE", "COME", "CAME",
+        "LOOK", "LOOKS", "KEEP", "KEPT", "HELP", "HELD", "MOVE", "MOVES",
     }
     q_upper = query.upper().strip()
     # Prefer "… of/for/on TICKER" so "full math for KAYNES" resolves KAYNES, not FULL.
     of_for = re.search(
-        r"\b(?:OF|FOR|ON)\s+([A-Z][A-Z0-9\-]{1,14})\b",
+        r"\b(?:OF|FOR|ON)\s+([A-Z][A-Z0-9\-&]{1,14})\b",
         q_upper,
     )
     if of_for:
         cand = of_for.group(1)
         if cand not in _SKIP and len(cand) >= 2:
             return _resolve_listed_symbol(cand)
+    amp = re.search(r"\b([A-Z]{1,6}&[A-Z]{1,6})\b", q_upper)
+    if amp and amp.group(1) not in _SKIP:
+        return _resolve_listed_symbol(amp.group(1))
     tokens = re.findall(r'\b[A-Z][A-Z0-9\-]{1,9}\b', q_upper)
     for tok in tokens:
         if tok not in _SKIP and len(tok) >= 3:

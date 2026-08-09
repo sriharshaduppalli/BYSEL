@@ -3027,7 +3027,7 @@
     "symbol": "AARVI",
     "company_name": "Aarvi Encon Limited",
     "yahoo_ticker": "AARVI.NS",
-    "isin": "",
+    "isin": "INE754X01016",
     "exchange": "NSE"
   },
   {
@@ -4781,13 +4781,6 @@
     "exchange": "NSE"
   },
   {
-    "symbol": "BGLOBAL",
-    "company_name": "Bharatiya Global Infomedia Limited",
-    "yahoo_ticker": "BGLOBAL.NS",
-    "isin": "INE224M01013",
-    "exchange": "NSE"
-  },
-  {
     "symbol": "BGRENERGY",
     "company_name": "BGR Energy Systems Limited",
     "yahoo_ticker": "BGRENERGY.NS",
@@ -5544,13 +5537,6 @@
     "exchange": "NSE"
   },
   {
-    "symbol": "CMICABLES",
-    "company_name": "CMI Limited",
-    "yahoo_ticker": "CMICABLES.NS",
-    "isin": "INE981B01011",
-    "exchange": "NSE"
-  },
-  {
     "symbol": "CMLL",
     "company_name": "Caliber Mining and Logistics Limited",
     "yahoo_ticker": "CMLL.NS",
@@ -6209,13 +6195,6 @@
     "exchange": "NSE"
   },
   {
-    "symbol": "DIL",
-    "company_name": "Debock Industries Limited",
-    "yahoo_ticker": "DIL.NS",
-    "isin": "",
-    "exchange": "NSE"
-  },
-  {
     "symbol": "DISAQ",
     "company_name": "Disa India Limited",
     "yahoo_ticker": "DISAQ.NS",
@@ -6465,13 +6444,6 @@
     "company_name": "Edelweiss Financial Services Limited",
     "yahoo_ticker": "EDELWEISS.NS",
     "isin": "INE532F01054",
-    "exchange": "NSE"
-  },
-  {
-    "symbol": "EDUCOMP",
-    "company_name": "Educomp Solutions Limited",
-    "yahoo_ticker": "EDUCOMP.NS",
-    "isin": "INE216H01027",
     "exchange": "NSE"
   },
   {
@@ -6888,13 +6860,6 @@
     "exchange": "NSE"
   },
   {
-    "symbol": "FCONSUMER",
-    "company_name": "Future Consumer Limited",
-    "yahoo_ticker": "FCONSUMER.NS",
-    "isin": "INE220J01025",
-    "exchange": "NSE"
-  },
-  {
     "symbol": "FCSSOFT",
     "company_name": "FCS Software Solutions Limited",
     "yahoo_ticker": "FCSSOFT.NS",
@@ -7305,13 +7270,6 @@
     "company_name": "GFL Limited",
     "yahoo_ticker": "GFLLIMITED.NS",
     "isin": "INE538A01037",
-    "exchange": "NSE"
-  },
-  {
-    "symbol": "GFSTEELS",
-    "company_name": "Grand Foundry Limited",
-    "yahoo_ticker": "GFSTEELS.NS",
-    "isin": "INE534A01028",
     "exchange": "NSE"
   },
   {
@@ -9177,6 +9135,13 @@
     "exchange": "NSE"
   },
   {
+    "symbol": "JNPR",
+    "company_name": "Juniper Green Energy Limited",
+    "yahoo_ticker": "JNPR.NS",
+    "isin": "INE05C901015",
+    "exchange": "NSE"
+  },
+  {
     "symbol": "JOCIL",
     "company_name": "Jocil Limited",
     "yahoo_ticker": "JOCIL.NS",
@@ -10472,6 +10437,13 @@
     "exchange": "NSE"
   },
   {
+    "symbol": "MANIPALHOS",
+    "company_name": "Manipal Health Enterprises Limited",
+    "yahoo_ticker": "MANIPALHOS.NS",
+    "isin": "INE459N01021",
+    "exchange": "NSE"
+  },
+  {
     "symbol": "MANOMAY",
     "company_name": "Manomay Tex India Limited",
     "yahoo_ticker": "MANOMAY.NS",
@@ -10976,13 +10948,6 @@
     "exchange": "NSE"
   },
   {
-    "symbol": "MORARJEE",
-    "company_name": "Morarjee Textiles Limited",
-    "yahoo_ticker": "MORARJEE.NS",
-    "isin": "INE161G01027",
-    "exchange": "NSE"
-  },
-  {
     "symbol": "MOREPENLAB",
     "company_name": "Morepen Laboratories Limited",
     "yahoo_ticker": "MOREPENLAB.NS",
@@ -11130,6 +11095,13 @@
     "exchange": "NSE"
   },
   {
+    "symbol": "MVELECTRO",
+    "company_name": "MV Electrosystems Limited",
+    "yahoo_ticker": "MVELECTRO.NS",
+    "isin": "INE0OWZ01020",
+    "exchange": "NSE"
+  },
+  {
     "symbol": "MVGJL",
     "company_name": "Manoj Vaibhav Gems N Jewellers Limited",
     "yahoo_ticker": "MVGJL.NS",
@@ -11148,13 +11120,6 @@
     "company_name": "NACL Industries Limited",
     "yahoo_ticker": "NACLIND.NS",
     "isin": "INE295D01020",
-    "exchange": "NSE"
-  },
-  {
-    "symbol": "NAGAFERT",
-    "company_name": "Nagarjuna Fertilizers and Chemicals Limited",
-    "yahoo_ticker": "NAGAFERT.NS",
-    "isin": "INE454M01024",
     "exchange": "NSE"
   },
   {
@@ -11379,13 +11344,6 @@
     "company_name": "Network18 Media & Investments Limited",
     "yahoo_ticker": "NETWORK18.NS",
     "isin": "INE870H01013",
-    "exchange": "NSE"
-  },
-  {
-    "symbol": "NEUEON",
-    "company_name": "Neueon Corporation Limited",
-    "yahoo_ticker": "NEUEON.NS",
-    "isin": "INE333I01044",
     "exchange": "NSE"
   },
   {
@@ -12754,13 +12712,6 @@
     "exchange": "NSE"
   },
   {
-    "symbol": "QUINTEGRA",
-    "company_name": "Quintegra Solutions Limited",
-    "yahoo_ticker": "QUINTEGRA.NS",
-    "isin": "INE033B01011",
-    "exchange": "NSE"
-  },
-  {
     "symbol": "RACE",
     "company_name": "Race Eco Chain Limited",
     "yahoo_ticker": "RACE.NS",
@@ -12863,13 +12814,6 @@
     "company_name": "Raj Television Network Limited",
     "yahoo_ticker": "RAJTV.NS",
     "isin": "INE952H01027",
-    "exchange": "NSE"
-  },
-  {
-    "symbol": "RAJVIR",
-    "company_name": "Rajvir Industries Limited",
-    "yahoo_ticker": "RAJVIR.NS",
-    "isin": "INE011H01014",
     "exchange": "NSE"
   },
   {
@@ -13479,13 +13423,6 @@
     "company_name": "Saatvik Green Energy Limited",
     "yahoo_ticker": "SAATVIKGL.NS",
     "isin": "INE13B501022",
-    "exchange": "NSE"
-  },
-  {
-    "symbol": "SABEVENTS",
-    "company_name": "Sab Events & Governance Now Media Limited",
-    "yahoo_ticker": "SABEVENTS.NS",
-    "isin": "INE860T01019",
     "exchange": "NSE"
   },
   {
@@ -14525,13 +14462,6 @@
     "exchange": "NSE"
   },
   {
-    "symbol": "SKIL",
-    "company_name": "SKIL Infrastructure Limited",
-    "yahoo_ticker": "SKIL.NS",
-    "isin": "INE429F01012",
-    "exchange": "NSE"
-  },
-  {
     "symbol": "SKIPPER",
     "company_name": "Skipper Limited",
     "yahoo_ticker": "SKIPPER.NS",
@@ -14781,13 +14711,6 @@
     "company_name": "SRM Contractors Limited",
     "yahoo_ticker": "SRM.NS",
     "isin": "INE0R6Z01013",
-    "exchange": "NSE"
-  },
-  {
-    "symbol": "SRPL",
-    "company_name": "Shree Ram Proteins Limited",
-    "yahoo_ticker": "SRPL.NS",
-    "isin": "",
     "exchange": "NSE"
   },
   {
@@ -16076,13 +15999,6 @@
     "company_name": "The United Nilgiri Tea Estates Company Limited",
     "yahoo_ticker": "UNITEDTEA.NS",
     "isin": "",
-    "exchange": "NSE"
-  },
-  {
-    "symbol": "UNIVAFOODS",
-    "company_name": "Univa Foods Limited",
-    "yahoo_ticker": "UNIVAFOODS.NS",
-    "isin": "INE275F01019",
     "exchange": "NSE"
   },
   {
@@ -17717,20 +17633,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "HARCR",
-    "company_name": "Harig Crankshafts Ltd.",
-    "yahoo_ticker": "500178.BO",
-    "isin": "INE905C01034",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "500178",
-    "company_name": "Harig Crankshafts Ltd.",
-    "yahoo_ticker": "500178.BO",
-    "isin": "INE905C01034",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "500179",
     "company_name": "HCL Infosystems Limited",
     "yahoo_ticker": "500179.BO",
@@ -18536,20 +18438,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "RAMAPETRO",
-    "company_name": "Rama Petrochemicals Ltd",
-    "yahoo_ticker": "500358.BO",
-    "isin": "INE783A01013",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "500358",
-    "company_name": "Rama Petrochemicals Ltd",
-    "yahoo_ticker": "500358.BO",
-    "isin": "INE783A01013",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "RAPICUT",
     "company_name": "Rapicut Carbides Ltd.",
     "yahoo_ticker": "500360.BO",
@@ -19299,20 +19187,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "PEOPLIN",
-    "company_name": "Peoples Investments Ltd.",
-    "yahoo_ticker": "501144.BO",
-    "isin": "INE644U01015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "501144",
-    "company_name": "Peoples Investments Ltd.",
-    "yahoo_ticker": "501144.BO",
-    "isin": "INE644U01015",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "DSINVEST",
     "company_name": "Dalal Street Investments Ltd.",
     "yahoo_ticker": "501148.BO",
@@ -19352,20 +19226,6 @@
     "company_name": "TCI Finance Limited",
     "yahoo_ticker": "501242.BO",
     "isin": "INE911B01018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "LORDSMARK",
-    "company_name": "Lords Mark Industries Limited",
-    "yahoo_ticker": "501261.BO",
-    "isin": "INE567L01025",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "501261",
-    "company_name": "Lords Mark Industries Limited",
-    "yahoo_ticker": "501261.BO",
-    "isin": "INE567L01025",
     "exchange": "BSE"
   },
   {
@@ -19565,20 +19425,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "AMALGAM",
-    "company_name": "Amalgamated Electricity Co. Ltd.",
-    "yahoo_ticker": "501622.BO",
-    "isin": "INE492N01022",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "501622",
-    "company_name": "Amalgamated Electricity Co. Ltd.",
-    "yahoo_ticker": "501622.BO",
-    "isin": "INE492N01022",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "ANANDPROJ",
     "company_name": "Anand Projects Ltd",
     "yahoo_ticker": "501630.BO",
@@ -19730,20 +19576,6 @@
     "company_name": "LERTHAI FINANCE LIMITED",
     "yahoo_ticker": "502250.BO",
     "isin": "INE347D01011",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "RASSIREF",
-    "company_name": "Raasi Refractories Limited.",
-    "yahoo_ticker": "502271.BO",
-    "isin": "INE858D01017",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "502271",
-    "company_name": "Raasi Refractories Limited.",
-    "yahoo_ticker": "502271.BO",
-    "isin": "INE858D01017",
     "exchange": "BSE"
   },
   {
@@ -20643,20 +20475,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "RRP",
-    "company_name": "RRP SEMICONDUCTOR LIMITED",
-    "yahoo_ticker": "504346.BO",
-    "isin": "INE713N01013",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "504346",
-    "company_name": "RRP SEMICONDUCTOR LIMITED",
-    "yahoo_ticker": "504346.BO",
-    "isin": "INE713N01013",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "504351",
     "company_name": "Empower India Limited",
     "yahoo_ticker": "504351.BO",
@@ -20790,20 +20608,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "SJCORP",
-    "company_name": "SJ Corporation Limited",
-    "yahoo_ticker": "504398.BO",
-    "isin": "INE312B01027",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "504398",
-    "company_name": "SJ Corporation Limited",
-    "yahoo_ticker": "504398.BO",
-    "isin": "INE312B01027",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "UNIABEXAL",
     "company_name": "Uni-Abex Alloy Products Ltd.",
     "yahoo_ticker": "504605.BO",
@@ -20850,20 +20654,6 @@
     "company_name": "Bombay Wire Ropes Ltd.",
     "yahoo_ticker": "504648.BO",
     "isin": "INE089T01023",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "CHASBRT",
-    "company_name": "Chase Bright Steel Co. Ltd.",
-    "yahoo_ticker": "504671.BO",
-    "isin": "NA",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "504671",
-    "company_name": "Chase Bright Steel Co. Ltd.",
-    "yahoo_ticker": "504671.BO",
-    "isin": "NA",
     "exchange": "BSE"
   },
   {
@@ -21231,20 +21021,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "LYNMC",
-    "company_name": "Lynx Machinery & Commercials Ltd.",
-    "yahoo_ticker": "505320.BO",
-    "isin": "INE732D01014",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "505320",
-    "company_name": "Lynx Machinery & Commercials Ltd.",
-    "yahoo_ticker": "505320.BO",
-    "isin": "INE732D01014",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "505324",
     "company_name": "Manugraph India Limited",
     "yahoo_ticker": "505324.BO",
@@ -21529,20 +21305,6 @@
     "company_name": "Elecon Engineering Company Ltd",
     "yahoo_ticker": "505700.BO",
     "isin": "INE205B01031",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "SATANIBRG",
-    "company_name": "Satani Bearings Ltd.",
-    "yahoo_ticker": "505703.BO",
-    "isin": "INE498D01012",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "505703",
-    "company_name": "Satani Bearings Ltd.",
-    "yahoo_ticker": "505703.BO",
-    "isin": "INE498D01012",
     "exchange": "BSE"
   },
   {
@@ -22099,20 +21861,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "SASHWAT",
-    "company_name": "Sashwat Technocrats Limited",
-    "yahoo_ticker": "506313.BO",
-    "isin": "INE789D01014",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "506313",
-    "company_name": "Sashwat Technocrats Limited",
-    "yahoo_ticker": "506313.BO",
-    "isin": "INE789D01014",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "STARSOURCE",
     "company_name": "STARSOURCE MULTITRADE LIMITED",
     "yahoo_ticker": "506365.BO",
@@ -22124,20 +21872,6 @@
     "company_name": "STARSOURCE MULTITRADE LIMITED",
     "yahoo_ticker": "506365.BO",
     "isin": "INE320M01019",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "CITURGIA",
-    "company_name": "Citurgia Biochemicals Ltd.",
-    "yahoo_ticker": "506373.BO",
-    "isin": "INE795B01031",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "506373",
-    "company_name": "Citurgia Biochemicals Ltd.",
-    "yahoo_ticker": "506373.BO",
-    "isin": "INE795B01031",
     "exchange": "BSE"
   },
   {
@@ -22470,38 +22204,10 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "MASCH",
-    "company_name": "Master Chemicals Ltd.",
-    "yahoo_ticker": "506867.BO",
-    "isin": "INE523D01017",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "506867",
-    "company_name": "Master Chemicals Ltd.",
-    "yahoo_ticker": "506867.BO",
-    "isin": "INE523D01017",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "506879",
     "company_name": "Gujarat Themis Biosyn Limited",
     "yahoo_ticker": "506879.BO",
     "isin": "INE942C01045",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "SCBL",
-    "company_name": "Saptak Chem And Business Limited",
-    "yahoo_ticker": "506906.BO",
-    "isin": "INE467X01023",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "506906",
-    "company_name": "Saptak Chem And Business Limited",
-    "yahoo_ticker": "506906.BO",
-    "isin": "INE467X01023",
     "exchange": "BSE"
   },
   {
@@ -23282,20 +22988,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "DESIFARMS",
-    "company_name": "Desi Farms India Limited",
-    "yahoo_ticker": "507984.BO",
-    "isin": "INE358F01013",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "507984",
-    "company_name": "Desi Farms India Limited",
-    "yahoo_ticker": "507984.BO",
-    "isin": "INE358F01013",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "JPTRLES",
     "company_name": "Jupiter Industries & Leasing Ltd.",
     "yahoo_ticker": "507987.BO",
@@ -23408,20 +23100,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "DIAMANT",
-    "company_name": "Diamant Infrastructure Limited",
-    "yahoo_ticker": "508860.BO",
-    "isin": "INE206I01026",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "508860",
-    "company_name": "Diamant Infrastructure Limited",
-    "yahoo_ticker": "508860.BO",
-    "isin": "INE206I01026",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "NEWMKTAVE",
     "company_name": "NEW MARKETS AVENUE LIMITED",
     "yahoo_ticker": "508867.BO",
@@ -23489,34 +23167,6 @@
     "company_name": "IRONWOOD EDUCATION LIMITED",
     "yahoo_ticker": "508918.BO",
     "isin": "INE791H01011",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "MSRINDIA",
-    "company_name": "MSR India Limited",
-    "yahoo_ticker": "508922.BO",
-    "isin": "INE331L01026",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "508922",
-    "company_name": "MSR India Limited",
-    "yahoo_ticker": "508922.BO",
-    "isin": "INE331L01026",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "AIRLTD",
-    "company_name": "AVISHKAR INFRA REALTY LIMITED",
-    "yahoo_ticker": "508929.BO",
-    "isin": "INE433O01024",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "508929",
-    "company_name": "AVISHKAR INFRA REALTY LIMITED",
-    "yahoo_ticker": "508929.BO",
-    "isin": "INE433O01024",
     "exchange": "BSE"
   },
   {
@@ -23790,34 +23440,6 @@
     "company_name": "Gufic Biosciences Limited",
     "yahoo_ticker": "509079.BO",
     "isin": "INE742B01025",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "PHOTON",
-    "company_name": "Photon Capital Advisors Ltd",
-    "yahoo_ticker": "509084.BO",
-    "isin": "INE107J01016",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "509084",
-    "company_name": "Photon Capital Advisors Ltd",
-    "yahoo_ticker": "509084.BO",
-    "isin": "INE107J01016",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "OSWALEA",
-    "company_name": "Oswal Leasing Ltd.",
-    "yahoo_ticker": "509099.BO",
-    "isin": "INE811Q01018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "509099",
-    "company_name": "Oswal Leasing Ltd.",
-    "yahoo_ticker": "509099.BO",
-    "isin": "INE811Q01018",
     "exchange": "BSE"
   },
   {
@@ -24504,20 +24126,6 @@
     "company_name": "V.B.Desai Financial Services Ltd",
     "yahoo_ticker": "511110.BO",
     "isin": "INE848D01018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "QUADRANT",
-    "company_name": "Quadrant Televentures Limited",
-    "yahoo_ticker": "511116.BO",
-    "isin": "INE527B01020",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "511116",
-    "company_name": "Quadrant Televentures Limited",
-    "yahoo_ticker": "511116.BO",
-    "isin": "INE527B01020",
     "exchange": "BSE"
   },
   {
@@ -25242,34 +24850,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "OLYMTFI",
-    "company_name": "Olympic Management & Financial Serv",
-    "yahoo_ticker": "511632.BO",
-    "isin": "INE091N01014",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "511632",
-    "company_name": "Olympic Management & Financial Serv",
-    "yahoo_ticker": "511632.BO",
-    "isin": "INE091N01014",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "AXENTRA",
-    "company_name": "AXENTRA CORP LIMITED",
-    "yahoo_ticker": "511634.BO",
-    "isin": "INE919M01026",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "511634",
-    "company_name": "AXENTRA CORP LIMITED",
-    "yahoo_ticker": "511634.BO",
-    "isin": "INE919M01026",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "DJSSS",
     "company_name": "DJS Stock & Shares Ltd.",
     "yahoo_ticker": "511636.BO",
@@ -25326,20 +24906,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "PREMCAPM",
-    "company_name": "Premium Capital Market & Investment",
-    "yahoo_ticker": "511660.BO",
-    "isin": "INE555D01019",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "511660",
-    "company_name": "Premium Capital Market & Investment",
-    "yahoo_ticker": "511660.BO",
-    "isin": "INE555D01019",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "BGIL",
     "company_name": "BGIL Films & Technologies Ltd",
     "yahoo_ticker": "511664.BO",
@@ -25365,20 +24931,6 @@
     "company_name": "GIC Housing Finance Limited",
     "yahoo_ticker": "511676.BO",
     "isin": "INE289B01019",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "MATHEWE",
-    "company_name": "Mathew Easow Research Securities Lt",
-    "yahoo_ticker": "511688.BO",
-    "isin": "INE963B01019",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "511688",
-    "company_name": "Mathew Easow Research Securities Lt",
-    "yahoo_ticker": "511688.BO",
-    "isin": "INE963B01019",
     "exchange": "BSE"
   },
   {
@@ -25512,34 +25064,6 @@
     "company_name": "K.Z.Leasing & Finance Ltd.",
     "yahoo_ticker": "511728.BO",
     "isin": "INE006C01015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "BYLD",
-    "company_name": "BYLD Capital Finance Limited",
-    "yahoo_ticker": "511730.BO",
-    "isin": "INE759D01017",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "511730",
-    "company_name": "BYLD Capital Finance Limited",
-    "yahoo_ticker": "511730.BO",
-    "isin": "INE759D01017",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "PASUFIN",
-    "company_name": "Pasupati Fincap Ltd.",
-    "yahoo_ticker": "511734.BO",
-    "isin": "INE527C01010",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "511734",
-    "company_name": "Pasupati Fincap Ltd.",
-    "yahoo_ticker": "511734.BO",
-    "isin": "INE527C01010",
     "exchange": "BSE"
   },
   {
@@ -25708,20 +25232,6 @@
     "company_name": "Winro Commercial (India) Ltd.",
     "yahoo_ticker": "512022.BO",
     "isin": "INE837E01019",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "NDMETAL",
-    "company_name": "N.D.Metal Industries Ltd",
-    "yahoo_ticker": "512024.BO",
-    "isin": "INE643D01013",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "512024",
-    "company_name": "N.D.Metal Industries Ltd",
-    "yahoo_ticker": "512024.BO",
-    "isin": "INE643D01013",
     "exchange": "BSE"
   },
   {
@@ -26208,20 +25718,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "JAYTEX",
-    "company_name": "Jaybharat Textiles And Real Estate Limited",
-    "yahoo_ticker": "512233.BO",
-    "isin": "INE091E01039",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "512233",
-    "company_name": "Jaybharat Textiles And Real Estate Limited",
-    "yahoo_ticker": "512233.BO",
-    "isin": "INE091E01039",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "512237",
     "company_name": "Jai Corp Limited",
     "yahoo_ticker": "512237.BO",
@@ -26334,20 +25830,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "NNTL",
-    "company_name": "N2N Technologies Limited",
-    "yahoo_ticker": "512279.BO",
-    "isin": "INE043F01011",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "512279",
-    "company_name": "N2N Technologies Limited",
-    "yahoo_ticker": "512279.BO",
-    "isin": "INE043F01011",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "ZSPEEDCO",
     "company_name": "Speedage Commercials Ltd.",
     "yahoo_ticker": "512291.BO",
@@ -26366,20 +25848,6 @@
     "company_name": "Bhagyanagar India Limited",
     "yahoo_ticker": "512296.BO",
     "isin": "INE458B01036",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "SHANTAI",
-    "company_name": "Shantai Industries Limited",
-    "yahoo_ticker": "512297.BO",
-    "isin": "INE408F01024",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "512297",
-    "company_name": "Shantai Industries Limited",
-    "yahoo_ticker": "512297.BO",
-    "isin": "INE408F01024",
     "exchange": "BSE"
   },
   {
@@ -26555,20 +26023,6 @@
     "company_name": "Bengal Steel Industries Ltd.",
     "yahoo_ticker": "512404.BO",
     "isin": "INE523W01017",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "IPOWER",
-    "company_name": "i Power Solutions India Ltd.",
-    "yahoo_ticker": "512405.BO",
-    "isin": "INE468F01010",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "512405",
-    "company_name": "i Power Solutions India Ltd.",
-    "yahoo_ticker": "512405.BO",
-    "isin": "INE468F01010",
     "exchange": "BSE"
   },
   {
@@ -26779,20 +26233,6 @@
     "company_name": "VIRYA RESOURCES LIMITED",
     "yahoo_ticker": "512479.BO",
     "isin": "INE661K01010",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "POLYTEX",
-    "company_name": "Polytex India Ltd.",
-    "yahoo_ticker": "512481.BO",
-    "isin": "INE012F01016",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "512481",
-    "company_name": "Polytex India Ltd.",
-    "yahoo_ticker": "512481.BO",
-    "isin": "INE012F01016",
     "exchange": "BSE"
   },
   {
@@ -27384,13 +26824,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "513343",
-    "company_name": "Grand Foundry Limited",
-    "yahoo_ticker": "513343.BO",
-    "isin": "INE534A01028",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "513349",
     "company_name": "Ajmera Realty & Infra India Limited",
     "yahoo_ticker": "513349.BO",
@@ -27465,20 +26898,6 @@
     "company_name": "Vallabh Steels ltd",
     "yahoo_ticker": "513397.BO",
     "isin": "INE457E01016",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "PMTELELIN",
-    "company_name": "P.M. Telelinnks Limited",
-    "yahoo_ticker": "513403.BO",
-    "isin": "INE092C01015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "513403",
-    "company_name": "P.M. Telelinnks Limited",
-    "yahoo_ticker": "513403.BO",
-    "isin": "INE092C01015",
     "exchange": "BSE"
   },
   {
@@ -27731,20 +27150,6 @@
     "company_name": "Gujarat Natural Resources Limited",
     "yahoo_ticker": "513536.BO",
     "isin": "INE207H01018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "TNSTLTU",
-    "company_name": "Tamilnadu Steel Tubes Ltd.",
-    "yahoo_ticker": "513540.BO",
-    "isin": "INE176E01012",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "513540",
-    "company_name": "Tamilnadu Steel Tubes Ltd.",
-    "yahoo_ticker": "513540.BO",
-    "isin": "INE176E01012",
     "exchange": "BSE"
   },
   {
@@ -28063,38 +27468,10 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "KONARKSY",
-    "company_name": "Konark Synthetics  Ltd",
-    "yahoo_ticker": "514128.BO",
-    "isin": "INE517D01019",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "514128",
-    "company_name": "Konark Synthetics  Ltd",
-    "yahoo_ticker": "514128.BO",
-    "isin": "INE517D01019",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "514138",
     "company_name": "Suryalata Spinning Mills Limited",
     "yahoo_ticker": "514138.BO",
     "isin": "INE132C01027",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "SURYVANSP",
-    "company_name": "Suryavanshi Spinning Mills Ltd.",
-    "yahoo_ticker": "514140.BO",
-    "isin": "INE431C01023",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "514140",
-    "company_name": "Suryavanshi Spinning Mills Ltd.",
-    "yahoo_ticker": "514140.BO",
-    "isin": "INE431C01023",
     "exchange": "BSE"
   },
   {
@@ -28193,20 +27570,6 @@
     "company_name": "Sumeet Industries Limited",
     "yahoo_ticker": "514211.BO",
     "isin": "INE235C01036",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "KLIFESTYL",
-    "company_name": "K-Lifestyle & Industries Limited",
-    "yahoo_ticker": "514221.BO",
-    "isin": "INE218A01028",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "514221",
-    "company_name": "K-Lifestyle & Industries Limited",
-    "yahoo_ticker": "514221.BO",
-    "isin": "INE218A01028",
     "exchange": "BSE"
   },
   {
@@ -28721,20 +28084,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "OSWAYRN",
-    "company_name": "Oswal Yarns Ltd.",
-    "yahoo_ticker": "514460.BO",
-    "isin": "INE670H01017",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "514460",
-    "company_name": "Oswal Yarns Ltd.",
-    "yahoo_ticker": "514460.BO",
-    "isin": "INE670H01017",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "WINSOMTX",
     "company_name": "Winsome Textile Industries Ltd",
     "yahoo_ticker": "514470.BO",
@@ -29071,20 +28420,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "IDM",
-    "company_name": "International Data Managements Ltd.",
-    "yahoo_ticker": "517044.BO",
-    "isin": "INE649R01010",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "517044",
-    "company_name": "International Data Managements Ltd.",
-    "yahoo_ticker": "517044.BO",
-    "isin": "INE649R01010",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "517059",
     "company_name": "Salzer Electronics Limited",
     "yahoo_ticker": "517059.BO",
@@ -29239,20 +28574,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "AURIQUE",
-    "company_name": "AURIQUE LIMITED",
-    "yahoo_ticker": "517230.BO",
-    "isin": "INE766A01026",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "517230",
-    "company_name": "AURIQUE LIMITED",
-    "yahoo_ticker": "517230.BO",
-    "isin": "INE766A01026",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "CALCOM",
     "company_name": "Calcom Vision Ltd.",
     "yahoo_ticker": "517236.BO",
@@ -29383,13 +28704,6 @@
     "company_name": "MAGNUS STEEL AND INFRA LIMITED",
     "yahoo_ticker": "517320.BO",
     "isin": "INE898E01011",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "517330",
-    "company_name": "CMI Limited",
-    "yahoo_ticker": "517330.BO",
-    "isin": "INE981B01011",
     "exchange": "BSE"
   },
   {
@@ -29579,20 +28893,6 @@
     "company_name": "Butterfly Gandhimathi Appliances Limited",
     "yahoo_ticker": "517421.BO",
     "isin": "INE295F01017",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "INTEGSW",
-    "company_name": "Integra Switchgear Ltd.",
-    "yahoo_ticker": "517423.BO",
-    "isin": "INE0IPL01018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "517423",
-    "company_name": "Integra Switchgear Ltd.",
-    "yahoo_ticker": "517423.BO",
-    "isin": "INE0IPL01018",
     "exchange": "BSE"
   },
   {
@@ -29796,20 +29096,6 @@
     "company_name": "Trigyn Technologies Limited",
     "yahoo_ticker": "517562.BO",
     "isin": "INE948A01012",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "CLENON",
-    "company_name": "CLENON ENTERPRISES LIMITED",
-    "yahoo_ticker": "517564.BO",
-    "isin": "INE769B01028",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "517564",
-    "company_name": "CLENON ENTERPRISES LIMITED",
-    "yahoo_ticker": "517564.BO",
-    "isin": "INE769B01028",
     "exchange": "BSE"
   },
   {
@@ -30093,20 +29379,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "SRDAPRT",
-    "company_name": "Sarda Proteins Ltd",
-    "yahoo_ticker": "519242.BO",
-    "isin": "INE995U01011",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "519242",
-    "company_name": "Sarda Proteins Ltd",
-    "yahoo_ticker": "519242.BO",
-    "isin": "INE995U01011",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "519260",
     "company_name": "Sanwaria Consumer Limited",
     "yahoo_ticker": "519260.BO",
@@ -30125,20 +29397,6 @@
     "company_name": "Prima Agro Ltd.",
     "yahoo_ticker": "519262.BO",
     "isin": "INE297D01018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "MADHURIND",
-    "company_name": "Madhur Industries Limited",
-    "yahoo_ticker": "519279.BO",
-    "isin": "INE110C01015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "519279",
-    "company_name": "Madhur Industries Limited",
-    "yahoo_ticker": "519279.BO",
-    "isin": "INE110C01015",
     "exchange": "BSE"
   },
   {
@@ -30321,20 +29579,6 @@
     "company_name": "KSE Ltd.",
     "yahoo_ticker": "519421.BO",
     "isin": "INE953E01022",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "PIONAGR",
-    "company_name": "Pioneer Agro Extracts ltd.",
-    "yahoo_ticker": "519439.BO",
-    "isin": "INE062E01014",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "519439",
-    "company_name": "Pioneer Agro Extracts ltd.",
-    "yahoo_ticker": "519439.BO",
-    "isin": "INE062E01014",
     "exchange": "BSE"
   },
   {
@@ -30699,20 +29943,6 @@
     "company_name": "Automotive Stampings and Assemblies Limited",
     "yahoo_ticker": "520119.BO",
     "isin": "INE900C01027",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "ARCEEIN",
-    "company_name": "Arcee Indusrtries ltd.",
-    "yahoo_ticker": "520121.BO",
-    "isin": "INE276D01012",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "520121",
-    "company_name": "Arcee Indusrtries ltd.",
-    "yahoo_ticker": "520121.BO",
-    "isin": "INE276D01012",
     "exchange": "BSE"
   },
   {
@@ -31108,20 +30338,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "MAXGROW",
-    "company_name": "MAXGROW INDIA LIMITED",
-    "yahoo_ticker": "521167.BO",
-    "isin": "INE485D01043",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "521167",
-    "company_name": "MAXGROW INDIA LIMITED",
-    "yahoo_ticker": "521167.BO",
-    "isin": "INE485D01043",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "SRMCL",
     "company_name": "Sri Ramakrishna Mills (Coimbatore) Ltd.",
     "yahoo_ticker": "521178.BO",
@@ -31140,20 +30356,6 @@
     "company_name": "Super Spinning Mills Limited",
     "yahoo_ticker": "521180.BO",
     "isin": "INE662A01027",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "UNITEDTE",
-    "company_name": "United Textiles Ltd.",
-    "yahoo_ticker": "521188.BO",
-    "isin": "INE727E01012",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "521188",
-    "company_name": "United Textiles Ltd.",
-    "yahoo_ticker": "521188.BO",
-    "isin": "INE727E01012",
     "exchange": "BSE"
   },
   {
@@ -31315,20 +30517,6 @@
     "company_name": "Sambandam Spinning Mills Ltd.",
     "yahoo_ticker": "521240.BO",
     "isin": "INE304D01012",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "KANDAGIRI",
-    "company_name": "Kandagiri Spinning Mills Ltd.",
-    "yahoo_ticker": "521242.BO",
-    "isin": "INE292D01019",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "521242",
-    "company_name": "Kandagiri Spinning Mills Ltd.",
-    "yahoo_ticker": "521242.BO",
-    "isin": "INE292D01019",
     "exchange": "BSE"
   },
   {
@@ -31584,20 +30772,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "TMTIND-B1",
-    "company_name": "TMT (India) ltd.",
-    "yahoo_ticker": "522171.BO",
-    "isin": "INE182E01010",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "522171",
-    "company_name": "TMT (India) ltd.",
-    "yahoo_ticker": "522171.BO",
-    "isin": "INE182E01010",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "ITL",
     "company_name": "ITL Industries Ltd.",
     "yahoo_ticker": "522183.BO",
@@ -31728,20 +30902,6 @@
     "company_name": "MM Forgings Limited",
     "yahoo_ticker": "522241.BO",
     "isin": "INE227C01017",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "IYKOTHITE",
-    "company_name": "Iykot Hitech Toolroom Ltd",
-    "yahoo_ticker": "522245.BO",
-    "isin": "INE079L01013",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "522245",
-    "company_name": "Iykot Hitech Toolroom Ltd",
-    "yahoo_ticker": "522245.BO",
-    "isin": "INE079L01013",
     "exchange": "BSE"
   },
   {
@@ -32340,20 +31500,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "STDSHOE",
-    "company_name": "Standard Shoe Sole and Mould (India) Ltd",
-    "yahoo_ticker": "523351.BO",
-    "isin": "INE888N01013",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "523351",
-    "company_name": "Standard Shoe Sole and Mould (India) Ltd",
-    "yahoo_ticker": "523351.BO",
-    "isin": "INE888N01013",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "523367",
     "company_name": "DCM Shriram Ltd",
     "yahoo_ticker": "523367.BO",
@@ -32484,20 +31630,6 @@
     "company_name": "Reliance Industrial Infrastructure Limited",
     "yahoo_ticker": "523445.BO",
     "isin": "INE046A01015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "SHARP",
-    "company_name": "Sharp India Ltd",
-    "yahoo_ticker": "523449.BO",
-    "isin": "INE207B01011",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "523449",
-    "company_name": "Sharp India Ltd",
-    "yahoo_ticker": "523449.BO",
-    "isin": "INE207B01011",
     "exchange": "BSE"
   },
   {
@@ -32781,20 +31913,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "KKPLASTICK",
-    "company_name": "Kkalpana Plastick Limited",
-    "yahoo_ticker": "523652.BO",
-    "isin": "INE465K01016",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "523652",
-    "company_name": "Kkalpana Plastick Limited",
-    "yahoo_ticker": "523652.BO",
-    "isin": "INE465K01016",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "WATERBASE",
     "company_name": "Waterbase Limited",
     "yahoo_ticker": "523660.BO",
@@ -32876,20 +31994,6 @@
     "company_name": "Sayaji Hotels Limited",
     "yahoo_ticker": "523710.BO",
     "isin": "INE318C01014",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "JMGCORP",
-    "company_name": "JMG Corporation Ltd",
-    "yahoo_ticker": "523712.BO",
-    "isin": "INE745F01011",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "523712",
-    "company_name": "JMG Corporation Ltd",
-    "yahoo_ticker": "523712.BO",
-    "isin": "INE745F01011",
     "exchange": "BSE"
   },
   {
@@ -33142,20 +32246,6 @@
     "company_name": "DS Kulkarni Developers Limited",
     "yahoo_ticker": "523890.BO",
     "isin": "INE891A01022",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "APIL",
-    "company_name": "AVI PRODUCTS INDIA LIMITED",
-    "yahoo_ticker": "523896.BO",
-    "isin": "INE316O01021",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "523896",
-    "company_name": "AVI PRODUCTS INDIA LIMITED",
-    "yahoo_ticker": "523896.BO",
-    "isin": "INE316O01021",
     "exchange": "BSE"
   },
   {
@@ -33947,20 +33037,6 @@
     "company_name": "Tirupati Starch & Chemicals Ltd.",
     "yahoo_ticker": "524582.BO",
     "isin": "INE314D01011",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "HEMORGANIC",
-    "company_name": "Hemo Organic Limited",
-    "yahoo_ticker": "524590.BO",
-    "isin": "INE422G01015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "524590",
-    "company_name": "Hemo Organic Limited",
-    "yahoo_ticker": "524590.BO",
-    "isin": "INE422G01015",
     "exchange": "BSE"
   },
   {
@@ -35126,20 +34202,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "WELTI",
-    "company_name": "Welterman International Ltd.",
-    "yahoo_ticker": "526431.BO",
-    "isin": "INE662D01013",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "526431",
-    "company_name": "Welterman International Ltd.",
-    "yahoo_ticker": "526431.BO",
-    "isin": "INE662D01013",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "ASMTEC",
     "company_name": "ASM Technologies Ltd.",
     "yahoo_ticker": "526433.BO",
@@ -35375,20 +34437,6 @@
     "company_name": "Sterling Green  Woods  Limited",
     "yahoo_ticker": "526500.BO",
     "isin": "INE398F01019",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "DOLPHMED",
-    "company_name": "Dolphin Medical Services Ltd.",
-    "yahoo_ticker": "526504.BO",
-    "isin": "INE796B01013",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "526504",
-    "company_name": "Dolphin Medical Services Ltd.",
-    "yahoo_ticker": "526504.BO",
-    "isin": "INE796B01013",
     "exchange": "BSE"
   },
   {
@@ -35749,13 +34797,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "526683",
-    "company_name": "Univa Foods Limited",
-    "yahoo_ticker": "526683.BO",
-    "isin": "INE275F01019",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "ECOPLAST",
     "company_name": "Ecoplast Ltd.",
     "yahoo_ticker": "526703.BO",
@@ -36008,20 +35049,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "UNQTYMI",
-    "company_name": "Union Quality Plastics Ltd.",
-    "yahoo_ticker": "526799.BO",
-    "isin": "INE338N01019",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "526799",
-    "company_name": "Union Quality Plastics Ltd.",
-    "yahoo_ticker": "526799.BO",
-    "isin": "INE338N01019",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "526807",
     "company_name": "Seamec Limited",
     "yahoo_ticker": "526807.BO",
@@ -36267,20 +35294,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "SHIKHAR",
-    "company_name": "Shikhar Consultants Ltd.",
-    "yahoo_ticker": "526883.BO",
-    "isin": "INE641B01011",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "526883",
-    "company_name": "Shikhar Consultants Ltd.",
-    "yahoo_ticker": "526883.BO",
-    "isin": "INE641B01011",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "526885",
     "company_name": "Sarla Performance Fibers Limited",
     "yahoo_ticker": "526885.BO",
@@ -36442,20 +35455,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "WOODSVILA",
-    "company_name": "Woodsvilla Limited",
-    "yahoo_ticker": "526959.BO",
-    "isin": "INE374J01020",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "526959",
-    "company_name": "Woodsvilla Limited",
-    "yahoo_ticker": "526959.BO",
-    "isin": "INE374J01020",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "LASTMILE",
     "company_name": "LAST MILE ENTERPRISES LIMITED",
     "yahoo_ticker": "526961.BO",
@@ -36530,20 +35529,6 @@
     "company_name": "Shri Bajrang Alliance Limited",
     "yahoo_ticker": "526981.BO",
     "isin": "INE402H01015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "ASHOKRE",
-    "company_name": "Ashoka Refineries Ltd.",
-    "yahoo_ticker": "526983.BO",
-    "isin": "INE760M01016",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "526983",
-    "company_name": "Ashoka Refineries Ltd.",
-    "yahoo_ticker": "526983.BO",
-    "isin": "INE760M01016",
     "exchange": "BSE"
   },
   {
@@ -36645,20 +35630,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "SANTOSHF",
-    "company_name": "Santosh Fine-Fab Ltd.",
-    "yahoo_ticker": "530035.BO",
-    "isin": "INE612D01018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "530035",
-    "company_name": "Santosh Fine-Fab Ltd.",
-    "yahoo_ticker": "530035.BO",
-    "isin": "INE612D01018",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "SPARKLEGR",
     "company_name": "SPARKLE GOLD ROCK LIMITED",
     "yahoo_ticker": "530037.BO",
@@ -36712,20 +35683,6 @@
     "company_name": "REAL ECO-ENERGY LIMITED",
     "yahoo_ticker": "530053.BO",
     "isin": "INE055E01034",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "HRMNYCP",
-    "company_name": "Harmony Capital Services Ltd.",
-    "yahoo_ticker": "530055.BO",
-    "isin": "INE264N01017",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "530055",
-    "company_name": "Harmony Capital Services Ltd.",
-    "yahoo_ticker": "530055.BO",
-    "isin": "INE264N01017",
     "exchange": "BSE"
   },
   {
@@ -36810,20 +35767,6 @@
     "company_name": "Faze Three Limited",
     "yahoo_ticker": "530079.BO",
     "isin": "INE963C01033",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "ACEEDU",
-    "company_name": "ACE EDUTREND LIMITED",
-    "yahoo_ticker": "530093.BO",
-    "isin": "INE715F01014",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "530093",
-    "company_name": "ACE EDUTREND LIMITED",
-    "yahoo_ticker": "530093.BO",
-    "isin": "INE715F01014",
     "exchange": "BSE"
   },
   {
@@ -36974,20 +35917,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "VIJAYTX",
-    "company_name": "Vijay Textiles Ltd.",
-    "yahoo_ticker": "530151.BO",
-    "isin": "INE256G01033",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "530151",
-    "company_name": "Vijay Textiles Ltd.",
-    "yahoo_ticker": "530151.BO",
-    "isin": "INE256G01033",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "KERALAYUR",
     "company_name": "Kerala Ayurveda Limited",
     "yahoo_ticker": "530163.BO",
@@ -37044,20 +35973,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "OSCARGLO",
-    "company_name": "Oscar Global Ltd",
-    "yahoo_ticker": "530173.BO",
-    "isin": "INE473F01010",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "530173",
-    "company_name": "Oscar Global Ltd",
-    "yahoo_ticker": "530173.BO",
-    "isin": "INE473F01010",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "ODYSSEY",
     "company_name": "Odyssey Technologies Ltd.",
     "yahoo_ticker": "530175.BO",
@@ -37069,20 +35984,6 @@
     "company_name": "Odyssey Technologies Ltd.",
     "yahoo_ticker": "530175.BO",
     "isin": "INE213B01019",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "VKGLOBAL",
-    "company_name": "VK Global Industries Limited",
-    "yahoo_ticker": "530177.BO",
-    "isin": "INE758B01013",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "530177",
-    "company_name": "VK Global Industries Limited",
-    "yahoo_ticker": "530177.BO",
-    "isin": "INE758B01013",
     "exchange": "BSE"
   },
   {
@@ -38052,20 +36953,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "KOIYAIN",
-    "company_name": "KOIYA INTERNATIONAL LIMITED",
-    "yahoo_ticker": "530565.BO",
-    "isin": "INE149B01015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "530565",
-    "company_name": "KOIYA INTERNATIONAL LIMITED",
-    "yahoo_ticker": "530565.BO",
-    "isin": "INE149B01015",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "EXPLICITFIN",
     "company_name": "Explicit Finance Limited",
     "yahoo_ticker": "530571.BO",
@@ -38168,34 +37055,6 @@
     "company_name": "JAGSONPAL SERVICES LIMITED",
     "yahoo_ticker": "530601.BO",
     "isin": "INE582C01015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "CARNATIN",
-    "company_name": "Carnation Industries Ltd.",
-    "yahoo_ticker": "530609.BO",
-    "isin": "INE081B01028",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "530609",
-    "company_name": "Carnation Industries Ltd.",
-    "yahoo_ticker": "530609.BO",
-    "isin": "INE081B01028",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "STURDY",
-    "company_name": "Sturdy Industries Ltd.",
-    "yahoo_ticker": "530611.BO",
-    "isin": "INE134F01026",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "530611",
-    "company_name": "Sturdy Industries Ltd.",
-    "yahoo_ticker": "530611.BO",
-    "isin": "INE134F01026",
     "exchange": "BSE"
   },
   {
@@ -38304,20 +37163,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "ACEENGITEC",
-    "company_name": "ACE ENGITECH LIMITED",
-    "yahoo_ticker": "530669.BO",
-    "isin": "INE035401020",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "530669",
-    "company_name": "ACE ENGITECH LIMITED",
-    "yahoo_ticker": "530669.BO",
-    "isin": "INE035401020",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "YORKEXP",
     "company_name": "York Exports Ltd.",
     "yahoo_ticker": "530675.BO",
@@ -38336,20 +37181,6 @@
     "company_name": "Supreme Holdings & Hospitality (India) Limited",
     "yahoo_ticker": "530677.BO",
     "isin": "INE822E01011",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "PITHP",
-    "company_name": "Pithampur Poly Products Ltd.",
-    "yahoo_ticker": "530683.BO",
-    "isin": "INE747D01012",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "530683",
-    "company_name": "Pithampur Poly Products Ltd.",
-    "yahoo_ticker": "530683.BO",
-    "isin": "INE747D01012",
     "exchange": "BSE"
   },
   {
@@ -38567,20 +37398,6 @@
     "company_name": "AGARWAL FORTUNE INDIA LIMITED",
     "yahoo_ticker": "530765.BO",
     "isin": "INE510B01018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "KLGCAP",
-    "company_name": "KLG Capital Services Ltd.",
-    "yahoo_ticker": "530771.BO",
-    "isin": "INE929C01018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "530771",
-    "company_name": "KLG Capital Services Ltd.",
-    "yahoo_ticker": "530771.BO",
-    "isin": "INE929C01018",
     "exchange": "BSE"
   },
   {
@@ -38857,20 +37674,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "AUDROC",
-    "company_name": "AUDROC Limited",
-    "yahoo_ticker": "530889.BO",
-    "isin": "INE061B01038",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "530889",
-    "company_name": "AUDROC Limited",
-    "yahoo_ticker": "530889.BO",
-    "isin": "INE061B01038",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "NGIND",
     "company_name": "N.G.Industries Ltd.",
     "yahoo_ticker": "530897.BO",
@@ -38987,20 +37790,6 @@
     "company_name": "Haryana Financial Corporation ltd.",
     "yahoo_ticker": "530927.BO",
     "isin": "INE737G01016",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "RRPDEFENSE",
-    "company_name": "RRP DEFENSE LIMITED",
-    "yahoo_ticker": "530929.BO",
-    "isin": "INE535P01015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "530929",
-    "company_name": "RRP DEFENSE LIMITED",
-    "yahoo_ticker": "530929.BO",
-    "isin": "INE535P01015",
     "exchange": "BSE"
   },
   {
@@ -39123,20 +37912,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "JPTSEC",
-    "company_name": "JPT Securities Ltd.",
-    "yahoo_ticker": "530985.BO",
-    "isin": "INE630C01012",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "530985",
-    "company_name": "JPT Securities Ltd.",
-    "yahoo_ticker": "530985.BO",
-    "isin": "INE630C01012",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "ROOPAIND",
     "company_name": "Roopa Industries Ltd.",
     "yahoo_ticker": "530991.BO",
@@ -39256,20 +38031,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "BHATEXT",
-    "company_name": "Bharat Textiles & Proofing Industri",
-    "yahoo_ticker": "531029.BO",
-    "isin": "INE201N01019",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531029",
-    "company_name": "Bharat Textiles & Proofing Industri",
-    "yahoo_ticker": "531029.BO",
-    "isin": "INE201N01019",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "REGAL",
     "company_name": "Regal Entertainment & Consultants Ltd.",
     "yahoo_ticker": "531033.BO",
@@ -39365,20 +38126,6 @@
     "company_name": "Vintage Securities Ltd.",
     "yahoo_ticker": "531051.BO",
     "isin": "INE153C01015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "OSWALOR",
-    "company_name": "Oswal Overseas Ltd",
-    "yahoo_ticker": "531065.BO",
-    "isin": "INE906K01027",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531065",
-    "company_name": "Oswal Overseas Ltd",
-    "yahoo_ticker": "531065.BO",
-    "isin": "INE906K01027",
     "exchange": "BSE"
   },
   {
@@ -39704,20 +38451,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "LADIAMO",
-    "company_name": "Laser Diamonds Ltd.",
-    "yahoo_ticker": "531164.BO",
-    "isin": "INE995E01015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531164",
-    "company_name": "Laser Diamonds Ltd.",
-    "yahoo_ticker": "531164.BO",
-    "isin": "INE995E01015",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "ASSOCER",
     "company_name": "Associated Ceramics Ltd.",
     "yahoo_ticker": "531168.BO",
@@ -39869,20 +38602,6 @@
     "company_name": "SPRIGHT AGRO LIMITED",
     "yahoo_ticker": "531205.BO",
     "isin": "INE179O01031",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "CRESANTO",
-    "company_name": "Cresanto Global Limited",
-    "yahoo_ticker": "531207.BO",
-    "isin": "INE741C01017",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531207",
-    "company_name": "Cresanto Global Limited",
-    "yahoo_ticker": "531207.BO",
-    "isin": "INE741C01017",
     "exchange": "BSE"
   },
   {
@@ -40082,20 +38801,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "SHAMROIN",
-    "company_name": "Shamrock Industrial Co. Ltd.",
-    "yahoo_ticker": "531240.BO",
-    "isin": "INE022F01015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531240",
-    "company_name": "Shamrock Industrial Co. Ltd.",
-    "yahoo_ticker": "531240.BO",
-    "isin": "INE022F01015",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "531241",
     "company_name": "Linc Limited",
     "yahoo_ticker": "531241.BO",
@@ -40187,20 +38892,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "REFEXRENEW",
-    "company_name": "Refex Renewables & Infrastructure Limited",
-    "yahoo_ticker": "531260.BO",
-    "isin": "INE332F01018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531260",
-    "company_name": "Refex Renewables & Infrastructure Limited",
-    "yahoo_ticker": "531260.BO",
-    "isin": "INE332F01018",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "EQUILATERA",
     "company_name": "EQUILATERAL ENTERPRISES LIMITED",
     "yahoo_ticker": "531262.BO",
@@ -40212,20 +38903,6 @@
     "company_name": "EQUILATERAL ENTERPRISES LIMITED",
     "yahoo_ticker": "531262.BO",
     "isin": "INE060N01019",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "PROGREXV",
-    "company_name": "PROGREX VENTURES LIMITED",
-    "yahoo_ticker": "531265.BO",
-    "isin": "INE421E01012",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531265",
-    "company_name": "PROGREX VENTURES LIMITED",
-    "yahoo_ticker": "531265.BO",
-    "isin": "INE421E01012",
     "exchange": "BSE"
   },
   {
@@ -40429,20 +39106,6 @@
     "company_name": "Artefact Projects Ltd",
     "yahoo_ticker": "531297.BO",
     "isin": "INE885B01014",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "AMITINT",
-    "company_name": "Amit International Ltd.",
-    "yahoo_ticker": "531300.BO",
-    "isin": "INE053D01015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531300",
-    "company_name": "Amit International Ltd.",
-    "yahoo_ticker": "531300.BO",
-    "isin": "INE053D01015",
     "exchange": "BSE"
   },
   {
@@ -40922,20 +39585,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "ALCHCORP",
-    "company_name": "Alchemist Corporation Ltd",
-    "yahoo_ticker": "531409.BO",
-    "isin": "INE057D01016",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531409",
-    "company_name": "Alchemist Corporation Ltd",
-    "yahoo_ticker": "531409.BO",
-    "isin": "INE057D01016",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "TUNITEX",
     "company_name": "Tuni Textile Mills Ltd.",
     "yahoo_ticker": "531411.BO",
@@ -40961,20 +39610,6 @@
     "company_name": "Radix Industries (India) Limited",
     "yahoo_ticker": "531412.BO",
     "isin": "INE576N01014",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "KIRANPR",
-    "company_name": "Kiran Print-Pack Ltd.",
-    "yahoo_ticker": "531413.BO",
-    "isin": "INE516D01011",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531413",
-    "company_name": "Kiran Print-Pack Ltd.",
-    "yahoo_ticker": "531413.BO",
-    "isin": "INE516D01011",
     "exchange": "BSE"
   },
   {
@@ -41108,20 +39743,6 @@
     "company_name": "Lyons Corporate Market Ltd.",
     "yahoo_ticker": "531441.BO",
     "isin": "INE100F01019",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "VARDHMAN",
-    "company_name": "Vardhman Concrete Limited",
-    "yahoo_ticker": "531444.BO",
-    "isin": "INE115C01014",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531444",
-    "company_name": "Vardhman Concrete Limited",
-    "yahoo_ticker": "531444.BO",
-    "isin": "INE115C01014",
     "exchange": "BSE"
   },
   {
@@ -41293,38 +39914,10 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "OMKAR",
-    "company_name": "Omkar Overseas ltd.",
-    "yahoo_ticker": "531496.BO",
-    "isin": "INE680D01015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531496",
-    "company_name": "Omkar Overseas ltd.",
-    "yahoo_ticker": "531496.BO",
-    "isin": "INE680D01015",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "531497",
     "company_name": "Madhucon Projects Limited",
     "yahoo_ticker": "531497.BO",
     "isin": "INE378D01032",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "SYBLY",
-    "company_name": "Sybly Industries Ltd.",
-    "yahoo_ticker": "531499.BO",
-    "isin": "INE080D01042",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531499",
-    "company_name": "Sybly Industries Ltd.",
-    "yahoo_ticker": "531499.BO",
-    "isin": "INE080D01042",
     "exchange": "BSE"
   },
   {
@@ -41423,20 +40016,6 @@
     "company_name": "Orient Tradelink Ltd.",
     "yahoo_ticker": "531512.BO",
     "isin": "INE681D01039",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "MAHANIN",
-    "company_name": "Mahan Industries Ltd.",
-    "yahoo_ticker": "531515.BO",
-    "isin": "INE735D01041",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531515",
-    "company_name": "Mahan Industries Ltd.",
-    "yahoo_ticker": "531515.BO",
-    "isin": "INE735D01041",
     "exchange": "BSE"
   },
   {
@@ -41916,20 +40495,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "STARCOM",
-    "company_name": "Starcom Information Technology Ltd",
-    "yahoo_ticker": "531616.BO",
-    "isin": "INE347I01010",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531616",
-    "company_name": "Starcom Information Technology Ltd",
-    "yahoo_ticker": "531616.BO",
-    "isin": "INE347I01010",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "531624",
     "company_name": "Country Condo's Limited",
     "yahoo_ticker": "531624.BO",
@@ -42032,20 +40597,6 @@
     "company_name": "Tokyo Finance Ltd.",
     "yahoo_ticker": "531644.BO",
     "isin": "INE546D01018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "PRABHATAM",
-    "company_name": "PRABHATAM INFRA VENTURE LIMITED",
-    "yahoo_ticker": "531647.BO",
-    "isin": "INE265C01025",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531647",
-    "company_name": "PRABHATAM INFRA VENTURE LIMITED",
-    "yahoo_ticker": "531647.BO",
-    "isin": "INE265C01025",
     "exchange": "BSE"
   },
   {
@@ -42203,20 +40754,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "ARISINT",
-    "company_name": "Aris International Limited",
-    "yahoo_ticker": "531677.BO",
-    "isin": "INE588E01026",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531677",
-    "company_name": "Aris International Limited",
-    "yahoo_ticker": "531677.BO",
-    "isin": "INE588E01026",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "MAYUR",
     "company_name": "Mayur Leather Products Ltd.",
     "yahoo_ticker": "531680.BO",
@@ -42256,20 +40793,6 @@
     "company_name": "Frontline Financial Services Ltd.",
     "yahoo_ticker": "531685.BO",
     "isin": "INE776R01011",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "ADVIKLA",
-    "company_name": "Advik Laboratories Ltd.",
-    "yahoo_ticker": "531686.BO",
-    "isin": "INE537C01019",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531686",
-    "company_name": "Advik Laboratories Ltd.",
-    "yahoo_ticker": "531686.BO",
-    "isin": "INE537C01019",
     "exchange": "BSE"
   },
   {
@@ -42410,20 +40933,6 @@
     "company_name": "Greencrest Financial Services Limited",
     "yahoo_ticker": "531737.BO",
     "isin": "INE414C01045",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "SILICON",
-    "company_name": "Silicon Valley Infotech Ltd.",
-    "yahoo_ticker": "531738.BO",
-    "isin": "INE913A01024",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531738",
-    "company_name": "Silicon Valley Infotech Ltd.",
-    "yahoo_ticker": "531738.BO",
-    "isin": "INE913A01024",
     "exchange": "BSE"
   },
   {
@@ -42616,20 +41125,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "SESHACHAL",
-    "company_name": "Seshachal Technologies Ltd",
-    "yahoo_ticker": "531794.BO",
-    "isin": "INE331F01028",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531794",
-    "company_name": "Seshachal Technologies Ltd",
-    "yahoo_ticker": "531794.BO",
-    "isin": "INE331F01028",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "531795",
     "company_name": "Atul Auto Limited",
     "yahoo_ticker": "531795.BO",
@@ -42746,20 +41241,6 @@
     "company_name": "Rodium Realty Limited",
     "yahoo_ticker": "531822.BO",
     "isin": "INE513E01024",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "RCCEMEN",
-    "company_name": "RCC Cements Ltd",
-    "yahoo_ticker": "531825.BO",
-    "isin": "INE335N01015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531825",
-    "company_name": "RCC Cements Ltd",
-    "yahoo_ticker": "531825.BO",
-    "isin": "INE335N01015",
     "exchange": "BSE"
   },
   {
@@ -42966,20 +41447,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "TACENT",
-    "company_name": "Tacent Projects Limited",
-    "yahoo_ticker": "531887.BO",
-    "isin": "INE149D01011",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531887",
-    "company_name": "Tacent Projects Limited",
-    "yahoo_ticker": "531887.BO",
-    "isin": "INE149D01011",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "REXNORD",
     "company_name": "Rexnord Electronics & Controls Ltd.",
     "yahoo_ticker": "531888.BO",
@@ -43074,14 +41541,14 @@
     "symbol": "JOJO",
     "company_name": "JOJO LIMITED",
     "yahoo_ticker": "531910.BO",
-    "isin": "INE312M01016",
+    "isin": "INE312M01024",
     "exchange": "BSE"
   },
   {
     "symbol": "531910",
     "company_name": "JOJO LIMITED",
     "yahoo_ticker": "531910.BO",
-    "isin": "INE312M01016",
+    "isin": "INE312M01024",
     "exchange": "BSE"
   },
   {
@@ -43096,20 +41563,6 @@
     "company_name": "Galaxy Agrico Exports Ltd.",
     "yahoo_ticker": "531911.BO",
     "isin": "INE803L01016",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "CASTORA",
-    "company_name": "CASTORA AGRI COMMODITIES LIMITED",
-    "yahoo_ticker": "531913.BO",
-    "isin": "INE641H01018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531913",
-    "company_name": "CASTORA AGRI COMMODITIES LIMITED",
-    "yahoo_ticker": "531913.BO",
-    "isin": "INE641H01018",
     "exchange": "BSE"
   },
   {
@@ -43173,20 +41626,6 @@
     "company_name": "Golden Carpets Limited.",
     "yahoo_ticker": "531928.BO",
     "isin": "INE595D01015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "INNOCORP",
-    "company_name": "Innocorp Limited",
-    "yahoo_ticker": "531929.BO",
-    "isin": "INE214B01017",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531929",
-    "company_name": "Innocorp Limited",
-    "yahoo_ticker": "531929.BO",
-    "isin": "INE214B01017",
     "exchange": "BSE"
   },
   {
@@ -43295,20 +41734,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "JUNE",
-    "company_name": "JUNE INDUSTRIES LIMITED",
-    "yahoo_ticker": "531960.BO",
-    "isin": "INE108B01029",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531960",
-    "company_name": "JUNE INDUSTRIES LIMITED",
-    "yahoo_ticker": "531960.BO",
-    "isin": "INE108B01029",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "SHREMETAL",
     "company_name": "Shree Metalloys Limited",
     "yahoo_ticker": "531962.BO",
@@ -43334,20 +41759,6 @@
     "company_name": "IITL PROJECTS LIMITED",
     "yahoo_ticker": "531968.BO",
     "isin": "INE786E01018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "POPEES",
-    "company_name": "POPEES BABY CARE INDIA LIMITED",
-    "yahoo_ticker": "531971.BO",
-    "isin": "INE167F01018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531971",
-    "company_name": "POPEES BABY CARE INDIA LIMITED",
-    "yahoo_ticker": "531971.BO",
-    "isin": "INE167F01018",
     "exchange": "BSE"
   },
   {
@@ -43383,20 +41794,6 @@
     "company_name": "HIND ALUMINIUM INDUSTRIES LTD.",
     "yahoo_ticker": "531979.BO",
     "isin": "INE227B01019",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "SENINFO",
-    "company_name": "Senthil Infotek Limited",
-    "yahoo_ticker": "531980.BO",
-    "isin": "INE564B01015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "531980",
-    "company_name": "Senthil Infotek Limited",
-    "yahoo_ticker": "531980.BO",
-    "isin": "INE564B01015",
     "exchange": "BSE"
   },
   {
@@ -43722,20 +42119,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "INTERDIGI",
-    "company_name": "Interworld Digital Ltd.",
-    "yahoo_ticker": "532072.BO",
-    "isin": "INE177D01020",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "532072",
-    "company_name": "Interworld Digital Ltd.",
-    "yahoo_ticker": "532072.BO",
-    "isin": "INE177D01020",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "MONIND",
     "company_name": "MONIND LIMITED",
     "yahoo_ticker": "532078.BO",
@@ -43820,20 +42203,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "MEGFI",
-    "company_name": "Mega Fin (India) Ltd.",
-    "yahoo_ticker": "532105.BO",
-    "isin": "INE524D01015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "532105",
-    "company_name": "Mega Fin (India) Ltd.",
-    "yahoo_ticker": "532105.BO",
-    "isin": "INE524D01015",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "BRIJLEAS",
     "company_name": "Brijlaxmi Leasing & Finance ltd.",
     "yahoo_ticker": "532113.BO",
@@ -43908,20 +42277,6 @@
     "company_name": "SMC Credits ltd.",
     "yahoo_ticker": "532138.BO",
     "isin": "INE440E01012",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "GTEIT",
-    "company_name": "G-Tech Info-Training Ltd.",
-    "yahoo_ticker": "532139.BO",
-    "isin": "INE634D01038",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "532139",
-    "company_name": "G-Tech Info-Training Ltd.",
-    "yahoo_ticker": "532139.BO",
-    "isin": "INE634D01038",
     "exchange": "BSE"
   },
   {
@@ -44545,20 +42900,6 @@
     "company_name": "Ambica Agarbathies & Aroma industries Limited",
     "yahoo_ticker": "532335.BO",
     "isin": "INE792B01012",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "BARONINF",
-    "company_name": "Baron Infotech Ltd.",
-    "yahoo_ticker": "532336.BO",
-    "isin": "INE228B01017",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "532336",
-    "company_name": "Baron Infotech Ltd.",
-    "yahoo_ticker": "532336.BO",
-    "isin": "INE228B01017",
     "exchange": "BSE"
   },
   {
@@ -45521,13 +43862,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "532621",
-    "company_name": "Morarjee Textiles Limited",
-    "yahoo_ticker": "532621.BO",
-    "isin": "INE161G01027",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "532624",
     "company_name": "Jindal Photo Limited",
     "yahoo_ticker": "532624.BO",
@@ -45717,13 +44051,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "532665",
-    "company_name": "Rajvir Industries Limited",
-    "yahoo_ticker": "532665.BO",
-    "isin": "INE011H01014",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "532666",
     "company_name": "FCS Software Solutions Limited",
     "yahoo_ticker": "532666.BO",
@@ -45826,13 +44153,6 @@
     "company_name": "Celebrity Fashions Limited",
     "yahoo_ticker": "532695.BO",
     "isin": "INE185H01016",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "532696",
-    "company_name": "Educomp Solutions Limited",
-    "yahoo_ticker": "532696.BO",
-    "isin": "INE216H01027",
     "exchange": "BSE"
   },
   {
@@ -46085,20 +44405,6 @@
     "company_name": "GTN Textiles Ltd. (formerly known as GTN Industries Ltd.)",
     "yahoo_ticker": "532744.BO",
     "isin": "INE302H01017",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "INDICAP",
-    "company_name": "Inditrade Capital Limited",
-    "yahoo_ticker": "532745.BO",
-    "isin": "INE347H01012",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "532745",
-    "company_name": "Inditrade Capital Limited",
-    "yahoo_ticker": "532745.BO",
-    "isin": "INE347H01012",
     "exchange": "BSE"
   },
   {
@@ -46627,13 +44933,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "532866",
-    "company_name": "Quintegra Solutions Limited",
-    "yahoo_ticker": "532866.BO",
-    "isin": "INE033B01011",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "532867",
     "company_name": "V2 Retail Limited",
     "yahoo_ticker": "532867.BO",
@@ -46715,13 +45014,6 @@
     "company_name": "SEL Manufacturing Company Limited",
     "yahoo_ticker": "532886.BO",
     "isin": "INE105I01020",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "532887",
-    "company_name": "Neueon Corporation Limited",
-    "yahoo_ticker": "532887.BO",
-    "isin": "INE333I01044",
     "exchange": "BSE"
   },
   {
@@ -47233,20 +45525,6 @@
     "company_name": "Somi Conveyor Beltings Limited",
     "yahoo_ticker": "533001.BO",
     "isin": "INE323J01019",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "BIRLACOT",
-    "company_name": "Birla Cotsyn (India) Limited",
-    "yahoo_ticker": "533006.BO",
-    "isin": "INE655I01032",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "533006",
-    "company_name": "Birla Cotsyn (India) Limited",
-    "yahoo_ticker": "533006.BO",
-    "isin": "INE655I01032",
     "exchange": "BSE"
   },
   {
@@ -48034,20 +46312,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "INOVSYNTH",
-    "company_name": "INNOVASSYNTH TECHNOLOGIES (INDIA) LIMITED",
-    "yahoo_ticker": "533315.BO",
-    "isin": "INE690J01011",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "533315",
-    "company_name": "INNOVASSYNTH TECHNOLOGIES (INDIA) LIMITED",
-    "yahoo_ticker": "533315.BO",
-    "isin": "INE690J01011",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "533316",
     "company_name": "Stel Holdings Limited",
     "yahoo_ticker": "533316.BO",
@@ -48108,13 +46372,6 @@
     "company_name": "Muthoot Finance Ltd",
     "yahoo_ticker": "533398.BO",
     "isin": "INE414G01012",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "533400",
-    "company_name": "Future Consumer Limited",
-    "yahoo_ticker": "533400.BO",
-    "isin": "INE220J01025",
     "exchange": "BSE"
   },
   {
@@ -48185,13 +46442,6 @@
     "company_name": "Kridhan Infra Limited",
     "yahoo_ticker": "533482.BO",
     "isin": "INE524L01026",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "533499",
-    "company_name": "Bharatiya Global Infomedia Limited",
-    "yahoo_ticker": "533499.BO",
-    "isin": "INE224M01013",
     "exchange": "BSE"
   },
   {
@@ -48556,20 +46806,6 @@
     "company_name": "AURUS GEM CORPORATION LIMITED",
     "yahoo_ticker": "534532.BO",
     "isin": "INE142K01011",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "META",
-    "company_name": "STRING METAVERSE LIMITED",
-    "yahoo_ticker": "534535.BO",
-    "isin": "INE958L01034",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "534535",
-    "company_name": "STRING METAVERSE LIMITED",
-    "yahoo_ticker": "534535.BO",
-    "isin": "INE958L01034",
     "exchange": "BSE"
   },
   {
@@ -49000,20 +47236,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "BINNYMILLS",
-    "company_name": "Binny Mills Limited",
-    "yahoo_ticker": "535620.BO",
-    "isin": "INE160L01011",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "535620",
-    "company_name": "Binny Mills Limited",
-    "yahoo_ticker": "535620.BO",
-    "isin": "INE160L01011",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "SVGLOBAL",
     "company_name": "S V Global Mill Limited",
     "yahoo_ticker": "535621.BO",
@@ -49364,20 +47586,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "BPCAP",
-    "company_name": "B.P.Capital Ltd.",
-    "yahoo_ticker": "536965.BO",
-    "isin": "INE947C01010",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "536965",
-    "company_name": "B.P.Capital Ltd.",
-    "yahoo_ticker": "536965.BO",
-    "isin": "INE947C01010",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "536974",
     "company_name": "Captain Polyplast Limited",
     "yahoo_ticker": "536974.BO",
@@ -49441,20 +47649,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "JTLDEFENCE",
-    "company_name": "JTL DEFENCE LIMITED",
-    "yahoo_ticker": "537254.BO",
-    "isin": "INE140B01048",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "537254",
-    "company_name": "JTL DEFENCE LIMITED",
-    "yahoo_ticker": "537254.BO",
-    "isin": "INE140B01048",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "537259",
     "company_name": "Suyog Telematics Limited",
     "yahoo_ticker": "537259.BO",
@@ -49487,20 +47681,6 @@
     "company_name": "CHEMTECH INDUSTRIAL VALVES LIMITED",
     "yahoo_ticker": "537326.BO",
     "isin": "INE212P01011",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "KETOMOTORS",
-    "company_name": "Keto Motors Limited",
-    "yahoo_ticker": "537392.BO",
-    "isin": "INE392H01026",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "537392",
-    "company_name": "Keto Motors Limited",
-    "yahoo_ticker": "537392.BO",
-    "isin": "INE392H01026",
     "exchange": "BSE"
   },
   {
@@ -49973,20 +48153,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "SBL",
-    "company_name": "SHIVAMSHREE BUSINESSES LIMITED",
-    "yahoo_ticker": "538520.BO",
-    "isin": "INE857P01021",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "538520",
-    "company_name": "SHIVAMSHREE BUSINESSES LIMITED",
-    "yahoo_ticker": "538520.BO",
-    "isin": "INE857P01021",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "YAANENT",
     "company_name": "YAAN ENTERPRISES LIMITED",
     "yahoo_ticker": "538521.BO",
@@ -49998,20 +48164,6 @@
     "company_name": "YAAN ENTERPRISES LIMITED",
     "yahoo_ticker": "538521.BO",
     "isin": "INE969E01010",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "PIPAN",
-    "company_name": "PIPAN OILS LIMITED",
-    "yahoo_ticker": "538537.BO",
-    "isin": "INE378P01036",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "538537",
-    "company_name": "PIPAN OILS LIMITED",
-    "yahoo_ticker": "538537.BO",
-    "isin": "INE378P01036",
     "exchange": "BSE"
   },
   {
@@ -50421,20 +48573,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "ENCASH",
-    "company_name": "Encash Entertainment Limited",
-    "yahoo_ticker": "538684.BO",
-    "isin": "INE552Q01018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "538684",
-    "company_name": "Encash Entertainment Limited",
-    "yahoo_ticker": "538684.BO",
-    "isin": "INE552Q01018",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "538685",
     "company_name": "Shemaroo Entertainment Limited",
     "yahoo_ticker": "538685.BO",
@@ -50593,20 +48731,6 @@
     "company_name": "PANABYTE TECHNOLOGIES LIMITED",
     "yahoo_ticker": "538742.BO",
     "isin": "INE516E01019",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "MUDUNURU",
-    "company_name": "Mudunuru Limited",
-    "yahoo_ticker": "538743.BO",
-    "isin": "INE491C01027",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "538743",
-    "company_name": "Mudunuru Limited",
-    "yahoo_ticker": "538743.BO",
-    "isin": "INE491C01027",
     "exchange": "BSE"
   },
   {
@@ -51041,20 +49165,6 @@
     "company_name": "Vani Commercials Limited",
     "yahoo_ticker": "538918.BO",
     "isin": "INE661Q01017",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "SKILVEN",
-    "company_name": "SKYLINE VENTURES INDIA  LIMITED",
-    "yahoo_ticker": "538919.BO",
-    "isin": "INE055Q01012",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "538919",
-    "company_name": "SKYLINE VENTURES INDIA  LIMITED",
-    "yahoo_ticker": "538919.BO",
-    "isin": "INE055Q01012",
     "exchange": "BSE"
   },
   {
@@ -51555,20 +49665,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "AANANDALAK",
-    "company_name": "Aananda Lakshmi Spinning Mills Limited",
-    "yahoo_ticker": "539096.BO",
-    "isin": "INE197R01010",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "539096",
-    "company_name": "Aananda Lakshmi Spinning Mills Limited",
-    "yahoo_ticker": "539096.BO",
-    "isin": "INE197R01010",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "URSUGAR",
     "company_name": "UR SUGAR INDUSTRIES LIMITED",
     "yahoo_ticker": "539097.BO",
@@ -51898,20 +49994,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "STARBEAM",
-    "company_name": "STARBEAM VENTURES LIMITED",
-    "yahoo_ticker": "539175.BO",
-    "isin": "INE924N01024",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "539175",
-    "company_name": "STARBEAM VENTURES LIMITED",
-    "yahoo_ticker": "539175.BO",
-    "isin": "INE924N01024",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "HAWAENG",
     "company_name": "Hawa Engineers ltd.",
     "yahoo_ticker": "539176.BO",
@@ -51986,20 +50068,6 @@
     "company_name": "Amba Enterprises Ltd.",
     "yahoo_ticker": "539196.BO",
     "isin": "INE829P01020",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "CAPFIN",
-    "company_name": "Capfin India Limited",
-    "yahoo_ticker": "539198.BO",
-    "isin": "INE960C01013",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "539198",
-    "company_name": "Capfin India Limited",
-    "yahoo_ticker": "539198.BO",
-    "isin": "INE960C01013",
     "exchange": "BSE"
   },
   {
@@ -52196,20 +50264,6 @@
     "company_name": "Chemiesynth (Vapi) Limited",
     "yahoo_ticker": "539230.BO",
     "isin": "INE829R01018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "ATMAIND",
-    "company_name": "ATMA INDUSTRIES LIMITED",
-    "yahoo_ticker": "539246.BO",
-    "isin": "INE805R01018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "539246",
-    "company_name": "ATMA INDUSTRIES LIMITED",
-    "yahoo_ticker": "539246.BO",
-    "isin": "INE805R01018",
     "exchange": "BSE"
   },
   {
@@ -52598,20 +50652,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "KRISHNACAP",
-    "company_name": "Krishna Capital And Securities Limited",
-    "yahoo_ticker": "539384.BO",
-    "isin": "INE897B01019",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "539384",
-    "company_name": "Krishna Capital And Securities Limited",
-    "yahoo_ticker": "539384.BO",
-    "isin": "INE897B01019",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "ACME",
     "company_name": "Acme Resources Limited",
     "yahoo_ticker": "539391.BO",
@@ -52850,15 +50890,15 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "ARYAVAN",
-    "company_name": "ARYAVAN ENTERPRISE LIMITED",
+    "symbol": "ECOFINITY",
+    "company_name": "ECOFINITY ATOMIX LIMITED",
     "yahoo_ticker": "539455.BO",
     "isin": "INE360S01012",
     "exchange": "BSE"
   },
   {
     "symbol": "539455",
-    "company_name": "ARYAVAN ENTERPRISE LIMITED",
+    "company_name": "ECOFINITY ATOMIX LIMITED",
     "yahoo_ticker": "539455.BO",
     "isin": "INE360S01012",
     "exchange": "BSE"
@@ -52931,20 +50971,6 @@
     "company_name": "LIC Mutual Fund",
     "yahoo_ticker": "539480.BO",
     "isin": "INF767K01OS7",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "GEETANJ",
-    "company_name": "Geetanjali Credit And Capital Limited",
-    "yahoo_ticker": "539486.BO",
-    "isin": "INE263R01010",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "539486",
-    "company_name": "Geetanjali Credit And Capital Limited",
-    "yahoo_ticker": "539486.BO",
-    "isin": "INE263R01010",
     "exchange": "BSE"
   },
   {
@@ -53414,20 +51440,6 @@
     "company_name": "KANORIA ENERGY AND INFRASTRUCTURE LIMITED",
     "yahoo_ticker": "539620.BO",
     "isin": "INE534E01020",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "BCLENTERPR",
-    "company_name": "BCL Enterprises Limited",
-    "yahoo_ticker": "539621.BO",
-    "isin": "INE368E01023",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "539621",
-    "company_name": "BCL Enterprises Limited",
-    "yahoo_ticker": "539621.BO",
-    "isin": "INE368E01023",
     "exchange": "BSE"
   },
   {
@@ -53963,13 +51975,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "539861",
-    "company_name": "SKIL Infrastructure Limited",
-    "yahoo_ticker": "539861.BO",
-    "isin": "INE429F01012",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "GHUSHINE",
     "company_name": "Ghushine Fintrrade Ocean Limited",
     "yahoo_ticker": "539864.BO",
@@ -54086,13 +52091,6 @@
     "company_name": "Svarnim Trade Udyog Limited",
     "yahoo_ticker": "539911.BO",
     "isin": "INE730R01042",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "539917",
-    "company_name": "Nagarjuna Fertilizers and Chemicals Limited",
-    "yahoo_ticker": "539917.BO",
-    "isin": "INE454M01024",
     "exchange": "BSE"
   },
   {
@@ -54257,20 +52255,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "ASYL",
-    "company_name": "Advance Syntex Limited",
-    "yahoo_ticker": "539982.BO",
-    "isin": "INE184U01012",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "539982",
-    "company_name": "Advance Syntex Limited",
-    "yahoo_ticker": "539982.BO",
-    "isin": "INE184U01012",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "SIDH",
     "company_name": "SIDH AUTOMOBILES LIMITED",
     "yahoo_ticker": "539983.BO",
@@ -54282,20 +52266,6 @@
     "company_name": "SIDH AUTOMOBILES LIMITED",
     "yahoo_ticker": "539983.BO",
     "isin": "INE403L01015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "HIIL",
-    "company_name": "HINDUSTHAN INSULATORS and INDUSTRIES LIMITED",
-    "yahoo_ticker": "539984.BO",
-    "isin": "INE799B01025",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "539984",
-    "company_name": "HINDUSTHAN INSULATORS and INDUSTRIES LIMITED",
-    "yahoo_ticker": "539984.BO",
-    "isin": "INE799B01025",
     "exchange": "BSE"
   },
   {
@@ -54453,20 +52423,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "ECS",
-    "company_name": "ECS Biztech Limited",
-    "yahoo_ticker": "540063.BO",
-    "isin": "INE925Q01024",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "540063",
-    "company_name": "ECS Biztech Limited",
-    "yahoo_ticker": "540063.BO",
-    "isin": "INE925Q01024",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "540065",
     "company_name": "RBL Bank Ltd",
     "yahoo_ticker": "540065.BO",
@@ -54548,13 +52504,6 @@
     "company_name": "Dhatre Udyog Limited",
     "yahoo_ticker": "540080.BO",
     "isin": "INE715T01031",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "540081",
-    "company_name": "Sab Events & Governance Now Media Limited",
-    "yahoo_ticker": "540081.BO",
-    "isin": "INE860T01019",
     "exchange": "BSE"
   },
   {
@@ -54880,20 +52829,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "UPROTECH",
-    "company_name": "Unipro Technologies Limited",
-    "yahoo_ticker": "540189.BO",
-    "isin": "INE448F01012",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "540189",
-    "company_name": "Unipro Technologies Limited",
-    "yahoo_ticker": "540189.BO",
-    "isin": "INE448F01012",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "FRANKLININD",
     "company_name": "Franklin Industries Limited",
     "yahoo_ticker": "540190.BO",
@@ -55136,20 +53071,6 @@
     "company_name": "Pricol Limited",
     "yahoo_ticker": "540293.BO",
     "isin": "INE726V01018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "CFL",
-    "company_name": "Classic Filaments Limited",
-    "yahoo_ticker": "540310.BO",
-    "isin": "INE181U01018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "540310",
-    "company_name": "Classic Filaments Limited",
-    "yahoo_ticker": "540310.BO",
-    "isin": "INE181U01018",
     "exchange": "BSE"
   },
   {
@@ -57715,20 +55636,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "AARSHYAM",
-    "company_name": "Aar Shyam India Investment Company Limited",
-    "yahoo_ticker": "542377.BO",
-    "isin": "INE512R01010",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "542377",
-    "company_name": "Aar Shyam India Investment Company Limited",
-    "yahoo_ticker": "542377.BO",
-    "isin": "INE512R01010",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "542383",
     "company_name": "Ritco Logistics Limited",
     "yahoo_ticker": "542383.BO",
@@ -58468,20 +56375,6 @@
     "company_name": "Anuroop Packaging Limited",
     "yahoo_ticker": "542865.BO",
     "isin": "INE490Z01012",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "COLAB",
-    "company_name": "COLAB PLATFORMS LIMITED",
-    "yahoo_ticker": "542866.BO",
-    "isin": "INE317W01030",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "542866",
-    "company_name": "COLAB PLATFORMS LIMITED",
-    "yahoo_ticker": "542866.BO",
-    "isin": "INE317W01030",
     "exchange": "BSE"
   },
   {
@@ -59672,20 +57565,6 @@
     "company_name": "DRC Systems India Limited",
     "yahoo_ticker": "543268.BO",
     "isin": "INE03RS01027",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "ADJIA",
-    "company_name": "Adjia Technologies Limited",
-    "yahoo_ticker": "543269.BO",
-    "isin": "INE0G0V01018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "543269",
-    "company_name": "Adjia Technologies Limited",
-    "yahoo_ticker": "543269.BO",
-    "isin": "INE0G0V01018",
     "exchange": "BSE"
   },
   {
@@ -61569,20 +59448,6 @@
     "company_name": "Olatech Solutions Limited",
     "yahoo_ticker": "543578.BO",
     "isin": "INE0M3901015",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "NATURO",
-    "company_name": "NATURO INDIABULL LIMITED",
-    "yahoo_ticker": "543579.BO",
-    "isin": "INE0JNB01012",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "543579",
-    "company_name": "NATURO INDIABULL LIMITED",
-    "yahoo_ticker": "543579.BO",
-    "isin": "INE0JNB01012",
     "exchange": "BSE"
   },
   {
@@ -71526,20 +69391,6 @@
     "exchange": "BSE"
   },
   {
-    "symbol": "HYBRIDETF",
-    "company_name": "Mirae Asset Mutual Fund",
-    "yahoo_ticker": "544841.BO",
-    "isin": "INF769K01RJ5",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "544841",
-    "company_name": "Mirae Asset Mutual Fund",
-    "yahoo_ticker": "544841.BO",
-    "isin": "INF769K01RJ5",
-    "exchange": "BSE"
-  },
-  {
     "symbol": "HDFCNIMEG",
     "company_name": "HDFC Mutual Fund",
     "yahoo_ticker": "544842.BO",
@@ -71565,6 +69416,174 @@
     "company_name": "ADVANCE TECHNOFORGE LIMITED",
     "yahoo_ticker": "544843.BO",
     "isin": "INE13ZJ01010",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "PPEL",
+    "company_name": "POOJAA PRECISION ENGG. LIMITED",
+    "yahoo_ticker": "544844.BO",
+    "isin": "INE288301026",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "544844",
+    "company_name": "POOJAA PRECISION ENGG. LIMITED",
+    "yahoo_ticker": "544844.BO",
+    "isin": "INE288301026",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "INSUREIETF",
+    "company_name": "ICICI Prudential Mutual Fund",
+    "yahoo_ticker": "544845.BO",
+    "isin": "INF109K1A567",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "544845",
+    "company_name": "ICICI Prudential Mutual Fund",
+    "yahoo_ticker": "544845.BO",
+    "isin": "INF109K1A567",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "ELMDIV",
+    "company_name": "Edelweiss Mutual Fund",
+    "yahoo_ticker": "544846.BO",
+    "isin": "INF754K01XI7",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "544846",
+    "company_name": "Edelweiss Mutual Fund",
+    "yahoo_ticker": "544846.BO",
+    "isin": "INF754K01XI7",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "544847",
+    "company_name": "Manipal Health Enterprises Limited",
+    "yahoo_ticker": "544847.BO",
+    "isin": "INE459N01021",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "HRHYGIENE",
+    "company_name": "H. R. HYGIENE PRODUCTS LIMITED",
+    "yahoo_ticker": "544848.BO",
+    "isin": "INE17DP01015",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "544848",
+    "company_name": "H. R. HYGIENE PRODUCTS LIMITED",
+    "yahoo_ticker": "544848.BO",
+    "isin": "INE17DP01015",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "EBANK10",
+    "company_name": "Edelweiss Mutual Fund",
+    "yahoo_ticker": "544849.BO",
+    "isin": "INF754K01XH9",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "544849",
+    "company_name": "Edelweiss Mutual Fund",
+    "yahoo_ticker": "544849.BO",
+    "isin": "INF754K01XH9",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "544850",
+    "company_name": "Aarvi Encon Limited",
+    "yahoo_ticker": "544850.BO",
+    "isin": "INE754X01016",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "544851",
+    "company_name": "MV Electrosystems Limited",
+    "yahoo_ticker": "544851.BO",
+    "isin": "INE0OWZ01020",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "ONEINDIG",
+    "company_name": "Oneindig Technologies Limited",
+    "yahoo_ticker": "544852.BO",
+    "isin": "INE0UR501013",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "544852",
+    "company_name": "Oneindig Technologies Limited",
+    "yahoo_ticker": "544852.BO",
+    "isin": "INE0UR501013",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "544853",
+    "company_name": "Juniper Green Energy Limited",
+    "yahoo_ticker": "544853.BO",
+    "isin": "INE05C901015",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "DHAVAL",
+    "company_name": "Dhaval Packaging Limited",
+    "yahoo_ticker": "544854.BO",
+    "isin": "INE1HX301016",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "544854",
+    "company_name": "Dhaval Packaging Limited",
+    "yahoo_ticker": "544854.BO",
+    "isin": "INE1HX301016",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "PRIMAINNO",
+    "company_name": "Prima Innovation Limited",
+    "yahoo_ticker": "544855.BO",
+    "isin": "INE13LA01027",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "544855",
+    "company_name": "Prima Innovation Limited",
+    "yahoo_ticker": "544855.BO",
+    "isin": "INE13LA01027",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "KLASSROOM",
+    "company_name": "FUSION KLASSROOM EDUTECH LIMITED",
+    "yahoo_ticker": "544856.BO",
+    "isin": "INE1LMA01010",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "544856",
+    "company_name": "FUSION KLASSROOM EDUTECH LIMITED",
+    "yahoo_ticker": "544856.BO",
+    "isin": "INE1LMA01010",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "MIDBANKADD",
+    "company_name": "DSP Mutual Fund",
+    "yahoo_ticker": "544857.BO",
+    "isin": "INF740KA1ZH9",
+    "exchange": "BSE"
+  },
+  {
+    "symbol": "544857",
+    "company_name": "DSP Mutual Fund",
+    "yahoo_ticker": "544857.BO",
+    "isin": "INF740KA1ZH9",
     "exchange": "BSE"
   },
   {
@@ -72160,34 +70179,6 @@
     "company_name": "Minolta Finance Ltd.",
     "yahoo_ticker": "751127.BO",
     "isin": "INE514C20018",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "JDL",
-    "company_name": "Jaisukh Dealers Limited",
-    "yahoo_ticker": "780001.BO",
-    "isin": "INE190P01019",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "780001",
-    "company_name": "Jaisukh Dealers Limited",
-    "yahoo_ticker": "780001.BO",
-    "isin": "INE190P01019",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "CITYON",
-    "company_name": "CITYON SYSTEMS (INDIA) LIMITED",
-    "yahoo_ticker": "780013.BO",
-    "isin": "INE324P01014",
-    "exchange": "BSE"
-  },
-  {
-    "symbol": "780013",
-    "company_name": "CITYON SYSTEMS (INDIA) LIMITED",
-    "yahoo_ticker": "780013.BO",
-    "isin": "INE324P01014",
     "exchange": "BSE"
   },
   {

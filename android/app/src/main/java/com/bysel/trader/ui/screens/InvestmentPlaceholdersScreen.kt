@@ -43,8 +43,11 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import com.bysel.trader.data.models.*
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.viewmodel.TradingViewModel
@@ -178,6 +181,7 @@ private fun PreTradeSignalCard(title: String, signal: CopilotSignal) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MutualFundsScreen(viewModel: TradingViewModel) {
     val funds by viewModel.mutualFunds.collectAsStateWithLifecycle()
@@ -230,6 +234,13 @@ fun MutualFundsScreen(viewModel: TradingViewModel) {
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item { Text("Mutual Funds", color = LocalAppTheme.current.text, fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+            item {
+                Text(
+                    "Live AMFI NAVs for browsing · SIP is paper-practice only · returns may be blank on live feed",
+                    color = LocalAppTheme.current.textSecondary,
+                    fontSize = 12.sp,
+                )
+            }
             item { ActionBanner(viewModel) }
 
             item {
@@ -318,7 +329,12 @@ fun MutualFundsScreen(viewModel: TradingViewModel) {
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("AI Best-Fit Finder", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                        Text("Suitability finder (rule-based)", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Scores funds from risk/goal/horizon — not a live AI model or SEBI advice.",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 11.sp,
+                        )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf("LOW", "MODERATE", "HIGH").forEach { profile ->
                                 TextButton(onClick = { recommendationRisk = profile }) {
@@ -411,10 +427,31 @@ fun MutualFundsScreen(viewModel: TradingViewModel) {
                     modifier = Modifier.fillMaxWidth().clickable { selected = fund }
                 ) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(fund.schemeName, color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
-                        Text("NAV ₹${fund.nav} • ${fund.category}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        Text("Risk: ${fund.riskLevel ?: "N/A"} • House: ${fund.fundHouse ?: "N/A"}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            fund.schemeName,
+                            color = LocalAppTheme.current.text,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            "NAV ₹${fund.nav} • ${fund.category}",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            "Risk: ${fund.riskLevel ?: "N/A"} • House: ${fund.fundHouse ?: "N/A"}",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
                             TextButton(onClick = {
                                 if (compareCodes.contains(fund.schemeCode)) {
                                     compareCodes = compareCodes - fund.schemeCode
@@ -424,10 +461,12 @@ fun MutualFundsScreen(viewModel: TradingViewModel) {
                                     compareHint = "You can compare up to 4 funds"
                                 }
                             }) {
-                                val selectedText = if (compareCodes.contains(fund.schemeCode)) "✓ Selected" else "Select for Compare"
-                                Text(selectedText)
+                                val selectedText = if (compareCodes.contains(fund.schemeCode)) "Selected" else "Compare"
+                                Text(selectedText, maxLines = 1)
                             }
-                            TextButton(onClick = { sipTarget = fund }) { Text("Start SIP") }
+                            TextButton(onClick = { sipTarget = fund }) {
+                                Text("Start SIP", maxLines = 1)
+                            }
                         }
                     }
                 }
@@ -510,7 +549,14 @@ private fun MutualFundDetailScreen(fund: MutualFund, onBack: () -> Unit, onStart
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         TextButton(onClick = onBack) { Text("← Back") }
-        Text(fund.schemeName, color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold, fontSize = 24.sp)
+        Text(
+            fund.schemeName,
+            color = LocalAppTheme.current.text,
+            fontWeight = FontWeight.Bold,
+            fontSize = 24.sp,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
         Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Scheme Code: ${fund.schemeCode}")
@@ -558,6 +604,13 @@ fun IpoListingsScreen(viewModel: TradingViewModel) {
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item { Text("IPO Listings", color = LocalAppTheme.current.text, fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+            item {
+                Text(
+                    "Demo IPO calendar for practice applies — not live NSE/BSE IPO filings.",
+                    color = LocalAppTheme.current.textSecondary,
+                    fontSize = 12.sp,
+                )
+            }
             item { ActionBanner(viewModel) }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -601,7 +654,13 @@ fun IpoListingsScreen(viewModel: TradingViewModel) {
                     modifier = Modifier.fillMaxWidth().clickable { selected = ipo }
                 ) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(ipo.companyName, color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            ipo.companyName,
+                            color = LocalAppTheme.current.text,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                         Text("${ipo.status} • ${ipo.issueOpenDate} to ${ipo.issueCloseDate}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                         when (classifyIpoTab(ipo)) {
                             IpoListingTab.OPEN -> Text(
@@ -709,7 +768,13 @@ fun EtfScreen(viewModel: TradingViewModel) {
                     modifier = Modifier.fillMaxWidth().clickable { selected = etf }
                 ) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(etf.name, color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            etf.name,
+                            color = LocalAppTheme.current.text,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                         Text("${etf.symbol} • ₹${etf.last} (${etf.pctChange}%)", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                         Text("AUM: ₹${etf.aumCr ?: 0.0} Cr • Expense: ${etf.expenseRatio ?: 0.0}%", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                     }
@@ -762,7 +827,13 @@ fun SipPlansScreen(viewModel: TradingViewModel) {
         items(plans, key = { it.id }) { plan ->
             Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card), modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(plan.schemeName, color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        plan.schemeName,
+                        color = LocalAppTheme.current.text,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                     Text("₹${plan.amount} ${plan.frequency} • Next: ${plan.nextInstallmentDate}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                     Text("Status: ${if (plan.isActive) "ACTIVE" else "PAUSED"}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -830,7 +901,13 @@ fun MyIpoApplicationsScreen(viewModel: TradingViewModel) {
         items(filtered, key = { it.applicationId }) { app ->
             Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card), modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(app.companyName, color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        app.companyName,
+                        color = LocalAppTheme.current.text,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                     Text("${app.ipoId} • ${app.status}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                     Text("Lots: ${app.lots} • Bid: ₹${app.bidPrice}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                     Text("UPI: ${app.upiId} • ${app.appliedAt}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
@@ -855,7 +932,12 @@ private fun EditSipDialog(
         title = { Text("Edit SIP") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(sip.schemeName, fontWeight = FontWeight.SemiBold)
+                Text(
+                    sip.schemeName,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 OutlinedTextField(value = amountText, onValueChange = { amountText = it }, label = { Text("Amount") })
                 OutlinedTextField(value = frequencyText, onValueChange = { frequencyText = it.uppercase() }, label = { Text("Frequency") })
                 OutlinedTextField(value = dayText, onValueChange = { dayText = it }, label = { Text("Installment Day") })
@@ -1320,7 +1402,15 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
     val loading by viewModel.derivativesLoading.collectAsStateWithLifecycle()
 
     var symbol by remember { mutableStateOf("NIFTY") }
-    var expiry by remember { mutableStateOf("2026-03-26") }
+    // Default to ~3 weeks out so the educational chain always has a forward expiry.
+    var expiry by remember {
+        val cal = java.util.Calendar.getInstance()
+        cal.add(java.util.Calendar.DAY_OF_YEAR, 21)
+        val y = cal.get(java.util.Calendar.YEAR)
+        val m = cal.get(java.util.Calendar.MONTH) + 1
+        val d = cal.get(java.util.Calendar.DAY_OF_MONTH)
+        mutableStateOf(String.format("%04d-%02d-%02d", y, m, d))
+    }
     var strategySpotInput by remember { mutableStateOf("") }
     var strategyLegsInput by remember {
         mutableStateOf("CALL:BUY:22500:120\nCALL:SELL:23000:80")
@@ -1353,12 +1443,19 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
                 fontSize = 24.sp
             )
         }
+        item {
+            Text(
+                "Educational F&O gym: live spot + synthetic chain/Greeks (Black–Scholes). Not exchange LTP/OI — paper practice only.",
+                color = LocalAppTheme.current.textSecondary,
+                fontSize = 12.sp,
+            )
+        }
         item { ActionBanner(viewModel) }
 
         item {
             Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Option Chain", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    Text("Option Chain (synthetic)", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(
                         value = symbol,
                         onValueChange = { symbol = it.uppercase() },
@@ -1391,9 +1488,11 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
                         Text("Expiry: ${chain.expiry} • Contracts: ${chain.contracts.size}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                         chainContracts.forEach { contract ->
                             Text(
-                                "Strike ${contract.strike}: CE Δ ${String.format("%.2f", contract.callDelta)} OI ${contract.callOi} | PE Δ ${String.format("%.2f", contract.putDelta)} OI ${contract.putOi}",
+                                "Strike ${contract.strike}: CE Δ ${String.format("%.2f", contract.callDelta)} OI ${contract.callOi} · PE Δ ${String.format("%.2f", contract.putDelta)} OI ${contract.putOi}",
                                 color = LocalAppTheme.current.textSecondary,
-                                fontSize = 11.sp
+                                fontSize = 11.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                     }

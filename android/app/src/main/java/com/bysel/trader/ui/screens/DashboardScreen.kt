@@ -529,8 +529,21 @@ fun DashboardContent(
     val scope = rememberCoroutineScope()
     val layoutRequester = remember { BringIntoViewRequester() }
     val yourSpaceRequester = remember { BringIntoViewRequester() }
+    val portfolioWidgetRequester = remember { BringIntoViewRequester() }
     val newsRequester = remember { BringIntoViewRequester() }
     var guideFeedback by rememberSaveable { mutableStateOf<String?>(null) }
+    var scrollPortfolioIntoView by remember { mutableStateOf(false) }
+
+    LaunchedEffect(portfolioPinned, scrollPortfolioIntoView) {
+        if (portfolioPinned && scrollPortfolioIntoView) {
+            delay(100)
+            yourSpaceRequester.bringIntoView()
+            delay(60)
+            portfolioWidgetRequester.bringIntoView()
+            guideFeedback = "Portfolio card added under Your Space — use ↑↓ to reorder."
+            scrollPortfolioIntoView = false
+        }
+    }
     var layoutVariant by rememberSaveable { mutableStateOf(HomeLayoutVariant.FOCUS.name) }
     val selectedVariant = remember(layoutVariant) {
         runCatching { HomeLayoutVariant.valueOf(layoutVariant) }
@@ -732,7 +745,15 @@ fun DashboardContent(
                     dashboardViewModel.refreshMarketMovers(staggerMs = 400L)
                 },
                 onShowGuide = onShowGuide,
-                onTogglePortfolioPin = { dashboardViewModel.togglePortfolioPin() },
+                onTogglePortfolioPin = {
+                    val willPin = !portfolioPinned
+                    dashboardViewModel.togglePortfolioPin()
+                    if (willPin) {
+                        scrollPortfolioIntoView = true
+                    } else {
+                        guideFeedback = "Portfolio card removed from Your Space."
+                    }
+                },
                 onResetLayout = { dashboardViewModel.resetDashboardLayout() },
                 onOpenLead = { focusQuotes.firstOrNull()?.let { onTradeClick(it.symbol) } },
             )
@@ -957,15 +978,28 @@ fun DashboardContent(
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
+                                    .padding(vertical = 4.dp)
+                                    .bringIntoViewRequester(portfolioWidgetRequester),
                                 colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
-                                elevation = CardDefaults.cardElevation(8.dp),
+                                elevation = CardDefaults.cardElevation(
+                                    defaultElevation = if (LocalAppTheme.current.isLight) 2.dp else 0.dp
+                                ),
                                 shape = RoundedCornerShape(16.dp),
-                                border = if (idx == 0) BorderStroke(2.dp, LocalAppTheme.current.primary) else null
+                                border = BorderStroke(2.dp, LocalAppTheme.current.primary)
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
-                                    PortfolioSummaryCard(holdings)
-                                    Column {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            text = "Pinned · Portfolio",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = LocalAppTheme.current.primary,
+                                        )
+                                        Row {
                                             IconButton(onClick = { dashboardViewModel.togglePortfolioPin() }) {
                                                 Icon(
                                                     Icons.Default.PushPin,
@@ -973,13 +1007,33 @@ fun DashboardContent(
                                                     tint = LocalAppTheme.current.primary
                                                 )
                                             }
-                                        IconButton(onClick = { dashboardViewModel.moveWidgetUp("portfolio") }, enabled = idx > 0) {
-                                            Icon(Icons.Default.ArrowUpward, contentDescription = "Move Up", tint = if (idx > 0) LocalAppTheme.current.primary else LocalAppTheme.current.textSecondary)
-                                        }
-                                        IconButton(onClick = { dashboardViewModel.moveWidgetDown("portfolio") }, enabled = idx < widgetOrder.size - 1) {
-                                            Icon(Icons.Default.ArrowDownward, contentDescription = "Move Down", tint = if (idx < widgetOrder.size - 1) LocalAppTheme.current.primary else LocalAppTheme.current.textSecondary)
+                                            IconButton(
+                                                onClick = { dashboardViewModel.moveWidgetUp("portfolio") },
+                                                enabled = idx > 0,
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.ArrowUpward,
+                                                    contentDescription = "Move Up",
+                                                    tint = if (idx > 0) LocalAppTheme.current.primary else LocalAppTheme.current.textSecondary,
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = { dashboardViewModel.moveWidgetDown("portfolio") },
+                                                enabled = idx < widgetOrder.size - 1,
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.ArrowDownward,
+                                                    contentDescription = "Move Down",
+                                                    tint = if (idx < widgetOrder.size - 1) {
+                                                        LocalAppTheme.current.primary
+                                                    } else {
+                                                        LocalAppTheme.current.textSecondary
+                                                    },
+                                                )
+                                            }
                                         }
                                     }
+                                    PortfolioSummaryCard(holdings)
                                 }
                             }
                             Spacer(modifier = Modifier.height(20.dp))
@@ -1229,6 +1283,7 @@ fun DashboardContent(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DashboardHeroCard(
     marketMoodTitle: String,
@@ -1299,21 +1354,37 @@ private fun DashboardHeroCard(
                         color = theme.textSecondary,
                     )
                 }
-                AssistChip(
+                FilterChip(
+                    selected = portfolioPinned,
                     onClick = onTogglePortfolioPin,
-                    label = { Text(if (portfolioPinned) "Portfolio widget pinned" else "Pin portfolio widget") },
+                    label = {
+                        Text(
+                            text = if (portfolioPinned) "Pinned" else "Pin",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.PushPin,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    },
                 )
             }
 
             Text(
                 text = if (portfolioPinned) {
-                    "Pinned: Portfolio card stays in Your Space and can be reordered."
+                    "Portfolio card is under Your Space below — scroll or wait; use ↑↓ to reorder."
                 } else {
-                    "Live: Portfolio values still update, but the card is not pinned in Your Space."
+                    "Pin adds a Portfolio card under Your Space (below). Hero totals always stay here."
                 },
                 fontSize = 11.sp,
                 color = theme.textSecondary,
                 lineHeight = 16.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
 
             if (holdingsCount > 0) {
@@ -1322,12 +1393,16 @@ private fun DashboardHeroCard(
                     fontSize = 34.sp,
                     fontWeight = FontWeight.Bold,
                     color = theme.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = "${formatCompactCurrency(totalPnL)} • ${formatSignedPercent(totalPnLPercent)} since entry across $holdingsCount holding${if (holdingsCount == 1) "" else "s"}",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                     color = if (totalPnL >= 0) theme.positive else theme.negative,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             } else {
                 Text(
@@ -1340,23 +1415,28 @@ private fun DashboardHeroCard(
                     text = "Use Home to move from market signal to stock context quickly, then build positions with conviction.",
                     fontSize = 13.sp,
                     color = theme.textSecondary,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 FilledTonalButton(onClick = onRefresh) {
                     Icon(Icons.Default.Refresh, contentDescription = null)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Refresh")
+                    Text("Refresh", maxLines = 1)
                 }
                 OutlinedButton(onClick = onShowGuide) {
                     Icon(Icons.Default.Info, contentDescription = null)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Home Guide")
+                    Text("Guide", maxLines = 1)
                 }
                 if (leadQuote != null) {
                     Button(onClick = onOpenLead) {
-                        Text("Open ${leadQuote.symbol}")
+                        Text("Open ${leadQuote.symbol}", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -1403,9 +1483,29 @@ private fun DashboardMetricsRow(metrics: List<DashboardMetric>) {
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Text(metric.title, color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                    Text(metric.value, color = metric.accent, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    Text(metric.caption, color = LocalAppTheme.current.text, fontSize = 12.sp, lineHeight = 17.sp)
+                    Text(
+                        metric.title,
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        metric.value,
+                        color = metric.accent,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        metric.caption,
+                        color = LocalAppTheme.current.text,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }

@@ -538,26 +538,34 @@ private fun MarketBreathCard(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 val bestChange = heatmap.bestSector.change
                 val worstChange = heatmap.worstSector.change
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text("Best Sector", color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
                     Text(
                         "${heatmap.bestSector.name} (${String.format("%+.2f", bestChange)}%)",
                         color = Color(0xFF00C853),
                         fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp
+                        fontSize = 13.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Column(horizontalAlignment = Alignment.End) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.End,
+                ) {
                     Text("Worst Sector", color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
                     Text(
                         "${heatmap.worstSector.name} (${String.format("%+.2f", worstChange)}%)",
                         color = Color(0xFFE53935),
                         fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp
+                        fontSize = 13.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
                     )
                 }
             }

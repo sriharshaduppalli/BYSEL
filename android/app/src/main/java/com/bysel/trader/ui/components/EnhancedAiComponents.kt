@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.SentimentBreakdown
@@ -370,7 +371,12 @@ fun ProfitSignalCard(
                             modifier = Modifier.weight(1f).height(34.dp),
                             contentPadding = PaddingValues(0.dp)
                         ) {
-                            Text("Buy ${signal.symbol}", fontSize = 12.sp)
+                            Text(
+                                "Buy ${signal.symbol}",
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                     }
                     if (onViewChart != null) {
@@ -385,7 +391,7 @@ fun ProfitSignalCard(
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Chart", fontSize = 12.sp)
+                            Text("Chart", fontSize = 12.sp, maxLines = 1)
                         }
                     }
                     if (onSetAlert != null) {
@@ -394,7 +400,7 @@ fun ProfitSignalCard(
                             modifier = Modifier.weight(1f).height(34.dp),
                             contentPadding = PaddingValues(0.dp)
                         ) {
-                            Text("Set Alert", fontSize = 12.sp)
+                            Text("Alert", fontSize = 12.sp, maxLines = 1)
                         }
                     }
                 }

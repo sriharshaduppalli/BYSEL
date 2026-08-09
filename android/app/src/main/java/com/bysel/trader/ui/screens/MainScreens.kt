@@ -598,7 +598,9 @@ fun UpgradedPortfolioHoldingItem(
                     text = "${if (holding.pnl > 0) "+" else ""}₹${String.format("%.2f", holding.pnl)}",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (holding.pnl > 0) theme.positive else theme.negative
+                    color = if (holding.pnl > 0) theme.positive else theme.negative,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
 
@@ -614,13 +616,17 @@ fun UpgradedPortfolioHoldingItem(
                     text = "Practice stance · ${stance.label}",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = stance.accent
+                    color = stance.accent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = stance.reason,
                     fontSize = 11.sp,
                     color = theme.textSecondary,
-                    modifier = Modifier.padding(top = 2.dp)
+                    modifier = Modifier.padding(top = 2.dp),
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
 

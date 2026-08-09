@@ -36,8 +36,9 @@ INTENT_KEYWORDS = {
     },
     "prediction": {"predict", "prediction", "forecast", "tomorrow", "next", "week"},
     "fundamentals": {
-        "pe", "pb", "valuation", "fundamental", "fundamentals", "profit", "profits",
-        "balance", "sheet", "roe", "roce", "eps", "dividend", "ltcg", "stcg", "stt",
+        # Avoid bare "profit" — it steals "take profit" trade-plan asks.
+        "pe", "pb", "valuation", "fundamental", "fundamentals", "profitability",
+        "earnings", "balance", "sheet", "roe", "roce", "eps", "dividend", "ltcg", "stcg", "stt",
     },
     "events_news": {
         "news", "event", "result", "results", "quarter", "guidance", "sebi", "regulation",
@@ -454,7 +455,11 @@ class StockMarketAssistant:
             qlow,
         ):
             return "sector_screen"
-        if re.search(r"\b(should i buy|should i sell|buy|sell|swing trade|entry|stoploss|stop loss)\b", qlow):
+        if re.search(
+            r"\b(should i buy|should i sell|buy|sell|swing trade|entry|"
+            r"stoploss|stop[\s-]?loss|take[\s-]?profit|target price|trade plan)\b",
+            qlow,
+        ):
             # Prefer price_action over generic sector tokens in the same sentence.
             if not re.search(r"\b(top|best)\s+\w+\s+stocks?\b", qlow):
                 return "price_action"

@@ -29,6 +29,7 @@ import android.os.BatteryManager
 import com.bysel.trader.alerts.AlertsManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
@@ -161,6 +162,8 @@ class TradingViewModel(
     // Historical OHLCV for selected symbol (used for charting)
     private val _quoteHistory = MutableStateFlow<List<HistoryCandle>>(emptyList())
     val quoteHistory: StateFlow<List<HistoryCandle>> = _quoteHistory.asStateFlow()
+    private val _quoteHistoryLoading = MutableStateFlow(false)
+    val quoteHistoryLoading: StateFlow<Boolean> = _quoteHistoryLoading.asStateFlow()
 
     private val _detailNews = MutableStateFlow<List<MarketNewsHeadline>>(emptyList())
     val detailNews: StateFlow<List<MarketNewsHeadline>> = _detailNews.asStateFlow()
@@ -428,6 +431,7 @@ class TradingViewModel(
 
     private fun resetStockDetailContext() {
         _quoteHistory.value = emptyList()
+        _quoteHistoryLoading.value = false
         _detailNews.value = emptyList()
         _detailNewsLoading.value = false
         _detailNewsError.value = null
@@ -439,7 +443,13 @@ class TradingViewModel(
         val normalizedSymbol = symbol.trim().uppercase()
         if (normalizedSymbol.isBlank()) return
 
-        resetStockDetailContext()
+        _pendingDetailSymbol.value = normalizedSymbol
+        // Keep existing candles while the new window loads to avoid blank chart flashes.
+        _detailNews.value = emptyList()
+        _detailNewsLoading.value = false
+        _detailNewsError.value = null
+        _copilotPreTradeSignal.value = null
+        _preTradeEstimate.value = null
         fetchQuoteHistory(normalizedSymbol)
         refreshDetailNews(normalizedSymbol)
     }
@@ -940,7 +950,25 @@ class TradingViewModel(
         loadStockDetailContext(quote.symbol)
     }
 
+    /** Symbol currently being opened for Stock Detail (AI Chart / search). */
+    private val _pendingDetailSymbol = MutableStateFlow<String?>(null)
+
+    /** In-memory per-window history so 5D/1M/3M/1Y switches stay seamless. */
+    private val historyWindowCache = LinkedHashMap<String, List<HistoryCandle>>(12)
+
     fun fetchAndSelectQuote(symbol: String) {
+        openStockDetail(symbol)
+    }
+
+    /**
+     * Open Stock Detail with quote + 1M daily candles fetched together.
+     * Used by AI "View chart" so the chart is ready when the screen paints.
+     */
+    fun openStockDetail(
+        symbol: String,
+        period: String = "1mo",
+        interval: String = "1d",
+    ) {
         val normalizedSymbol = symbol.trim().uppercase()
         if (normalizedSymbol.isBlank()) {
             _error.value = "Symbol is required"
@@ -951,22 +979,79 @@ class TradingViewModel(
             return
         }
 
-        // Set loading synchronously so Stock Detail never flashes "Stock not found"
-        // before the coroutine starts (common when opening Chart from AI replies).
+        val normalizedPeriod = period.trim().lowercase().ifBlank { "1mo" }
+        val normalizedInterval = interval.trim().lowercase().ifBlank { "1d" }
+        val requestKey = "$normalizedSymbol|$normalizedPeriod|$normalizedInterval"
+
+        _pendingDetailSymbol.value = normalizedSymbol
         _detailLoading.value = true
-        _selectedQuote.value = null
-        resetStockDetailContext()
+        _quoteHistoryLoading.value = true
+        activeHistoryRequestKey = requestKey
+        // Keep prior quote only if same symbol; otherwise clear to avoid wrong-stock flash.
+        if (_selectedQuote.value?.symbol?.uppercase() != normalizedSymbol) {
+            _selectedQuote.value = null
+            _quoteHistory.value = emptyList()
+        }
+
         viewModelScope.launch {
-            when (val r = repository.getQuote(normalizedSymbol)) {
-                is Result.Success -> {
-                    _selectedQuote.value = r.data
-                    _error.value = null
-                    loadStockDetailContext(r.data.symbol)
-                }
-                is Result.Error -> _error.value = r.message
-                else -> { }
+            val quoteDeferred = async { repository.getQuote(normalizedSymbol) }
+            val historyDeferred = async {
+                repository.getQuoteHistory(normalizedSymbol, normalizedPeriod, normalizedInterval)
             }
-            _detailLoading.value = false
+
+            when (val quoteResult = quoteDeferred.await()) {
+                is Result.Success -> {
+                    if (_pendingDetailSymbol.value == normalizedSymbol) {
+                        _selectedQuote.value = quoteResult.data
+                        _error.value = null
+                        refreshDetailNews(quoteResult.data.symbol)
+                    }
+                }
+                is Result.Error -> {
+                    if (_pendingDetailSymbol.value == normalizedSymbol) {
+                        _error.value = quoteResult.message
+                        _detailLoading.value = false
+                        _quoteHistoryLoading.value = false
+                    }
+                    return@launch
+                }
+                else -> {
+                    _detailLoading.value = false
+                    _quoteHistoryLoading.value = false
+                    return@launch
+                }
+            }
+
+            // Show detail shell as soon as quote is ready; candles fill in next.
+            if (_pendingDetailSymbol.value == normalizedSymbol) {
+                _detailLoading.value = false
+            }
+
+            when (val historyResult = historyDeferred.await()) {
+                is Result.Success -> {
+                    if (
+                        _pendingDetailSymbol.value == normalizedSymbol &&
+                        activeHistoryRequestKey == requestKey
+                    ) {
+                        val cleaned = sanitizeHistoryCandles(historyResult.data)
+                        rememberHistoryWindow(requestKey, cleaned)
+                        _quoteHistory.value = cleaned
+                        _error.value = null
+                    }
+                }
+                is Result.Error -> {
+                    if (
+                        _pendingDetailSymbol.value == normalizedSymbol &&
+                        activeHistoryRequestKey == requestKey
+                    ) {
+                        _error.value = historyResult.message
+                    }
+                }
+                else -> {}
+            }
+            if (activeHistoryRequestKey == requestKey) {
+                _quoteHistoryLoading.value = false
+            }
         }
     }
 
@@ -978,6 +1063,24 @@ class TradingViewModel(
         return true
     }
 
+    private fun sanitizeHistoryCandles(candles: List<HistoryCandle>): List<HistoryCandle> {
+        if (candles.isEmpty()) return candles
+        // Ascending unique timestamps — required for chart libraries to paint correctly.
+        return candles
+            .asSequence()
+            .filter { it.timestamp > 0L && it.high >= it.low && it.open > 0 && it.close > 0 }
+            .sortedBy { it.timestamp }
+            .distinctBy { it.timestamp }
+            .toList()
+    }
+
+    private fun isHistoryForSymbol(symbol: String, requestKey: String): Boolean {
+        if (activeHistoryRequestKey != requestKey) return false
+        val pending = _pendingDetailSymbol.value
+        val selected = _selectedQuote.value?.symbol?.uppercase()
+        return pending == symbol || selected == symbol
+    }
+
     fun fetchQuoteHistory(symbol: String, period: String = "1mo", interval: String = "1d") {
         val normalizedSymbol = symbol.trim().uppercase()
         if (normalizedSymbol.isBlank()) return
@@ -985,23 +1088,28 @@ class TradingViewModel(
         val normalizedPeriod = period.trim().lowercase().ifBlank { "1mo" }
         val normalizedInterval = interval.trim().lowercase().ifBlank { "1d" }
         val requestKey = "$normalizedSymbol|$normalizedPeriod|$normalizedInterval"
-        val previousRequestKey = activeHistoryRequestKey
         activeHistoryRequestKey = requestKey
+        _pendingDetailSymbol.value = normalizedSymbol
 
-        if (previousRequestKey != requestKey) {
+        // Instantly paint this window if we already fetched it this session.
+        val warm = historyWindowCache[requestKey]
+        if (warm != null && warm.isNotEmpty()) {
+            _quoteHistory.value = warm
+            _quoteHistoryLoading.value = true // soft refresh in background
+        } else {
             _quoteHistory.value = emptyList()
+            _quoteHistoryLoading.value = true
         }
 
         viewModelScope.launch {
-            // Emit cached history first (if any), then refresh from API and persist
+            // Disk cache first (if any), then refresh from API
             try {
                 repository.getCachedHistory(normalizedSymbol, normalizedPeriod, normalizedInterval).collectLatest { cached ->
-                    if (
-                        _selectedQuote.value?.symbol?.uppercase() == normalizedSymbol &&
-                        activeHistoryRequestKey == requestKey &&
-                        cached.isNotEmpty()
-                    ) {
-                        _quoteHistory.value = cached
+                    if (isHistoryForSymbol(normalizedSymbol, requestKey) && cached.isNotEmpty()) {
+                        val cleaned = sanitizeHistoryCandles(cached)
+                        rememberHistoryWindow(requestKey, cleaned)
+                        _quoteHistory.value = cleaned
+                        _quoteHistoryLoading.value = false
                     }
                 }
             } catch (_: Exception) {
@@ -1010,24 +1118,35 @@ class TradingViewModel(
 
             when (val r = repository.getQuoteHistory(normalizedSymbol, normalizedPeriod, normalizedInterval)) {
                 is Result.Success -> {
-                    if (
-                        _selectedQuote.value?.symbol?.uppercase() == normalizedSymbol &&
-                        activeHistoryRequestKey == requestKey
-                    ) {
-                        _quoteHistory.value = r.data
+                    if (isHistoryForSymbol(normalizedSymbol, requestKey)) {
+                        val cleaned = sanitizeHistoryCandles(r.data)
+                        rememberHistoryWindow(requestKey, cleaned)
+                        _quoteHistory.value = cleaned
                         _error.value = null
                     }
                 }
                 is Result.Error -> {
-                    if (
-                        _selectedQuote.value?.symbol?.uppercase() == normalizedSymbol &&
-                        activeHistoryRequestKey == requestKey
-                    ) {
-                        _error.value = r.message
+                    if (isHistoryForSymbol(normalizedSymbol, requestKey)) {
+                        // Keep warm candles if refresh failed.
+                        if (_quoteHistory.value.isEmpty()) {
+                            _error.value = r.message
+                        }
                     }
                 }
                 else -> {}
             }
+            if (activeHistoryRequestKey == requestKey) {
+                _quoteHistoryLoading.value = false
+            }
+        }
+    }
+
+    private fun rememberHistoryWindow(requestKey: String, candles: List<HistoryCandle>) {
+        if (candles.isEmpty()) return
+        historyWindowCache[requestKey] = candles
+        while (historyWindowCache.size > 16) {
+            val oldest = historyWindowCache.keys.firstOrNull() ?: break
+            historyWindowCache.remove(oldest)
         }
     }
 
@@ -2872,7 +2991,11 @@ class TradingViewModel(
                     upiId = upiId
                 )
             )) {
-                is Result.Success -> _productActionMessage.value = "IPO application submitted"
+                is Result.Success -> {
+                    _productActionMessage.value =
+                        "Demo IPO application submitted — check My IPO Applications"
+                    loadMyIpoApplications()
+                }
                 is Result.Error -> _error.value = r.message
                 else -> {}
             }

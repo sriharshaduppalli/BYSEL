@@ -41,6 +41,16 @@ HISTORY_ALLOWED_INTERVALS = {
     "1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "1d", "5d", "1wk", "1mo", "3mo"
 }
 
+# If Yahoo returns empty for a preferred interval, try these in order.
+HISTORY_INTERVAL_FALLBACKS = {
+    ("5d", "15m"): [("5d", "15m"), ("5d", "30m"), ("5d", "1h"), ("5d", "5m")],
+    ("5d", "30m"): [("5d", "30m"), ("5d", "15m"), ("5d", "1h")],
+    ("1mo", "1d"): [("1mo", "1d"), ("1mo", "1h")],
+    ("3mo", "1d"): [("3mo", "1d")],
+    ("1y", "1d"): [("1y", "1d"), ("1y", "1wk")],
+    ("1y", "1wk"): [("1y", "1wk"), ("1y", "1d")],
+}
+
 # ─────────────────────────────────────────────────────────────
 # Complete Indian stock catalog  –  symbol → (Yahoo ticker, Company name)
 # Includes NIFTY 50, NIFTY Next 50, NIFTY Midcap 150, NIFTY Smallcap,
@@ -819,40 +829,76 @@ def fetch_quote_history(symbol: str, period: str = "1mo", interval: str = "1d") 
         else:
             candidates.extend([f"{normalized_symbol}.NS", f"{normalized_symbol}.BO"])
 
+    combo_attempts = HISTORY_INTERVAL_FALLBACKS.get(
+        (normalized_period, normalized_interval),
+        [(normalized_period, normalized_interval)],
+    )
+
     hist = None
-    for yahoo in list(dict.fromkeys(candidates)):
-        try:
-            hist = yf.Ticker(yahoo).history(
-                period=normalized_period,
-                interval=normalized_interval,
-                auto_adjust=False,
-            )
-            if hist is not None and not hist.empty:
-                break
-        except Exception as exc:
-            logger.debug("history failed for %s: %s", yahoo, exc)
-            hist = None
+    used_period = normalized_period
+    used_interval = normalized_interval
+    for try_period, try_interval in combo_attempts:
+        for yahoo in list(dict.fromkeys(candidates)):
+            try:
+                hist = yf.Ticker(yahoo).history(
+                    period=try_period,
+                    interval=try_interval,
+                    auto_adjust=False,
+                )
+                if hist is not None and not hist.empty:
+                    used_period = try_period
+                    used_interval = try_interval
+                    break
+            except Exception as exc:
+                logger.debug("history failed for %s %s/%s: %s", yahoo, try_period, try_interval, exc)
+                hist = None
+        if hist is not None and not hist.empty:
+            break
+
     if hist is None or hist.empty:
         return []
 
+    if (used_period, used_interval) != (normalized_period, normalized_interval):
+        logger.info(
+            "history fallback %s: requested %s/%s → served %s/%s (%d bars)",
+            normalized_symbol,
+            normalized_period,
+            normalized_interval,
+            used_period,
+            used_interval,
+            len(hist),
+        )
+
     candles: List[dict] = []
+    seen_ts: set[int] = set()
     for index, row in hist.iterrows():
         try:
             timestamp_ms = int(index.timestamp() * 1000)
         except Exception:
             timestamp_ms = int(datetime.utcnow().timestamp() * 1000)
 
+        open_p = round(_safe_number(row.get("Open")), 4)
+        high_p = round(_safe_number(row.get("High")), 4)
+        low_p = round(_safe_number(row.get("Low")), 4)
+        close_p = round(_safe_number(row.get("Close")), 4)
+        if open_p <= 0 or close_p <= 0 or high_p < low_p:
+            continue
+        if timestamp_ms in seen_ts:
+            continue
+        seen_ts.add(timestamp_ms)
+
         candles.append(
             {
                 "timestamp": timestamp_ms,
-                "open": round(_safe_number(row.get("Open")), 4),
-                "high": round(_safe_number(row.get("High")), 4),
-                "low": round(_safe_number(row.get("Low")), 4),
-                "close": round(_safe_number(row.get("Close")), 4),
+                "open": open_p,
+                "high": high_p,
+                "low": low_p,
+                "close": close_p,
                 "volume": int(_safe_number(row.get("Volume"), default=0.0)),
             }
         )
 
+    candles.sort(key=lambda c: c["timestamp"])
     return candles
 
 

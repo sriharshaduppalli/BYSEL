@@ -13,14 +13,16 @@ import androidx.compose.ui.graphics.compositeOver
 /** Canonical default theme id stored in prefs / shown in the picker. */
 const val DEFAULT_THEME_ID = "Default"
 
-/** Ordered picker labels. Only one Default; Dynamic is a separate Material You option. */
+/** Ordered picker labels. Dynamic = Material You (wallpaper) on Android 12+. */
 val allThemes = listOf(
     DEFAULT_THEME_ID,
-    "Amoled",
     "Light",
+    "Aurora",
+    "Slate",
     "Ocean",
     "Forest",
     "Sunset",
+    "Amoled",
     "Royal",
     "Cyberpunk",
     "Monochrome",
@@ -46,97 +48,120 @@ fun isDynamicThemeId(themeName: String?): Boolean =
     normalizeThemeId(themeName).equals("Dynamic", ignoreCase = true)
 
 // Contrast-tuned palettes: body text ≥ ~4.5:1 on surface/card; PnL colors readable on cards.
+// Comfort pass: slightly lifted cards, softer secondaries, less neon on long-session themes.
 object ThemeColors {
     object Default {
         val primary = Color(0xFF42A5F5)
         val surface = Color(0xFF0D0D0D)
-        val card = Color(0xFF1A1A1A)
+        val card = Color(0xFF222222)
         val positive = Color(0xFF00E676)
         val negative = Color(0xFFFF5252)
         val text = Color(0xFFFFFFFF)
-        val textSecondary = Color(0xFFB0BEC5)
+        val textSecondary = Color(0xFF9EACB4)
     }
 
     object Ocean {
         val primary = Color(0xFF26C6DA)
         val surface = Color(0xFF071018)
-        val card = Color(0xFF0E2436)
+        val card = Color(0xFF123044)
         val positive = Color(0xFF1DE9B6)
         val negative = Color(0xFFFF8A65)
         val text = Color(0xFFE0F7FA)
-        val textSecondary = Color(0xFF9ADCE6)
+        val textSecondary = Color(0xFF8BC8D4)
     }
 
     object Forest {
         // Card kept dark (not saturated green) so green/red PnL and secondary text stay readable.
         val primary = Color(0xFF66BB6A)
         val surface = Color(0xFF08140E)
-        val card = Color(0xFF12241A)
-        val positive = Color(0xFF69F0AE)
+        val card = Color(0xFF163024)
+        val positive = Color(0xFF4CD964)
         val negative = Color(0xFFFF8A80)
         val text = Color(0xFFE8F5E9)
-        val textSecondary = Color(0xFFA5D6A7)
+        val textSecondary = Color(0xFF8FBF94)
     }
 
     object Sunset {
-        val primary = Color(0xFFFF8F00)
+        val primary = Color(0xFFF08C2E)
         val surface = Color(0xFF140C00)
-        val card = Color(0xFF2A1600)
-        val positive = Color(0xFFFFD54F)
+        val card = Color(0xFF301C08)
+        val positive = Color(0xFF66BB6A)
         val negative = Color(0xFFFF8A80)
         val text = Color(0xFFFFF3E0)
-        val textSecondary = Color(0xFFFFCC80)
+        val textSecondary = Color(0xFFE0B070)
     }
 
     object Cyberpunk {
-        val primary = Color(0xFFE040FB)
+        val primary = Color(0xFFCE93D8)
         val surface = Color(0xFF070A1A)
-        val card = Color(0xFF121A33)
+        val card = Color(0xFF1A223F)
         val positive = Color(0xFF00E676)
-        val negative = Color(0xFFFF4081)
+        val negative = Color(0xFFEF5350)
         val text = Color(0xFFFFFFFF)
-        val textSecondary = Color(0xFF80DEEA)
+        val textSecondary = Color(0xFF7BCAD6)
     }
 
     object Amoled {
         val primary = Color(0xFFB388FF)
-        val surface = Color(0xFF000000)
-        val card = Color(0xFF121212)
+        val surface = Color(0xFF050505)
+        val card = Color(0xFF161616)
         val positive = Color(0xFF00E676)
         val negative = Color(0xFFFF5252)
         val text = Color(0xFFFFFFFF)
-        val textSecondary = Color(0xFFB0BEC5)
+        val textSecondary = Color(0xFF9EACB4)
     }
 
     object Light {
         val primary = Color(0xFF1565C0)
-        val surface = Color(0xFFF5F7FA)
+        val surface = Color(0xFFEEF1F6)
         val card = Color(0xFFFFFFFF)
         val positive = Color(0xFF2E7D32)
         val negative = Color(0xFFC62828)
         val text = Color(0xFF121212)
-        val textSecondary = Color(0xFF5F6368)
+        val textSecondary = Color(0xFF4A4F55)
     }
 
     object Royal {
-        val primary = Color(0xFFCE93D8)
+        val primary = Color(0xFFBA68C8)
         val surface = Color(0xFF120816)
-        val card = Color(0xFF241530)
-        val positive = Color(0xFFB2FF59)
+        val card = Color(0xFF2A1A38)
+        val positive = Color(0xFF81C784)
         val negative = Color(0xFFFF80AB)
         val text = Color(0xFFF8EAFB)
-        val textSecondary = Color(0xFFD1A3DD)
+        val textSecondary = Color(0xFFC49AD0)
     }
 
     object Monochrome {
         // Keep grayscale chrome, but PnL must remain clearly readable.
-        val primary = Color(0xFFE0E0E0)
+        val primary = Color(0xFFCFCFCF)
         val surface = Color(0xFF0A0A0A)
         val card = Color(0xFF1C1C1C)
         val positive = Color(0xFF69F0AE)
         val negative = Color(0xFFFF8A80)
         val text = Color(0xFFFFFFFF)
-        val textSecondary = Color(0xFFBDBDBD)
+        val textSecondary = Color(0xFFA8A8A8)
+    }
+
+    /** Cool teal→indigo comfort skin — long-session friendly, not neon. */
+    object Aurora {
+        val primary = Color(0xFF4DB6AC)
+        val surface = Color(0xFF07141A)
+        val card = Color(0xFF12262E)
+        val positive = Color(0xFF26C6A0)
+        val negative = Color(0xFFFF8A80)
+        val text = Color(0xFFE8F5F3)
+        val textSecondary = Color(0xFF8FB8B4)
+    }
+
+    /** Soft blue-gray professional skin for reading-heavy sessions. */
+    object Slate {
+        val primary = Color(0xFF90CAF9)
+        val surface = Color(0xFF0B1118)
+        val card = Color(0xFF172029)
+        val positive = Color(0xFF66BB6A)
+        val negative = Color(0xFFEF9A9A)
+        val text = Color(0xFFE8EEF4)
+        val textSecondary = Color(0xFF9AABBA)
     }
 }
 
@@ -153,6 +178,18 @@ data class AppTheme(
     /** Label / icon color that stays readable on [primary] buttons. */
     val onPrimary: Color
         get() = if (primary.luminance() > 0.55f) Color(0xFF121212) else Color.White
+
+    /** Label color on [positive] fill (Buy / gains CTAs). */
+    val onPositive: Color
+        get() = if (positive.luminance() > 0.55f) Color(0xFF121212) else Color.White
+
+    /** Label color on [negative] fill (Sell / loss CTAs). */
+    val onNegative: Color
+        get() = if (negative.luminance() > 0.55f) Color(0xFF121212) else Color.White
+
+    /** Hairline card outline — better separation than heavy elevation on dark themes. */
+    val cardOutline: Color
+        get() = text.copy(alpha = if (isLight) 0.10f else 0.14f)
 
     /** Subtle chip / inactive control fill that works on light and dark surfaces. */
     val mutedSurface: Color
@@ -171,6 +208,17 @@ data class AppTheme(
 
     fun tintedSurface(base: Color, alpha: Float = 0.14f): Color =
         base.copy(alpha = alpha).compositeOver(surface)
+
+    /** M3-style primary container for chips / selected rows. */
+    val primaryContainer: Color
+        get() = primaryContainerColor()
+
+    val onPrimaryContainer: Color
+        get() = onPrimaryContainerColor()
+
+    /** Nested panel / elevated surface above [card]. */
+    val surfaceElevated: Color
+        get() = surfaceElevatedColor()
 }
 
 fun getTheme(themeName: String): AppTheme {
@@ -255,6 +303,26 @@ fun getTheme(themeName: String): AppTheme {
             ThemeColors.Monochrome.textSecondary,
             "Monochrome",
         )
+        "aurora" -> AppTheme(
+            ThemeColors.Aurora.primary,
+            ThemeColors.Aurora.surface,
+            ThemeColors.Aurora.card,
+            ThemeColors.Aurora.positive,
+            ThemeColors.Aurora.negative,
+            ThemeColors.Aurora.text,
+            ThemeColors.Aurora.textSecondary,
+            "Aurora",
+        )
+        "slate" -> AppTheme(
+            ThemeColors.Slate.primary,
+            ThemeColors.Slate.surface,
+            ThemeColors.Slate.card,
+            ThemeColors.Slate.positive,
+            ThemeColors.Slate.negative,
+            ThemeColors.Slate.text,
+            ThemeColors.Slate.textSecondary,
+            "Slate",
+        )
         "dynamic" -> AppTheme(
             // Fallback only — MainActivity replaces this from the live ColorScheme.
             ThemeColors.Default.primary,
@@ -285,12 +353,16 @@ fun ColorScheme.toAppTheme(name: String = "Dynamic"): AppTheme {
     val cardColor = surface
     val body = onBackground
     val secondary = onSurfaceVariant
+    val light = bg.luminance() > 0.5f
+    // Keep PnL readable, but nudge toward wallpaper primary (Material You harmonization).
+    val basePositive = if (light) Color(0xFF2E7D32) else Color(0xFF00E676)
+    val baseNegative = if (light) Color(0xFFC62828) else Color(0xFFFF6E6E)
     return AppTheme(
         primary = primary,
         surface = bg,
         card = cardColor,
-        positive = if (bg.luminance() > 0.5f) Color(0xFF2E7D32) else Color(0xFF00E676),
-        negative = if (bg.luminance() > 0.5f) Color(0xFFC62828) else Color(0xFFFF5252),
+        positive = harmonizeAccent(basePositive, primary, 0.16f),
+        negative = harmonizeAccent(baseNegative, primary, 0.10f),
         text = body,
         textSecondary = secondary,
         name = name,
@@ -300,51 +372,81 @@ fun ColorScheme.toAppTheme(name: String = "Dynamic"): AppTheme {
 fun AppTheme.toMaterialColorScheme(): ColorScheme {
     val onPrimaryColor = onPrimary
     val outlineColor = textSecondary.copy(alpha = 0.65f)
-    // Tertiary carries "up / positive" so Material components can tint gains without hardcoding.
-    val onPositive = if (positive.luminance() > 0.55f) Color(0xFF121212) else Color.White
-    val onNegative = if (negative.luminance() > 0.55f) Color(0xFF121212) else Color.White
+    val onPos = onPositive
+    val onNeg = onNegative
+    val pContainer = primaryContainer
+    val onPContainer = onPrimaryContainer
+    val elevated = surfaceElevated
+    val secondaryAccent = textSecondary.blendToward(primary, 0.35f)
 
     return if (isLight) {
         lightColorScheme(
             primary = primary,
             onPrimary = onPrimaryColor,
-            secondary = primary,
-            onSecondary = onPrimaryColor,
+            primaryContainer = pContainer,
+            onPrimaryContainer = onPContainer,
+            secondary = secondaryAccent,
+            onSecondary = contentColorForFill(secondaryAccent),
+            secondaryContainer = secondaryAccent.copy(alpha = 0.16f).compositeOver(card),
+            onSecondaryContainer = text,
             tertiary = positive,
-            onTertiary = onPositive,
+            onTertiary = onPos,
+            tertiaryContainer = positive.copy(alpha = 0.14f).compositeOver(card),
+            onTertiaryContainer = positive.toneTowardBlack(0.4f),
             background = surface,
             onBackground = text,
             surface = card,
             onSurface = text,
-            surfaceVariant = surface,
+            surfaceVariant = elevated,
             onSurfaceVariant = textSecondary,
             outline = outlineColor,
+            outlineVariant = text.copy(alpha = 0.12f),
             error = negative,
-            onError = onNegative,
+            onError = onNeg,
+            errorContainer = negative.copy(alpha = 0.12f).compositeOver(card),
+            onErrorContainer = negative.toneTowardBlack(0.25f),
+            inverseSurface = text,
+            inverseOnSurface = surface,
+            inversePrimary = primary.toneTowardWhite(0.2f),
+            scrim = Color.Black,
         )
     } else {
         darkColorScheme(
             primary = primary,
             onPrimary = onPrimaryColor,
-            secondary = primary,
-            onSecondary = onPrimaryColor,
+            primaryContainer = pContainer,
+            onPrimaryContainer = onPContainer,
+            secondary = secondaryAccent,
+            onSecondary = contentColorForFill(secondaryAccent),
+            secondaryContainer = secondaryAccent.copy(alpha = 0.18f).compositeOver(card),
+            onSecondaryContainer = text,
             tertiary = positive,
-            onTertiary = onPositive,
+            onTertiary = onPos,
+            tertiaryContainer = positive.copy(alpha = 0.16f).compositeOver(card),
+            onTertiaryContainer = positive.toneTowardWhite(0.55f),
             background = surface,
             onBackground = text,
             surface = card,
             onSurface = text,
-            surfaceVariant = card,
+            surfaceVariant = elevated,
             onSurfaceVariant = textSecondary,
             outline = outlineColor,
+            outlineVariant = text.copy(alpha = 0.14f),
             error = negative,
-            onError = onNegative,
+            onError = onNeg,
+            errorContainer = negative.copy(alpha = 0.16f).compositeOver(card),
+            onErrorContainer = negative.toneTowardWhite(0.45f),
+            inverseSurface = text,
+            inverseOnSurface = surface,
+            inversePrimary = primary.toneTowardBlack(0.15f),
+            scrim = Color.Black,
         )
     }
 }
 
 fun getMaterialColorScheme(themeName: String, context: android.content.Context): ColorScheme {
     return if (isDynamicThemeId(themeName)) {
+        // Material You — wallpaper-derived tonal palette (Android 12+).
         val isLight = context.resources.configuration.uiMode and
             android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
             android.content.res.Configuration.UI_MODE_NIGHT_NO

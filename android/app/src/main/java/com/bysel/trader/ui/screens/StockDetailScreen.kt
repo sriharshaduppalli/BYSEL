@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -69,6 +71,7 @@ import com.bysel.trader.data.models.MarketNewsHeadline
 import com.bysel.trader.data.models.PreTradeEstimateResponse
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.ui.components.appOutlinedTextFieldColors
+import com.bysel.trader.ui.components.CandleLiteracyDetector
 import com.bysel.trader.ui.components.PriceHistoryChart
 import com.bysel.trader.ui.components.InfoChip
 import com.bysel.trader.ui.theme.LocalAppTheme
@@ -84,17 +87,23 @@ private data class DetailMetric(
     val accent: Color,
 )
 
-private enum class DetailHistoryWindow(val label: String, val period: String, val interval: String) {
-    FiveDay("5D", "5d", "15m"),
-    OneMonth("1M", "1mo", "1d"),
-    ThreeMonth("3M", "3mo", "1d"),
-    OneYear("1Y", "1y", "1wk"),
+private enum class DetailHistoryWindow(
+    val label: String,
+    val period: String,
+    val interval: String,
+    val subtitle: String,
+) {
+    FiveDay("5D", "5d", "15m", "15-min candles · last 5 sessions"),
+    OneMonth("1M", "1mo", "1d", "Daily candles · ~1 month"),
+    ThreeMonth("3M", "3mo", "1d", "Daily candles · ~3 months"),
+    OneYear("1Y", "1y", "1d", "Daily candles · ~1 year"),
 }
 
 @Composable
 fun StockDetailScreen(
     quote: Quote?,
     history: List<HistoryCandle> = emptyList(),
+    historyLoading: Boolean = false,
     onBackPress: () -> Unit,
     onBuy: (String, Int) -> Unit,
     onSell: (String, Int) -> Unit,
@@ -338,6 +347,41 @@ fun StockDetailScreen(
                 )
             }
 
+            // Chart first — AI "View chart" and stock opens should show candles immediately.
+            item {
+                SectionHeader(
+                    title = "Price chart",
+                    subtitle = historyWindow.subtitle,
+                )
+            }
+
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(DetailHistoryWindow.entries, key = { it.name }) { window ->
+                        FilterChip(
+                            selected = historyWindow == window,
+                            onClick = { historyWindowName = window.name },
+                            label = { Text(window.label) },
+                        )
+                    }
+                }
+            }
+
+            item(key = "chart-${historyWindow.period}-${historyWindow.interval}-${quote.symbol}") {
+                PriceStoryCard(
+                    quote = quote,
+                    history = history,
+                    historyLoading = historyLoading,
+                    historyLabel = historyWindow.label,
+                    historyHint = historyWindow.subtitle,
+                    intradayRangePct = intradayRangePct,
+                    patterns = chartPatterns,
+                    sentimentData = sentimentData,
+                    sentimentLoading = sentimentLoading,
+                    onAiQuery = onAiQuery,
+                )
+            }
+
             item {
                 SectionHeader(
                     title = "Decision Setup",
@@ -397,37 +441,6 @@ fun StockDetailScreen(
             }
 
             item {
-                SectionHeader(
-                    title = "Price Story",
-                    subtitle = "Switch timeframe and keep the essential levels, liquidity, and valuation context visible.",
-                )
-            }
-
-            item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(DetailHistoryWindow.entries, key = { it.name }) { window ->
-                        FilterChip(
-                            selected = historyWindow == window,
-                            onClick = { historyWindowName = window.name },
-                            label = { Text(window.label) },
-                        )
-                    }
-                }
-            }
-
-            item {
-                PriceStoryCard(
-                    quote = quote,
-                    history = history,
-                    historyLabel = historyWindow.label,
-                    intradayRangePct = intradayRangePct,
-                    patterns = chartPatterns,
-                    sentimentData = sentimentData,
-                    sentimentLoading = sentimentLoading,
-                )
-            }
-
-            item {
                 DetailMetricsRow(metrics = metrics)
             }
 
@@ -478,6 +491,7 @@ fun StockDetailScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun StockDetailHeroCard(
     quote: Quote,
@@ -562,15 +576,24 @@ private fun StockDetailHeroCard(
                 )
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 targetGapPct?.let {
-                    InfoChip(label = { Text("Target ${formatSignedPercent(it)}") })
+                    InfoChip(label = {
+                        Text("Target ${formatSignedPercent(it)}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    })
                 }
                 yearPositionPct?.let {
-                    InfoChip(label = { Text("52W ${String.format("%.0f", it)}%") })
+                    InfoChip(label = {
+                        Text("52W ${String.format("%.0f", it)}%", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    })
                 }
                 quote.volume?.let {
-                    InfoChip(label = { Text("Vol ${formatCompactVolume(it)}") })
+                    InfoChip(label = {
+                        Text("Vol ${formatCompactVolume(it)}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    })
                 }
             }
         }
@@ -657,7 +680,7 @@ private fun TradeSetupCard(
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         Text(
-                            text = "Copilot signal: ${it.verdict} • ${it.confidence}% confidence",
+                            text = "BYSEL signal: ${it.verdict} • ${it.confidence}% confidence",
                             color = signalAccent,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
@@ -739,6 +762,7 @@ private fun TradeSetupCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DetailTrustToolsCard(
     estimate: PreTradeEstimateResponse?,
@@ -774,8 +798,8 @@ private fun DetailTrustToolsCard(
             }
 
             Text(
-                text = signal?.let { "Copilot verdict ${it.verdict} at ${it.confidence}% confidence is already incorporated into this decision view." }
-                    ?: "Copilot and charge guidance appear inline here so the user does not need to leave the detail screen.",
+                text = signal?.let { "BYSEL signal ${it.verdict} at ${it.confidence}% confidence is already incorporated into this decision view." }
+                    ?: "BYSEL signal and charge guidance appear inline here so you don’t need to leave the detail screen.",
                 fontSize = 12.sp,
                 color = theme.textSecondary,
                 lineHeight = 18.sp,
@@ -847,12 +871,15 @@ private fun DetailTrustToolsCard(
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 FilledTonalButton(onClick = { onOpenTrustCenter(null) }) {
-                    Text("Open Copilot Center")
+                    Text("Copilot", maxLines = 1)
                 }
                 OutlinedButton(onClick = onRefreshGuidance) {
-                    Text("Refresh Guidance")
+                    Text("Refresh", maxLines = 1)
                 }
             }
         }
@@ -863,13 +890,17 @@ private fun DetailTrustToolsCard(
 private fun PriceStoryCard(
     quote: Quote,
     history: List<HistoryCandle>,
+    historyLoading: Boolean = false,
     historyLabel: String,
+    historyHint: String = "",
     intradayRangePct: Double,
     patterns: List<com.bysel.trader.data.api.ChartPattern> = emptyList(),
     sentimentData: com.bysel.trader.data.api.SentimentScoreResponse? = null,
     sentimentLoading: Boolean = false,
+    onAiQuery: ((String) -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
+    val candleLessons = remember(history) { CandleLiteracyDetector.detectRecent(history) }
     Card(
         colors = CardDefaults.cardColors(containerColor = theme.card),
         shape = RoundedCornerShape(20.dp),
@@ -883,33 +914,117 @@ private fun PriceStoryCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "$historyLabel chart",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = theme.text,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (historyHint.isNotBlank()) {
+                        Text(
+                            text = historyHint,
+                            fontSize = 11.sp,
+                            color = theme.textSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                InfoChip(label = {
+                    Text(
+                        if (history.isNotEmpty()) "${history.size} bars" else "Range ${formatSignedPercent(intradayRangePct)}",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                })
+            }
+
+            when {
+                history.isEmpty() && historyLoading -> {
+                    Text(
+                        text = "Loading $historyLabel candles…",
+                        color = theme.textSecondary,
+                        fontSize = 13.sp,
+                    )
+                }
+                history.isEmpty() -> {
+                    Text(
+                        text = "No candles for $historyLabel yet. Try another window or a liquid NSE name.",
+                        color = theme.textSecondary,
+                        fontSize = 13.sp,
+                    )
+                }
+                else -> {
+                    if (historyLoading) {
+                        Text(
+                            text = "Refreshing $historyLabel…",
+                            color = theme.textSecondary,
+                            fontSize = 11.sp,
+                        )
+                    }
+                    PriceHistoryChart(
+                        history = history,
+                        symbol = quote.symbol,
+                        modifier = Modifier.fillMaxWidth(),
+                        isDarkTheme = !theme.isLight,
+                        patterns = patterns,
+                    )
+                }
+            }
+
+            if (candleLessons.isNotEmpty()) {
                 Text(
-                    text = "$historyLabel chart",
-                    fontSize = 18.sp,
+                    text = "Candle literacy (recent bars)",
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = theme.text,
                 )
-                InfoChip(label = { Text("Range ${formatSignedPercent(intradayRangePct)}") })
-            }
-
-            if (history.isEmpty()) {
                 Text(
-                    text = "Historical price context is still loading.",
+                    text = "Paper-practice shapes from this chart — not buy/sell advice.",
+                    fontSize = 11.sp,
                     color = theme.textSecondary,
-                    fontSize = 13.sp,
                 )
-            } else {
-                PriceHistoryChart(
-                    history = history,
-                    symbol = quote.symbol,
-                    modifier = Modifier.fillMaxWidth(),
-                    patterns = patterns,
-                )
+                candleLessons.forEach { lesson ->
+                    val accent = when (lesson.bias.lowercase()) {
+                        "bullish" -> theme.positive
+                        "bearish" -> theme.negative
+                        else -> theme.primary
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = "• ${lesson.name} · ${lesson.bias}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = accent,
+                        )
+                        Text(
+                            text = lesson.summary,
+                            fontSize = 11.sp,
+                            color = theme.textSecondary,
+                        )
+                        if (onAiQuery != null) {
+                            TextButton(
+                                onClick = { onAiQuery(lesson.learnQuery) },
+                                contentPadding = PaddingValues(0.dp),
+                            ) {
+                                Text(
+                                    text = "Learn: ${lesson.name}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = theme.primary,
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             if (patterns.isNotEmpty()) {
                 Text(
-                    text = "Detected patterns",
+                    text = "Chart structures",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = theme.text,
@@ -918,11 +1033,19 @@ private fun PriceStoryCard(
                     val label = detected.pattern.ifBlank { detected.type }
                     val signal = detected.signal.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
                     val conf = detected.confidence.takeIf { it > 0 }?.let { " · $it% conf" }.orEmpty()
+                    val desc = detected.description.takeIf { it.isNotBlank() }
                     Text(
                         text = "• $label$signal$conf",
                         fontSize = 12.sp,
                         color = theme.textSecondary,
                     )
+                    if (desc != null) {
+                        Text(
+                            text = desc,
+                            fontSize = 11.sp,
+                            color = theme.textSecondary.copy(alpha = 0.85f),
+                        )
+                    }
                 }
             }
 
@@ -954,9 +1077,29 @@ private fun DetailMetricsRow(metrics: List<DetailMetric>) {
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Text(metric.title, fontSize = 12.sp, color = LocalAppTheme.current.textSecondary)
-                    Text(metric.value, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = metric.accent)
-                    Text(metric.caption, fontSize = 12.sp, lineHeight = 18.sp, color = LocalAppTheme.current.text)
+                    Text(
+                        metric.title,
+                        fontSize = 12.sp,
+                        color = LocalAppTheme.current.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        metric.value,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = metric.accent,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        metric.caption,
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp,
+                        color = LocalAppTheme.current.text,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }

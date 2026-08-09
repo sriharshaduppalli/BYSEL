@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
@@ -33,6 +34,7 @@ import com.bysel.trader.security.getMessage
 import com.bysel.trader.ui.theme.DEFAULT_THEME_ID
 import com.bysel.trader.ui.theme.allThemes
 import com.bysel.trader.ui.theme.getTheme
+import com.bysel.trader.ui.theme.isDynamicThemeId
 import com.bysel.trader.ui.theme.isLightThemeId
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.theme.normalizeThemeId
@@ -73,7 +75,11 @@ fun SettingsScreen(
     val alertsManager = remember { AlertsManager(context) }
 
     var selectedTheme by remember(currentTheme) { mutableStateOf(normalizeThemeId(currentTheme)) }
-    var darkMode by remember(selectedTheme) { mutableStateOf(!isLightThemeId(selectedTheme)) }
+    val liveTheme = LocalAppTheme.current
+    // Dynamic follows system light/dark — use live luminance, not only the "Light" id.
+    var darkMode by remember(selectedTheme, liveTheme.isLight) {
+        mutableStateOf(!liveTheme.isLight)
+    }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showNotificationsDialog by remember { mutableStateOf(false) }
     var notificationStatusTick by remember { mutableIntStateOf(0) }
@@ -450,7 +456,12 @@ fun SettingsScreen(
             SettingItem(
                 icon = Icons.Filled.Brightness4,
                 title = "Dark Mode",
-                subtitle = if (darkMode) "Enabled" else "Disabled (Light)",
+                subtitle = when {
+                    isDynamicThemeId(selectedTheme) && darkMode -> "Dynamic · system dark"
+                    isDynamicThemeId(selectedTheme) -> "Dynamic · system light"
+                    darkMode -> "Enabled"
+                    else -> "Disabled (Light)"
+                },
                 value = darkMode,
                 onValueChange = { enabled ->
                     darkMode = enabled
@@ -463,7 +474,12 @@ fun SettingsScreen(
                     } else {
                         val restored = normalizeThemeId(
                             prefs.getString("lastDarkTheme", DEFAULT_THEME_ID)
-                        ).let { if (isLightThemeId(it)) DEFAULT_THEME_ID else it }
+                        ).let {
+                            when {
+                                isLightThemeId(it) -> DEFAULT_THEME_ID
+                                else -> it
+                            }
+                        }
                         selectedTheme = restored
                         onThemeChange(restored)
                     }
@@ -979,11 +995,23 @@ fun ThemeSelectionDialog(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.weight(1f)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .background(theme.primary, RoundedCornerShape(4.dp))
-                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(22.dp)
+                                        .background(theme.surface, RoundedCornerShape(4.dp))
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(22.dp)
+                                        .background(theme.card, RoundedCornerShape(4.dp))
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(22.dp)
+                                        .background(theme.primary, RoundedCornerShape(4.dp))
+                                )
+                            }
                             Column(
                                 modifier = Modifier.padding(start = 12.dp)
                             ) {
@@ -993,20 +1021,37 @@ fun ThemeSelectionDialog(
                                     fontWeight = FontWeight.SemiBold,
                                     color = LocalAppTheme.current.text
                                 )
-                                if (themeName == "Dynamic") {
-                                    Text(
-                                        text = "Follows system Material You colors",
-                                        fontSize = 11.sp,
-                                        color = LocalAppTheme.current.textSecondary
+                                Text(
+                                    text = when (themeName) {
+                                        "Dynamic" -> "Material You · wallpaper colors (Android 12+)"
+                                        "Light" -> "Daytime · softer surfaces"
+                                        "Aurora" -> "Teal comfort · long sessions"
+                                        "Slate" -> "Blue-gray · reading-friendly"
+                                        "Ocean", "Forest" -> "Calm dark · balanced contrast"
+                                        "Cyberpunk", "Sunset", "Royal" -> "Accent-forward · short sessions"
+                                        "Amoled" -> "Near-black · OLED friendly"
+                                        else -> if (theme.isLight) "Light comfort" else "Dark comfort"
+                                    },
+                                    fontSize = 11.sp,
+                                    color = LocalAppTheme.current.textSecondary
+                                )
+                                Row(
+                                    modifier = Modifier.padding(top = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .height(4.dp)
+                                            .fillMaxWidth(0.18f)
+                                            .background(theme.positive, RoundedCornerShape(2.dp))
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .height(4.dp)
+                                            .fillMaxWidth(0.12f)
+                                            .background(theme.negative, RoundedCornerShape(2.dp))
                                     )
                                 }
-                                Box(
-                                    modifier = Modifier
-                                        .padding(top = 4.dp)
-                                        .height(4.dp)
-                                        .fillMaxWidth(0.3f)
-                                        .background(theme.positive, RoundedCornerShape(2.dp))
-                                )
                             }
                         }
                         if (isSelected) {
@@ -1074,18 +1119,22 @@ fun SettingItem(
                     tint = if (enabled) LocalAppTheme.current.primary else LocalAppTheme.current.textSecondary,
                     modifier = Modifier.size(24.dp)
                 )
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = title,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (enabled) LocalAppTheme.current.text else LocalAppTheme.current.textSecondary
+                        color = if (enabled) LocalAppTheme.current.text else LocalAppTheme.current.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = subtitle,
                         fontSize = 12.sp,
                         color = LocalAppTheme.current.textSecondary,
-                        modifier = Modifier.padding(top = 4.dp)
+                        modifier = Modifier.padding(top = 4.dp),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -1140,18 +1189,22 @@ fun SettingClickItem(
                     tint = color,
                     modifier = Modifier.size(24.dp)
                 )
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = title,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = LocalAppTheme.current.text
+                        color = LocalAppTheme.current.text,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = subtitle,
                         fontSize = 12.sp,
                         color = LocalAppTheme.current.textSecondary,
-                        modifier = Modifier.padding(top = 4.dp)
+                        modifier = Modifier.padding(top = 4.dp),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }

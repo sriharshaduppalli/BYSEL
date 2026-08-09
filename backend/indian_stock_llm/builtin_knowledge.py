@@ -412,6 +412,22 @@ def builtin_knowledge_items() -> list[KnowledgeItem]:
             "tags": ["compare", "tcs", "infy", "wipro", "it", "valuation", "peers"],
             "source": "bysel_builtin_v2",
         },
+        {
+            "id": "cmp_scope_named_only_v1",
+            "title": "Compare only the stocks the user named",
+            "content": (
+                "When the user asks to compare two or three named tickers (e.g. TMPV with MARUTI, TCS vs INFY), "
+                "the scorecard must include only those names. Do not inject portfolio holdings, selected-quote "
+                "context, or unrelated large-caps (HCLTECH, ICICIBANK, etc.). "
+                "Stop-loss / entry / target questions for a named stock (e.g. stop loss for INFY swing) need that "
+                "stock's paper levels — not a generic glossary definition of stop-loss."
+            ),
+            "tags": [
+                "compare", "tmpv", "maruti", "stop loss", "entry", "target",
+                "context", "holdings", "scorecard", "education",
+            ],
+            "source": "bysel_builtin_v14",
+        },
         # ── Symbol / listing literacy ────────────────────────────────
         {
             "id": "sym_literacy",

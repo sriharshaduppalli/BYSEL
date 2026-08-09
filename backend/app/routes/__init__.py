@@ -515,33 +515,55 @@ def _seed_phase1_master_data(db: Session):
             ),
         ])
 
-    if db.query(IPOModel).count() == 0:
-        db.add_all([
-            IPOModel(
-                ipo_id="IPO-2026-001",
-                company_name="Acme Infra Limited",
-                symbol="ACME",
-                status="OPEN",
-                issue_open_date="2026-03-01",
-                issue_close_date="2026-03-05",
-                listing_date="2026-03-11",
-                price_band_min=345.0,
-                price_band_max=362.0,
-                lot_size=41,
-            ),
-            IPOModel(
-                ipo_id="IPO-2026-002",
-                company_name="Nova Renewables Limited",
-                symbol="NOVA",
-                status="UPCOMING",
-                issue_open_date="2026-03-12",
-                issue_close_date="2026-03-16",
-                listing_date="2026-03-22",
-                price_band_min=215.0,
-                price_band_max=228.0,
-                lot_size=65,
-            ),
-        ])
+    # Educational demo IPOs — keep dates relative to "today" so Open/Upcoming stay useful.
+    today = datetime.utcnow().date()
+    open_start = (today - timedelta(days=1)).isoformat()
+    open_end = (today + timedelta(days=3)).isoformat()
+    open_list = (today + timedelta(days=8)).isoformat()
+    up_start = (today + timedelta(days=10)).isoformat()
+    up_end = (today + timedelta(days=14)).isoformat()
+    up_list = (today + timedelta(days=20)).isoformat()
+    demo_ipos = {
+        "IPO-DEMO-OPEN": dict(
+            company_name="Acme Infra Limited (demo)",
+            symbol="ACME",
+            status="OPEN",
+            issue_open_date=open_start,
+            issue_close_date=open_end,
+            listing_date=open_list,
+            price_band_min=345.0,
+            price_band_max=362.0,
+            lot_size=41,
+        ),
+        "IPO-DEMO-UPCOMING": dict(
+            company_name="Nova Renewables Limited (demo)",
+            symbol="NOVA",
+            status="UPCOMING",
+            issue_open_date=up_start,
+            issue_close_date=up_end,
+            listing_date=up_list,
+            price_band_min=215.0,
+            price_band_max=228.0,
+            lot_size=65,
+        ),
+    }
+    for ipo_id, fields in demo_ipos.items():
+        row = db.query(IPOModel).filter(IPOModel.ipo_id == ipo_id).first()
+        if row is None:
+            db.add(IPOModel(ipo_id=ipo_id, **fields))
+        else:
+            for key, value in fields.items():
+                setattr(row, key, value)
+    # Refresh legacy fixed-date demo rows in place (keeps any practice applications).
+    legacy_map = {
+        "IPO-2026-001": demo_ipos["IPO-DEMO-OPEN"],
+        "IPO-2026-002": demo_ipos["IPO-DEMO-UPCOMING"],
+    }
+    for legacy_id, fields in legacy_map.items():
+        legacy = db.query(IPOModel).filter(IPOModel.ipo_id == legacy_id).first()
+        if legacy is not None:
+            for key, value in fields.items():
+                setattr(legacy, key, value)
 
     if db.query(ETFModel).count() == 0:
         db.add_all([
@@ -2016,9 +2038,14 @@ async def ai_ask_endpoint(
     if education_answer and not stock_live_ask:
         return _validated({"answer": education_answer}, "education", requested_tier)
 
-    # For sector/theme screens, run rule engine on the bare user text so selected-quote
-    # context cannot hijack the answer toward an unrelated stock.
-    rule_query = normalized_query if detected_intent == "SECTOR_SCREEN" else body.query
+    # For sector/compare (and always when user named tickers), run rule engine on the
+    # bare user text so holdings/selected-quote context cannot inject extra stocks
+    # (e.g. HCLTECH/ICICIBANK leaking into "Compare TMPV with MARUTI").
+    rule_query = (
+        normalized_query
+        if detected_intent in {"SECTOR_SCREEN", "COMPARE"} or bool(explicit_symbol)
+        else body.query
+    )
 
     # Heavy Yahoo rule-engine first ONLY when required. For normal chat (auto/fast/groq),
     # skip it and let Groq answer from lightweight enrich context — biggest latency win.
@@ -2054,16 +2081,33 @@ async def ai_ask_endpoint(
         if enriched_ctx_cache is not None:
             return enriched_ctx_cache
 
-        # Resolve symbol — prefer rule-engine detection, fallback to query extraction
-        symbol = (rule_result.get("symbol")
-                  or (rule_result.get("detected_stock") or {}).get("symbol")
-                  or extract_symbol_from_query(body.query))
-
-        # Extract all symbols for multi-stock comparisons
+        # Extract symbols from USER TEXT ONLY — never from the Android
+        # "user_query:… | context:holdings=HCLTECH:…,ICICIBANK:…" wrapper.
         from ..stock_enricher import extract_all_symbols_from_query, extract_entities_from_query, normalize_hinglish, extract_time_window_from_query
-        all_symbols = extract_all_symbols_from_query(body.query)
-        entities = extract_entities_from_query(body.query)
-        time_window = extract_time_window_from_query(body.query)
+        all_symbols = extract_all_symbols_from_query(normalized_query)
+        # Preserve left-to-right order as written in the question.
+        if all_symbols:
+            q_up = normalized_query.upper()
+            all_symbols = sorted(
+                all_symbols,
+                key=lambda s: (q_up.find(str(s).upper()) if q_up.find(str(s).upper()) >= 0 else 10_000),
+            )
+
+        # Resolve primary: prefer tickers named in the user question (compare/buy),
+        # then rule-engine, then context wrapper as last resort.
+        query_symbol = all_symbols[0] if all_symbols else extract_symbol_from_query(normalized_query)
+        if detected_intent == "COMPARE" and all_symbols:
+            symbol = all_symbols[0]
+        else:
+            symbol = (
+                query_symbol
+                or rule_result.get("symbol")
+                or (rule_result.get("detected_stock") or {}).get("symbol")
+                or extract_symbol_from_query(body.query)
+            )
+
+        entities = extract_entities_from_query(normalized_query)
+        time_window = extract_time_window_from_query(normalized_query)
 
         # data dict from rule-engine (contains technical/fundamental/trading_levels/sentiment)
         data = rule_result.get("data") or {}

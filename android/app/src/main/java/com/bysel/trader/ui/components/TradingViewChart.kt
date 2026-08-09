@@ -57,8 +57,14 @@ fun TradingViewChart(
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
 
     val candleJson = remember(history) {
+        val cleaned = history
+            .asSequence()
+            .filter { it.timestamp > 0L && it.high >= it.low && it.open > 0 && it.close > 0 }
+            .sortedBy { it.timestamp }
+            .distinctBy { it.timestamp / 1000 }
+            .toList()
         JSONArray().apply {
-            history.forEach { c ->
+            cleaned.forEach { c ->
                 put(JSONObject().apply {
                     put("time", c.timestamp / 1000)
                     put("open", c.open)
@@ -142,15 +148,25 @@ fun TradingViewChart(
                             view: WebView?,
                             request: WebResourceRequest?,
                         ): Boolean {
-                            // Keep the chart document in-place; block navigations / deep links.
+                            val host = request?.url?.host.orEmpty()
+                            // Allow chart CDN scripts; block other navigations.
+                            if (host.contains("unpkg.com") ||
+                                host.contains("jsdelivr.net") ||
+                                host.contains("cdnjs.cloudflare.com")
+                            ) {
+                                return false
+                            }
                             return true
                         }
 
                         override fun onPageFinished(view: WebView?, url: String?) {
-                            view?.evaluateJavascript("loadCandles($candleJson)", null)
-                            if (patternsJson != "[]") {
-                                view?.evaluateJavascript("showPatterns($patternsJson)", null)
-                            }
+                            // Prefer latest candleJson from the update path; reload after CDN ready.
+                            view?.postDelayed({
+                                view.evaluateJavascript("typeof loadCandles==='function' && loadCandles($candleJson)", null)
+                                if (patternsJson != "[]") {
+                                    view.evaluateJavascript("typeof showPatterns==='function' && showPatterns($patternsJson)", null)
+                                }
+                            }, 120)
                         }
                     }
                     wv.loadDataWithBaseURL(
@@ -164,6 +180,9 @@ fun TradingViewChart(
             },
             update = { wv ->
                 wv.evaluateJavascript("loadCandles($candleJson)", null)
+                if (patternsJson != "[]") {
+                    wv.evaluateJavascript("showPatterns($patternsJson)", null)
+                }
             },
             modifier = Modifier.fillMaxWidth().height(280.dp)
         )
