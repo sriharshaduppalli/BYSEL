@@ -3,6 +3,7 @@ package com.bysel.trader.ai
 import android.content.Context
 import android.util.Log
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
+import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,6 +28,7 @@ sealed class LlmDownloadState {
 object OnDeviceLlmManager {
 
     private var inference: LlmInference? = null
+    private var session: LlmInferenceSession? = null
 
     private val _state = MutableStateFlow<LlmDownloadState>(LlmDownloadState.NotDownloaded)
     val state: StateFlow<LlmDownloadState> = _state
@@ -38,25 +40,37 @@ object OnDeviceLlmManager {
         return f.exists() && f.length() > MODEL_MIN_BYTES
     }
 
-    fun isReady(): Boolean = inference != null
+    fun isReady(): Boolean = inference != null && session != null
 
     suspend fun initialize(context: Context) {
-        if (inference != null) return
+        if (inference != null && session != null) return
         _state.value = LlmDownloadState.Initializing
         withContext(Dispatchers.Default) {
             try {
+                // Engine options (tasks-genai 0.10.35+): sampling knobs live on the session.
                 val options = LlmInference.LlmInferenceOptions.builder()
                     .setModelPath(modelFile(context).absolutePath)
                     .setMaxTokens(512)
+                    .setMaxTopK(40)
+                    .build()
+                val engine = LlmInference.createFromOptions(context, options)
+                val sessionOptions = LlmInferenceSession.LlmInferenceSessionOptions.builder()
                     .setTopK(40)
                     .setTemperature(0.4f)
                     .setRandomSeed(42)
                     .build()
-                inference = LlmInference.createFromOptions(context, options)
+                session?.close()
+                inference?.close()
+                inference = engine
+                session = LlmInferenceSession.createFromOptions(engine, sessionOptions)
                 _state.value = LlmDownloadState.Ready
                 Log.i(TAG, "On-device LLM ready")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to init LLM: ${e.message}")
+                runCatching { session?.close() }
+                runCatching { inference?.close() }
+                session = null
+                inference = null
                 _state.value = LlmDownloadState.Error("Init failed: ${e.message}")
             }
         }
@@ -105,8 +119,14 @@ object OnDeviceLlmManager {
     }
 
     fun generateResponse(prompt: String): String? {
+        val activeSession = session
         return try {
-            inference?.generateResponse(prompt)
+            if (activeSession != null) {
+                activeSession.addQueryChunk(prompt)
+                activeSession.generateResponse()
+            } else {
+                inference?.generateResponse(prompt)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Inference error: ${e.message}")
             null
