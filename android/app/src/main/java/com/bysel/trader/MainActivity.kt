@@ -678,7 +678,7 @@ fun BYSELApp(
                 selectedTab = previousTab
             }
 
-            selectedTab in 6..8 || selectedTab in 10..26 -> {
+            selectedTab in 6..8 || selectedTab in 10..27 -> {
                 selectedTab = 5
             }
 
@@ -896,7 +896,7 @@ fun BYSELApp(
                             }
                         },
                         label = { Text("More", fontSize = 10.sp) },
-                        selected = navHighlightTab in 5..26,
+                        selected = navHighlightTab in 5..27,
                         onClick = { selectRootTab(5) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = appTheme.primary,
@@ -938,7 +938,7 @@ fun BYSELApp(
                                         tabBackStack.isNotEmpty() ||
                                             selectedTab == 9 ||
                                             selectedTab in 6..8 ||
-                                            selectedTab in 10..26
+                                            selectedTab in 10..27
                                     val canSwipeForwardFromMore = selectedTab == 5 && tabBackStack.isEmpty()
                                     val startedFromLeftEdge = dragStartX <= edgeThresholdPx
                                     val startedFromRightEdge = dragStartX >= size.width - edgeThresholdPx
@@ -1154,9 +1154,18 @@ fun BYSELApp(
                                     onAlertsClick = { selectedTab = 7 },
                                     onSettingsClick = { selectedTab = 8 },
                                     onAchievementsClick = { selectedTab = 10 },
+                                    onEquityClick = {
+                                        viewModel.requestTradeWorkspace(0)
+                                        selectRootTab(2)
+                                    },
+                                    onFnoClick = {
+                                        viewModel.requestTradeWorkspace(2)
+                                        selectRootTab(2)
+                                    },
                                     onMutualFundsClick = { selectedTab = 11 },
                                     onIpoClick = { selectedTab = 12 },
                                     onEtfClick = { selectedTab = 13 },
+                                    onSgbClick = { selectedTab = 27 },
                                     onSipClick = { selectedTab = 14 },
                                     onMyIpoApplicationsClick = { selectedTab = 15 },
                                     onAdvancedOrdersClick = { selectedTab = 16 },
@@ -1177,6 +1186,7 @@ fun BYSELApp(
                                 13 -> EtfScreen(viewModel)
                                 14 -> SipPlansScreen(viewModel)
                                 15 -> MyIpoApplicationsScreen(viewModel)
+                                27 -> SgbScreen(viewModel)
                                 16 -> AdvancedOrdersScreen(viewModel)
                                 17 -> DerivativesIntelligenceScreen(viewModel)
                                 18 -> WealthOsScreen(viewModel)

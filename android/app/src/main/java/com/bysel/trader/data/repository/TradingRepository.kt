@@ -433,6 +433,24 @@ open class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
+    suspend fun getIntradayTips(limit: Int = 3, advanceShare: Double? = null): Result<IntradayTipsResponse> {
+        return try {
+            val response = apiService.getIntradayTips(limit = limit, advanceShare = advanceShare)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Intraday tips failed")
+        }
+    }
+
+    suspend fun getInvestorTips(topic: String = "long_term", limit: Int = 3): Result<InvestorTipsResponse> {
+        return try {
+            val response = apiService.getInvestorTips(topic = topic, limit = limit)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Investor tips failed")
+        }
+    }
+
     suspend fun getMarketNews(symbols: List<String> = emptyList(), limit: Int = 5): Result<MarketNewsResponse> {
         return try {
             val symbolQuery = symbols.map { it.trim().uppercase() }.filter { it.isNotBlank() }.distinct().joinToString(",").takeIf { it.isNotBlank() }

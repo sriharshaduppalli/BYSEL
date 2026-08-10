@@ -2722,47 +2722,115 @@ _SENT_POS = {
     "expansion", "milestone", "all-time", "ath", "breakout", "buy", "bullish",
     "upbeat", "optimistic", "soar", "jumps", "jumped", "climbs", "climbed",
     "order", "win", "award", "partnership", "deal", "approval", "dividend",
-    "buyback", "bonus", "split", "raise", "raised", "guidance", "beat",
+    "buyback", "bonus", "split", "raise", "raised", "guidance",
     "exceed", "stronger", "improves", "improved", "highest", "inflow",
     "fii buying", "dii buying", "institutional buying",
+    "block deal buy", "stake hike", "promoter buying", "margin expansion",
+    "earnings beat", "profit jump", "revenue growth", "order win",
+    "capacity expansion", "new high", "hits high", "all time high",
 }
 _SENT_NEG = {
     "fall", "decline", "loss", "weak", "miss", "cut", "drop", "bear",
     "downgrade", "risk", "concern", "warning", "crash", "slump", "worry",
     "underperform", "underweight", "poor", "disappointing", "slowdown",
     "contraction", "pressure", "debt", "fraud", "probe", "investigation",
-    "penalty", "fine", "default", "pledge", "sebi", "ban", "suspend",
+    "penalty", "fine", "default", "pledge", "ban", "suspend",
     "layoff", "layoffs", "weakness", "bearish", "selloff", "sell-off",
-    "plunge", "plunges", "tumbles", "tumbled", "slides", "slid", "hits",
+    "plunge", "plunges", "tumbles", "tumbled", "slides", "slid",
     "outflow", "fii selling", "dii selling", "short", "scam", "litigation",
     "writedown", "impairment", "delay", "reject", "rejected", "fails",
+    "earnings miss", "profit fall", "revenue miss", "guidance cut",
+    "stake sale", "promoter pledging", "margin pressure", "volume dry",
+    "hits low", "52-week low", "circuit limit", "lower circuit",
 }
 
 
-def _headline_polarity(title: str) -> int:
-    """Return +1 / 0 / -1 for a single headline."""
-    t = (title or "").lower()
+def _split_sentences(text: str) -> list[str]:
+    """Lightweight sentence/clause split for headline analysis (no NLTK)."""
+    raw = (text or "").strip()
+    if not raw:
+        return []
+    # Prefer clause breaks common in news wires.
+    parts = re.split(r"(?<=[.!?])\s+|;\s*|\s+\|\s+|\s+ - \s+|\s+—\s+", raw)
+    out: list[str] = []
+    for p in parts:
+        s = p.strip(" -—|;")
+        if len(s) >= 12:
+            out.append(s)
+    return out or [raw]
+
+
+def _polarity_score(text: str) -> float:
+    """Continuous polarity in [-1, 1] for a sentence/headline fragment."""
+    t = (text or "").lower()
     if not t.strip():
-        return 0
-    # Phrase hits first (multi-word).
-    pos = sum(1 for p in _SENT_POS if " " in p and p in t)
-    neg = sum(1 for n in _SENT_NEG if " " in n and n in t)
+        return 0.0
+    pos = 0.0
+    neg = 0.0
+    # Multi-word phrases carry more weight.
+    for p in _SENT_POS:
+        if " " in p and p in t:
+            pos += 1.6
+    for n in _SENT_NEG:
+        if " " in n and n in t:
+            neg += 1.6
     words = set(re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)?", t))
-    pos += len(words & {w for w in _SENT_POS if " " not in w})
-    neg += len(words & {w for w in _SENT_NEG if " " not in w})
-    # Soft negation: "not beat" / "fails to beat"
-    if re.search(r"\b(not|fails? to|miss(?:es|ed)?)\b.{0,20}\b(beat|growth|profit)\b", t):
-        neg += 2
-        pos = max(0, pos - 1)
-    if pos > neg:
+    pos += 1.0 * len(words & {w for w in _SENT_POS if " " not in w})
+    neg += 1.0 * len(words & {w for w in _SENT_NEG if " " not in w})
+    # Soft negation / contrast.
+    if re.search(r"\b(not|fails? to|miss(?:es|ed)?|despite|although|however)\b.{0,24}\b(beat|growth|profit|rally|surge)\b", t):
+        neg += 2.2
+        pos = max(0.0, pos - 1.0)
+    if re.search(r"\b(despite|although|however)\b.{0,24}\b(fall|loss|miss|cut|drop)\b", t):
+        pos += 1.2
+        neg = max(0.0, neg - 0.5)
+    # Intensity boosters.
+    if re.search(r"\b(sharp|steep|massive|huge|strong|weak)\b", t):
+        if pos > neg:
+            pos += 0.6
+        elif neg > pos:
+            neg += 0.6
+    total = pos + neg
+    if total <= 0:
+        return 0.0
+    return max(-1.0, min(1.0, (pos - neg) / total))
+
+
+def _label_from_polarity_score(score: float) -> str:
+    if score >= 0.18:
+        return "positive"
+    if score <= -0.18:
+        return "negative"
+    return "neutral"
+
+
+def _headline_polarity(title: str) -> int:
+    """Return +1 / 0 / -1 for a single headline (compat wrapper)."""
+    score = _polarity_score(title)
+    if score >= 0.18:
         return 1
-    if neg > pos:
+    if score <= -0.18:
         return -1
     return 0
 
 
+def analyze_headline_sentences(text: str) -> list[dict[str, Any]]:
+    """Sentence-level polarity tags for a headline or short blurb."""
+    rows: list[dict[str, Any]] = []
+    for sent in _split_sentences(text)[:4]:
+        score = _polarity_score(sent)
+        rows.append(
+            {
+                "text": sent[:180],
+                "score": round(score, 3),
+                "polarity": _label_from_polarity_score(score),
+            }
+        )
+    return rows
+
+
 def score_news_headlines(headlines: list[Any]) -> dict[str, Any]:
-    """Score a list of headline strings (or dicts with title)."""
+    """Score headlines with recency weighting + sentence-level tags."""
     titles: list[str] = []
     for h in headlines or []:
         if isinstance(h, str) and h.strip():
@@ -2782,37 +2850,60 @@ def score_news_headlines(headlines: list[Any]) -> dict[str, Any]:
             "neutral": 0,
             "headlines": [],
             "tagged": [],
+            "sentences": [],
         }
+
     tagged: list[dict[str, Any]] = []
+    sentences: list[dict[str, Any]] = []
     pos = neg = neu = 0
-    for title in titles[:8]:
-        pol = _headline_polarity(title)
-        label = "positive" if pol > 0 else ("negative" if pol < 0 else "neutral")
-        if pol > 0:
+    weighted = 0.0
+    weight_sum = 0.0
+    # Newest-first lists (RSS) get higher weight on earlier items.
+    for idx, title in enumerate(titles[:10]):
+        score = _polarity_score(title)
+        label = _label_from_polarity_score(score)
+        if label == "positive":
             pos += 1
-        elif pol < 0:
+        elif label == "negative":
             neg += 1
         else:
             neu += 1
-        tagged.append({"title": title[:180], "polarity": label})
+        recency_w = 1.0 / (1.0 + 0.18 * idx)
+        weighted += score * recency_w
+        weight_sum += recency_w
+        sent_rows = analyze_headline_sentences(title)
+        sentences.extend(sent_rows[:2])
+        tagged.append(
+            {
+                "title": title[:180],
+                "polarity": label,
+                "score": round(score, 3),
+                "sentences": sent_rows,
+            }
+        )
+
     total = pos + neg + neu or 1
-    raw = (pos - neg) / total
-    if pos > neg and raw >= 0.25:
+    raw = weighted / weight_sum if weight_sum else 0.0
+    # Blend count balance with continuous score.
+    count_bias = (pos - neg) / total
+    blended = 0.65 * raw + 0.35 * count_bias
+    if blended >= 0.22:
         overall = "Positive"
-    elif neg > pos and raw <= -0.25:
+    elif blended <= -0.22:
         overall = "Negative"
     else:
         overall = "Neutral"
     return {
         "ok": True,
         "overall": overall,
-        "score": round(max(-1.0, min(1.0, raw)), 3),
+        "score": round(max(-1.0, min(1.0, blended)), 3),
         "breakdown": f"Positive {pos * 100 // total}% / Neutral {neu * 100 // total}% / Negative {neg * 100 // total}%",
         "positive": pos,
         "negative": neg,
         "neutral": neu,
         "headlines": titles[:5],
-        "tagged": tagged[:5],
+        "tagged": tagged[:6],
+        "sentences": sentences[:8],
     }
 
 
@@ -3136,14 +3227,27 @@ def format_sentiment_card(pack: dict[str, Any]) -> str:
         lines.append(
             f"**News tone:** {news.get('overall')} — {news.get('breakdown')}"
         )
-        for t in (news.get("tagged") or [])[:3]:
+        for t in (news.get("tagged") or [])[:4]:
             if isinstance(t, dict) and t.get("title"):
-                lines.append(f"  – ({t.get('polarity')}) {t.get('title')[:120]}")
-        for h in (news.get("headlines") or [])[:3]:
-            if isinstance(h, str) and not any(
-                isinstance(t, dict) and t.get("title") == h for t in (news.get("tagged") or [])
-            ):
-                lines.append(f"  – {h[:120]}")
+                sc = t.get("score")
+                sc_txt = f"{sc:+.2f}" if isinstance(sc, (int, float)) else ""
+                pol = t.get("polarity") or "neutral"
+                suffix = f" {sc_txt}" if sc_txt else ""
+                lines.append(f"  – ({pol}{suffix}) {t.get('title')[:120]}")
+                for sent in (t.get("sentences") or [])[:2]:
+                    if not isinstance(sent, dict) or not sent.get("text"):
+                        continue
+                    if sent.get("text") == t.get("title"):
+                        continue
+                    s_pol = sent.get("polarity") or "neutral"
+                    lines.append(f"      · [{s_pol}] {str(sent.get('text'))[:100]}")
+        # Standalone sentence cues when tagged is thin.
+        if not news.get("tagged"):
+            for sent in (news.get("sentences") or [])[:4]:
+                if isinstance(sent, dict) and sent.get("text"):
+                    lines.append(
+                        f"  – ({sent.get('polarity')}) {str(sent.get('text'))[:120]}"
+                    )
     lines.extend(
         [
             "",

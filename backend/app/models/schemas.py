@@ -15,6 +15,27 @@ class Quote(QuoteBase):
     # Epoch millis for Android clients. Prefer int over datetime so JSON never
     # serializes as an ISO string that Gson can't put into Long.
     timestamp: Optional[int] = None
+    # Snapshot / fundamentals (optional — populated from Yahoo when available)
+    open: Optional[float] = None
+    prevClose: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    volume: Optional[int] = None
+    avgVolume: Optional[int] = None
+    marketCap: Optional[int] = None
+    trailingPE: Optional[float] = None
+    eps: Optional[float] = None
+    fiftyTwoWeekHigh: Optional[float] = None
+    fiftyTwoWeekLow: Optional[float] = None
+    targetMeanPrice: Optional[float] = None
+    bid: Optional[float] = None
+    ask: Optional[float] = None
+    dividendYield: Optional[float] = None
+    fiftyDayAverage: Optional[float] = None
+    twoHundredDayAverage: Optional[float] = None
+    # Legacy aliases some clients still read
+    previousClose: Optional[float] = None
+    pe: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -152,6 +173,44 @@ class MarketStatus(BaseModel):
     message: str
     nextOpen: Optional[str] = None
     nextClose: Optional[str] = None
+
+
+class IntradayTip(BaseModel):
+    id: str
+    title: str
+    body: str
+    category: str = "process"
+
+
+class IntradayTipsResponse(BaseModel):
+    phase: str
+    phaseLabel: str
+    isOpen: bool = False
+    mood: Optional[str] = None
+    tips: List[IntradayTip] = []
+    disclaimer: str = ""
+    generatedAt: str = ""
+
+
+class InvestorTip(BaseModel):
+    id: str
+    title: str
+    body: str
+    category: str = "process"
+
+
+class InvestorTopicInfo(BaseModel):
+    id: str
+    label: str
+
+
+class InvestorTipsResponse(BaseModel):
+    topic: str
+    topicLabel: str
+    tips: List[InvestorTip] = []
+    topics: List[InvestorTopicInfo] = []
+    disclaimer: str = ""
+    generatedAt: str = ""
 
 
 class MarketNewsHeadline(BaseModel):
@@ -369,6 +428,8 @@ class OptionContract(BaseModel):
     gamma: float
     theta: float
     vega: float
+    callIv: Optional[float] = None
+    putIv: Optional[float] = None
 
 
 class OptionChainResponse(BaseModel):
@@ -377,6 +438,11 @@ class OptionChainResponse(BaseModel):
     spot: float
     generatedAt: str
     contracts: List[OptionContract]
+    source: str = "synthetic"
+    pcr: Optional[float] = None
+    ivSkew: Optional[float] = None
+    atmIv: Optional[float] = None
+    notes: List[str] = []
 
 
 class StrategyLeg(BaseModel):
@@ -429,6 +495,7 @@ class FuturesContractsResponse(BaseModel):
     spot: float
     generatedAt: str
     contracts: List[FuturesContract]
+    source: str = "synthetic"
     notes: List[str] = []
 
 

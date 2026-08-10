@@ -429,6 +429,19 @@ class StockMarketAssistant:
             qlow,
         ):
             return "market_literacy"
+        # Stock-tied TA asks ("Technical analysis of KAYNES") are analysis, not literacy.
+        named_for_ta = None
+        try:
+            from app.stock_enricher import extract_symbol_from_query
+
+            named_for_ta = extract_symbol_from_query(normalized)
+        except Exception:
+            named_for_ta = None
+        if named_for_ta and re.search(
+            r"\b(technical analysis|chart analysis|price action)\b",
+            qlow,
+        ):
+            return "stock_analysis"
         if re.search(
             r"\b(how does the (stock|share) market work|how the (stock|share) market works|"
             r"stock market meaning|key participants|depository participant|"
@@ -566,14 +579,30 @@ class StockMarketAssistant:
     def ask(self, query: str, market_context: dict | None = None) -> AssistantResponse:
         intent = self.classify_intent(query)
         # Bare/vague stock asks ("KAYNES", "about INFY") classify as general_query and
-        # used to dump raw grounding bullets. Remap to stock_analysis when a live symbol
-        # is in play so the readable trade-plan + sentiment composer runs.
+        # used to dump raw grounding bullets. Remap using the response profile so
+        # news/quote/sentiment asks keep their shape instead of a full analysis dump.
         if (
             intent == "general_query"
             and isinstance(market_context, dict)
             and str(market_context.get("symbol") or "").strip()
         ):
-            intent = "stock_analysis"
+            try:
+                from .answer_composer import resolve_stock_response_profile
+
+                profile = resolve_stock_response_profile(query, intent)
+                intent = {
+                    "news": "events_news",
+                    "sentiment": "events_news",
+                    "quote": "price_action",
+                    "technical": "stock_analysis",
+                    "trade_plan": "price_action",
+                    "prediction": "prediction",
+                    "fundamentals": "fundamentals",
+                    "calculations": "market_calculations",
+                    "stock_analysis": "stock_analysis",
+                }.get(profile, "stock_analysis")
+            except Exception:
+                intent = "stock_analysis"
         category = self._category_for_intent(intent)
         # prediction_signals is only filled for prediction intent below; keep defined.
         prediction_signals = None

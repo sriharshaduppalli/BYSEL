@@ -1934,5 +1934,19 @@
       "live_context"
     ],
     "source": "learned_answer_v1"
+  },
+  {
+    "id": "learned_ans_3152cae18501fb1c",
+    "title": "Grounded answer note: Technical analysis of KAYNES",
+    "content": "Educational retrieved note for «Technical analysis of KAYNES» (intent=stock_analysis, citations=live_quote_v1, instrument_master, bysel_quant_math_v2, bysel_enrich_v1, domain_seed_v1). **KAYNES** — Kaynes Technology India Limited — technical analysis\n\n**Direct answer:** BUY bias (paper) — wait for entry zone\n**Why:** Wilder RSI 60.73 bullish momentum; Bandwidth expansion with upper-half price; Supertrend bullish @ 3520.3\n\n**Technical readout:**\n• Trend / bias: neutral\n• RSI: 60.73 — neutral\n• Supertrend: bullish | MACD hist: 38.33\n• Support: 3131.0 | Resistance: 3963.2\n\n**Action:** BUY (score 6, confidence 0.72, swing)\n• Meaning: Fresh long bias — look for entries in the zone (paper)\n• Entry zone: 3593.3 – 3735.1\n• Stop: 3526.9 | Target 1: 4036.3 | Target 2: 4244.4\n• Risk/reward: 1.45 | suggested qty (risk budget): 24\n• Risk frame (3-5-7): ≤3% capital risk / trade · ≤5% total open risk · prefer ~7%+ favorable room on winners (paper checklist)\n• Invalidation: Close below stop 3526.9\n\n**Action legend (paper practice):** BUY = fresh long · ACCUMULATE = staged adds on dips · HOLD = no clear edge · TRIM = lighten/reduce on strength · SELL = exit/avoid · WAIT = skip until setup improves\n\n**Sentiment analysis:**\n• Overall: **Mildly bullish** (score +0.40, confidence 0.94)\n• Read: Supports: RSI 61 bullish momentum; Supertrend bullish; MACD hist +38.33 (bullish)\n• News headlines: Neutral\n• Momentum (RSI): RSI 61 bullish momentum\n• Trend: Supertrend bullish\n• MACD: MACD hist +38.33 (bullish)\n• News mix: Positive 10% / Neutral 70% / Negative 20%\n  – (neutral +0.00) PTC India Ltd Slips 13.24%\n  – (neutral +0.00) Kaynes Technology India Q1 Results: Earnings Call Recording Uploaded\n  – (neutral -0.10) Kaynes Technology Q1 falls short of estimates; net profit drops 24%… Informational only — not investment advice and not a guaranteed return.",
+    "tags": [
+      "analysis",
+      "technical",
+      "education",
+      "sentiment",
+      "news",
+      "live_context"
+    ],
+    "source": "learned_answer_v1"
   }
 ]

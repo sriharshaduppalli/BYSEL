@@ -382,21 +382,98 @@ _TERM_ANSWERS: dict[str, str] = {
         "**Common mistake:** Using today’s expenses without inflation for a 20–30 year horizon."
     ),
     "mutual fund": (
-        "**Mutual Fund Basics**\n\n"
-        "A mutual fund pools money from many investors and buys a portfolio of securities "
-        "under a stated mandate (equity, debt, hybrid, etc.), regulated in India (SEBI).\n\n"
-        "You own **units**; value per unit is **NAV**. Returns come from NAV change + "
-        "dividends/IDCW if any (growth plans reinvest).\n\n"
-        "Pick by **goal + horizon + risk**, then costs and consistency — not last year’s star ranking alone.\n\n"
-        "**Common mistake:** Treating a fund’s 1-year return as a forecast."
+        "**What are Mutual Funds?**\n\n"
+        "A mutual fund **pools money** from many investors and invests in a diversified basket — "
+        "equities, debt (bonds/debentures), money-market instruments, or a mix — under a stated "
+        "scheme objective. An **AMC** (Asset Management Company) manages the portfolio within "
+        "SEBI rules.\n\n"
+        "You don’t ‘buy the fund company’ as the product — you buy **units** of a scheme that "
+        "gives exposure to securities that can be hard to assemble yourself. Example: instead of "
+        "buying all Nifty 50 stocks in the right weights, a **Nifty 50 index fund** holds them "
+        "for you in index proportions.\n\n"
+        "**How it works (simple loop)**\n"
+        "1. Investors contribute (SIP or lump sum)\n"
+        "2. Units are allotted at the applicable **NAV**\n"
+        "3. Returns come from **NAV appreciation** and/or **dividends/IDCW** "
+        "(growth plans typically reinvest)\n\n"
+        "**Before you invest:** write goal · horizon · risk you can sit through without stopping "
+        "the SIP · then pick category (equity/debt/hybrid/index) and compare costs.\n\n"
+        "**Common mistake:** Treating last year’s star fund as next year’s forecast.\n"
+        "_Educational primer — not SEBI RA advice or a product recommendation._"
+    ),
+    "how mutual funds work": (
+        "**How Mutual Funds Work**\n\n"
+        "• **Pool:** many investors → one scheme corpus\n"
+        "• **Units @ NAV:** amount ÷ applicable NAV ≈ units allotted\n"
+        "• **Earn:** (1) NAV rise when underlying assets rise "
+        "(realised when you redeem) (2) dividends/IDCW if the plan pays them\n"
+        "• **AMC role:** design schemes (including NFOs), invest per mandate, ops & compliance\n\n"
+        "Routes: AMC app/site (often **direct**), or distributor/bank/platform (**regular** — "
+        "usually higher TER).\n\n"
+        "**Common mistake:** Confusing unit count with wealth — rupee value = units × NAV."
     ),
     "nav": (
         "**NAV (Net Asset Value)**\n\n"
-        "`NAV ≈ (Assets − Liabilities) / Outstanding units`\n\n"
-        "You buy/sell at applicable NAV (cut-off rules). Units ≈ amount / NAV.\n\n"
+        "`NAV per unit = (Total assets − Total liabilities) / Outstanding units`\n\n"
+        "Assets ≈ market value of holdings + cash + receivables (accrued dividends/interest). "
+        "Liabilities ≈ fees/expenses owed. NAV is typically computed each business day.\n\n"
+        "**Toy example:** stocks ₹50cr + bonds ₹10cr + cash ₹2cr + receivables ₹1cr − "
+        "liabilities ₹3cr = ₹60cr net; ÷ 6cr units → **NAV ₹10**.\n\n"
+        "NAV rises when holdings/income rise; falls when markets drop or expenses rise.\n\n"
         "A ‘high NAV’ fund is not automatically expensive vs a ‘low NAV’ fund — "
-        "compare **returns and risk**, not NAV level.\n\n"
+        "compare **returns, risk, and TER**, not NAV level.\n\n"
         "**Common mistake:** Preferring ₹10 NAV schemes because they ‘look cheap’."
+    ),
+    "exit load": (
+        "**Exit Load**\n\n"
+        "A fee some schemes charge if you redeem before a stated holding period "
+        "(e.g. ~1% if sold within 1 year — check the SID/KIM). It reduces redemption proceeds.\n\n"
+        "Plan liquidity needs so you don’t pay exit load to fund an emergency.\n\n"
+        "**Common mistake:** Ignoring exit load when comparing ‘similar’ funds."
+    ),
+    "amc": (
+        "**AMC (Asset Management Company)**\n\n"
+        "The intermediary that creates schemes (including NFOs), invests pooled money per the "
+        "scheme objective, and runs day-to-day fund operations under regulation.\n\n"
+        "Examples of fund houses: HDFC MF, ICICI Prudential MF, etc. You evaluate **schemes**, "
+        "not just brand familiarity.\n\n"
+        "**Common mistake:** Picking a fund only because you recognise the AMC logo."
+    ),
+    "types of mutual funds": (
+        "**Types of Mutual Funds (education)**\n\n"
+        "• **Equity** — stocks / equity-related; typically highest long-horizon volatility\n"
+        "• **Debt** — bonds, G-Secs, corporate debt, T-bills; generally lower risk than equity "
+        "(still rate/credit risk)\n"
+        "• **Hybrid / balanced** — mix of equity + debt; moderate risk profile\n"
+        "• **Index** — passively tracks an index (e.g. Nifty 50); cost & tracking matter\n"
+        "• **ETF** — exchange-traded; live price vs NAV; needs demat/broker\n"
+        "• **FoF** — invests in other schemes; risk depends on underlying funds\n\n"
+        "Also: ELSS (tax-saving equity with lock-in), liquid/ultra-short, gilt, sector/thematic "
+        "(less diversified).\n\n"
+        "**Common mistake:** Buying five equity funds that all hold the same large-caps."
+    ),
+    "mutual funds vs fd": (
+        "**Mutual Funds vs Fixed Deposits**\n\n"
+        "| | Mutual funds | Bank FD |\n"
+        "|---|---|---|\n"
+        "| Nature | Market-linked portfolio | Predetermined interest |\n"
+        "| Returns | Variable | Fixed (known at booking) |\n"
+        "| Risk | Market / credit / rate risk | Typically low (issuer risk remains) |\n"
+        "| Liquidity | Redeem to NAV (exit load/cut-offs may apply) | Premature exit often penalised |\n"
+        "| Diversification | Across many securities | None |\n\n"
+        "Use FDs for near-term safety sleeves; use MFs when horizon and risk capacity fit the "
+        "category.\n\n"
+        "**Common mistake:** Expecting FD-like certainty from equity mutual funds."
+    ),
+    "mutual funds vs stocks": (
+        "**Mutual Funds vs Direct Stocks**\n\n"
+        "• **MF:** pooled, diversified, professionally managed; redemption timelines depend on "
+        "scheme (equity often T+1–T+3 business days; debt can be faster)\n"
+        "• **Stocks:** direct ownership; you pick/monitor; higher concentration risk; sell in "
+        "market hours\n\n"
+        "Tax rules differ by instrument and holding period — verify current equity/debt MF and "
+        "stock STCG/LTCG rules before deciding.\n\n"
+        "**Common mistake:** Assuming ‘MF = no risk’ because a manager is involved."
     ),
     "mutual fund factsheet": (
         "**Reading a Mutual Fund Factsheet**\n\n"
@@ -1325,6 +1402,39 @@ _TERM_ANSWERS: dict[str, str] = {
         "Retail can access via RBI/NSE retail pathways (auction + secondary). Price moves "
         "inversely with yields.\n\n"
         "**Common mistake:** Treating G-Sec price as ‘always stable’ — yields move with RBI/inflation."
+    ),
+    "sovereign gold bond": (
+        "**Sovereign Gold Bonds (SGB)**\n\n"
+        "RBI-issued **government securities denominated in grams of gold**. You hold demat/certificate "
+        "units — no physical bars to store or assay.\n\n"
+        "**Return intuition**\n"
+        "• Fixed interest (historically around **2.5% p.a.** on issue price, paid semi-annually — "
+        "confirm the live tranche)\n"
+        "• Principal linked to gold price at redemption / sale\n\n"
+        "**Tenure & exit**\n"
+        "Common tenor is **8 years**, with an early-exit window often after ~**5 years** on interest "
+        "payment dates (series-specific). Secondary-market liquidity on exchange can be thin.\n\n"
+        "**SGB vs gold ETF vs physical vs MCX**\n"
+        "• **SGB** — sovereign issuer + interest; longer hold / exit rules\n"
+        "• **Gold ETF** — tradeable units, expense ratio, no coupon\n"
+        "• **Physical** — making charges, purity/storage risk, different tax path\n"
+        "• **MCX futures** — leveraged price bet with margin & expiry risk\n\n"
+        "**Tax sketch (verify yourself):** interest is usually taxable as income; maturity capital-gains "
+        "treatment for individuals has often been more favourable than physical gold — rules change.\n\n"
+        "**Common mistake:** Treating SGB like a day-trade gold vehicle or funding emergencies with it."
+    ),
+    "sgb vs gold etf": (
+        "**SGB vs gold ETF**\n\n"
+        "| | **SGB** | **Gold ETF** |\n"
+        "|---|---|---|\n"
+        "| Issuer / structure | RBI sovereign gold bond | AMC ETF tracking gold |\n"
+        "| Income | Periodic interest (tranche-specific) | Usually none |\n"
+        "| Costs | No TER; watch spreads if selling early | Expense ratio + brokerage |\n"
+        "| Liquidity | Secondary can be thin | Typically easier intraday |\n"
+        "| Horizon | Multi-year by design | Flexible trading horizon |\n\n"
+        "Pick from **liquidity need + tax situation + whether you value the interest sleeve** — "
+        "not from ‘both are gold so they’re identical’.\n\n"
+        "**Common mistake:** Ignoring exit friction on SGB when you may need cash in 1–2 years."
     ),
     "treasury bill": (
         "**Treasury Bills (T-Bills)**\n\n"
@@ -2404,6 +2514,17 @@ _TERM_ANSWERS["commodities"] = _TERM_ANSWERS["commodity trading"]
 _TERM_ANSWERS["mcx"] = _TERM_ANSWERS["commodity trading"]
 _TERM_ANSWERS["ncdex"] = _TERM_ANSWERS["commodity trading"]
 _TERM_ANSWERS["bullion"] = _TERM_ANSWERS["gold"]
+_TERM_ANSWERS["sgb"] = _TERM_ANSWERS["sovereign gold bond"]
+_TERM_ANSWERS["sovereign gold bonds"] = _TERM_ANSWERS["sovereign gold bond"]
+_TERM_ANSWERS["what are sovereign gold bonds"] = _TERM_ANSWERS["sovereign gold bond"]
+_TERM_ANSWERS["what is a sovereign gold bond"] = _TERM_ANSWERS["sovereign gold bond"]
+_TERM_ANSWERS["what is sgb"] = _TERM_ANSWERS["sovereign gold bond"]
+_TERM_ANSWERS["what are sgbs"] = _TERM_ANSWERS["sovereign gold bond"]
+_TERM_ANSWERS["gold bond"] = _TERM_ANSWERS["sovereign gold bond"]
+_TERM_ANSWERS["gold bonds"] = _TERM_ANSWERS["sovereign gold bond"]
+_TERM_ANSWERS["sgb vs gold etf vs physical gold"] = _TERM_ANSWERS["sgb vs gold etf"]
+_TERM_ANSWERS["sgb vs etf"] = _TERM_ANSWERS["sgb vs gold etf"]
+_TERM_ANSWERS["sovereign gold bond vs gold etf"] = _TERM_ANSWERS["sgb vs gold etf"]
 _TERM_ANSWERS["crude"] = _TERM_ANSWERS["crude oil"]
 _TERM_ANSWERS["brent"] = _TERM_ANSWERS["crude oil"]
 _TERM_ANSWERS["wti"] = _TERM_ANSWERS["crude oil"]
@@ -2498,6 +2619,19 @@ _TERM_ANSWERS["retirement"] = _TERM_ANSWERS["retirement planning"]
 _TERM_ANSWERS["retirement corpus"] = _TERM_ANSWERS["retirement planning"]
 _TERM_ANSWERS["mutual funds"] = _TERM_ANSWERS["mutual fund"]
 _TERM_ANSWERS["what is a mutual fund"] = _TERM_ANSWERS["mutual fund"]
+_TERM_ANSWERS["what are mutual funds"] = _TERM_ANSWERS["mutual fund"]
+_TERM_ANSWERS["how do mutual funds work"] = _TERM_ANSWERS["how mutual funds work"]
+_TERM_ANSWERS["how does a mutual fund work"] = _TERM_ANSWERS["how mutual funds work"]
+_TERM_ANSWERS["mutual fund types"] = _TERM_ANSWERS["types of mutual funds"]
+_TERM_ANSWERS["types of mf"] = _TERM_ANSWERS["types of mutual funds"]
+_TERM_ANSWERS["mf vs fd"] = _TERM_ANSWERS["mutual funds vs fd"]
+_TERM_ANSWERS["mutual fund vs fd"] = _TERM_ANSWERS["mutual funds vs fd"]
+_TERM_ANSWERS["mutual funds vs fds"] = _TERM_ANSWERS["mutual funds vs fd"]
+_TERM_ANSWERS["mf vs stocks"] = _TERM_ANSWERS["mutual funds vs stocks"]
+_TERM_ANSWERS["mutual fund vs stocks"] = _TERM_ANSWERS["mutual funds vs stocks"]
+_TERM_ANSWERS["mutual funds vs shares"] = _TERM_ANSWERS["mutual funds vs stocks"]
+_TERM_ANSWERS["asset management company"] = _TERM_ANSWERS["amc"]
+_TERM_ANSWERS["exit loads"] = _TERM_ANSWERS["exit load"]
 _TERM_ANSWERS["net asset value"] = _TERM_ANSWERS["nav"]
 _TERM_ANSWERS["fund factsheet"] = _TERM_ANSWERS["mutual fund factsheet"]
 _TERM_ANSWERS["factsheet"] = _TERM_ANSWERS["mutual fund factsheet"]
@@ -2588,6 +2722,7 @@ def get_education_answer(query: str) -> Optional[str]:
             r"currency trading|currency pair|usdinr|usd inr|interest rate parity|"
             r"commodity trading|\bmcx\b|\bncdex\b|\bgold\b|\bsilver\b|crude oil|"
             r"natural gas|government securities|\bg-?sec\b|treasury bill|t-bills?|"
+            r"sovereign gold bond|\bsgb\b|gold bonds?|"
             r"bond yield|\bsdl\b|cross currency|"
             r"risk management|position sizing|value at risk|\bvar\b|kelly criterion|"
             r"3-5-7|3–5–7|357 rule|three five seven|"
@@ -2675,6 +2810,20 @@ def get_education_answer(query: str) -> Optional[str]:
     if stock_specific_stop_or_plan and not formula_cue and not re.search(
         r"\b(what is|define|definition|meaning of|explain)\b", q
     ):
+        return None
+
+    # "Technical analysis of KAYNES" → live stock TA, not the TA literacy primer.
+    stock_specific_ta = bool(named_symbol) and bool(
+        re.search(
+            r"\b(technical analysis|chart analysis|price action|"
+            r"technically (analyse|analyze))\b",
+            q,
+        )
+    ) and (
+        re.search(r"\b(of|for|on)\s+[a-z0-9]", q)
+        or bool(re.search(rf"\b{re.escape(str(named_symbol).lower())}\b", q))
+    )
+    if stock_specific_ta and not formula_cue:
         return None
 
     # Live pattern asks for a named symbol → skip glossary (detector / analysis path).
@@ -2790,11 +2939,25 @@ def get_education_answer(query: str) -> Optional[str]:
     if re.search(r"\b(dark cloud|piercing line|piercing pattern)\b", q):
         return _TERM_ANSWERS["dark cloud cover"]
 
-    # Prefer NAV / TER specifics over broad mutual-fund umbrella.
+    # Prefer specific MF primers over the broad mutual-fund umbrella.
     if re.search(r"\b(net asset value|\bnav\b)\b", q):
         return _TERM_ANSWERS["nav"]
     if re.search(r"\b(expense ratio|\bter\b|direct vs regular|direct plan|regular plan)\b", q):
         return _TERM_ANSWERS["expense ratio"]
+    if re.search(r"\bexit load\b", q):
+        return _TERM_ANSWERS["exit load"]
+    if re.search(r"\b(how (do|does) (a )?mutual funds? work|how mutual funds work)\b", q):
+        return _TERM_ANSWERS["how mutual funds work"]
+    if re.search(r"\b(types? of mutual funds|mutual fund types)\b", q):
+        return _TERM_ANSWERS["types of mutual funds"]
+    if re.search(r"\b(mutual funds? vs\.? (fd|fds|fixed deposit)|mf vs fd)\b", q):
+        return _TERM_ANSWERS["mutual funds vs fd"]
+    if re.search(r"\b(mutual funds? vs\.? (stocks?|shares?)|mf vs stocks?)\b", q):
+        return _TERM_ANSWERS["mutual funds vs stocks"]
+    if re.search(r"\b(asset management company|\bamc\b)\b", q) and re.search(
+        r"\b(mutual fund|fund|amc|what)\b", q
+    ):
+        return _TERM_ANSWERS["amc"]
 
     # Prefer unified F&O / vs-options primers over bare "futures" or "options".
     if re.search(

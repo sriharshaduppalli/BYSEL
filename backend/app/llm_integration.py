@@ -309,6 +309,37 @@ def _build_peers(query: str, primary: str | None, ctx: dict[str, Any]) -> list[d
     return peers
 
 
+def _prior_symbol_from_history(history: list | None) -> str | None:
+    """Pick the most recent stock symbol mentioned in chat history."""
+    if not history:
+        return None
+    try:
+        from .stock_enricher import extract_symbol_from_query
+    except Exception:
+        extract_symbol_from_query = None  # type: ignore
+    for turn in reversed(list(history)[-8:]):
+        content = str((turn or {}).get("content") or "").strip()
+        if not content:
+            continue
+        if extract_symbol_from_query:
+            try:
+                sym = extract_symbol_from_query(content)
+                if sym:
+                    return str(sym).upper()
+            except Exception:
+                pass
+        # Fallback: bold header like **TCS** from prior answers.
+        m = re.search(r"\*\*([A-Z][A-Z0-9.&-]{1,11})\*\*", content)
+        if m:
+            cand = m.group(1)
+            if cand not in {
+                "RSI", "MACD", "BUY", "SELL", "HOLD", "WAIT", "ACTION",
+                "DIRECT", "ANSWER", "SENTIMENT", "BYSEL", "NSE", "BSE",
+            }:
+                return cand
+    return None
+
+
 def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
     """Answer using education pack first, then grounded Indian-market RAG."""
     cleaned = (query or "").strip()
@@ -316,6 +347,18 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
         return None
 
     ctx = dict(context or {})
+    history = ctx.get("conversation_history")
+    if isinstance(history, list) and history:
+        # Compact multi-turn memory for the composer (ISM path).
+        bits: list[str] = []
+        for turn in history[-4:]:
+            role = str((turn or {}).get("role") or "user")
+            content = str((turn or {}).get("content") or "").replace("\n", " ").strip()
+            if content:
+                bits.append(f"{role}: {content[:160]}")
+        if bits:
+            ctx["conversation_summary"] = " | ".join(bits)
+
     symbol_hint = _sanitize_symbol(str(ctx.get("symbol") or "").upper().strip() or None, cleaned)
     if not symbol_hint:
         try:
@@ -324,6 +367,11 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
             symbol_hint = _sanitize_symbol(extract_symbol_from_query(cleaned), cleaned)
         except Exception:
             symbol_hint = None
+    # Follow-ups like "what about sentiment?" keep the prior ticker.
+    if not symbol_hint and isinstance(history, list):
+        prior = _prior_symbol_from_history(history)
+        if prior:
+            symbol_hint = _sanitize_symbol(prior, cleaned)
     if symbol_hint:
         ctx["symbol"] = symbol_hint
     else:
@@ -370,6 +418,17 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
             has_of_symbol
             or bool(re.search(rf"\b{re.escape(resolved_symbol.lower())}\b", cleaned.lower()))
         ) and not re.search(r"\b(what is|define|definition|meaning of)\b", cleaned.lower())
+        # "Technical analysis of KAYNES" → live stock TA, not the NCFM glossary primer.
+        stock_specific_ta = bool(resolved_symbol) and bool(
+            re.search(
+                r"\b(technical analysis|chart analysis|price action|"
+                r"technically (analyse|analyze)|ta of|ta for)\b",
+                cleaned.lower(),
+            )
+        ) and (
+            has_of_symbol
+            or bool(re.search(rf"\b{re.escape(resolved_symbol.lower())}\b", cleaned.lower()))
+        )
         stock_specific_beta = bool(resolved_symbol) and bool(
             re.search(r"\bbeta\b", cleaned.lower())
         ) and (has_of_symbol or bool(re.search(rf"\b{re.escape(resolved_symbol.lower())}\b", cleaned.lower())))
@@ -876,6 +935,7 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
             and not stock_specific_fo
             and not stock_specific_levels
             and not stock_specific_stop
+            and not stock_specific_ta
             and not stock_specific_beta
             and not nifty_outlook_ask
             and not live_ccg
@@ -890,6 +950,7 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
             and not stock_specific_fo
             and not stock_specific_levels
             and not stock_specific_stop
+            and not stock_specific_ta
             and not stock_specific_beta
             and not sentiment_live
         ):
@@ -1094,9 +1155,22 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
                     else:
                         ctx[key] = val
 
-        # Full quantitative pack (P0+B/C) + buy/sell trade plan.
-        p0_pack = None
+        # Decide answer shape early so we don't always force trade-plan + sentiment.
+        response_profile = "stock_analysis"
         if symbol_hint:
+            try:
+                from indian_stock_llm.answer_composer import resolve_stock_response_profile
+
+                hint_intent = str(ctx.get("intent") or "general_query")
+                response_profile = resolve_stock_response_profile(cleaned, hint_intent)
+            except Exception:
+                response_profile = "stock_analysis"
+
+        # Full quantitative pack (P0+B/C) + buy/sell trade plan.
+        # Skip heavy pack for pure quote asks — composer only needs last/levels.
+        p0_pack = None
+        need_p0 = symbol_hint and response_profile not in {"quote"}
+        if need_p0:
             try:
                 from indian_stock_llm.analysis_math import build_p0_analysis_pack
 
@@ -1198,9 +1272,16 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
                 logger.debug("P0 analysis pack failed for %s: %s", symbol_hint, exc)
                 p0_pack = None
 
-        # Multi-factor sentiment for every stock analysis path.
+        # Sentiment / news packs only when the response profile needs them.
         sentiment_pack = None
-        if symbol_hint or (ctx.get("sentiment") or {}).get("overall"):
+        need_sentiment = response_profile in {
+            "news",
+            "sentiment",
+            "stock_analysis",
+            "trade_plan",
+            "calculations",
+        }
+        if need_sentiment and (symbol_hint or (ctx.get("sentiment") or {}).get("overall")):
             try:
                 from indian_stock_llm.analysis_math import build_sentiment_analysis_pack
 
@@ -1238,30 +1319,31 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
                         f"(score {sentiment_pack.get('composite_score'):+.2f})"
                     )
                     ctx["pre_signals"] = pre
-                    # Soft-bias paper trade plan with live news tone.
-                    plan = (p0_pack or {}).get("trade_plan") if p0_pack else None
-                    if isinstance(plan, dict) and plan.get("action"):
-                        n_score = float((sentiment_pack.get("news") or {}).get("score") or 0.0)
-                        n_ok = bool((sentiment_pack.get("news") or {}).get("ok"))
-                        if n_ok:
-                            fors = list(plan.get("reasons_for") or [])
-                            against = list(plan.get("reasons_against") or [])
-                            score = int(plan.get("score") or 0)
-                            if n_score >= 0.25:
-                                score += 1
-                                fors.append(
-                                    f"News tone constructive ({(sentiment_pack.get('news') or {}).get('breakdown') or 'positive bias'})"
-                                )
-                            elif n_score <= -0.25:
-                                score -= 1
-                                against.append(
-                                    f"News tone cautious ({(sentiment_pack.get('news') or {}).get('breakdown') or 'negative bias'})"
-                                )
-                            plan["score"] = score
-                            plan["reasons_for"] = fors[:8]
-                            plan["reasons_against"] = against[:8]
-                            if p0_pack is not None:
-                                p0_pack["trade_plan"] = plan
+                    # Soft-bias paper trade plan only for trade/analysis profiles.
+                    if response_profile in {"trade_plan", "stock_analysis", "calculations"}:
+                        plan = (p0_pack or {}).get("trade_plan") if p0_pack else None
+                        if isinstance(plan, dict) and plan.get("action"):
+                            n_score = float((sentiment_pack.get("news") or {}).get("score") or 0.0)
+                            n_ok = bool((sentiment_pack.get("news") or {}).get("ok"))
+                            if n_ok:
+                                fors = list(plan.get("reasons_for") or [])
+                                against = list(plan.get("reasons_against") or [])
+                                score = int(plan.get("score") or 0)
+                                if n_score >= 0.25:
+                                    score += 1
+                                    fors.append(
+                                        f"News tone constructive ({(sentiment_pack.get('news') or {}).get('breakdown') or 'positive bias'})"
+                                    )
+                                elif n_score <= -0.25:
+                                    score -= 1
+                                    against.append(
+                                        f"News tone cautious ({(sentiment_pack.get('news') or {}).get('breakdown') or 'negative bias'})"
+                                    )
+                                plan["score"] = score
+                                plan["reasons_for"] = fors[:8]
+                                plan["reasons_against"] = against[:8]
+                                if p0_pack is not None:
+                                    p0_pack["trade_plan"] = plan
             except Exception as exc:
                 logger.debug("Sentiment pack attach failed: %s", exc)
                 sentiment_pack = None
@@ -1283,6 +1365,9 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
             "peers": peers,
             "p0_math": p0_pack if p0_pack and p0_pack.get("ok") else None,
             "trade_plan": (p0_pack or {}).get("trade_plan") if p0_pack and p0_pack.get("ok") else None,
+            "conversation_summary": ctx.get("conversation_summary"),
+            "user_sentiment": ctx.get("user_sentiment") if isinstance(ctx.get("user_sentiment"), dict) else None,
+            "portfolio_context": ctx.get("portfolio_context"),
         }
         if not any(
             market_context.get(k)

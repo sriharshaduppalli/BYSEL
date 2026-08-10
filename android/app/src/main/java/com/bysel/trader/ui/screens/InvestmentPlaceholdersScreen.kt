@@ -6,6 +6,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -49,6 +50,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import com.bysel.trader.data.models.*
+import com.bysel.trader.ui.components.InvestorTipsCard
+import com.bysel.trader.ui.components.localInvestorTips
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.viewmodel.TradingViewModel
 
@@ -77,6 +80,201 @@ private fun ActionBanner(viewModel: TradingViewModel) {
             Text(msg.orEmpty(), color = LocalAppTheme.current.text, modifier = Modifier.padding(12.dp))
         }
         LaunchedEffect(msg) { viewModel.clearProductActionMessage() }
+    }
+}
+
+@Composable
+private fun MutualFundLearnCard(onAskAi: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val theme = LocalAppTheme.current
+    Card(colors = CardDefaults.cardColors(containerColor = theme.card)) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Learn: What are Mutual Funds?", color = theme.text, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Pooled investing via an AMC — units priced at NAV. Educational overview for beginners.",
+                color = theme.textSecondary,
+                fontSize = 12.sp,
+            )
+            TextButton(onClick = { expanded = !expanded }) {
+                Text(if (expanded) "Hide primer" else "Read primer", maxLines = 1)
+            }
+            if (expanded) {
+                MutualFundPrimerLine(
+                    title = "The idea",
+                    body = "Many investors pool money into a scheme that buys equities, debt, or both. You own units; an AMC manages the portfolio under SEBI rules.",
+                )
+                MutualFundPrimerLine(
+                    title = "NAV",
+                    body = "NAV ≈ (assets − liabilities) ÷ outstanding units. Wealth = units × NAV. A ₹10 NAV isn’t ‘cheaper’ than ₹100 — compare returns, risk, and TER.",
+                )
+                MutualFundPrimerLine(
+                    title = "SIP vs lump sum",
+                    body = "SIP invests a fixed amount on a schedule (rupee-cost averaging). Lump sum is a one-time buy. Match size to goal and risk you won’t abandon.",
+                )
+                MutualFundPrimerLine(
+                    title = "Main types",
+                    body = "Equity (higher volatility) · Debt (rate/credit risk) · Hybrid · Index (tracks a benchmark) · ETF (exchange-traded) · FoF (funds of funds).",
+                )
+                MutualFundPrimerLine(
+                    title = "Costs & risks",
+                    body = "Expense ratio is the annual drag; exit load can apply on early redeem. Returns aren’t guaranteed — don’t treat equity MFs like FDs.",
+                )
+                MutualFundPrimerLine(
+                    title = "Who it suits",
+                    body = "Beginners starting small SIPs, people who want diversification without picking stocks, goal-based investing — after writing horizon and risk capacity.",
+                )
+                Text(
+                    "Educational paraphrase — not SEBI RA advice or a fund recommendation.",
+                    color = theme.textSecondary,
+                    fontSize = 10.sp,
+                )
+                TextButton(onClick = onAskAi) {
+                    Text("Ask AI: What are mutual funds?", maxLines = 1)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MutualFundPrimerLine(title: String, body: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(title, color = LocalAppTheme.current.text, fontWeight = FontWeight.Medium, fontSize = 12.sp)
+        Text(body, color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun SgbLearnCard(onAskAi: () -> Unit) {
+    var expanded by remember { mutableStateOf(true) }
+    val theme = LocalAppTheme.current
+    Card(colors = CardDefaults.cardColors(containerColor = theme.card)) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Learn: Sovereign Gold Bonds", color = theme.text, fontWeight = FontWeight.SemiBold)
+            Text(
+                "RBI-issued gold bonds — interest + gold-linked principal. Educational overview only.",
+                color = theme.textSecondary,
+                fontSize = 12.sp,
+            )
+            TextButton(onClick = { expanded = !expanded }) {
+                Text(if (expanded) "Hide primer" else "Read primer", maxLines = 1)
+            }
+            if (expanded) {
+                MutualFundPrimerLine(
+                    title = "What it is",
+                    body = "SGBs are government securities denominated in grams of gold. You hold them in demat or certificate form — no physical bars to store or assay.",
+                )
+                MutualFundPrimerLine(
+                    title = "Returns intuition",
+                    body = "You typically earn a fixed interest (historically ~2.5% p.a. on issue price, paid semi-annually) plus gold price movement on principal at redemption/sale. Live tranche terms can differ — always read the current RBI/NSE notice.",
+                )
+                MutualFundPrimerLine(
+                    title = "Tenure & exit",
+                    body = "Common tenor is 8 years with an exit window after ~5 years on interest payment dates (check the specific series). Secondary market on exchange may be thin — don’t assume instant liquidity.",
+                )
+                MutualFundPrimerLine(
+                    title = "Tax sketch (verify yourself)",
+                    body = "Interest is taxable as income. Capital gains on redemption at maturity for individuals have often been treated favourably vs physical gold — rules change; confirm with a tax advisor / latest IT guidance before acting.",
+                )
+                MutualFundPrimerLine(
+                    title = "SGB vs gold ETF vs physical",
+                    body = "SGB: sovereign credit + interest, lock-in/exit rules. Gold ETF: exchange liquidity, expense ratio, no interest. Physical: making charges, purity/storage risk, different tax path. Pick from goal and liquidity need — not from ‘gold is gold’.",
+                )
+                MutualFundPrimerLine(
+                    title = "Who it suits",
+                    body = "Long-horizon gold allocation where you want sovereign backing and can tolerate limited early exit. Not a trading vehicle and not a substitute for an emergency fund.",
+                )
+                Text(
+                    "Educational paraphrase — not an RBI offer, not SEBI RA advice, not a buy recommendation.",
+                    color = theme.textSecondary,
+                    fontSize = 10.sp,
+                )
+                TextButton(onClick = onAskAi) {
+                    Text("Ask AI: What are Sovereign Gold Bonds?", maxLines = 1)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SgbScreen(viewModel: TradingViewModel) {
+    val investorTips by viewModel.investorTips.collectAsStateWithLifecycle()
+    val investorTipsLoading by viewModel.investorTipsLoading.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        viewModel.loadInvestorTips("sgb")
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(LocalAppTheme.current.surface).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            Text(
+                "Sovereign Gold Bonds",
+                color = LocalAppTheme.current.text,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        item {
+            Text(
+                "Educational explorer — not live RBI/NSE SGB applications or allotment tracking.",
+                color = LocalAppTheme.current.textSecondary,
+                fontSize = 12.sp,
+            )
+        }
+        item {
+            InvestorTipsCard(
+                title = "SGB Tips",
+                topicLabel = if (investorTips.topic == "sgb") {
+                    investorTips.topicLabel.ifBlank { "SGB" }
+                } else {
+                    "SGB"
+                },
+                tips = if (investorTips.topic == "sgb") {
+                    investorTips.tips
+                } else {
+                    localInvestorTips("sgb").tips
+                },
+                disclaimer = investorTips.disclaimer.ifBlank {
+                    "Educational habits — not bond recommendations."
+                },
+                loading = investorTipsLoading,
+                compact = true,
+            )
+        }
+        item {
+            SgbLearnCard(onAskAi = { viewModel.askAi("What are Sovereign Gold Bonds?") })
+        }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text("Quick compare", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "• SGB — interest + gold link, sovereign issuer, longer hold\n" +
+                            "• Gold ETF (e.g. GOLDBEES) — tradeable units, TER drag, no coupon\n" +
+                            "• MCX gold futures — leveraged price bet, margin & expiry risk\n" +
+                            "• Physical jewellery/coins — making charges & storage",
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 12.sp,
+                    )
+                    TextButton(onClick = { viewModel.askAi("SGB vs gold ETF vs physical gold") }) {
+                        Text("Ask AI: SGB vs gold ETF", maxLines = 1)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -200,7 +398,13 @@ fun MutualFundsScreen(viewModel: TradingViewModel) {
     var recommendationGoal by remember { mutableStateOf("growth") }
     var recommendationHorizonInput by remember { mutableStateOf("5") }
 
-    LaunchedEffect(Unit) { viewModel.loadMutualFunds(limit = 1000) }
+    val investorTips by viewModel.investorTips.collectAsStateWithLifecycle()
+    val investorTipsLoading by viewModel.investorTipsLoading.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        viewModel.loadMutualFunds(limit = 1000)
+        viewModel.loadInvestorTips("mutual_funds")
+    }
 
     val categoryOptions = remember(funds) {
         listOf("ALL") + funds.map { it.category.uppercase() }.distinct().sorted()
@@ -242,6 +446,19 @@ fun MutualFundsScreen(viewModel: TradingViewModel) {
                 )
             }
             item { ActionBanner(viewModel) }
+            item {
+                InvestorTipsCard(
+                    title = "Mutual Fund Tips",
+                    topicLabel = investorTips.topicLabel.ifBlank { "Mutual funds" },
+                    tips = if (investorTips.topic == "mutual_funds") investorTips.tips else localInvestorTips("mutual_funds").tips,
+                    disclaimer = investorTips.disclaimer.ifBlank {
+                        "Educational habits — not fund recommendations."
+                    },
+                    loading = investorTipsLoading,
+                    compact = true,
+                )
+            }
+            item { MutualFundLearnCard(onAskAi = { viewModel.askAi("What are mutual funds?") }) }
 
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
@@ -579,7 +796,13 @@ fun IpoListingsScreen(viewModel: TradingViewModel) {
     var applyTarget by remember { mutableStateOf<IPOListing?>(null) }
     var selectedTab by remember { mutableStateOf(IpoListingTab.OPEN) }
 
-    LaunchedEffect(Unit) { viewModel.loadIpoListings() }
+    val investorTips by viewModel.investorTips.collectAsStateWithLifecycle()
+    val investorTipsLoading by viewModel.investorTipsLoading.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        viewModel.loadIpoListings()
+        viewModel.loadInvestorTips("ipo")
+    }
 
     val openIpos = remember(ipos) { ipos.filter { classifyIpoTab(it) == IpoListingTab.OPEN } }
     val closedIpos = remember(ipos) { ipos.filter { classifyIpoTab(it) == IpoListingTab.CLOSED } }
@@ -612,6 +835,18 @@ fun IpoListingsScreen(viewModel: TradingViewModel) {
                 )
             }
             item { ActionBanner(viewModel) }
+            item {
+                InvestorTipsCard(
+                    title = "IPO Tips",
+                    topicLabel = investorTips.topicLabel.ifBlank { "IPOs" },
+                    tips = if (investorTips.topic == "ipo") investorTips.tips else localInvestorTips("ipo").tips,
+                    disclaimer = investorTips.disclaimer.ifBlank {
+                        "Educational habits — not IPO recommendations."
+                    },
+                    loading = investorTipsLoading,
+                    compact = true,
+                )
+            }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { viewModel.loadIpoListings() }) { Text("Refresh IPOs") }
@@ -1277,7 +1512,7 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
 
         effectiveSignal?.let { signal ->
             item {
-                PreTradeSignalCard("Copilot Pre-Trade", signal)
+                PreTradeSignalCard("BYSEL Pre-Trade", signal)
             }
         }
 
@@ -1340,7 +1575,7 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
                             Text("Save Basket")
                         }
                         TextButton(onClick = { viewModel.evaluateTriggerOrders() }) {
-                            Text("Evaluate Triggers")
+                            Text("Evaluate Now")
                         }
                     }
                 }
@@ -1400,6 +1635,8 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
     val optionChain by viewModel.optionChain.collectAsStateWithLifecycle()
     val strategyPreview by viewModel.strategyPreview.collectAsStateWithLifecycle()
     val loading by viewModel.derivativesLoading.collectAsStateWithLifecycle()
+    val investorTips by viewModel.investorTips.collectAsStateWithLifecycle()
+    val investorTipsLoading by viewModel.investorTipsLoading.collectAsStateWithLifecycle()
 
     var symbol by remember { mutableStateOf("NIFTY") }
     // Default to ~3 weeks out so the educational chain always has a forward expiry.
@@ -1416,6 +1653,14 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
         mutableStateOf("CALL:BUY:22500:120\nCALL:SELL:23000:80")
     }
 
+    // Auto-load once so the Options tab isn't an empty form on first open.
+    LaunchedEffect(Unit) {
+        viewModel.loadInvestorTips("fno")
+        if (optionChain == null) {
+            viewModel.loadOptionChain(symbol, expiry)
+        }
+    }
+
     LaunchedEffect(optionChain?.spot) {
         val spot = optionChain?.spot
         if (spot != null && spot > 0.0 && strategySpotInput.isBlank()) {
@@ -1425,7 +1670,7 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
 
     val chainContracts = remember(optionChain) {
         val chain = optionChain ?: return@remember emptyList()
-        chain.contracts.sortedBy { kotlin.math.abs(it.strike - chain.spot) }.take(10)
+        chain.contracts.sortedBy { kotlin.math.abs(it.strike - chain.spot) }.take(12)
     }
 
     LazyColumn(
@@ -1433,29 +1678,44 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
             .fillMaxSize()
             .background(LocalAppTheme.current.surface)
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(bottom = 24.dp),
     ) {
         item {
             Text(
-                "Derivatives Intelligence",
+                "Options Chain & Greeks",
                 color = LocalAppTheme.current.text,
                 fontWeight = FontWeight.Bold,
-                fontSize = 24.sp
+                fontSize = 24.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         item {
             Text(
-                "Educational F&O gym: live spot + synthetic chain/Greeks (Black–Scholes). Not exchange LTP/OI — paper practice only.",
+                "F&O gym: live NSE chain when reachable, else synthetic Black–Scholes. PCR / IV skew included for both.",
                 color = LocalAppTheme.current.textSecondary,
                 fontSize = 12.sp,
             )
         }
         item { ActionBanner(viewModel) }
+        item {
+            InvestorTipsCard(
+                title = "F&O Tips",
+                topicLabel = investorTips.topicLabel.ifBlank { "F&O" },
+                tips = if (investorTips.topic == "fno") investorTips.tips else localInvestorTips("fno").tips,
+                disclaimer = investorTips.disclaimer.ifBlank {
+                    "Educational habits — not trade recommendations."
+                },
+                loading = investorTipsLoading,
+                compact = true,
+            )
+        }
 
         item {
             Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Option Chain (synthetic)", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    Text("Option Chain", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(
                         value = symbol,
                         onValueChange = { symbol = it.uppercase() },
@@ -1471,10 +1731,10 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
                         singleLine = true,
                     )
                     Button(onClick = { viewModel.loadOptionChain(symbol, expiry) }) {
-                        Text("Load Chain")
+                        Text("Load Chain", maxLines = 1)
                     }
                     if (loading) {
-                        CircularProgressIndicator(color = LocalAppTheme.current.primary)
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = LocalAppTheme.current.primary)
                     }
                 }
             }
@@ -1483,17 +1743,80 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
         optionChain?.let { chain ->
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("${chain.symbol} Spot: ₹${String.format("%.2f", chain.spot)}", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
-                        Text("Expiry: ${chain.expiry} • Contracts: ${chain.contracts.size}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        chainContracts.forEach { contract ->
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "${chain.symbol} Spot: ₹${String.format("%.2f", chain.spot)}",
+                            color = LocalAppTheme.current.text,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            "Source: ${chain.source.uppercase()} • Expiry: ${chain.expiry} • Near ATM: ${chainContracts.size} of ${chain.contracts.size}",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 12.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        val pcrText = chain.pcr?.let { String.format("%.2f", it) } ?: "—"
+                        val skewText = chain.ivSkew?.let { String.format("%+.2f%%", it * 100.0) } ?: "—"
+                        val atmIvText = chain.atmIv?.let { String.format("%.1f%%", it * 100.0) } ?: "—"
+                        Text(
+                            "PCR (OI) $pcrText · IV skew (P−C) $skewText · ATM IV $atmIvText",
+                            color = LocalAppTheme.current.text,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 12.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        chain.notes.take(2).forEach { note ->
                             Text(
-                                "Strike ${contract.strike}: CE Δ ${String.format("%.2f", contract.callDelta)} OI ${contract.callOi} · PE Δ ${String.format("%.2f", contract.putDelta)} OI ${contract.putOi}",
+                                note,
                                 color = LocalAppTheme.current.textSecondary,
                                 fontSize = 11.sp,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                        }
+                        chainContracts.forEach { contract ->
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                val callIvPct = (contract.callIv ?: contract.impliedVolatility) * 100.0
+                                val putIvPct = (contract.putIv ?: contract.impliedVolatility) * 100.0
+                                Text(
+                                    "Strike ${String.format("%.0f", contract.strike)} · IV C ${String.format("%.1f", callIvPct)}% / P ${String.format("%.1f", putIvPct)}%",
+                                    color = LocalAppTheme.current.text,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    "CE Δ ${String.format("%.2f", contract.callDelta)} · OI ${contract.callOi} (${if (contract.callOiChange >= 0) "+" else ""}${contract.callOiChange}) · LTP ₹${String.format("%.1f", contract.callLtp)}",
+                                    color = LocalAppTheme.current.textSecondary,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    "PE Δ ${String.format("%.2f", contract.putDelta)} · OI ${contract.putOi} (${if (contract.putOiChange >= 0) "+" else ""}${contract.putOiChange}) · LTP ₹${String.format("%.1f", contract.putLtp)}",
+                                    color = LocalAppTheme.current.textSecondary,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    "Γ ${String.format("%.4f", contract.gamma)} · Θ ${String.format("%.2f", contract.theta)} · Vega ${String.format("%.2f", contract.vega)}",
+                                    color = LocalAppTheme.current.textSecondary,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
                     }
                 }

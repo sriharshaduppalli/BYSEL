@@ -16,7 +16,7 @@ data class Quote(
     // additional fields commonly returned by market data APIs (Yahoo/others)
     @SerializedName("open")
     val open: Double? = null,
-    @SerializedName("prevClose")
+    @SerializedName(value = "prevClose", alternate = ["previousClose"])
     val prevClose: Double? = null,
     @SerializedName("high")
     val dayHigh: Double? = null,
@@ -28,7 +28,7 @@ data class Quote(
     val avgVolume: Long? = null,
     @SerializedName("marketCap")
     val marketCap: Long? = null,
-    @SerializedName("trailingPE")
+    @SerializedName(value = "trailingPE", alternate = ["pe"])
     val trailingPE: Double? = null,
     @SerializedName("eps")
     val eps: Double? = null,
@@ -313,6 +313,45 @@ data class PracticeIdea(
 
 data class PracticeIdeasResponse(
     val ideas: List<PracticeIdea> = emptyList(),
+    val disclaimer: String = "",
+    val generatedAt: String = "",
+)
+
+/** Session-phase habit tip — educational, not a stock recommendation. */
+data class IntradayTip(
+    val id: String = "",
+    val title: String = "",
+    val body: String = "",
+    val category: String = "process",
+)
+
+data class IntradayTipsResponse(
+    val phase: String = "",
+    val phaseLabel: String = "",
+    val isOpen: Boolean = false,
+    val mood: String? = null,
+    val tips: List<IntradayTip> = emptyList(),
+    val disclaimer: String = "",
+    val generatedAt: String = "",
+)
+
+data class InvestorTip(
+    val id: String = "",
+    val title: String = "",
+    val body: String = "",
+    val category: String = "process",
+)
+
+data class InvestorTopicInfo(
+    val id: String = "",
+    val label: String = "",
+)
+
+data class InvestorTipsResponse(
+    val topic: String = "",
+    val topicLabel: String = "",
+    val tips: List<InvestorTip> = emptyList(),
+    val topics: List<InvestorTopicInfo> = emptyList(),
     val disclaimer: String = "",
     val generatedAt: String = "",
 )
@@ -610,7 +649,9 @@ data class OptionContract(
     val putDelta: Double,
     val gamma: Double,
     val theta: Double,
-    val vega: Double
+    val vega: Double,
+    val callIv: Double? = null,
+    val putIv: Double? = null,
 )
 
 data class OptionChainResponse(
@@ -618,7 +659,12 @@ data class OptionChainResponse(
     val expiry: String,
     val spot: Double,
     val generatedAt: String,
-    val contracts: List<OptionContract>
+    val contracts: List<OptionContract> = emptyList(),
+    val source: String = "synthetic",
+    val pcr: Double? = null,
+    val ivSkew: Double? = null,
+    val atmIv: Double? = null,
+    val notes: List<String> = emptyList(),
 )
 
 data class StrategyLeg(
@@ -671,6 +717,7 @@ data class FuturesContractsResponse(
     val spot: Double,
     val generatedAt: String,
     val contracts: List<FuturesContract> = emptyList(),
+    val source: String = "synthetic",
     val notes: List<String> = emptyList(),
 )
 

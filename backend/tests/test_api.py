@@ -1949,10 +1949,77 @@ def test_release_gate_evaluate_uses_live_slo_endpoint():
         )
 
 
+def test_intraday_tips_endpoint_returns_phase_tips():
+    response = client.get("/market/intraday-tips?limit=3&advanceShare=0.7")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["phase"]
+    assert payload["phaseLabel"]
+    assert len(payload["tips"]) >= 1
+    assert payload["tips"][0]["title"]
+    assert payload["tips"][0]["body"]
+    assert "Educational" in payload["disclaimer"] or "educational" in payload["disclaimer"].lower()
+
+
+def test_single_quote_endpoint_includes_snapshot_fields(monkeypatch):
+    monkeypatch.setattr(
+        "app.routes.fetch_quote",
+        lambda symbol: {
+            "symbol": symbol.upper(),
+            "last": 1000.0,
+            "pctChange": 1.25,
+            "open": 990.0,
+            "high": 1010.0,
+            "low": 985.0,
+            "previousClose": 987.0,
+            "prevClose": 987.0,
+            "volume": 1_200_000,
+            "avgVolume": 1_500_000,
+            "marketCap": 5_000_000_000_000,
+            "pe": 22.5,
+            "trailingPE": 22.5,
+            "eps": 44.4,
+            "dividendYield": 0.8,
+            "fiftyTwoWeekHigh": 1200.0,
+            "fiftyTwoWeekLow": 800.0,
+            "bid": 999.5,
+            "ask": 1000.5,
+            "timestamp": 1_700_000_000_000,
+        },
+    )
+    response = client.get("/quotes/TCS")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["symbol"] == "TCS"
+    assert payload["marketCap"] == 5_000_000_000_000
+    assert payload["trailingPE"] == 22.5
+    assert payload["eps"] == 44.4
+    assert payload["fiftyTwoWeekHigh"] == 1200.0
+    assert payload["bid"] == 999.5
+    assert payload["dividendYield"] == 0.8
+    assert payload["prevClose"] == 987.0
+
+
+def test_investor_tips_endpoint_supports_topics():
+    for topic in ("long_term", "mutual_funds", "ipo", "fno"):
+        response = client.get(f"/market/investor-tips?topic={topic}&limit=3")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["topic"] == topic
+        assert payload["topicLabel"]
+        assert len(payload["tips"]) >= 1
+        assert payload["tips"][0]["title"]
+        assert len(payload["topics"]) == 4
+
+
 def test_futures_contracts_endpoint_returns_contract_set(monkeypatch):
     monkeypatch.setattr(
         "app.routes.fetch_quote",
         lambda symbol: {"symbol": symbol.upper(), "last": 2450.0, "pctChange": 0.65},
+    )
+    monkeypatch.setattr(
+        "app.derivatives_data.fetch_nse_futures_contracts",
+        lambda *args, **kwargs: None,
     )
 
     response = client.get("/derivatives/futures/contracts?symbol=TCS")
@@ -1961,6 +2028,7 @@ def test_futures_contracts_endpoint_returns_contract_set(monkeypatch):
     payload = response.json()
     assert payload["symbol"] == "TCS"
     assert payload["spot"] == 2450.0
+    assert payload["source"] == "synthetic"
     assert len(payload["contracts"]) == 3
 
     first_contract = payload["contracts"][0]
@@ -1970,10 +2038,36 @@ def test_futures_contracts_endpoint_returns_contract_set(monkeypatch):
     assert first_contract["marginPerLot"] > 0
 
 
+def test_option_chain_endpoint_returns_pcr_and_iv_skew(monkeypatch):
+    monkeypatch.setattr(
+        "app.routes.fetch_quote",
+        lambda symbol: {"symbol": symbol.upper(), "last": 22500.0, "pctChange": 0.2},
+    )
+    monkeypatch.setattr(
+        "app.derivatives_data.fetch_nse_option_chain",
+        lambda *args, **kwargs: None,
+    )
+
+    response = client.get("/derivatives/option-chain?symbol=NIFTY&expiry=2026-08-28")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["symbol"] == "NIFTY"
+    assert payload["source"] == "synthetic"
+    assert payload["pcr"] is not None
+    assert payload["ivSkew"] is not None
+    assert payload["atmIv"] is not None
+    assert len(payload["contracts"]) >= 10
+    assert payload["contracts"][0]["callIv"] is not None
+
+
 def test_futures_ticket_preview_endpoint_returns_margin_and_notional(monkeypatch):
     monkeypatch.setattr(
         "app.routes.fetch_quote",
         lambda symbol: {"symbol": symbol.upper(), "last": 1985.0, "pctChange": 0.42},
+    )
+    monkeypatch.setattr(
+        "app.derivatives_data.fetch_nse_futures_contracts",
+        lambda *args, **kwargs: None,
     )
 
     contracts_response = client.get("/derivatives/futures/contracts?symbol=INFY")

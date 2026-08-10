@@ -105,6 +105,101 @@ def _safe_div_yield(value: Any) -> str:
     return str(value)
 
 
+def resolve_stock_response_profile(query: str, intent: str) -> str:
+    """Decide which answer shape to render for a named-symbol ask.
+
+    Profiles: quote | news | sentiment | technical | trade_plan | prediction |
+    fundamentals | stock_analysis | calculations
+    """
+    q = (query or "").strip().lower()
+    intent_l = (intent or "").strip().lower()
+
+    trade_ask = bool(
+        re.search(
+            r"\b(should i buy|should i sell|buy or sell|trade plan|swing trade|"
+            r"entry zone|stoploss|stop[\s-]?loss|take[\s-]?profit|"
+            r"good (time|entry) to (buy|sell))\b",
+            q,
+        )
+    )
+
+    if intent_l in {"market_calculations"} or re.search(
+        r"\b(full math|all indicators|quant(?:itative)? stack|indicator stack|"
+        r"show (all )?math|p0 math|every indicator)\b",
+        q,
+    ):
+        return "calculations"
+
+    # Quote / LTP before price_action — "RELIANCE price" must not become a trade plan.
+    if (
+        re.search(
+            r"\b(quote|ltp|last traded|last price|current price|trading at|"
+            r"spot price|live price|what(?:'s| is) the price|price of|"
+            r"share price|stock price)\b",
+            q,
+        )
+        or re.search(r"^[a-z0-9.&-]{2,15}\s+price\??$", q)
+    ) and not trade_ask:
+        return "quote"
+
+    if intent_l == "fundamentals" or (
+        re.search(r"\b(p/?e|pe ratio|valuation|eps|roe|pb|p/b|dividend yield|fundamentals?)\b", q)
+        and not trade_ask
+    ):
+        return "fundamentals"
+
+    if intent_l == "events_news" or re.search(
+        r"\b(news|headlines?|catalysts?|latest results?|earnings (news|update)|what.?s happening)\b",
+        q,
+    ):
+        if re.search(r"\b(sentiment|mood|tone)\b", q):
+            return "sentiment"
+        return "news"
+
+    if re.search(
+        r"\b(sentiment|market mood|bullish or bearish|how (is|are) (investors|traders) feeling)\b",
+        q,
+    ) and not trade_ask:
+        return "sentiment"
+
+    if intent_l == "prediction" or re.search(
+        r"\b(predict|prediction|forecast|target for (next|this)|where will .{0,12} (go|be))\b",
+        q,
+    ):
+        return "prediction"
+
+    if trade_ask or (
+        intent_l == "price_action"
+        and re.search(
+            r"\b(buy|sell|entry|exit|target|stop|swing|trade plan|should i)\b",
+            q,
+        )
+        and not re.search(r"\b(price of|current price|live price|quote|ltp)\b", q)
+    ):
+        return "trade_plan"
+
+    if re.search(
+        r"\b(technical analysis|chart analysis|price action|"
+        r"rsi|macd|supertrend|support and resistance|moving averages?)\b",
+        q,
+    ) and not trade_ask:
+        return "technical"
+
+    if intent_l in {"prediction"}:
+        return "prediction"
+    if intent_l in {"events_news"}:
+        return "news"
+    if intent_l in {"fundamentals"}:
+        return "fundamentals"
+    if intent_l in {"price_action"} and trade_ask:
+        return "trade_plan"
+    if intent_l in {"stock_analysis", "general_query", "overbought_check"}:
+        # Bare "Analyze SYMBOL" → full view; TA-keyword asks already returned technical.
+        return "stock_analysis"
+
+    return "stock_analysis"
+
+
 def _first(*values: Any) -> Any:
     for value in values:
         if value is None or value == "" or value == "N/A":
@@ -214,6 +309,11 @@ def normalize_market_context(ctx: dict[str, Any] | None) -> dict[str, Any]:
         "news_summary": raw.get("news_summary"),
         "p0_math": p0,
         "trade_plan": trade_plan,
+        "conversation_summary": raw.get("conversation_summary"),
+        "user_sentiment": (
+            raw.get("user_sentiment") if isinstance(raw.get("user_sentiment"), dict) else {}
+        ),
+        "portfolio_context": raw.get("portfolio_context"),
     }
 
 
@@ -1087,7 +1187,7 @@ def compose_structured_answer(
         )
         return "\n".join(parts)
 
-    # ── Buy / sell / swing / analysis / prediction / bare symbol asks ──
+    # ── Named-symbol asks — profile decides which sections to render ──
     if symbol and (
         intent in {
             "price_action",
@@ -1102,8 +1202,236 @@ def compose_structured_answer(
         or stop_loss_ask
         or re.search(r"\b(should i buy|should i sell|buy or sell|trade plan|swing trade)\b", q)
     ):
+        profile = resolve_stock_response_profile(q if stop_loss_ask else query, intent)
+        if stop_loss_ask:
+            profile = "trade_plan"
+
+        company = str(ctx.get("company_name") or "").strip()
+        header_base = f"**{symbol}**" + (f" — {company}" if company else "")
+        plan = p0.get("trade_plan") if isinstance(p0.get("trade_plan"), dict) else {}
+        root_plan = ctx.get("trade_plan") if isinstance(ctx.get("trade_plan"), dict) else {}
+        if root_plan and (not plan or not plan.get("action")):
+            plan = root_plan
+        support = levels.get("support")
+        resistance = levels.get("resistance")
+        stop = plan.get("stop") or levels.get("stop_loss")
+        take = plan.get("target_1") or levels.get("take_profit")
+        pct = ctx.get("pct_change") or ctx.get("pctChange") or tech.get("pct_change")
+
+        def _append_news_block(parts: list[str], *, max_heads: int = 4) -> None:
+            news_heads = list(ctx.get("news_headlines") or [])
+            if not news_heads:
+                for ev in sentiment.get("recent_events") or []:
+                    if isinstance(ev, str) and ev.strip():
+                        news_heads.append(ev.strip())
+            if not news_heads:
+                for h in (sentiment_pack.get("news") or {}).get("headlines") or []:
+                    if isinstance(h, dict) and h.get("title"):
+                        news_heads.append(str(h.get("title")))
+                    elif isinstance(h, str) and h.strip():
+                        news_heads.append(h.strip())
+            tagged = list((sentiment_pack.get("news") or {}).get("tagged") or [])
+            if not tagged:
+                tagged = list(sentiment.get("tagged") or [])
+            sector_trend = sentiment.get("sector_trend")
+            if not (news_heads or tagged or sector_trend):
+                return
+            parts.append("")
+            parts.append("**News & catalysts:**")
+            if sector_trend:
+                parts.append(f"• Sector/tape cue: {sector_trend}")
+            shown = 0
+            for t in tagged[:max_heads]:
+                if not isinstance(t, dict) or not t.get("title"):
+                    continue
+                pol = t.get("polarity") or "neutral"
+                parts.append(f"• ({pol}) {str(t.get('title')).strip()[:150]}")
+                shown += 1
+            if shown == 0:
+                for h in news_heads[:max_heads]:
+                    parts.append(f"• {str(h).strip()[:150]}")
+
+        def _append_sentiment_block(parts: list[str]) -> None:
+            if not (
+                sentiment_pack.get("ok")
+                or sentiment.get("overall")
+                or sentiment.get("composite_score") is not None
+            ):
+                return
+            parts.append("")
+            parts.append("**Sentiment:**")
+            label = sentiment_pack.get("label") or sentiment.get("overall") or "n/a"
+            score = sentiment_pack.get("composite_score")
+            if score is None:
+                score = sentiment.get("composite_score")
+            conf = sentiment_pack.get("confidence") or sentiment.get("confidence")
+            score_txt = f"{score:+.2f}" if isinstance(score, (int, float)) else "n/a"
+            parts.append(
+                f"• Overall: **{label}** (score {score_txt}"
+                + (f", confidence {conf}" if conf is not None else "")
+                + ")"
+            )
+            summary = sentiment_pack.get("summary") or sentiment.get("summary")
+            if summary:
+                parts.append(f"• Read: {summary}")
+            for fac in (sentiment_pack.get("factors") or sentiment.get("factors") or [])[:4]:
+                if isinstance(fac, dict) and fac.get("label"):
+                    parts.append(f"• {fac.get('name')}: {fac.get('label')}")
+
+        # ── Focused profiles (query-aware shapes) ───────────────────
+        if profile == "quote":
+            parts = [
+                f"{header_base} — live quote",
+                "",
+                f"• Last: ₹{_fmt(price)}"
+                + (f" ({_fmt(pct)}%)" if _num(pct) is not None else ""),
+                f"• Open / High / Low: {_fmt(ctx.get('open') or tech.get('open'))} / "
+                f"{_fmt(ctx.get('high') or tech.get('high') or levels.get('day_high'))} / "
+                f"{_fmt(ctx.get('low') or tech.get('low') or levels.get('day_low'))}",
+                f"• Prev close: {_fmt(ctx.get('prev_close') or ctx.get('previousClose') or tech.get('prev_close'))}",
+                f"• Volume: {ctx.get('volume') or tech.get('volume') or 'n/a'}",
+                f"• Support / Resistance: {_fmt(support)} / {_fmt(resistance)}",
+                "",
+                "Ask for technicals, news, valuation, or a paper trade plan if you need more depth.",
+                "_Live quote snapshot — educational only._",
+            ]
+            return "\n".join(parts)
+
+        if profile == "news":
+            parts = [f"{header_base} — news & catalysts", ""]
+            _append_news_block(parts, max_heads=6)
+            if len(parts) <= 2:
+                parts.append("• No fresh headlines in the current feed — try again shortly.")
+            parts.extend(
+                [
+                    "",
+                    f"• Price context: ₹{_fmt(price)} | RSI {_fmt(tech.get('rsi'))}",
+                    "_News digest only — not a buy/sell call._",
+                ]
+            )
+            return "\n".join(parts)
+
+        if profile == "sentiment":
+            parts = [f"{header_base} — sentiment view", ""]
+            _append_sentiment_block(parts)
+            _append_news_block(parts, max_heads=3)
+            if len(parts) <= 2:
+                parts.append("• Sentiment pack unavailable right now.")
+            parts.extend(
+                [
+                    "",
+                    f"• Tape: ₹{_fmt(price)} | trend {tech.get('trend') or 'n/a'}",
+                    "_Sentiment framing for paper practice — not investment advice._",
+                ]
+            )
+            return "\n".join(parts)
+
+        if profile == "technical":
+            parts = [
+                f"{header_base} — technical analysis",
+                "",
+                "**Technical readout:**",
+                f"• Price: ₹{_fmt(price)} | Trend: {tech.get('trend') or 'n/a'}",
+                f"• RSI: {_fmt(tech.get('rsi'))}"
+                + (
+                    f" — {tech.get('rsi_interpretation')}"
+                    if tech.get("rsi_interpretation")
+                    else ""
+                ),
+                f"• Supertrend: {tech.get('supertrend') or (p0.get('supertrend') or {}).get('direction') or 'n/a'}"
+                f" | MACD hist: {_fmt(tech.get('macd_hist') or (p0.get('macd') or {}).get('histogram'))}",
+                f"• Support: {_fmt(support)} | Resistance: {_fmt(resistance)}",
+                f"• Stop idea: {_fmt(stop)} | Target idea: {_fmt(take)}",
+            ]
+            atr_s = p0.get("atr_stop") or {}
+            vs = p0.get("vs_nifty") or {}
+            if p0.get("ok"):
+                parts.append(
+                    f"• ATR stop≈{_fmt(atr_s.get('stop') or stop)} | "
+                    f"vs Nifty RS20≈{_fmt(vs.get('rs_20d'), 3)}"
+                )
+            parts.extend(
+                [
+                    "",
+                    "Technical structure only — ask “Should I buy …?” for a paper trade plan.",
+                    "_Grounded by BYSEL Indian Stock LLM._",
+                ]
+            )
+            return "\n".join(parts)
+
+        if profile == "prediction":
+            parts = [
+                f"{header_base} — forecast framing",
+                "",
+                "**Not a price guarantee** — scenario framing from live tape + levels.",
+                f"• Spot: ₹{_fmt(price)} | Trend: {tech.get('trend') or 'n/a'} | RSI {_fmt(tech.get('rsi'))}",
+                f"• Near support / resistance: {_fmt(support)} / {_fmt(resistance)}",
+            ]
+            if plan.get("target_1") or plan.get("target_2"):
+                parts.append(
+                    f"• Paper targets from plan: T1 {_fmt(plan.get('target_1'))} | "
+                    f"T2 {_fmt(plan.get('target_2'))} | stop {_fmt(stop)}"
+                )
+            if plan.get("action"):
+                parts.append(
+                    f"• Current paper stance: {plan.get('action')} "
+                    f"(horizon {plan.get('horizon') or 'swing'})"
+                )
+            parts.extend(
+                [
+                    "",
+                    "Forecasts fail often near events — size from stop distance, not conviction.",
+                    "_Educational forecast framing — not a promise._",
+                ]
+            )
+            return "\n".join(parts)
+
+        if profile == "fundamentals":
+            pe = fund.get("pe")
+            pb = fund.get("pb")
+            roe = fund.get("roe")
+            eps = fund.get("eps")
+            parts = [
+                f"{header_base} — fundamental snapshot",
+                "",
+                f"• Last price: {_fmt(price)}",
+                f"• P/E: {_fmt(pe)}"
+                + (
+                    f" (sector cue: {fund.get('pe_sector_avg')})"
+                    if fund.get("pe_sector_avg")
+                    else ""
+                ),
+                f"• P/B: {_fmt(pb)}",
+                f"• ROE: {_fmt(roe)}",
+                f"• EPS: {_fmt(eps)}",
+                f"• Market cap: {fund.get('market_cap') or 'n/a'}",
+                f"• Dividend yield: {_safe_div_yield(fund.get('dividend_yield'))}",
+            ]
+            if fund.get("week_52"):
+                parts.append(f"• 52-week context: {fund.get('week_52')}")
+            if p0.get("ok"):
+                val = p0.get("valuation_math") or {}
+                vs = p0.get("vs_nifty") or {}
+                parts.append(
+                    f"• Earnings yield={_fmt(val.get('earnings_yield_pct'))}% | "
+                    f"EV/EBITDA={_fmt(val.get('ev_ebitda'))}"
+                )
+                parts.append(
+                    f"• vs Nifty: RS20={_fmt(vs.get('rs_20d'), 3)} | "
+                    f"β60={_fmt(vs.get('beta_60d'), 3)}"
+                )
+            parts.extend(
+                [
+                    "",
+                    "Interpret P/E vs peers and growth — a low P/E alone is not cheap.",
+                    "_Educational snapshot — not investment advice._",
+                ]
+            )
+            return "\n".join(parts)
+
+        # Full paper-practice / trade plan / calculations keep the rich template.
         weekly = bool(re.search(r"\b(this week|weekly|swing)\b", q))
-        want_full_math = bool(
+        want_full_math = profile == "calculations" or bool(
             re.search(
                 r"\b(full math|all indicators|quant(?:itative)? stack|indicator stack|"
                 r"show (all )?math|p0 math|every indicator)\b",
@@ -1111,11 +1439,9 @@ def compose_structured_answer(
             )
             or intent in {"overbought_check", "market_calculations"}
         )
-        plan = p0.get("trade_plan") if isinstance(p0.get("trade_plan"), dict) else {}
-        # Also accept trade_plan injected at market_context root.
-        root_plan = ctx.get("trade_plan") if isinstance(ctx.get("trade_plan"), dict) else {}
-        if root_plan and (not plan or not plan.get("action")):
-            plan = root_plan
+        include_trade_plan = profile in {"trade_plan", "stock_analysis", "calculations"}
+        include_sentiment = profile in {"stock_analysis", "trade_plan", "calculations"}
+        include_debate = profile in {"trade_plan", "stock_analysis"}
 
         stance, rationale, score = _stance_from_tech(tech, fund, weekly=weekly)
         if plan.get("action"):
@@ -1133,11 +1459,6 @@ def compose_structured_answer(
             elif plan.get("reason"):
                 rationale = str(plan["reason"])
 
-        support = levels.get("support")
-        resistance = levels.get("resistance")
-        stop = plan.get("stop") or levels.get("stop_loss")
-        take = plan.get("target_1") or levels.get("take_profit")
-
         rsi = _num(tech.get("rsi"))
         if (
             weekly
@@ -1149,15 +1470,19 @@ def compose_structured_answer(
             stance = "SELL bias for short-term / avoid chasing; wait for cool-off toward support"
             rationale = f"{rationale}; short-horizon ask + overbought RSI"
 
-        company = str(ctx.get("company_name") or "").strip()
-        header = f"**{symbol}**" + (f" — {company}" if company else "") + " — paper-practice view"
+        title_suffix = {
+            "trade_plan": " — paper trade plan",
+            "calculations": " — quantitative stack",
+            "stock_analysis": " — paper-practice view",
+        }.get(profile, " — paper-practice view")
         parts = [
-            header,
+            header_base + title_suffix,
             "",
             f"**Direct answer:** {stance}",
             f"**Why:** {rationale}",
         ]
-        if plan.get("action"):
+
+        if include_trade_plan and plan.get("action"):
             ez = plan.get("entry_zone") or []
             entry_txt = f"{_fmt(ez[0])} – {_fmt(ez[1])}" if len(ez) == 2 else "n/a"
             meaning = _action_meaning(plan.get("action"))
@@ -1186,62 +1511,28 @@ def compose_structured_answer(
                 parts.append(f"• Invalidation: {plan.get('invalidation')}")
             parts.extend(["", _ACTION_LEGEND_LINE])
 
-        # Multi-factor sentiment — surface early so chat isn't buried in math.
-        if sentiment_pack.get("ok") or sentiment.get("overall") or sentiment.get("composite_score") is not None:
+        conv_summary = str(ctx.get("conversation_summary") or "").strip()
+        user_tone = ctx.get("user_sentiment") if isinstance(ctx.get("user_sentiment"), dict) else {}
+        if include_trade_plan and (conv_summary or user_tone):
             parts.append("")
-            parts.append("**Sentiment analysis:**")
-            label = sentiment_pack.get("label") or sentiment.get("overall") or "n/a"
-            score = sentiment_pack.get("composite_score")
-            if score is None:
-                score = sentiment.get("composite_score")
-            conf = sentiment_pack.get("confidence") or sentiment.get("confidence")
-            score_txt = f"{score:+.2f}" if isinstance(score, (int, float)) else "n/a"
-            conf_txt = f"{conf}" if conf is not None else "n/a"
-            parts.append(f"• Overall: **{label}** (score {score_txt}, confidence {conf_txt})")
-            summary = sentiment_pack.get("summary") or sentiment.get("summary")
-            if summary:
-                parts.append(f"• Read: {summary}")
-            factors = sentiment_pack.get("factors") or sentiment.get("factors") or []
-            for fac in factors[:4]:
-                if isinstance(fac, dict) and fac.get("label"):
-                    parts.append(f"• {fac.get('name')}: {fac.get('label')}")
-            news_bd = (sentiment_pack.get("news") or {}).get("breakdown") or sentiment.get(
-                "breakdown"
-            )
-            if news_bd:
-                parts.append(f"• News mix: {news_bd}")
-            events = list(sentiment.get("recent_events") or [])
-            if not events:
-                pack_heads = (sentiment_pack.get("news") or {}).get("headlines") or []
-                for h in pack_heads[:3]:
-                    if isinstance(h, dict) and h.get("title"):
-                        events.append(str(h.get("title")))
-                    elif isinstance(h, str) and h.strip():
-                        events.append(h.strip())
-            for ev in events[:2]:
-                if isinstance(ev, str) and ev.strip():
-                    parts.append(f"  – {ev.strip()[:140]}")
+            parts.append("**Context awareness:**")
+            if conv_summary:
+                parts.append("• Continuing from your recent chat turns on this topic.")
+            urgency = str(user_tone.get("urgency") or "").lower()
+            risk_ap = str(user_tone.get("risk_appetite") or "").lower()
+            emotion = str(user_tone.get("emotion") or "").lower()
+            if urgency == "high":
+                parts.append("• Tone cue: time-sensitive ask — prefer staged size and hard stops.")
+            if risk_ap == "conservative":
+                parts.append("• Tone cue: conservative stance — wait for cleaner levels over chase entries.")
+            elif risk_ap == "aggressive":
+                parts.append("• Tone cue: aggressive stance — still size from stop distance, not conviction.")
+            if emotion in {"frustrated", "anxious", "fearful"}:
+                parts.append("• Tone cue: elevated stress — avoid revenge trades; re-check thesis first.")
 
-        # Live news & sector trend — keep analysis grounded in current tape + headlines.
-        news_heads = list(ctx.get("news_headlines") or [])
-        if not news_heads:
-            for ev in sentiment.get("recent_events") or []:
-                if isinstance(ev, str) and ev.strip():
-                    news_heads.append(ev.strip())
-        if not news_heads:
-            for h in (sentiment_pack.get("news") or {}).get("headlines") or []:
-                if isinstance(h, dict) and h.get("title"):
-                    news_heads.append(str(h.get("title")))
-                elif isinstance(h, str) and h.strip():
-                    news_heads.append(h.strip())
-        sector_trend = sentiment.get("sector_trend")
-        if news_heads or sector_trend:
-            parts.append("")
-            parts.append("**News & trends:**")
-            if sector_trend:
-                parts.append(f"• Sector/tape cue: {sector_trend}")
-            for h in news_heads[:3]:
-                parts.append(f"• {str(h).strip()[:160]}")
+        if include_sentiment:
+            _append_sentiment_block(parts)
+            _append_news_block(parts, max_heads=3)
 
         parts.extend(
             [
@@ -1268,8 +1559,7 @@ def compose_structured_answer(
                 f"div={_safe_div_yield(fund.get('dividend_yield'))}"
             )
 
-        # Compact signals (skip the noisy raw enrich dump).
-        if pre_signals:
+        if pre_signals and include_trade_plan:
             parts.append("")
             parts.append("**Signal highlights:**")
             seen: set[str] = set()
@@ -1292,14 +1582,12 @@ def compose_structured_answer(
                 if len(seen) >= 5:
                     break
 
-        # Full math only when the user asks for it — default chat stays readable.
         if p0.get("ok") and want_full_math:
             parts.append("")
             parts.append("**Quantitative stack (computed):**")
             bb = p0.get("bollinger") or {}
             atr_s = p0.get("atr_stop") or {}
             vs = p0.get("vs_nifty") or {}
-            val = p0.get("valuation_math") or {}
             piv = p0.get("pivots_classic") or {}
             vol = p0.get("volume") or {}
             st = p0.get("supertrend") or {}
@@ -1333,10 +1621,8 @@ def compose_structured_answer(
             )
             dq = p0.get("data_quality") or {}
             if dq.get("degraded"):
-                parts.append(
-                    "• Data quality: partial feeds — treat confidence as capped"
-                )
-        elif p0.get("ok"):
+                parts.append("• Data quality: partial feeds — treat confidence as capped")
+        elif p0.get("ok") and include_trade_plan:
             atr_s = p0.get("atr_stop") or {}
             vs = p0.get("vs_nifty") or {}
             parts.append("")
@@ -1346,36 +1632,42 @@ def compose_structured_answer(
                 f"vs Nifty RS20≈{_fmt(vs.get('rs_20d'), 3)} | "
                 f"Wilder RSI≈{_fmt(p0.get('wilder_rsi_14') or tech.get('rsi'))}"
             )
-            # Plain text — Android AI chat renders raw Text (no markdown italics).
             parts.append(
                 f'Tip: ask "full math for {symbol}" to see the complete indicator stack.'
             )
 
-        parts.append("")
-        parts.append("**For (setup):**")
-        for item in (plan.get("reasons_for") or [])[:3]:
-            parts.append(f"• {item}")
-        if not plan.get("reasons_for"):
-            if rsi is not None and rsi <= 30:
-                parts.append(f"• Oversold RSI {_fmt(rsi)} can favor staged paper entries near support.")
-            else:
-                parts.append("• Mix of signals — size small and demand confirmation at levels.")
+        if include_debate:
+            parts.append("")
+            parts.append("**For (setup):**")
+            for item in (plan.get("reasons_for") or [])[:3]:
+                parts.append(f"• {item}")
+            if not plan.get("reasons_for"):
+                if rsi is not None and rsi <= 30:
+                    parts.append(
+                        f"• Oversold RSI {_fmt(rsi)} can favor staged paper entries near support."
+                    )
+                else:
+                    parts.append("• Mix of signals — size small and demand confirmation at levels.")
 
-        parts.append("")
-        parts.append("**Against:**")
-        for item in (plan.get("reasons_against") or [])[:3]:
-            parts.append(f"• {item}")
-        if not plan.get("reasons_against"):
-            parts.append("• Single-indicator calls fail in strong trends; confirm with volume/news.")
-        if fund.get("pe") and _num(fund.get("pe")) and _num(fund.get("pe")) > 40:
-            parts.append("• Rich valuation leaves less margin of safety on disappointment.")
+            parts.append("")
+            parts.append("**Against:**")
+            for item in (plan.get("reasons_against") or [])[:3]:
+                parts.append(f"• {item}")
+            if not plan.get("reasons_against"):
+                parts.append(
+                    "• Single-indicator calls fail in strong trends; confirm with volume/news."
+                )
+            if fund.get("pe") and _num(fund.get("pe")) and _num(fund.get("pe")) > 40:
+                parts.append(
+                    "• Rich valuation leaves less margin of safety on disappointment."
+                )
 
         if deterministic and want_full_math:
             parts.extend(["", "**Computed checks**", deterministic])
         parts.extend(
             [
                 "",
-                "Paper-practice view from live quotes + sentiment + deterministic math — "
+                "Answer shaped for your ask from live quotes + deterministic math — "
                 "not investment advice / not a price guarantee.",
                 "_Grounded by BYSEL Indian Stock LLM._",
             ]
