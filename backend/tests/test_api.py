@@ -1397,7 +1397,7 @@ def test_ai_undervalued_screening_query_stays_screening(monkeypatch):
 
 
 def test_ai_ask_endpoint_uses_monkeypatched_rule_assistant(monkeypatch):
-    def fake_ai_assistant(query: str, db=None):
+    def fake_ai_assistant(query: str, db=None, user_id=None):
         return {
             "answer": f"db_present={db is not None}; query={query}",
         }
@@ -1456,7 +1456,10 @@ def test_ai_ask_stock_query_does_not_use_greeting_short_circuit(monkeypatch):
     monkeypatch.setattr(
         routes_module,
         "ai_assistant",
-        lambda query, db=None: {"answer": f"Stock flow for: {query}", "symbol": "LUPIN"},
+        lambda query, db=None, user_id=None: {
+            "answer": f"Stock flow for: {query}",
+            "symbol": "LUPIN",
+        },
     )
 
     response = client.post("/ai/ask", json={"query": "Hi LUPIN valuation", "tier": "rule-engine"})
@@ -1491,7 +1494,11 @@ def test_ai_ask_passes_concise_style_to_groq(monkeypatch):
     async def _fake_enrich(symbol):
         return None
 
-    monkeypatch.setattr(routes_module, "ai_assistant", lambda query, db=None: {"answer": "fallback", "symbol": "TCS"})
+    monkeypatch.setattr(
+        routes_module,
+        "ai_assistant",
+        lambda query, db=None, user_id=None: {"answer": "fallback", "symbol": "TCS"},
+    )
     monkeypatch.setattr("app.groq_llm.groq_available", lambda: True)
     monkeypatch.setattr("app.groq_llm.ask_groq", _fake_ask_groq)
     monkeypatch.setattr("app.stock_enricher.enrich", _fake_enrich)
@@ -1514,7 +1521,11 @@ def test_ai_ask_passes_detailed_style_to_groq(monkeypatch):
     async def _fake_enrich(symbol):
         return {"current_price": 100.0}
 
-    monkeypatch.setattr(routes_module, "ai_assistant", lambda query, db=None: {"answer": "fallback", "symbol": "RELIANCE"})
+    monkeypatch.setattr(
+        routes_module,
+        "ai_assistant",
+        lambda query, db=None, user_id=None: {"answer": "fallback", "symbol": "RELIANCE"},
+    )
     monkeypatch.setattr("app.groq_llm.groq_available", lambda: True)
     monkeypatch.setattr("app.groq_llm.ask_groq", _fake_ask_groq)
     monkeypatch.setattr("app.stock_enricher.enrich", _fake_enrich)
@@ -2001,7 +2012,7 @@ def test_single_quote_endpoint_includes_snapshot_fields(monkeypatch):
 
 
 def test_investor_tips_endpoint_supports_topics():
-    for topic in ("long_term", "mutual_funds", "ipo", "fno"):
+    for topic in ("long_term", "mutual_funds", "ipo", "fno", "sgb"):
         response = client.get(f"/market/investor-tips?topic={topic}&limit=3")
         assert response.status_code == 200
         payload = response.json()
@@ -2009,7 +2020,14 @@ def test_investor_tips_endpoint_supports_topics():
         assert payload["topicLabel"]
         assert len(payload["tips"]) >= 1
         assert payload["tips"][0]["title"]
-        assert len(payload["topics"]) == 4
+        assert len(payload["topics"]) == 5
+        assert {t["id"] for t in payload["topics"]} >= {
+            "long_term",
+            "mutual_funds",
+            "ipo",
+            "fno",
+            "sgb",
+        }
 
 
 def test_futures_contracts_endpoint_returns_contract_set(monkeypatch):
