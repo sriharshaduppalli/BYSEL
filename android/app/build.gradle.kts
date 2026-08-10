@@ -90,6 +90,8 @@ println(
 android {
     namespace = "com.bysel.trader"
     compileSdk = 36
+    // NDK r28+ links 16 KB-aligned by default (Play 16 KB page-size requirement).
+    ndkVersion = "28.2.13676358"
 
     buildFeatures {
         buildConfig = true
@@ -326,8 +328,8 @@ dependencies {
     // SMS Retriever / User Consent API (no SMS permission required)
     implementation("com.google.android.gms:play-services-auth:21.3.0")
     implementation("com.google.android.gms:play-services-auth-api-phone:17.5.0")
-    // On-device LLM inference via MediaPipe (runs Gemma on device — no server cost)
-    implementation("com.google.mediapipe:tasks-genai:0.10.14")
+    // On-device LLM via MediaPipe — 0.10.26+ ships 16 KB-aligned libllm_inference_engine_jni.so
+    implementation("com.google.mediapipe:tasks-genai:0.10.35")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:1.9.23")
