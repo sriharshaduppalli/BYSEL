@@ -971,6 +971,7 @@ private fun PriceStoryCard(
                         modifier = Modifier.fillMaxWidth(),
                         isDarkTheme = !theme.isLight,
                         patterns = patterns,
+                        rangeLabel = historyLabel,
                     )
                 }
             }

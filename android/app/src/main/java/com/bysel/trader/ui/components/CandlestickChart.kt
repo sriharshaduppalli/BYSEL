@@ -26,13 +26,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.HistoryCandle
 import com.bysel.trader.utils.TechnicalIndicators
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlin.math.max
 
 private enum class Overlay(val label: String, val color: Color) {
@@ -42,20 +50,137 @@ private enum class Overlay(val label: String, val color: Color) {
     BB("Bollinger", Color(0xFFAB47BC)),
 }
 
+private val IST: ZoneId = ZoneId.of("Asia/Kolkata")
+private val DAY_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM")
+private val DAY_SHORT_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE d")
+private val MONTH_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM")
+private val MONTH_YEAR_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM yy")
+
+private data class AxisTick(val index: Int, val label: String)
+
+private fun candleMillis(ts: Long): Long =
+    when {
+        ts <= 0L -> 0L
+        ts < 10_000_000_000L -> ts * 1000L
+        else -> ts
+    }
+
+private fun candleDate(ts: Long): LocalDate? {
+    val ms = candleMillis(ts)
+    if (ms <= 0L) return null
+    return Instant.ofEpochMilli(ms).atZone(IST).toLocalDate()
+}
+
+private fun formatAxisPrice(price: Double): String = when {
+    price >= 10_000 -> String.format("%.0f", price)
+    price >= 1_000 -> String.format("%.1f", price)
+    price >= 100 -> String.format("%.1f", price)
+    else -> String.format("%.2f", price)
+}
+
+/**
+ * Build X-axis ticks for the visible window based on chart range.
+ * 5D → one label per session day; 1M/3M → spaced calendar dates; 1Y → month starts.
+ */
+private fun buildXAxisTicks(
+    history: List<HistoryCandle>,
+    rangeLabel: String,
+    first: Int,
+    lastInclusive: Int,
+): List<AxisTick> {
+    if (history.isEmpty() || first > lastInclusive) return emptyList()
+    val lo = first.coerceIn(0, history.lastIndex)
+    val hi = lastInclusive.coerceIn(lo, history.lastIndex)
+    val range = rangeLabel.trim().uppercase()
+
+    return when (range) {
+        "5D" -> {
+            // One tick per trading day in the visible window (up to 5).
+            val byDay = linkedMapOf<LocalDate, Int>()
+            for (i in lo..hi) {
+                val d = candleDate(history[i].timestamp) ?: continue
+                if (d !in byDay) byDay[d] = i
+            }
+            byDay.entries
+                .toList()
+                .takeLast(5)
+                .map { (date, idx) -> AxisTick(idx, date.format(DAY_SHORT_FMT)) }
+        }
+        "1M" -> evenlySpacedDateTicks(history, lo, hi, targetCount = 5, formatter = DAY_FMT)
+        "3M" -> {
+            // Prefer ~bi-weekly / weekly cadence across ~3 months.
+            evenlySpacedDateTicks(history, lo, hi, targetCount = 6, formatter = DAY_FMT)
+        }
+        "1Y" -> {
+            // One tick near the first candle of each month in range.
+            val byMonth = linkedMapOf<String, Int>()
+            for (i in lo..hi) {
+                val d = candleDate(history[i].timestamp) ?: continue
+                val key = "${d.year}-${d.monthValue}"
+                if (key !in byMonth) byMonth[key] = i
+            }
+            val months = byMonth.entries.toList()
+            val step = max(1, months.size / 8)
+            months.filterIndexed { index, _ -> index % step == 0 || index == months.lastIndex }
+                .take(12)
+                .map { (_, idx) ->
+                    val d = candleDate(history[idx].timestamp)
+                    val label = when {
+                        d == null -> ""
+                        d.year != LocalDate.now(IST).year -> d.format(MONTH_YEAR_FMT)
+                        else -> d.format(MONTH_FMT)
+                    }
+                    AxisTick(idx, label)
+                }
+                .filter { it.label.isNotBlank() }
+        }
+        else -> evenlySpacedDateTicks(history, lo, hi, targetCount = 5, formatter = DAY_FMT)
+    }
+}
+
+private fun evenlySpacedDateTicks(
+    history: List<HistoryCandle>,
+    lo: Int,
+    hi: Int,
+    targetCount: Int,
+    formatter: DateTimeFormatter,
+): List<AxisTick> {
+    val span = hi - lo
+    if (span <= 0) {
+        val d = candleDate(history[lo].timestamp) ?: return emptyList()
+        return listOf(AxisTick(lo, d.format(formatter)))
+    }
+    val count = targetCount.coerceIn(2, span + 1)
+    val ticks = ArrayList<AxisTick>(count)
+    var lastLabel: String? = null
+    for (t in 0 until count) {
+        val idx = lo + ((span * t) / (count - 1).coerceAtLeast(1))
+        val d = candleDate(history[idx].timestamp) ?: continue
+        val label = d.format(formatter)
+        if (label == lastLabel && ticks.isNotEmpty()) continue
+        ticks += AxisTick(idx, label)
+        lastLabel = label
+    }
+    return ticks
+}
+
 /**
  * Canvas candlestick chart that fits 5D / 1M / 3M / 1Y ranges.
  * Latest bars stay pinned to the right; pinch/slider zoom; drag to pan.
+ * Draws Y-axis prices and range-aware X-axis dates.
  */
 @Composable
 fun CandlestickChart(
     history: List<HistoryCandle>,
     modifier: Modifier = Modifier,
     initialBarWidthDp: Float = 10f,
+    rangeLabel: String = "1M",
 ) {
     if (history.isEmpty()) return
 
     var activeOverlays by remember { mutableStateOf(setOf<Overlay>()) }
     val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
 
     val closes = remember(history) { history.map { it.close } }
     val highs = remember(history) { history.map { it.high } }
@@ -79,9 +204,15 @@ fun CandlestickChart(
     val minPrice = remember(allPrices) { allPrices.minOrNull() ?: 0.0 }
     val priceRange = remember(maxPrice, minPrice) { max(1e-6, maxPrice - minPrice) }
 
-    val historyKey = remember(history) {
-        "${history.size}:${history.firstOrNull()?.timestamp}:${history.lastOrNull()?.timestamp}"
+    val historyKey = remember(history, rangeLabel) {
+        "${rangeLabel}:${history.size}:${history.firstOrNull()?.timestamp}:${history.lastOrNull()?.timestamp}"
     }
+
+    val axisLabelStyle = remember {
+        TextStyle(color = Color(0xFF9E9E9E), fontSize = 10.sp, fontWeight = FontWeight.Medium)
+    }
+    val gridColor = Color(0x22FFFFFF)
+    val axisLineColor = Color(0x33FFFFFF)
 
     Column(modifier = modifier) {
         val lastCandle = history.last()
@@ -142,7 +273,7 @@ fun CandlestickChart(
         }
 
         Text(
-            text = "${history.size} candles · drag to pan · pinch / slider to zoom · latest on right",
+            text = "$rangeLabel · ${history.size} candles · drag to pan · pinch / slider to zoom",
             color = Color.Gray,
             fontSize = 10.sp,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
@@ -151,15 +282,17 @@ fun CandlestickChart(
 
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
             val widthPx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
+            val yAxisPadPx = with(density) { 48.dp.toPx() }
+            val plotWidthPx = (widthPx - yAxisPadPx).coerceAtLeast(1f)
 
-            val fittedBarWidth = remember(historyKey, widthPx, initialBarWidthDp) {
+            val fittedBarWidth = remember(historyKey, plotWidthPx, initialBarWidthDp) {
                 val targetVisible = when {
                     history.size <= 28 -> history.size.coerceAtLeast(8)
                     history.size <= 80 -> 48
                     history.size <= 160 -> 56
                     else -> 64
                 }.coerceAtMost(history.size).coerceAtLeast(1)
-                val raw = widthPx / targetVisible / density.density
+                val raw = plotWidthPx / targetVisible / density.density
                 raw.coerceIn(3.5f, 18f)
             }
 
@@ -170,7 +303,7 @@ fun CandlestickChart(
 
             fun maxStartFor(barDp: Float): Float {
                 val barPx = barDp * density.density
-                val visible = (widthPx / barPx).coerceAtLeast(1f)
+                val visible = (plotWidthPx / barPx).coerceAtLeast(1f)
                 return (history.size - visible).coerceAtLeast(0f)
             }
 
@@ -195,35 +328,78 @@ fun CandlestickChart(
                 Canvas(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(300.dp)
+                        .height(320.dp)
                         .background(Color(0x141A1A1A), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 6.dp, vertical = 10.dp)
-                        .pointerInput(historyKey, widthPx, history.size) {
+                        .padding(start = 4.dp, end = 6.dp, top = 8.dp, bottom = 4.dp)
+                        .pointerInput(historyKey, plotWidthPx, history.size) {
                             detectTransformGestures { _, pan, zoom, _ ->
                                 val nextWidth = (barWidthState.floatValue * zoom).coerceIn(3.5f, 36f)
                                 val barPx = nextWidth * density.density
-                                val nextMax = (history.size - (size.width / barPx)).coerceAtLeast(0f)
+                                val nextMax = (history.size - (plotWidthPx / barPx)).coerceAtLeast(0f)
                                 barWidthState.floatValue = nextWidth
                                 startIndexState.floatValue =
                                     (startIndexState.floatValue - pan.x / barPx).coerceIn(0f, nextMax)
                             }
                         },
                 ) {
+                    val leftPad = yAxisPadPx
+                    val bottomPad = 26.dp.toPx()
+                    val topPad = 6f
+                    val plotW = (size.width - leftPad).coerceAtLeast(1f)
+                    val plotH = (size.height - topPad - bottomPad).coerceAtLeast(1f)
                     val barPx = (barWidth.dp.toPx()).coerceAtLeast(2f)
                     val first = startIndex.toInt().coerceIn(0, history.lastIndex)
-                    val padY = 4f
-                    val plotH = (size.height - padY * 2f).coerceAtLeast(1f)
+                    val visibleCount = (plotW / barPx).toInt().coerceAtLeast(1)
+                    val lastVisible = (first + visibleCount).coerceAtMost(history.lastIndex)
 
                     fun yFor(price: Double): Float {
                         val norm = ((price - minPrice) / priceRange).toFloat().coerceIn(0f, 1f)
-                        return padY + plotH * (1f - norm)
+                        return topPad + plotH * (1f - norm)
                     }
 
+                    fun xFor(index: Int): Float =
+                        leftPad + (index - startIndex) * barPx + barPx / 2f
+
+                    // Plot frame
+                    drawLine(
+                        color = axisLineColor,
+                        start = Offset(leftPad, topPad),
+                        end = Offset(leftPad, topPad + plotH),
+                        strokeWidth = 1.2f,
+                    )
+                    drawLine(
+                        color = axisLineColor,
+                        start = Offset(leftPad, topPad + plotH),
+                        end = Offset(size.width, topPad + plotH),
+                        strokeWidth = 1.2f,
+                    )
+
+                    // Y-axis grid + price labels
+                    val ySteps = 4
+                    for (step in 0..ySteps) {
+                        val t = step / ySteps.toFloat()
+                        val price = minPrice + priceRange * (1.0 - t) // top → max
+                        val y = topPad + plotH * t
+                        drawLine(
+                            color = gridColor,
+                            start = Offset(leftPad, y),
+                            end = Offset(size.width, y),
+                            strokeWidth = 1f,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f),
+                        )
+                        val label = formatAxisPrice(price)
+                        val layout = textMeasurer.measure(label, style = axisLabelStyle)
+                        val tx = (leftPad - layout.size.width - 6f).coerceAtLeast(0f)
+                        val ty = (y - layout.size.height / 2f).coerceIn(0f, size.height - layout.size.height)
+                        drawText(layout, topLeft = Offset(tx, ty))
+                    }
+
+                    // Candles + overlays
                     var i = first
                     while (i < history.size) {
-                        val xCenter = (i - startIndex) * barPx + barPx / 2f
+                        val xCenter = xFor(i)
                         if (xCenter > size.width + barPx) break
-                        if (xCenter >= -barPx) {
+                        if (xCenter >= leftPad - barPx) {
                             val candle = history[i]
                             val isUp = candle.close >= candle.open
                             val color = if (isUp) Color(0xFF00C853) else Color(0xFFE53935)
@@ -266,6 +442,25 @@ fun CandlestickChart(
                             }
                         }
                         i++
+                    }
+
+                    // X-axis date ticks for this range
+                    val xTicks = buildXAxisTicks(history, rangeLabel, first, lastVisible)
+                    val axisY = topPad + plotH
+                    xTicks.forEach { tick ->
+                        val x = xFor(tick.index)
+                        if (x < leftPad - 4f || x > size.width + 4f) return@forEach
+                        drawLine(
+                            color = axisLineColor,
+                            start = Offset(x, axisY),
+                            end = Offset(x, axisY + 4f),
+                            strokeWidth = 1.2f,
+                        )
+                        val layout = textMeasurer.measure(tick.label, style = axisLabelStyle)
+                        val tx = (x - layout.size.width / 2f)
+                            .coerceIn(leftPad, (size.width - layout.size.width).coerceAtLeast(leftPad))
+                        val ty = (axisY + 6f).coerceAtMost(size.height - layout.size.height)
+                        drawText(layout, topLeft = Offset(tx, ty))
                     }
                 }
             }

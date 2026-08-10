@@ -2113,40 +2113,101 @@ _SECTOR_PEERS: Dict[str, List[str]] = {
 }
 
 
-def _build_stock_suggestions(symbol: str, exclude: str = "") -> List[str]:
+def _build_stock_suggestions(
+    symbol: str,
+    exclude: str = "",
+    query: str = "",
+    intent: str = "",
+) -> List[str]:
     """
     Build diverse follow-up prompt suggestions for a given stock.
-    `exclude` can be 'analysis','prediction','buy_sell','compare' to avoid
-    repeating the type the user just asked about.
+    `exclude` can be 'analysis','prediction','buy_sell','compare','news',
+    'sentiment','technical','quote','fundamentals' to avoid repeating the
+    type the user just asked about. When `query` is set, profile-aware
+    ordering prefers complementary next asks.
     """
-    candidates: List[str] = []
+    profile = ""
+    try:
+        from indian_stock_llm.answer_composer import resolve_stock_response_profile
 
-    if exclude != "buy_sell":
-        candidates.append(f"Should I buy {symbol}?")
-    if exclude != "prediction":
-        candidates.append(f"Predict {symbol} price")
-    if exclude != "analysis":
-        candidates.append(f"Analyze {symbol}")
-    if exclude != "overvaluation":
-        candidates.append(f"Is {symbol} overvalued?")
-        candidates.append(f"What is fair value for {symbol}?")
+        if query or intent:
+            profile = resolve_stock_response_profile(query or symbol, intent or "general_query")
+    except Exception:
+        profile = ""
+
+    # Map profile → exclude bucket so chained chips don't re-ask the same shape.
+    if not exclude and profile:
+        exclude = {
+            "trade_plan": "buy_sell",
+            "prediction": "prediction",
+            "technical": "technical",
+            "news": "news",
+            "sentiment": "sentiment",
+            "quote": "quote",
+            "fundamentals": "fundamentals",
+            "stock_analysis": "analysis",
+            "calculations": "analysis",
+        }.get(profile, exclude)
+
+    pool: List[tuple[str, str]] = [
+        ("buy_sell", f"Should I buy {symbol}?"),
+        ("prediction", f"Predict {symbol} price"),
+        ("analysis", f"Analyze {symbol}"),
+        ("technical", f"Technical analysis of {symbol}"),
+        ("news", f"Latest news on {symbol}"),
+        ("sentiment", f"{symbol} market sentiment"),
+        ("quote", f"What is the price of {symbol}?"),
+        ("fundamentals", f"Is {symbol} overvalued?"),
+        ("fundamentals", f"What is fair value for {symbol}?"),
+        ("levels", f"Support and resistance for {symbol}"),
+        ("risk", f"What are risks in {symbol} right now?"),
+        ("buy_sell", f"Should I wait for a dip in {symbol}?"),
+    ]
 
     peers = _SECTOR_PEERS.get(symbol, [])
     if peers:
-        candidates.append(f"Compare {symbol} with {peers[0]}")
-        if len(peers) > 1 and len(candidates) < 6:
-            candidates.append(f"Compare {symbol} and {peers[1]}")
+        pool.append(("compare", f"Compare {symbol} with {peers[0]}"))
+        if len(peers) > 1:
+            pool.append(("compare", f"Compare {symbol} and {peers[1]}"))
 
-    if not peers:
-        candidates.append(f"Technical analysis of {symbol}")
+    # After a focused ask, lead with complementary chips (not another clone).
+    preferred_order = {
+        "news": ["sentiment", "technical", "buy_sell", "fundamentals", "prediction"],
+        "sentiment": ["news", "technical", "buy_sell", "prediction", "fundamentals"],
+        "quote": ["technical", "news", "buy_sell", "fundamentals", "prediction"],
+        "technical": ["buy_sell", "news", "levels", "prediction", "fundamentals"],
+        "trade_plan": ["technical", "news", "levels", "risk", "prediction"],
+        "prediction": ["technical", "buy_sell", "news", "fundamentals", "levels"],
+        "fundamentals": ["buy_sell", "news", "technical", "prediction", "compare"],
+        "stock_analysis": ["news", "buy_sell", "prediction", "fundamentals", "compare"],
+        "calculations": ["technical", "buy_sell", "levels", "news", "prediction"],
+    }.get(profile, ["buy_sell", "technical", "news", "prediction", "fundamentals", "compare"])
 
-    candidates.append(f"Support and resistance for {symbol}")
-    candidates.append(f"What are risks in {symbol} right now?")
-    candidates.append(f"Should I wait for a dip in {symbol}?")
+    bucket_rank = {b: i for i, b in enumerate(preferred_order)}
+    exclude_set = {exclude} if exclude else set()
+    # Also suppress the profile's own bucket when exclude aliases overlap.
+    if profile == "technical":
+        exclude_set.add("technical")
+        exclude_set.add("analysis")
+    if profile == "news":
+        exclude_set.add("news")
+    if profile == "sentiment":
+        exclude_set.add("sentiment")
+    if profile == "quote":
+        exclude_set.add("quote")
+    if exclude == "overvaluation":
+        exclude_set.add("fundamentals")
+
+    ranked = sorted(
+        pool,
+        key=lambda item: (bucket_rank.get(item[0], 50), item[1]),
+    )
 
     deduped: List[str] = []
     seen: set[str] = set()
-    for candidate in candidates:
+    for bucket, candidate in ranked:
+        if bucket in exclude_set:
+            continue
         normalized = candidate.lower().strip()
         if normalized in seen:
             continue

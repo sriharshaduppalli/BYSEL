@@ -22,6 +22,8 @@ fun PriceHistoryChart(
     symbol: String = "",
     isDarkTheme: Boolean = true,
     patterns: List<ChartPattern> = emptyList(),
+    /** Chart window label used for X-axis cadence: 5D / 1M / 3M / 1Y */
+    rangeLabel: String = "1M",
 ) {
     return when (BuildConfig.CHART_ENGINE.uppercase()) {
         "SCICHART" -> {
@@ -36,7 +38,11 @@ fun PriceHistoryChart(
                 Text("SciChart mode selected. Add SciChart SDK/license to enable native renderer.")
             }
         }
-        "CANVAS" -> CandlestickChart(history = history, modifier = modifier)
+        "CANVAS" -> CandlestickChart(
+            history = history,
+            modifier = modifier,
+            rangeLabel = rangeLabel,
+        )
         else -> TradingViewChart(symbol = symbol, history = history, modifier = modifier, isDarkTheme = isDarkTheme, patterns = patterns)
     }
 }

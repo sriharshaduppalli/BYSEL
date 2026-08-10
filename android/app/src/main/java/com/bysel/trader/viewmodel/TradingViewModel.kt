@@ -254,6 +254,18 @@ class TradingViewModel(
     private val _productActionMessage = MutableStateFlow<String?>(null)
     val productActionMessage: StateFlow<String?> = _productActionMessage.asStateFlow()
 
+    /** One-shot Trade workspace deep-link: 0 Spot, 1 Advanced, 2 Options, 3 Futures. */
+    private val _pendingTradeWorkspace = MutableStateFlow<Int?>(null)
+    val pendingTradeWorkspace: StateFlow<Int?> = _pendingTradeWorkspace.asStateFlow()
+
+    fun requestTradeWorkspace(index: Int) {
+        _pendingTradeWorkspace.value = index.coerceIn(0, 3)
+    }
+
+    fun clearPendingTradeWorkspace() {
+        _pendingTradeWorkspace.value = null
+    }
+
     // Advanced order engine / derivatives / wealth / copilot
     private val _advancedOrderResponse = MutableStateFlow<AdvancedOrderResponse?>(null)
     val advancedOrderResponse: StateFlow<AdvancedOrderResponse?> = _advancedOrderResponse.asStateFlow()
@@ -306,6 +318,11 @@ class TradingViewModel(
     private val _derivativesLoading = MutableStateFlow(false)
     val derivativesLoading: StateFlow<Boolean> = _derivativesLoading.asStateFlow()
 
+    private val _investorTips = MutableStateFlow(com.bysel.trader.ui.components.localInvestorTips("long_term"))
+    val investorTips: StateFlow<InvestorTipsResponse> = _investorTips.asStateFlow()
+    private val _investorTipsLoading = MutableStateFlow(false)
+    val investorTipsLoading: StateFlow<Boolean> = _investorTipsLoading.asStateFlow()
+
     private val _wealthLoading = MutableStateFlow(false)
     val wealthLoading: StateFlow<Boolean> = _wealthLoading.asStateFlow()
 
@@ -346,6 +363,7 @@ class TradingViewModel(
     private val HEATMAP_STALE_THRESHOLD = 45_000L
     private val RESUME_HEATMAP_DELAY = 500L
     private val WARM_BACKEND_BUDGET_MS = 12_000L
+    private val TRIGGER_AUTO_EVAL_INTERVAL = 30_000L
     private var lastForegroundWarmupAt = 0L
     private var lastQuotesRefreshAt = 0L
     private var lastQuotesRefreshRequestAt = 0L
@@ -354,6 +372,8 @@ class TradingViewModel(
     private var lastHeatmapRefreshAt = 0L  // Track heatmap cache timestamp
     private var lastHoldingsRefreshAt = 0L
     private var lastWalletRefreshAt = 0L
+    private var lastTriggerAutoEvalAt = 0L
+    private var triggerAutoEvalJob: Job? = null
     /** Bumped on local wallet mutations so in-flight getWallet cannot overwrite fresher UI state. */
     private var walletEpoch = 0
     private var walletMutationsInFlight = 0
@@ -695,6 +715,7 @@ class TradingViewModel(
                         _isLoading.value = false
                         markQuoteUpdate()
                         syncSelectedQuoteFrom(_quotes.value)
+                        maybeAutoEvaluateTriggers(_quotes.value.map { it.symbol })
                         // Reset paging after success
                         _pagedQuotes.value = emptyList()
                         currentPage = 0
@@ -1225,6 +1246,7 @@ class TradingViewModel(
                             markQuoteUpdate(now)
                             syncSelectedQuoteFrom(result.data)
                             evaluateAlerts(result.data)
+                            maybeAutoEvaluateTriggers(result.data.map { it.symbol })
                         }
                         is Result.Error -> _error.value = result.message
                         else -> {}
@@ -1636,6 +1658,7 @@ class TradingViewModel(
                 is Result.Success -> {
                     _triggerEvaluation.value = response.data
                     _productActionMessage.value = "Trigger scan processed ${response.data.processedCount} orders"
+                    lastTriggerAutoEvalAt = System.currentTimeMillis()
                     refreshTriggerOrders()
                     if (response.data.processedCount > 0) {
                         refreshHoldings()
@@ -1647,6 +1670,31 @@ class TradingViewModel(
                 else -> {}
             }
             _advancedLoading.value = false
+        }
+    }
+
+    /** Quiet trigger scan on quote ticks — throttled, no Advanced spinner. */
+    private fun maybeAutoEvaluateTriggers(symbols: List<String>) {
+        val now = System.currentTimeMillis()
+        if (now - lastTriggerAutoEvalAt < TRIGGER_AUTO_EVAL_INTERVAL) return
+        if (triggerAutoEvalJob?.isActive == true) return
+        lastTriggerAutoEvalAt = now
+        val scoped = symbols.map { it.trim().uppercase() }.filter { it.isNotBlank() }.distinct()
+        triggerAutoEvalJob = viewModelScope.launch {
+            when (val response = repository.evaluateTriggerOrders(scoped)) {
+                is Result.Success -> {
+                    _triggerEvaluation.value = response.data
+                    refreshTriggerOrders()
+                    if (response.data.processedCount > 0) {
+                        _productActionMessage.value =
+                            "Auto-trigger: filled ${response.data.processedCount} order(s)"
+                        refreshHoldings()
+                        refreshWallet()
+                        loadPortfolioCopilotActions()
+                    }
+                }
+                else -> {}
+            }
         }
     }
 
@@ -1818,6 +1866,38 @@ class TradingViewModel(
 
     fun clearFuturesTicketPreview() {
         _futuresTicketPreview.value = null
+    }
+
+    fun loadInvestorTips(topic: String, limit: Int = 2) {
+        val normalized = topic.trim().lowercase().ifBlank { "long_term" }
+        _investorTips.value = com.bysel.trader.ui.components.localInvestorTips(normalized, limit)
+        viewModelScope.launch {
+            _investorTipsLoading.value = true
+            when (val response = repository.getInvestorTips(topic = normalized, limit = limit)) {
+                is Result.Success -> _investorTips.value = response.data
+                else -> {}
+            }
+            _investorTipsLoading.value = false
+        }
+    }
+
+    /** One-tap paper place from Futures Radar preview (routes through Advanced order path). */
+    fun placeFuturesTicketFromPreview() {
+        val preview = _futuresTicketPreview.value
+        if (preview == null) {
+            _error.value = "Preview a futures ticket first"
+            return
+        }
+        placeAdvancedOrder(
+            symbol = preview.symbol,
+            quantity = preview.quantity,
+            side = preview.side,
+            orderType = "MARKET",
+            validity = "DAY",
+            limitPrice = null,
+            triggerPrice = null,
+            tag = "FUT:${preview.contractSymbol}",
+        )
     }
 
     fun addFamilyMember(

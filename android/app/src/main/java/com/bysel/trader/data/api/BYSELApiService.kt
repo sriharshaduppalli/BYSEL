@@ -261,6 +261,18 @@ interface BYSELApiService {
     @GET("/market/status")
     suspend fun getMarketStatus(): MarketStatus
 
+    @GET("/market/intraday-tips")
+    suspend fun getIntradayTips(
+        @Query("limit") limit: Int = 3,
+        @Query("advanceShare") advanceShare: Double? = null,
+    ): IntradayTipsResponse
+
+    @GET("/market/investor-tips")
+    suspend fun getInvestorTips(
+        @Query("topic") topic: String = "long_term",
+        @Query("limit") limit: Int = 3,
+    ): InvestorTipsResponse
+
     @GET("/market/news")
     suspend fun getMarketNews(
         @Query("symbols") symbols: String? = null,

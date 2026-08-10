@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Badge
@@ -82,9 +83,12 @@ fun MoreScreen(
     onAlertsClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onAchievementsClick: () -> Unit,
+    onEquityClick: () -> Unit = {},
+    onFnoClick: () -> Unit = {},
     onMutualFundsClick: () -> Unit,
     onIpoClick: () -> Unit,
     onEtfClick: () -> Unit,
+    onSgbClick: () -> Unit = {},
     onSipClick: () -> Unit,
     onMyIpoApplicationsClick: () -> Unit,
     onAdvancedOrdersClick: () -> Unit,
@@ -219,6 +223,13 @@ fun MoreScreen(
             onClick = onEtfClick,
         ),
         MoreMenuEntry(
+            icon = Icons.Filled.Savings,
+            title = "Sovereign Gold Bonds",
+            subtitle = "SGB education — not live RBI applications",
+            gradientColors = listOf(Color(0xFFF9A825), Color(0xFFFFD54F)),
+            onClick = onSgbClick,
+        ),
+        MoreMenuEntry(
             icon = Icons.Filled.Payments,
             title = "My SIPs",
             subtitle = "Simulated SIP plans",
@@ -268,8 +279,24 @@ fun MoreScreen(
         item {
             ScreenHeader(
                 title = "More",
-                subtitle = "Practice labs first — Invest explorers are educational, not live brokerage rails.",
+                subtitle = "Products first — explorers are educational, not live brokerage rails.",
             )
+        }
+
+        item { SectionHeader("Products") }
+        item {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                QuickInfoChip(label = "Equity", onClick = onEquityClick)
+                QuickInfoChip(label = "F&O", onClick = onFnoClick)
+                QuickInfoChip(label = "MF", onClick = onMutualFundsClick)
+                QuickInfoChip(label = "IPO", onClick = onIpoClick)
+                QuickInfoChip(label = "ETF", onClick = onEtfClick)
+                QuickInfoChip(label = "SGB", onClick = onSgbClick)
+            }
         }
 
         item {
@@ -314,7 +341,11 @@ fun MoreScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = if (investExpanded) "Educational MF / IPO / ETF / SIP" else "Collapsed · not live brokerage",
+                        text = if (investExpanded) {
+                            "Educational MF / IPO / ETF / SGB / SIP"
+                        } else {
+                            "Collapsed · use Products chips above"
+                        },
                         fontSize = 11.sp,
                         color = LocalAppTheme.current.textSecondary,
                     )

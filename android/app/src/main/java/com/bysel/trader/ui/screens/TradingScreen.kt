@@ -12,6 +12,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.*
@@ -237,6 +238,12 @@ fun TradingScreen(
     }
     var selectedWorkspaceIndex by remember { mutableIntStateOf(0) }
     var activeTradeSymbol by remember { mutableStateOf<String?>(null) }
+    val pendingTradeWorkspace by viewModel.pendingTradeWorkspace.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingTradeWorkspace) {
+        val index = pendingTradeWorkspace ?: return@LaunchedEffect
+        selectedWorkspaceIndex = index
+        viewModel.clearPendingTradeWorkspace()
+    }
 
     fun openTradeSheet(quote: Quote) {
         activeTradeSymbol = quote.symbol.uppercase()
@@ -358,8 +365,18 @@ fun TradingScreen(
                     onClick = { selectedWorkspaceIndex = index },
                     text = {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(tab.title, fontWeight = FontWeight.SemiBold)
-                            Text(tab.caption, fontSize = 10.sp)
+                            Text(
+                                tab.title,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                tab.caption,
+                                fontSize = 10.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                     }
                 )
@@ -618,32 +635,6 @@ private fun SpotTradingWorkspace(
             }
         }
 
-        if (boardModeWatchlist && watchlistInsights.isNotEmpty()) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        text = "Watchlist signals",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = LocalAppTheme.current.text
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    watchlistInsights.take(2).forEach { insight ->
-                        WatchlistInsightRow(
-                            insight = insight,
-                            onOpenTrade = { onSelectQuote(insight.quote) }
-                        )
-                    }
-                }
-            }
-        }
-
         if (showAddWatchlistDialog) {
             AddToWatchlistSheet(
                 query = watchSearchQuery,
@@ -784,10 +775,15 @@ private fun SpotTradingWorkspace(
                 }
             }
         } else if (boardModeWatchlist) {
+            // weight(1f) is required: LazyColumn inside a Column without weight gets
+            // unbounded height, expands to full content, and downward scroll dies.
             PullToRefreshBox(
                 isRefreshing = isLoading,
                 onRefresh = onRefresh,
                 enabled = true,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
             ) {
                 if (activeWatchlistSymbols.isEmpty()) {
                     Column(
@@ -821,8 +817,53 @@ private fun SpotTradingWorkspace(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(horizontal = 8.dp)
+                            .padding(horizontal = 8.dp),
+                        contentPadding = PaddingValues(bottom = 24.dp),
                     ) {
+                        if (watchlistInsights.isNotEmpty()) {
+                            item(key = "watchlist_signals_header") {
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                                    colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+                                    shape = RoundedCornerShape(10.dp),
+                                ) {
+                                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                                        Text(
+                                            text = "Watchlist signals",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = LocalAppTheme.current.text,
+                                        )
+                                        Text(
+                                            text = "${watchlistInsights.size} ranked · scroll for all",
+                                            fontSize = 11.sp,
+                                            color = LocalAppTheme.current.textSecondary,
+                                        )
+                                    }
+                                }
+                            }
+                            items(
+                                items = watchlistInsights,
+                                key = { "signal_${it.quote.symbol}" },
+                            ) { insight ->
+                                WatchlistInsightRow(
+                                    insight = insight,
+                                    onOpenTrade = { onSelectQuote(insight.quote) },
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                )
+                            }
+                            item(key = "watchlist_quotes_header") {
+                                Text(
+                                    text = "Tracked quotes",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = LocalAppTheme.current.textSecondary,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                )
+                            }
+                        }
                         items(watchlistQuotes, key = { it.symbol }) { quote ->
                             val swipeDismissState = rememberSwipeToDismissBoxState(
                                 confirmValueChange = { value ->
@@ -884,7 +925,10 @@ private fun SpotTradingWorkspace(
                     onRefresh()
                     pagingItems.refresh()
                 },
-                enabled = true
+                enabled = true,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
             ) {
                 LazyColumn(
                     modifier = Modifier
@@ -944,6 +988,7 @@ private fun SpotTradingWorkspace(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FuturesRadarScreen(
     viewModel: TradingViewModel,
@@ -957,6 +1002,10 @@ private fun FuturesRadarScreen(
     val futuresContracts by viewModel.futuresContracts.collectAsStateWithLifecycle()
     val futuresTicketPreview by viewModel.futuresTicketPreview.collectAsStateWithLifecycle()
     val loading by viewModel.derivativesLoading.collectAsStateWithLifecycle()
+    val investorTips by viewModel.investorTips.collectAsStateWithLifecycle()
+    val foTipsFallback = remember { com.bysel.trader.ui.components.localInvestorTips("fno", limit = 2) }
+
+    LaunchedEffect(Unit) { viewModel.loadInvestorTips("fno") }
 
     val candidateSymbols = remember(quotes, watchlistSymbols) {
         val watchlistOrder = watchlistSymbols.map { it.uppercase() }
@@ -1000,14 +1049,22 @@ private fun FuturesRadarScreen(
             .fillMaxSize()
             .background(LocalAppTheme.current.surface)
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(bottom = 24.dp),
     ) {
         item {
             Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Futures Radar", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold, fontSize = 24.sp)
                     Text(
-                        "Load live futures contracts for an underlying, compare expiry-level liquidity and margin, then preview lot-based ticket risk before execution.",
+                        "Futures Radar",
+                        color = LocalAppTheme.current.text,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 24.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        "Futures board: NSE contracts when reachable, else synthetic. Preview lot risk, then place a paper ticket in one tap.",
                         color = LocalAppTheme.current.textSecondary,
                         fontSize = 12.sp,
                     )
@@ -1017,6 +1074,8 @@ private fun FuturesRadarScreen(
                             color = if (it.isOpen) LocalAppTheme.current.positive else LocalAppTheme.current.negative,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
@@ -1024,10 +1083,24 @@ private fun FuturesRadarScreen(
         }
 
         item {
+            com.bysel.trader.ui.components.InvestorTipsCard(
+                title = "F&O Tips",
+                topicLabel = if (investorTips.topic == "fno") investorTips.topicLabel else foTipsFallback.topicLabel,
+                tips = if (investorTips.topic == "fno") investorTips.tips else foTipsFallback.tips,
+                disclaimer = "Educational habits — not trade recommendations.",
+                compact = true,
+            )
+        }
+
+        item {
             Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Futures Contract Loader", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         OutlinedTextField(
                             value = underlyingInput,
                             onValueChange = { underlyingInput = it.uppercase() },
@@ -1039,19 +1112,24 @@ private fun FuturesRadarScreen(
                         )
                         OutlinedTextField(
                             value = lotsInput,
-                            onValueChange = { lotsInput = it.filter { ch -> ch.isDigit() } },
-                            modifier = Modifier.width(100.dp),
+                            onValueChange = { lotsInput = it.filter { ch -> ch.isDigit() }.take(4) },
+                            modifier = Modifier.width(96.dp),
                             label = { Text("Lots") },
                             colors = appOutlinedTextFieldColors(containerColor = LocalAppTheme.current.surface),
                             singleLine = true,
                         )
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         Button(onClick = { viewModel.loadFuturesContracts(underlyingInput) }) {
-                            Text("Load Contracts")
+                            Text("Load Contracts", maxLines = 1)
                         }
-                        OutlinedButton(onClick = onOpenOptions) { Text("Options") }
-                        OutlinedButton(onClick = onOpenAdvanced) { Text("Advanced") }
+                        OutlinedButton(onClick = onOpenOptions) { Text("Options", maxLines = 1) }
+                        OutlinedButton(onClick = onOpenAdvanced) { Text("Advanced", maxLines = 1) }
                     }
                     if (loading) {
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -1061,7 +1139,14 @@ private fun FuturesRadarScreen(
         }
 
         item {
-            Text("Live Contract Radar", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+            val sourceLabel = futuresContracts?.source?.uppercase() ?: "—"
+            Text(
+                "Contract Radar · $sourceLabel",
+                color = LocalAppTheme.current.text,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
 
         val activeContracts = futuresContracts?.contracts ?: emptyList()
@@ -1070,7 +1155,11 @@ private fun FuturesRadarScreen(
                 Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("No futures contracts loaded yet.", color = LocalAppTheme.current.text)
-                        Text("Load an underlying (for example RELIANCE, TCS, INFY) to fetch expiry contracts and preview margins.", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        Text(
+                            "Load an underlying (for example RELIANCE, TCS, INFY) to fetch expiry contracts and preview margins.",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 12.sp,
+                        )
                     }
                 }
             }
@@ -1080,38 +1169,65 @@ private fun FuturesRadarScreen(
                     quote.symbol.uppercase() == futuresContracts?.symbol?.uppercase()
                 }
                 val parsedLots = lotsInput.toIntOrNull()?.coerceAtLeast(1) ?: 1
+                val selected = selectedExpiry == contract.expiry
                 Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Column {
-                                Text(contract.contractSymbol, color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold)
+                            // weight(1f) prevents AssistChip from crushing this into 1-char-wide vertical text.
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    contract.contractSymbol,
+                                    color = LocalAppTheme.current.text,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                                 Text(
                                     "${formatCurrency(contract.last)} • ${formatSignedPct(contract.pctChange)}",
                                     color = if (contract.pctChange >= 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative,
                                     fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
                             AssistChip(
                                 onClick = { selectedExpiry = contract.expiry },
                                 label = {
                                     Text(
-                                        if (selectedExpiry == contract.expiry) "Selected ${contract.expiry}"
-                                        else "Expiry ${contract.expiry}"
+                                        text = if (selected) "Selected" else "Expiry",
+                                        maxLines = 1,
                                     )
-                                }
+                                },
                             )
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            InfoChip(label = { Text("Lot ${contract.lotSize}") })
-                            InfoChip(label = { Text("OI ${contract.oi}") })
-                            InfoChip(label = { Text("Basis ${formatCurrency(contract.basis)}") })
-                            InfoChip(label = { Text("Mgn/Lot ${formatCurrency(contract.marginPerLot)}") })
+                        Text(
+                            text = "Expiry ${contract.expiry}",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        // FlowRow wraps chips instead of squeezing labels into vertical characters.
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            InfoChip(label = { Text("Lot ${contract.lotSize}", maxLines = 1) })
+                            InfoChip(label = { Text("OI ${contract.oi}", maxLines = 1) })
+                            InfoChip(label = { Text("Basis ${formatCurrency(contract.basis)}", maxLines = 1) })
+                            InfoChip(label = { Text("Mgn/Lot ${formatCurrency(contract.marginPerLot)}", maxLines = 1) })
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
                             Button(
                                 onClick = {
                                     selectedExpiry = contract.expiry
@@ -1123,7 +1239,7 @@ private fun FuturesRadarScreen(
                                     )
                                 }
                             ) {
-                                Text("Preview Buy")
+                                Text("Preview Buy", maxLines = 1)
                             }
                             OutlinedButton(
                                 onClick = {
@@ -1136,11 +1252,11 @@ private fun FuturesRadarScreen(
                                     )
                                 }
                             ) {
-                                Text("Preview Sell")
+                                Text("Preview Sell", maxLines = 1)
                             }
                             if (linkedQuote != null) {
                                 OutlinedButton(onClick = { onOpenSpotTrade(linkedQuote) }) {
-                                    Text("Open Spot")
+                                    Text("Open Spot", maxLines = 1)
                                 }
                             }
                         }
@@ -1154,7 +1270,13 @@ private fun FuturesRadarScreen(
                 Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Futures Ticket Preview", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
-                        Text(preview.contractSymbol, color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold)
+                        Text(
+                            preview.contractSymbol,
+                            color = LocalAppTheme.current.text,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                         Text(
                             "${preview.side} ${preview.lots} lot(s) = ${preview.quantity} qty @ ${formatCurrency(preview.referencePrice)}",
                             color = LocalAppTheme.current.textSecondary,
@@ -1164,9 +1286,17 @@ private fun FuturesRadarScreen(
                         Text("Estimated Margin: ${formatCurrency(preview.estimatedMargin)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                         Text("Estimated Charges: ${formatCurrency(preview.estimatedCharges)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                         Text("Max Loss Buffer: ${formatCurrency(preview.maxLossBuffer)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = onOpenAdvanced) { Text("Route To Advanced") }
-                            OutlinedButton(onClick = onOpenOptions) { Text("Open Options") }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Button(onClick = { viewModel.placeFuturesTicketFromPreview() }) {
+                                Text("Place Ticket", maxLines = 1)
+                            }
+                            OutlinedButton(onClick = onOpenAdvanced) { Text("Advanced", maxLines = 1) }
+                            OutlinedButton(onClick = onOpenOptions) { Text("Open Options", maxLines = 1) }
                         }
                     }
                 }
@@ -1271,10 +1401,11 @@ fun TradingQuoteCard(
 @Composable
 private fun WatchlistInsightRow(
     insight: WatchlistInsight,
-    onOpenTrade: () -> Unit
+    onOpenTrade: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
         colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.surface),

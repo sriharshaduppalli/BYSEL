@@ -7,10 +7,13 @@ import androidx.lifecycle.viewModelScope
 import com.bysel.trader.data.PinnedStocksStore
 import com.bysel.trader.data.PinnedWidgetsStore
 import com.bysel.trader.data.local.BYSELDatabase
+import com.bysel.trader.data.models.IntradayTipsResponse
+import com.bysel.trader.data.models.InvestorTipsResponse
 import com.bysel.trader.data.models.MarketMoverQuote
 import com.bysel.trader.data.models.MarketNewsHeadline
 import com.bysel.trader.data.repository.Result
 import com.bysel.trader.data.repository.TradingRepository
+import com.bysel.trader.ui.components.localInvestorTips
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -91,8 +94,24 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     private val _practiceIdeasDisclaimer = MutableStateFlow("")
     val practiceIdeasDisclaimer: StateFlow<String> = _practiceIdeasDisclaimer.asStateFlow()
 
+    private val _intradayTips = MutableStateFlow<IntradayTipsResponse?>(null)
+    val intradayTips: StateFlow<IntradayTipsResponse?> = _intradayTips.asStateFlow()
+
+    private val _intradayTipsLoading = MutableStateFlow(false)
+    val intradayTipsLoading: StateFlow<Boolean> = _intradayTipsLoading.asStateFlow()
+
+    private val _investorTipTopic = MutableStateFlow("long_term")
+    val investorTipTopic: StateFlow<String> = _investorTipTopic.asStateFlow()
+
+    private val _investorTips = MutableStateFlow(localInvestorTips("long_term"))
+    val investorTips: StateFlow<InvestorTipsResponse> = _investorTips.asStateFlow()
+
+    private val _investorTipsLoading = MutableStateFlow(false)
+    val investorTipsLoading: StateFlow<Boolean> = _investorTipsLoading.asStateFlow()
+
     /** Last symbols used for Home news so pull-to-refresh stays personalized. */
     private var lastNewsSymbols: List<String> = emptyList()
+    private var lastAdvanceShare: Double? = null
 
     init {
         loadPinnedStocks()
@@ -104,6 +123,10 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             refreshMarketNews()
             delay(1_200)
             refreshMarketMovers()
+            delay(400)
+            refreshIntradayTips()
+            delay(400)
+            refreshInvestorTips()
             delay(800)
             refreshPracticeIdeas()
         }
@@ -181,6 +204,51 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                 Result.Loading -> Unit
             }
             _practiceIdeasLoading.value = false
+        }
+    }
+
+    fun refreshIntradayTips(limit: Int = 3, advanceShare: Double? = lastAdvanceShare) {
+        lastAdvanceShare = advanceShare
+        viewModelScope.launch {
+            _intradayTipsLoading.value = true
+            when (val response = repository.getIntradayTips(limit = limit, advanceShare = advanceShare)) {
+                is Result.Success -> _intradayTips.value = response.data
+                is Result.Error -> {
+                    if (_intradayTips.value == null) {
+                        // Keep null so UI can show local session-phase fallback.
+                    }
+                }
+                Result.Loading -> Unit
+            }
+            _intradayTipsLoading.value = false
+        }
+    }
+
+    fun selectInvestorTipTopic(topic: String) {
+        val normalized = topic.trim().lowercase().ifBlank { "long_term" }
+        if (_investorTipTopic.value == normalized && _investorTips.value.tips.isNotEmpty()) {
+            return
+        }
+        _investorTipTopic.value = normalized
+        _investorTips.value = localInvestorTips(normalized)
+        refreshInvestorTips(topic = normalized)
+    }
+
+    fun refreshInvestorTips(topic: String = _investorTipTopic.value, limit: Int = 3) {
+        val normalized = topic.trim().lowercase().ifBlank { "long_term" }
+        _investorTipTopic.value = normalized
+        viewModelScope.launch {
+            _investorTipsLoading.value = true
+            when (val response = repository.getInvestorTips(topic = normalized, limit = limit)) {
+                is Result.Success -> _investorTips.value = response.data
+                is Result.Error -> {
+                    if (_investorTips.value.tips.isEmpty() || _investorTips.value.topic != normalized) {
+                        _investorTips.value = localInvestorTips(normalized, limit)
+                    }
+                }
+                Result.Loading -> Unit
+            }
+            _investorTipsLoading.value = false
         }
     }
 

@@ -54,6 +54,8 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bysel.trader.data.PracticeHabitStore
 import com.bysel.trader.data.models.Holding
+import com.bysel.trader.data.models.IntradayTip
+import com.bysel.trader.data.models.IntradayTipsResponse
 import com.bysel.trader.data.models.MarketMoverQuote
 import com.bysel.trader.data.models.MarketNewsHeadline
 import com.bysel.trader.data.models.MarketStatus
@@ -73,10 +75,13 @@ import androidx.compose.material.icons.filled.ShoppingCart
 import java.util.Locale
 import com.bysel.trader.ui.components.DashboardSkeletonLoader
 import com.bysel.trader.ui.components.InfoChip
+import com.bysel.trader.ui.components.InvestorTipsCard
 import com.bysel.trader.ui.components.NewsWidget
 import com.bysel.trader.ui.components.PullToRefreshBox
 import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
 import com.bysel.trader.ui.components.WatchlistWidget
+import com.bysel.trader.ui.components.localInvestorTips
+import com.bysel.trader.data.models.InvestorTipsResponse
 import com.bysel.trader.ui.format.formatInr
 import com.bysel.trader.ui.format.formatInrCompact
 import com.bysel.trader.ui.format.formatSignedPct
@@ -335,6 +340,11 @@ fun DashboardScreen(
     val practiceIdeas by dashboardViewModel.practiceIdeas.collectAsStateWithLifecycle()
     val practiceIdeasLoading by dashboardViewModel.practiceIdeasLoading.collectAsStateWithLifecycle()
     val practiceIdeasDisclaimer by dashboardViewModel.practiceIdeasDisclaimer.collectAsStateWithLifecycle()
+    val intradayTips by dashboardViewModel.intradayTips.collectAsStateWithLifecycle()
+    val intradayTipsLoading by dashboardViewModel.intradayTipsLoading.collectAsStateWithLifecycle()
+    val investorTips by dashboardViewModel.investorTips.collectAsStateWithLifecycle()
+    val investorTipsLoading by dashboardViewModel.investorTipsLoading.collectAsStateWithLifecycle()
+    val investorTipTopic by dashboardViewModel.investorTipTopic.collectAsStateWithLifecycle()
 
     var showHomeGuide by rememberSaveable { mutableStateOf(false) }
     var homeGuideStep by rememberSaveable { mutableIntStateOf(0) }
@@ -392,10 +402,20 @@ fun DashboardScreen(
                 dashboardViewModel.refreshMarketNews(personalNewsSymbols)
                 dashboardViewModel.refreshMarketMovers(staggerMs = 400L)
                 dashboardViewModel.refreshPracticeIdeas()
+                val up = quotes.count { it.pctChange >= 0.0 }
+                val down = quotes.count { it.pctChange < 0.0 }
+                val share = if (up + down > 0) up.toDouble() / (up + down).toDouble() else null
+                dashboardViewModel.refreshIntradayTips(advanceShare = share)
+                dashboardViewModel.refreshInvestorTips()
                 habit = PracticeHabitStore.load(context)
                 practiceProgress = PracticeHabitStore.loadProgress(context)
             },
             watchlistSymbols = watchlistSymbols,
+            intradayTips = intradayTips,
+            intradayTipsLoading = intradayTipsLoading,
+            investorTips = investorTips,
+            investorTipsLoading = investorTipsLoading,
+            investorTipTopic = investorTipTopic,
             showHomeGuide = showHomeGuide,
             homeGuideStep = homeGuideStep,
             onShowGuide = {
@@ -524,6 +544,11 @@ fun DashboardContent(
     walletBalance: Double = 0.0,
     onAddPracticeFunds: (() -> Unit)? = null,
     watchlistSymbols: List<String> = emptyList(),
+    intradayTips: IntradayTipsResponse? = null,
+    intradayTipsLoading: Boolean = false,
+    investorTips: InvestorTipsResponse = localInvestorTips("long_term"),
+    investorTipsLoading: Boolean = false,
+    investorTipTopic: String = "long_term",
 ) {
     val theme = LocalAppTheme.current
     val scope = rememberCoroutineScope()
@@ -766,6 +791,33 @@ fun DashboardContent(
                 positiveCount = positiveCount,
                 negativeCount = negativeCount,
                 moodTitle = marketMoodTitle,
+            )
+        }
+
+        item {
+            val tipsPayload = intradayTips ?: buildLocalIntradayTips(marketStatus)
+            IntradayTipsSection(
+                phaseLabel = tipsPayload.phaseLabel,
+                tips = tipsPayload.tips,
+                disclaimer = tipsPayload.disclaimer.ifBlank {
+                    "Educational session habits — not stock tips."
+                },
+                loading = intradayTipsLoading && tipsPayload.tips.isEmpty(),
+                mood = tipsPayload.mood,
+            )
+        }
+
+        item {
+            InvestorTipsCard(
+                topicLabel = investorTips.topicLabel,
+                tips = investorTips.tips.ifEmpty { localInvestorTips(investorTipTopic).tips },
+                disclaimer = investorTips.disclaimer.ifBlank {
+                    "Educational investor habits — not stock, fund, or IPO recommendations."
+                },
+                loading = investorTipsLoading && investorTips.tips.isEmpty(),
+                topics = investorTips.topics.ifEmpty { localInvestorTips("long_term").topics },
+                selectedTopic = investorTipTopic,
+                onTopicSelected = { dashboardViewModel.selectInvestorTipTopic(it) },
             )
         }
 
@@ -1906,6 +1958,194 @@ private fun MarketPulseHero(
             }
         }
     }
+}
+
+@Composable
+private fun IntradayTipsSection(
+    phaseLabel: String,
+    tips: List<IntradayTip>,
+    disclaimer: String,
+    loading: Boolean,
+    mood: String? = null,
+) {
+    val theme = LocalAppTheme.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(theme.card)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Intraday Tips",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = theme.text,
+                )
+                Text(
+                    text = buildString {
+                        append(phaseLabel.ifBlank { "Session" })
+                        if (!mood.isNullOrBlank()) append(" · ${mood.replaceFirstChar { it.uppercase() }} tape")
+                    },
+                    fontSize = 11.sp,
+                    color = theme.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(
+                text = "Habits",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = theme.primary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(theme.primary.copy(alpha = 0.14f))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
+        if (loading && tips.isEmpty()) {
+            LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth(),
+                color = theme.primary,
+            )
+        } else {
+            tips.take(3).forEach { tip ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(theme.surface.copy(alpha = 0.55f))
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = tip.title,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = theme.text,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = tip.body,
+                        fontSize = 11.sp,
+                        color = theme.textSecondary,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+        Text(
+            text = disclaimer,
+            fontSize = 10.sp,
+            color = theme.textSecondary,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+private fun buildLocalIntradayTips(marketStatus: MarketStatus?): IntradayTipsResponse {
+    val ist = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata"))
+    val mins = ist.get(Calendar.HOUR_OF_DAY) * 60 + ist.get(Calendar.MINUTE)
+    val dow = ist.get(Calendar.DAY_OF_WEEK)
+    val closed = marketStatus?.isOpen == false
+    val (phase, label, tips) = when {
+        dow == Calendar.SATURDAY || dow == Calendar.SUNDAY -> Triple(
+            "weekend",
+            "Weekend",
+            listOf(
+                IntradayTip("wk_journal", "Weekend review", "Tag last week's paper trades and pick one process fix for Monday.", "process"),
+                IntradayTip("wk_calendar", "Scan the week ahead", "Note RBI/Fed/earnings dates — busy event days favour smaller size.", "risk"),
+                IntradayTip("wk_watchlist", "Trim the watchlist", "Keep 5–8 liquid names with a clear level to avoid FOMO entries.", "process"),
+            ),
+        )
+        mins < 9 * 60 -> Triple(
+            "pre_market",
+            "Pre-market",
+            listOf(
+                IntradayTip("pm_levels", "Mark key levels", "Note prior day high/low and invalidation before 9:15.", "process"),
+                IntradayTip("pm_news", "Headline check", "If you can't name the risk, skip the trade.", "risk"),
+                IntradayTip("pm_size", "Pre-commit size", "Decide max loss in ₹ before the open.", "risk"),
+            ),
+        )
+        mins < 9 * 60 + 15 -> Triple(
+            "pre_open",
+            "Pre-open auction",
+            listOf(
+                IntradayTip("po_auction", "Pre-open is noisy", "Wait for continuous session before chasing auction prints.", "session"),
+                IntradayTip("po_orders", "Order discipline", "Prefer limits near your level — market orders into the open pay spreads.", "process"),
+            ),
+        )
+        mins <= 15 * 60 + 40 && !closed -> when {
+            mins < 10 * 60 + 15 -> Triple(
+                "first_hour",
+                "First hour",
+                listOf(
+                    IntradayTip("fh_patience", "First-hour volatility", "Let an opening range form before chasing breakouts.", "session"),
+                    IntradayTip("fh_stop", "Stop first, entry second", "No stop where the thesis dies = no trade.", "process"),
+                    IntradayTip("fh_fomo", "Skip the gap chase", "Late FOMO into already-extended opens often has poor R:R.", "psychology"),
+                ),
+            )
+            mins < 12 * 60 -> Triple(
+                "mid_morning",
+                "Mid-morning",
+                listOf(
+                    IntradayTip("mm_trend", "Trade with breadth", "Strong advances → pullback longs; heavy declines → tighten risk.", "session"),
+                    IntradayTip("mm_scale", "Scale, don't all-in", "Don't average losers mid-morning.", "risk"),
+                ),
+            )
+            mins < 13 * 60 + 30 -> Triple(
+                "lunch_lull",
+                "Midday lull",
+                listOf(
+                    IntradayTip("ll_chop", "Midday chop zone", "Smaller size or wait — fake breaks are common in thin volume.", "session"),
+                    IntradayTip("ll_revenge", "No revenge trades", "After a stop-out, step away 10 minutes.", "psychology"),
+                ),
+            )
+            mins < 14 * 60 + 45 -> Triple(
+                "afternoon",
+                "Afternoon",
+                listOf(
+                    IntradayTip("af_size_down", "Cut size into the close", "New positions after 2:30 need a stronger reason.", "risk"),
+                    IntradayTip("af_time_stop", "Time stops matter", "If it hasn't worked by mid-afternoon, reassess.", "process"),
+                ),
+            )
+            else -> Triple(
+                "closing_window",
+                "Closing window",
+                listOf(
+                    IntradayTip("cw_cas", "Know the CAS clock", "F&O cash continuous ~3:15, CAS ~3:35, derivatives ~3:40 — broker MIS may square earlier.", "session"),
+                    IntradayTip("cw_flat", "Intraday → flat", "Square MIS with a time buffer; last minutes are chaotic.", "risk"),
+                    IntradayTip("cw_no_lottery", "No closing lottery", "Don't double size in the last 20 minutes to 'make the day back'.", "psychology"),
+                ),
+            )
+        }
+        else -> Triple(
+            "after_hours",
+            "After hours",
+            listOf(
+                IntradayTip("ah_review", "After-hours debrief", "Grade process, not P&L.", "process"),
+                IntradayTip("ah_rest", "Protect attention", "Stop refreshing after close — fresh decisions need a clear head at 9:15.", "psychology"),
+            ),
+        )
+    }
+    return IntradayTipsResponse(
+        phase = phase,
+        phaseLabel = label,
+        isOpen = marketStatus?.isOpen == true,
+        tips = tips,
+        disclaimer = "Educational session habits — not stock tips or investment advice.",
+    )
 }
 
 @Composable

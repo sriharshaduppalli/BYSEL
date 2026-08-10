@@ -99,21 +99,38 @@ class TemplateModelBackend:
             if structured:
                 return structured
 
-            # Retry as stock_analysis when a live symbol is present — bare asks
-            # previously fell through to a raw grounding dump.
+            # Only soft-retry bare general_query + symbol. Never overwrite a
+            # focused intent (news / fundamentals / prediction) with full analysis.
             symbol = ""
             if isinstance(market_context, dict):
                 symbol = str(market_context.get("symbol") or "").strip().upper()
-            if symbol and intent != "stock_analysis":
-                structured = compose_structured_answer(
-                    query=query,
-                    intent="stock_analysis",
-                    market_context=market_context,
-                    context_lines=context_lines,
-                    deterministic=deterministic,
-                )
-                if structured:
-                    return structured
+            if symbol and intent in {"general_query", ""}:
+                try:
+                    from .answer_composer import resolve_stock_response_profile
+
+                    profile = resolve_stock_response_profile(query, intent or "general_query")
+                    retry_intent = {
+                        "news": "events_news",
+                        "sentiment": "events_news",
+                        "quote": "price_action",
+                        "technical": "stock_analysis",
+                        "trade_plan": "price_action",
+                        "prediction": "prediction",
+                        "fundamentals": "fundamentals",
+                        "calculations": "market_calculations",
+                    }.get(profile, "stock_analysis")
+                except Exception:
+                    retry_intent = "stock_analysis"
+                if retry_intent != intent:
+                    structured = compose_structured_answer(
+                        query=query,
+                        intent=retry_intent,
+                        market_context=market_context,
+                        context_lines=context_lines,
+                        deterministic=deterministic,
+                    )
+                    if structured:
+                        return structured
         except Exception:
             pass
 

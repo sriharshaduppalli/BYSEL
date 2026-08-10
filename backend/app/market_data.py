@@ -902,6 +902,27 @@ def fetch_quote_history(symbol: str, period: str = "1mo", interval: str = "1d") 
     return candles
 
 
+def _normalize_dividend_yield_pct(
+    raw_yield: object,
+    dividend_rate: object,
+    last_price: float,
+) -> float | None:
+    """Return dividend yield in percent for UI (e.g. 0.45 → 0.45%)."""
+    rate = _safe_number(dividend_rate, 0.0)
+    if rate > 0 and last_price > 0:
+        return round((rate / last_price) * 100.0, 2)
+
+    raw = _safe_number(raw_yield, 0.0)
+    if raw <= 0:
+        return None
+    # Fractions are typically ≤ ~0.20 (20%); Yahoo India often already sends percent.
+    if raw <= 0.20:
+        return round(raw * 100.0, 2)
+    if raw <= 20:
+        return round(raw, 2)
+    return None
+
+
 def fetch_quote(symbol: str) -> dict:
     """
     Fetch a single real-time quote for an NSE stock.
@@ -930,34 +951,67 @@ def fetch_quote(symbol: str) -> dict:
 
         # Get extended info (may fail for some stocks)
         try:
-            full_info = ticker.info
-            market_cap = full_info.get('marketCap', 0)
-            pe_ratio = full_info.get('trailingPE', 0)
-            dividend_yield = full_info.get('dividendYield', 0)
-            fifty_two_high = full_info.get('fiftyTwoWeekHigh', last_price * 1.15)
-            fifty_two_low = full_info.get('fiftyTwoWeekLow', last_price * 0.85)
-            day_high = full_info.get('dayHigh', float(hist['High'].iloc[-1]))
-            day_low = full_info.get('dayLow', float(hist['Low'].iloc[-1]))
-            open_price = full_info.get('open', float(hist['Open'].iloc[-1]))
-            volume = full_info.get('volume', int(hist['Volume'].iloc[-1]))
-            avg_volume = full_info.get('averageVolume', full_info.get('averageVolume10days', 0))
-            target_mean = full_info.get('targetMeanPrice', None)
-            fifty_day_avg = full_info.get('fiftyDayAverage', None)
-            two_hundred_day_avg = full_info.get('twoHundredDayAverage', None)
+            full_info = ticker.info or {}
+            market_cap = full_info.get("marketCap") or 0
+            pe_ratio = full_info.get("trailingPE") or full_info.get("forwardPE") or 0
+            eps_value = (
+                full_info.get("trailingEps")
+                or full_info.get("epsTrailingTwelveMonths")
+                or full_info.get("epsCurrentYear")
+                or 0
+            )
+            dividend_rate = full_info.get("dividendRate") or 0
+            raw_div_yield = full_info.get("dividendYield") or full_info.get("trailingAnnualDividendYield") or 0
+            fifty_two_high = full_info.get("fiftyTwoWeekHigh") or (last_price * 1.15)
+            fifty_two_low = full_info.get("fiftyTwoWeekLow") or (last_price * 0.85)
+            day_high = full_info.get("dayHigh") or float(hist["High"].iloc[-1])
+            day_low = full_info.get("dayLow") or float(hist["Low"].iloc[-1])
+            open_price = full_info.get("open") or float(hist["Open"].iloc[-1])
+            volume = full_info.get("volume") or int(hist["Volume"].iloc[-1])
+            avg_volume = full_info.get("averageVolume") or full_info.get("averageVolume10days") or 0
+            target_mean = full_info.get("targetMeanPrice")
+            fifty_day_avg = full_info.get("fiftyDayAverage")
+            two_hundred_day_avg = full_info.get("twoHundredDayAverage")
+            bid = full_info.get("bid") or 0
+            ask = full_info.get("ask") or 0
         except Exception:
-            day_high = float(hist['High'].iloc[-1])
-            day_low = float(hist['Low'].iloc[-1])
-            open_price = float(hist['Open'].iloc[-1])
-            volume = int(hist['Volume'].iloc[-1])
+            day_high = float(hist["High"].iloc[-1])
+            day_low = float(hist["Low"].iloc[-1])
+            open_price = float(hist["Open"].iloc[-1])
+            volume = int(hist["Volume"].iloc[-1])
             avg_volume = 0
             market_cap = 0
             pe_ratio = 0
-            dividend_yield = 0
+            eps_value = 0
+            dividend_rate = 0
+            raw_div_yield = 0
             fifty_two_high = last_price * 1.15
             fifty_two_low = last_price * 0.85
             target_mean = None
             fifty_day_avg = None
             two_hundred_day_avg = None
+            bid = 0
+            ask = 0
+
+        # Yahoo .NS dividendYield is often already in percent (e.g. 0.45 → 0.45%);
+        # US tickers often return a 0–1 fraction. Prefer dividendRate / price when present.
+        dividend_yield_pct = _normalize_dividend_yield_pct(
+            raw_yield=raw_div_yield,
+            dividend_rate=dividend_rate,
+            last_price=last_price,
+        )
+
+        # NSE often returns bid/ask as 0 — synthesize a tight indicative spread for UI.
+        bid_f = float(bid or 0)
+        ask_f = float(ask or 0)
+        if (bid_f <= 0 or ask_f <= 0) and last_price > 0:
+            tick = max(0.05, round(last_price * 0.0002, 2))
+            bid_f = round(last_price - tick, 2)
+            ask_f = round(last_price + tick, 2)
+
+        pe_out = round(float(pe_ratio), 2) if pe_ratio else None
+        eps_out = round(float(eps_value), 2) if eps_value else None
+        mcap_out = int(market_cap) if market_cap else None
 
         quote = {
             "symbol": symbol,
@@ -967,16 +1021,21 @@ def fetch_quote(symbol: str) -> dict:
             "high": round(day_high, 2),
             "low": round(day_low, 2),
             "previousClose": round(prev_close, 2),
-            "volume": volume,
-            "avgVolume": avg_volume,
-            "marketCap": market_cap,
-            "pe": round(pe_ratio, 2) if pe_ratio else 0,
-            "dividendYield": round((dividend_yield or 0) * 100, 2),
-            "fiftyTwoWeekHigh": round(fifty_two_high, 2),
-            "fiftyTwoWeekLow": round(fifty_two_low, 2),
+            "prevClose": round(prev_close, 2),
+            "volume": int(volume or 0),
+            "avgVolume": int(avg_volume or 0) if avg_volume else None,
+            "marketCap": mcap_out,
+            "pe": pe_out,
+            "trailingPE": pe_out,
+            "eps": eps_out,
+            "dividendYield": dividend_yield_pct,
+            "fiftyTwoWeekHigh": round(float(fifty_two_high), 2),
+            "fiftyTwoWeekLow": round(float(fifty_two_low), 2),
             "targetMeanPrice": round(target_mean, 2) if target_mean else None,
             "fiftyDayAverage": round(fifty_day_avg, 2) if fifty_day_avg else None,
             "twoHundredDayAverage": round(two_hundred_day_avg, 2) if two_hundred_day_avg else None,
+            "bid": bid_f,
+            "ask": ask_f,
             "timestamp": int(datetime.utcnow().timestamp() * 1000),
         }
 
@@ -1105,16 +1164,21 @@ def _empty_quote(symbol: str) -> dict:
         "high": 0.0,
         "low": 0.0,
         "previousClose": 0.0,
+        "prevClose": 0.0,
         "volume": 0,
-        "avgVolume": 0,
-        "marketCap": 0,
-        "pe": 0,
-        "dividendYield": 0,
-        "fiftyTwoWeekHigh": 0,
-        "fiftyTwoWeekLow": 0,
+        "avgVolume": None,
+        "marketCap": None,
+        "pe": None,
+        "trailingPE": None,
+        "eps": None,
+        "dividendYield": None,
+        "fiftyTwoWeekHigh": None,
+        "fiftyTwoWeekLow": None,
         "targetMeanPrice": None,
         "fiftyDayAverage": None,
         "twoHundredDayAverage": None,
+        "bid": None,
+        "ask": None,
         "timestamp": int(datetime.utcnow().timestamp() * 1000),
     }
 

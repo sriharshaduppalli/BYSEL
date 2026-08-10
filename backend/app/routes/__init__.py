@@ -33,7 +33,12 @@ from .dependencies import get_current_user, get_optional_current_user
 from ..models.schemas import (
     Quote, Holding, Order, OrderResponse, Alert, AlertCreate,
     AlertResponse, HealthCheck, TradeHistory, HistoryCandle, OrderTraceLookupResponse, PortfolioSummary, PortfolioValue,
-    Wallet, WalletTransaction, WalletResponse, MarketStatus,
+    Wallet, WalletTransaction, WalletResponse,     MarketStatus,
+    IntradayTip,
+    IntradayTipsResponse,
+    InvestorTip,
+    InvestorTopicInfo,
+    InvestorTipsResponse,
     MarketNewsResponse,
     MarketMoversResponse,
     MutualFund, MutualFundCompareResponse, MutualFundRecommendationItem, MutualFundRecommendationResponse,
@@ -634,7 +639,27 @@ def _black_scholes_greeks(spot: float, strike: float, time_years: float, rate: f
     }
 
 
-def _generate_option_chain(symbol: str, expiry: str) -> OptionChainResponse:
+def _option_contract_from_row(row: dict) -> OptionContract:
+    return OptionContract(
+        strike=float(row.get("strike") or 0.0),
+        callLtp=float(row.get("callLtp") or 0.0),
+        putLtp=float(row.get("putLtp") or 0.0),
+        callOi=int(row.get("callOi") or 0),
+        putOi=int(row.get("putOi") or 0),
+        callOiChange=int(row.get("callOiChange") or 0),
+        putOiChange=int(row.get("putOiChange") or 0),
+        impliedVolatility=float(row.get("impliedVolatility") or 0.0),
+        callDelta=float(row.get("callDelta") or 0.0),
+        putDelta=float(row.get("putDelta") or 0.0),
+        gamma=float(row.get("gamma") or 0.0),
+        theta=float(row.get("theta") or 0.0),
+        vega=float(row.get("vega") or 0.0),
+        callIv=float(row["callIv"]) if row.get("callIv") is not None else None,
+        putIv=float(row["putIv"]) if row.get("putIv") is not None else None,
+    )
+
+
+def _generate_synthetic_option_chain(symbol: str, expiry: str) -> OptionChainResponse:
     quote = fetch_quote(symbol.upper())
     spot = float(quote.get("last") or 0.0)
     if spot <= 0:
@@ -647,7 +672,10 @@ def _generate_option_chain(symbol: str, expiry: str) -> OptionChainResponse:
     for index in range(-10, 11):
         strike = round(atm + (index * step), 2)
         strike_seed = base_seed + int(strike * 10)
-        iv = max(0.12, min(0.55, 0.22 + (abs(index) * 0.01) + ((strike_seed % 17) / 1000.0)))
+        # Slight put-wing premium so educational IV skew is non-zero.
+        call_iv = max(0.12, min(0.55, 0.20 + (max(index, 0) * 0.012) + ((strike_seed % 17) / 1000.0)))
+        put_iv = max(0.12, min(0.60, 0.23 + (max(-index, 0) * 0.015) + (((strike_seed + 11) % 19) / 1000.0)))
+        iv = round((call_iv + put_iv) / 2.0, 4)
         greeks = _black_scholes_greeks(
             spot=spot,
             strike=strike,
@@ -656,7 +684,8 @@ def _generate_option_chain(symbol: str, expiry: str) -> OptionChainResponse:
             iv=iv,
         )
         call_oi = max(250, int(15000 - (abs(index) * 780) + (strike_seed % 500)))
-        put_oi = max(250, int(14800 - (abs(index) * 760) + ((strike_seed + 37) % 500)))
+        # Mild put-heavy OI near ATM so PCR > 1 in typical educational boards.
+        put_oi = max(250, int(16200 - (abs(index) * 720) + ((strike_seed + 37) % 500)))
         call_oi_change = int((strike_seed % 240) - 120)
         put_oi_change = int(((strike_seed + 77) % 240) - 120)
 
@@ -669,22 +698,69 @@ def _generate_option_chain(symbol: str, expiry: str) -> OptionChainResponse:
                 putOi=put_oi,
                 callOiChange=call_oi_change,
                 putOiChange=put_oi_change,
-                impliedVolatility=round(iv, 4),
+                impliedVolatility=iv,
                 callDelta=greeks["callDelta"],
                 putDelta=greeks["putDelta"],
                 gamma=greeks["gamma"],
                 theta=greeks["theta"],
                 vega=greeks["vega"],
+                callIv=round(call_iv, 4),
+                putIv=round(put_iv, 4),
             )
         )
 
+    from ..derivatives_data import compute_chain_metrics
+
+    metrics = compute_chain_metrics(
+        [
+            {
+                "strike": c.strike,
+                "callOi": c.callOi,
+                "putOi": c.putOi,
+                "impliedVolatility": c.impliedVolatility,
+                "callIv": c.callIv,
+                "putIv": c.putIv,
+            }
+            for c in contracts
+        ],
+        spot,
+    )
     return OptionChainResponse(
         symbol=symbol.upper(),
         expiry=expiry,
         spot=round(spot, 2),
         generatedAt=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         contracts=contracts,
+        source="synthetic",
+        pcr=metrics.get("pcr"),
+        ivSkew=metrics.get("ivSkew"),
+        atmIv=metrics.get("atmIv"),
+        notes=[
+            "Synthetic Black–Scholes chain (NSE live chain unavailable or blocked).",
+            "PCR / IV skew are computed on this educational board — verify with your broker.",
+        ],
     )
+
+
+def _generate_option_chain(symbol: str, expiry: str) -> OptionChainResponse:
+    from ..derivatives_data import fetch_nse_option_chain
+
+    live = fetch_nse_option_chain(symbol=symbol, expiry=expiry)
+    if live and live.get("contracts"):
+        contracts = [_option_contract_from_row(row) for row in live["contracts"]]
+        return OptionChainResponse(
+            symbol=str(live.get("symbol") or symbol).upper(),
+            expiry=str(live.get("expiry") or expiry),
+            spot=float(live.get("spot") or 0.0),
+            generatedAt=str(live.get("generatedAt") or datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")),
+            contracts=contracts,
+            source=str(live.get("source") or "nse"),
+            pcr=live.get("pcr"),
+            ivSkew=live.get("ivSkew"),
+            atmIv=live.get("atmIv"),
+            notes=list(live.get("notes") or []),
+        )
+    return _generate_synthetic_option_chain(symbol=symbol, expiry=expiry)
 
 
 def _lot_size_for_symbol(symbol: str, spot: float) -> int:
@@ -702,7 +778,7 @@ def _lot_size_for_symbol(symbol: str, spot: float) -> int:
     return rounded
 
 
-def _generate_futures_contracts(symbol: str) -> FuturesContractsResponse:
+def _generate_synthetic_futures_contracts(symbol: str) -> FuturesContractsResponse:
     quote = fetch_quote(symbol.upper())
     spot = float(quote.get("last") or 0.0)
     if spot <= 0:
@@ -751,11 +827,54 @@ def _generate_futures_contracts(symbol: str) -> FuturesContractsResponse:
         spot=round(spot, 2),
         generatedAt=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         contracts=contracts,
+        source="synthetic",
         notes=[
-            "Contract metrics are indicative and should be validated against broker RMS before execution.",
+            "Synthetic futures board (NSE live futures unavailable or blocked).",
+            "Contract metrics are indicative — validate against broker RMS before execution.",
             "Margin preview excludes span spikes and intraday leverage changes.",
         ],
     )
+
+
+def _generate_futures_contracts(symbol: str) -> FuturesContractsResponse:
+    from ..derivatives_data import fetch_nse_futures_contracts
+
+    quote = fetch_quote(symbol.upper())
+    spot = float(quote.get("last") or 0.0)
+    if spot <= 0:
+        raise HTTPException(status_code=404, detail=f"Could not fetch live spot for {symbol}")
+
+    normalized_symbol = symbol.strip().upper()
+    lot_size = _lot_size_for_symbol(normalized_symbol, spot)
+    live = fetch_nse_futures_contracts(normalized_symbol, spot=spot, lot_size=lot_size)
+    if live and live.get("contracts"):
+        contracts = [
+            FuturesContract(
+                contractSymbol=str(row.get("contractSymbol") or ""),
+                expiry=str(row.get("expiry") or ""),
+                lotSize=int(row.get("lotSize") or lot_size),
+                last=float(row.get("last") or 0.0),
+                pctChange=float(row.get("pctChange") or 0.0),
+                oi=int(row.get("oi") or 0),
+                oiChange=int(row.get("oiChange") or 0),
+                volume=int(row.get("volume") or 0),
+                basis=float(row.get("basis") or 0.0),
+                marginPct=float(row.get("marginPct") or 0.15),
+                marginPerLot=float(row.get("marginPerLot") or 0.0),
+            )
+            for row in live["contracts"]
+            if row.get("contractSymbol") and row.get("expiry")
+        ]
+        if contracts:
+            return FuturesContractsResponse(
+                symbol=normalized_symbol,
+                spot=float(live.get("spot") or spot),
+                generatedAt=str(live.get("generatedAt") or datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")),
+                contracts=contracts,
+                source=str(live.get("source") or "nse"),
+                notes=list(live.get("notes") or []),
+            )
+    return _generate_synthetic_futures_contracts(symbol=normalized_symbol)
 
 
 def _preview_futures_ticket(payload: FuturesTicketPreviewRequest) -> FuturesTicketPreviewResponse:
@@ -1170,6 +1289,93 @@ def _goal_to_response(goal: GoalPlanModel) -> GoalPlanResponse:
 # default thread pool instead.
 
 
+
+def _optional_float(value: object) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        number = float(value)
+        if number != number:  # NaN
+            return None
+        return number
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_int(value: object) -> Optional[int]:
+    try:
+        if value is None:
+            return None
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _quote_from_raw(raw: dict, now_ms: Optional[int] = None) -> Quote:
+    """Map market_data quote dict → API Quote (keeps snapshot fundamentals)."""
+    from ..market_data import _safe_number
+
+    stamp = now_ms if now_ms is not None else int(time.time() * 1000)
+    ts_raw = raw.get("timestamp")
+    try:
+        ts = int(ts_raw) if ts_raw is not None else stamp
+    except (TypeError, ValueError):
+        ts = stamp
+
+    prev_close = _optional_float(
+        raw.get("prevClose") if raw.get("prevClose") is not None else raw.get("previousClose")
+    )
+    pe = _optional_float(raw.get("trailingPE") if raw.get("trailingPE") is not None else raw.get("pe"))
+    if pe is not None and pe <= 0:
+        pe = None
+
+    market_cap = _optional_int(raw.get("marketCap"))
+    if market_cap is not None and market_cap <= 0:
+        market_cap = None
+
+    volume = _optional_int(raw.get("volume"))
+    avg_volume = _optional_int(raw.get("avgVolume"))
+    if avg_volume is not None and avg_volume <= 0:
+        avg_volume = None
+
+    dividend = _optional_float(raw.get("dividendYield"))
+    if dividend is not None and dividend <= 0:
+        dividend = None
+
+    bid = _optional_float(raw.get("bid"))
+    ask = _optional_float(raw.get("ask"))
+    if bid is not None and bid <= 0:
+        bid = None
+    if ask is not None and ask <= 0:
+        ask = None
+
+    return Quote(
+        symbol=str(raw.get("symbol") or "").upper(),
+        last=round(_safe_number(raw.get("last"), 0.0), 2),
+        pctChange=round(_safe_number(raw.get("pctChange"), 0.0), 2),
+        timestamp=ts,
+        open=_optional_float(raw.get("open")),
+        prevClose=prev_close,
+        previousClose=prev_close,
+        high=_optional_float(raw.get("high")),
+        low=_optional_float(raw.get("low")),
+        volume=volume,
+        avgVolume=avg_volume,
+        marketCap=market_cap,
+        trailingPE=pe,
+        pe=pe,
+        eps=_optional_float(raw.get("eps")),
+        fiftyTwoWeekHigh=_optional_float(raw.get("fiftyTwoWeekHigh")),
+        fiftyTwoWeekLow=_optional_float(raw.get("fiftyTwoWeekLow")),
+        targetMeanPrice=_optional_float(raw.get("targetMeanPrice")),
+        bid=bid,
+        ask=ask,
+        dividendYield=dividend,
+        fiftyDayAverage=_optional_float(raw.get("fiftyDayAverage")),
+        twoHundredDayAverage=_optional_float(raw.get("twoHundredDayAverage")),
+    )
+
+
 @router.get("/quotes", response_model=list[Quote], response_model_exclude_none=True)
 async def get_quotes_endpoint(
     symbols: str = Query(""),
@@ -1202,22 +1408,11 @@ async def get_quotes_endpoint(
     except Exception as exc:
         logger.warning("trigger_evaluation_failed reason=%s", str(exc))
 
-    from ..market_data import _safe_number
     now_ms = int(time.time() * 1000)
     safe = []
     for q in raw_quotes or []:
         try:
-            ts_raw = q.get("timestamp")
-            try:
-                ts = int(ts_raw) if ts_raw is not None else now_ms
-            except (TypeError, ValueError):
-                ts = now_ms
-            safe.append(Quote(
-                symbol=str(q.get("symbol") or ""),
-                last=round(_safe_number(q.get("last"), 0.0), 2),
-                pctChange=round(_safe_number(q.get("pctChange"), 0.0), 2),
-                timestamp=ts,
-            ))
+            safe.append(_quote_from_raw(q, now_ms=now_ms))
         except Exception:
             continue
     return safe
@@ -1228,12 +1423,7 @@ async def get_all_quotes_endpoint():
     """Get live quotes for ALL supported NSE symbols."""
     raw_quotes = await asyncio.to_thread(fetch_quotes, get_all_symbols())
     now_ms = int(time.time() * 1000)
-    return [Quote(
-        symbol=q["symbol"],
-        last=q["last"],
-        pctChange=q["pctChange"],
-        timestamp=int(q.get("timestamp") or now_ms),
-    ) for q in raw_quotes]
+    return [_quote_from_raw(q, now_ms=now_ms) for q in (raw_quotes or [])]
 
 
 @router.get("/quotes/{symbol}", response_model=Quote, response_model_exclude_none=True)
@@ -1242,12 +1432,7 @@ async def get_single_quote_endpoint(symbol: str):
     q = await asyncio.to_thread(fetch_quote, symbol.upper())
     if q["last"] == 0:
         raise HTTPException(status_code=404, detail=f"Quote not found for {symbol}")
-    return Quote(
-        symbol=q["symbol"],
-        last=q["last"],
-        pctChange=q["pctChange"],
-        timestamp=int(q.get("timestamp") or int(time.time() * 1000)),
-    )
+    return _quote_from_raw(q)
 
 
 @router.get("/quotes/{symbol}/history", response_model=list[HistoryCandle])
@@ -1609,6 +1794,62 @@ async def market_status_endpoint():
     return is_market_open()
 
 
+@router.get("/market/intraday-tips", response_model=IntradayTipsResponse)
+async def market_intraday_tips_endpoint(
+    limit: int = Query(3, ge=1, le=6),
+    advanceShare: Optional[float] = Query(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Optional advances/(advances+declines) for mood-aware tip",
+    ),
+):
+    """Session-phase intraday habit tips (educational — not stock recommendations)."""
+    from ..intraday_tips import build_intraday_tips
+    from ..market_session import IST
+    from .trading import NSE_HOLIDAYS_2026
+
+    now_ist = datetime.now(IST)
+    is_holiday = now_ist.strftime("%Y-%m-%d") in NSE_HOLIDAYS_2026
+    payload = build_intraday_tips(
+        limit=limit,
+        advance_share=advanceShare,
+        is_holiday=is_holiday,
+        now=now_ist,
+    )
+    return IntradayTipsResponse(
+        phase=payload["phase"],
+        phaseLabel=payload["phaseLabel"],
+        isOpen=payload["isOpen"],
+        mood=payload.get("mood"),
+        tips=[IntradayTip(**tip) for tip in payload.get("tips") or []],
+        disclaimer=payload.get("disclaimer") or "",
+        generatedAt=payload.get("generatedAt") or "",
+    )
+
+
+@router.get("/market/investor-tips", response_model=InvestorTipsResponse)
+async def market_investor_tips_endpoint(
+    topic: str = Query(
+        "long_term",
+        description="long_term | mutual_funds | ipo | fno",
+    ),
+    limit: int = Query(3, ge=1, le=8),
+):
+    """Long-horizon educational tips by topic (not product recommendations)."""
+    from ..investor_tips import build_investor_tips
+
+    payload = build_investor_tips(topic=topic, limit=limit)
+    return InvestorTipsResponse(
+        topic=payload["topic"],
+        topicLabel=payload["topicLabel"],
+        tips=[InvestorTip(**tip) for tip in payload.get("tips") or []],
+        topics=[InvestorTopicInfo(**t) for t in payload.get("topics") or []],
+        disclaimer=payload.get("disclaimer") or "",
+        generatedAt=payload.get("generatedAt") or "",
+    )
+
+
 @router.get("/market/news", response_model=MarketNewsResponse)
 async def market_news_endpoint(
     symbols: str = Query("", description="Optional comma-separated stock symbols"),
@@ -1934,10 +2175,16 @@ async def ai_ask_endpoint(
                     exclude = {
                         "PREDICT": "prediction",
                         "BUY_SELL": "buy_sell",
-                        "TECHNICAL": "analysis",
-                        "FUNDAMENTAL": "analysis",
+                        "TECHNICAL": "technical",
+                        "FUNDAMENTAL": "fundamentals",
+                        "NEWS": "news",
                     }.get(intent_name, "")
-                    suggestions = _build_stock_suggestions(symbol, exclude=exclude)
+                    suggestions = _build_stock_suggestions(
+                        symbol,
+                        exclude=exclude,
+                        query=normalized_query,
+                        intent=intent_name,
+                    )
             except Exception:
                 suggestions = []
         if intent_name == "SECTOR_SCREEN" or result.get("type") == "screening":
@@ -2030,6 +2277,7 @@ async def ai_ask_endpoint(
         re.search(
             r"\b(support|resistance|s/?r|trading levels?|pivots?|sentiment|"
             r"should i|buy|sell|pe ratio|p/?e\b|pb ratio|p/?b\b|technical|"
+            r"technical analysis|chart analysis|price action|"
             r"fundamental|target|stop ?loss|macd|rsi of|price of|quote)\b",
             normalized_query,
             flags=re.IGNORECASE,
@@ -2275,6 +2523,25 @@ async def ai_ask_endpoint(
             from ..llm_integration import llm_available, ask_llm
             if llm_available():
                 llm_context = {}
+                # Pronoun / multi-turn resolution for ISM (previously Groq-only).
+                ism_query = normalized_query
+                try:
+                    from ..groq_llm import resolve_pronouns, detect_sentiment_from_query
+
+                    if body.conversation_history:
+                        resolved = resolve_pronouns(
+                            normalized_query, body.conversation_history
+                        )
+                        if resolved and resolved.strip():
+                            ism_query = resolved.strip()
+                        llm_context["conversation_history"] = list(
+                            body.conversation_history or []
+                        )[-6:]
+                        llm_context["user_sentiment"] = detect_sentiment_from_query(
+                            ism_query
+                        )
+                except Exception:
+                    ism_query = normalized_query
                 try:
                     # Same enrich depth Groq gets — required for ISM accuracy on
                     # buy/sell, valuation, and compare asks.
@@ -2293,12 +2560,14 @@ async def ai_ask_endpoint(
                         "news_headlines",
                         "pre_signals",
                         "catalyst_info",
+                        "portfolio_context",
+                        "historical_data",
                     ):
                         if enriched_ctx.get(key) not in (None, {}, [], ""):
                             llm_context[key] = enriched_ctx.get(key)
                 except Exception:
-                    llm_context = {}
-                llm_result = ask_llm(normalized_query, context=llm_context or None)
+                    pass
+                llm_result = ask_llm(ism_query, context=llm_context or None)
                 if llm_result and llm_result.get("answer") and llm_result.get("confidence", 0) >= 0.35:
                     logger.info("DEBUG: Using Indian Stock LLM (confidence=%.2f)", llm_result.get("confidence", 0))
                     merged = {
@@ -2352,7 +2621,13 @@ async def ai_ask_endpoint(
                             try:
                                 from ..ai_engine import _build_stock_suggestions
                                 merged["suggestions"] = _build_stock_suggestions(
-                                    str(merged["symbol"]).upper()
+                                    str(merged["symbol"]).upper(),
+                                    query=normalized_query,
+                                    intent=str(
+                                        llm_result.get("intent")
+                                        or (intent_result or {}).get("intent")
+                                        or ""
+                                    ),
                                 )
                             except Exception:
                                 pass
@@ -2410,11 +2685,15 @@ async def ai_ask_endpoint(
                                 exclude = {
                                     "PREDICT": "prediction",
                                     "BUY_SELL": "buy_sell",
-                                    "TECHNICAL": "analysis",
-                                    "FUNDAMENTAL": "analysis",
+                                    "TECHNICAL": "technical",
+                                    "FUNDAMENTAL": "fundamentals",
+                                    "NEWS": "news",
                                 }.get(intent, "")
                                 merged["suggestions"] = _build_stock_suggestions(
-                                    str(merged["symbol"]).upper(), exclude=exclude
+                                    str(merged["symbol"]).upper(),
+                                    exclude=exclude,
+                                    query=normalized_query,
+                                    intent=intent,
                                 )
                             except Exception:
                                 pass
@@ -2466,11 +2745,15 @@ async def ai_ask_endpoint(
                             exclude = {
                                 "PREDICT": "prediction",
                                 "BUY_SELL": "buy_sell",
-                                "TECHNICAL": "analysis",
-                                "FUNDAMENTAL": "analysis",
+                                "TECHNICAL": "technical",
+                                "FUNDAMENTAL": "fundamentals",
+                                "NEWS": "news",
                             }.get(intent, "")
                             merged["suggestions"] = _build_stock_suggestions(
-                                str(merged["symbol"]).upper(), exclude=exclude
+                                str(merged["symbol"]).upper(),
+                                exclude=exclude,
+                                query=normalized_query,
+                                intent=intent,
                             )
                         except Exception:
                             pass
