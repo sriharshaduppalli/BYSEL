@@ -91,7 +91,7 @@ Last updated: 2026-08-08 (Notifications design guide)
 | P1-1d | `reportFullyDrawn` for TTFD | App startup analysis (Aug 2026) | Done | Fired when cached wallet/holdings/quotes ready (2.5s fallback) |
 | P1-1e | Defer on-device LLM + Play update check | App startup analysis (Aug 2026) | Done | LLM init +6s; in-app update check +3s |
 | P1-1f | StrictMode thread policy (debug) | App startup analysis (Aug 2026) | Done | Disk/network detect + penaltyLog in DEBUG only |
-| P1-2 | Redeploy backend custom LLM to Render | Product (not Play policy) | Next | App still hits production; latest ISM not fully live |
+| P1-2 | Redeploy backend custom LLM to Render | Product (not Play policy) | Done | Merged PR #25 to main (query-aware ISM profiles + Products/SGB); smoke after Render finishes |
 | P1-3 | Store listing: honest paper-trading + educational AI copy | Core value / marketing assets | Later | Avoid “guaranteed tips”; keep screenshots accurate |
 | P1-4 | Grow listing visitors / testers | Store performance | Later | CTR strong; volume is the gap (~17 visitors early) |
 | P1-5 | In-app updates for freshness | Technical quality (app freshness) | Later | Optional; increases users on latest binary |
