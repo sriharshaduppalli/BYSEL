@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -194,18 +195,18 @@ fun ProfitSignalCard(
     val isBullish = signalKey.contains("BUY") || signalKey.contains("ACCUMULATE")
     val isNeutral = signalKey.contains("HOLD") || signalKey.contains("WAIT") || signalKey.contains("NEUTRAL")
     val isTrim = signalKey.contains("TRIM")
+    val theme = LocalAppTheme.current
     val accentColor = when {
-        isBullish -> Color(0xFF00C853)
+        isBullish -> theme.positive
         isTrim -> Color(0xFFF57C00)
-        isNeutral -> Color(0xFF757575)
-        else -> Color(0xFFE53935)
+        isNeutral -> theme.textSecondary
+        else -> theme.negative
     }
     val trendIcon = when {
         isBullish -> Icons.Default.TrendingUp
         isNeutral -> Icons.Default.Remove
         else -> Icons.Default.TrendingDown
     }
-    val theme = LocalAppTheme.current
     val meaning = remember(signal.signal) { actionStateMeaning(signal.signal) }
     var showLegend by remember { mutableStateOf(false) }
     val riskReward = if (signal.entry != null && signal.target != null && signal.stopLoss != null && signal.entry != signal.stopLoss) {
@@ -310,13 +311,13 @@ fun ProfitSignalCard(
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 signal.entry?.let {
-                    PriceLabel(label = "Entry", price = it, color = Color(0xFF1976D2))
+                    PriceLabel(label = "Entry", price = it, color = theme.primary)
                 }
                 signal.target?.let {
-                    PriceLabel(label = "Target", price = it, color = Color(0xFF00C853))
+                    PriceLabel(label = "Target", price = it, color = theme.positive)
                 }
                 signal.stopLoss?.let {
-                    PriceLabel(label = "Stop Loss", price = it, color = Color(0xFFE53935))
+                    PriceLabel(label = "Stop Loss", price = it, color = theme.negative)
                 }
             }
 
@@ -328,7 +329,7 @@ fun ProfitSignalCard(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     riskReward?.let {
-                        val rrColor = if (it >= 2.0) Color(0xFF00C853) else if (it >= 1.0) Color(0xFFFFC107) else Color(0xFFE53935)
+                        val rrColor = if (it >= 2.0) theme.positive else if (it >= 1.0) Color(0xFFFFC107) else theme.negative
                         Text(
                             text = "R:R ${String.format("%.1f", it)}x",
                             fontSize = 11.sp,
@@ -350,7 +351,7 @@ fun ProfitSignalCard(
                             text = "Potential: ${if (pctGain > 0) "+" else ""}${String.format("%.1f", pctGain)}%",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = if (pctGain > 0) Color(0xFF00C853) else Color(0xFFE53935)
+                            color = if (pctGain > 0) theme.positive else theme.negative
                         )
                     }
                 }
@@ -493,17 +494,14 @@ fun ConfidenceCard(
 
 @Composable
 private fun ConfidenceBadge(confidence: Double, level: String) {
-    val bgColor = when {
-        confidence >= 75 -> Color(0xFFD4EDDA)  // Light green
-        confidence >= 60 -> Color(0xFFFFF3CD)  // Light yellow
-        else -> Color(0xFFF8D7DA)  // Light red
+    val theme = LocalAppTheme.current
+    val accent = when {
+        confidence >= 75 -> theme.positive
+        confidence >= 60 -> Color(0xFFFFC107)
+        else -> theme.negative
     }
-    val textColor = when {
-        confidence >= 75 -> Color(0xFF155724)
-        confidence >= 60 -> Color(0xFF856404)
-        else -> Color(0xFF721C24)
-    }
-    
+    val bgColor = accent.copy(alpha = 0.18f).compositeOver(theme.card)
+
     Surface(
         color = bgColor,
         shape = RoundedCornerShape(8.dp),
@@ -513,7 +511,7 @@ private fun ConfidenceBadge(confidence: Double, level: String) {
             text = "${confidence.toInt()}% $level",
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
-            color = textColor,
+            color = accent,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
         )
     }
@@ -521,6 +519,7 @@ private fun ConfidenceBadge(confidence: Double, level: String) {
 
 @Composable
 private fun ConfidenceGauge(confidence: Double) {
+    val theme = LocalAppTheme.current
     Column {
         Row(
             modifier = Modifier
@@ -534,9 +533,9 @@ private fun ConfidenceGauge(confidence: Double) {
                     .fillMaxWidth(fraction = (confidence / 100.0).toFloat().coerceIn(0f, 1f))
                     .background(
                         color = when {
-                            confidence >= 75.0 -> Color(0xFF28A745)
+                            confidence >= 75.0 -> theme.positive
                             confidence >= 60.0 -> Color(0xFFFFC107)
-                            else -> Color(0xFFDC3545)
+                            else -> theme.negative
                         },
                         shape = RoundedCornerShape(4.dp)
                     )
@@ -547,7 +546,7 @@ private fun ConfidenceGauge(confidence: Double) {
                     .fillMaxHeight()
                     .weight(1f)
                     .background(
-                        color = Color(0xFFE9ECEF),
+                        color = theme.mutedSurface,
                         shape = RoundedCornerShape(4.dp)
                     )
             )
@@ -559,9 +558,9 @@ private fun ConfidenceGauge(confidence: Double) {
                 .padding(top = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("50%", fontSize = 10.sp, color = Color(0xFF999999))
-            Text("75%", fontSize = 10.sp, color = Color(0xFF999999))
-            Text("95%", fontSize = 10.sp, color = Color(0xFF999999))
+            Text("50%", fontSize = 10.sp, color = theme.textSecondary)
+            Text("75%", fontSize = 10.sp, color = theme.textSecondary)
+            Text("95%", fontSize = 10.sp, color = theme.textSecondary)
         }
     }
 }
@@ -790,13 +789,18 @@ fun EventRiskCard(
 ) {
     if (eventRisks.isEmpty()) return
     
+    val theme = LocalAppTheme.current
+    val warningAccent = Color(0xFFFFB300)
+    val warningFill = warningAccent.copy(alpha = if (theme.isLight) 0.22f else 0.16f)
+        .compositeOver(theme.card)
+    val warningOn = if (theme.isLight) Color(0xFF6D4C00) else Color(0xFFFFE082)
     Card(
         modifier = modifier
             .fillMaxWidth()
             .padding(12.dp),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFFFF3CD)
+            containerColor = warningFill
         )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -807,14 +811,14 @@ fun EventRiskCard(
                 Icon(
                     imageVector = Icons.Default.Warning,
                     contentDescription = "Risk Factor",
-                    tint = Color(0xFF856404),
+                    tint = warningOn,
                     modifier = Modifier.size(20.dp)
                 )
                 Text(
                     text = "Upcoming Events May Impact Prediction",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF856404)
+                    color = warningOn
                 )
             }
             
@@ -854,7 +858,7 @@ fun EventRiskCard(
             // Risk factors list
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 eventRisks.forEach { risk ->
-                    RiskFactorItem(risk)
+                    RiskFactorItem(risk, warningOn)
                 }
             }
         }
@@ -862,7 +866,7 @@ fun EventRiskCard(
 }
 
 @Composable
-private fun RiskFactorItem(risk: String) {
+private fun RiskFactorItem(risk: String, textColor: Color) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -872,7 +876,7 @@ private fun RiskFactorItem(risk: String) {
         Text(
             text = risk.drop(1),
             fontSize = 11.sp,
-            color = Color(0xFF333333),
+            color = textColor,
             modifier = Modifier.weight(1f)
         )
     }
@@ -934,17 +938,17 @@ fun SentimentCard(
                 SentimentBreakdownItem(
                     label = "Positive",
                     count = breakdown.positiveCount,
-                    color = Color(0xFF28A745)
+                    color = theme.positive
                 )
                 SentimentBreakdownItem(
                     label = "Neutral",
                     count = breakdown.neutralCount,
-                    color = Color(0xFF6C757D)
+                    color = theme.textSecondary
                 )
                 SentimentBreakdownItem(
                     label = "Negative",
                     count = breakdown.negativeCount,
-                    color = Color(0xFFDC3545)
+                    color = theme.negative
                 )
             }
             
@@ -962,17 +966,14 @@ fun SentimentCard(
 
 @Composable
 private fun SentimentBadge(sentiment: String, strength: String) {
-    val bgColor = when (sentiment) {
-        "positive" -> Color(0xFFD4EDDA)
-        "negative" -> Color(0xFFF8D7DA)
-        else -> Color(0xFFE2E3E5)
+    val theme = LocalAppTheme.current
+    val accent = when (sentiment) {
+        "positive" -> theme.positive
+        "negative" -> theme.negative
+        else -> theme.textSecondary
     }
-    val textColor = when (sentiment) {
-        "positive" -> Color(0xFF155724)
-        "negative" -> Color(0xFF721C24)
-        else -> Color(0xFF383D41)
-    }
-    
+    val bgColor = accent.copy(alpha = 0.18f).compositeOver(theme.card)
+
     Surface(
         color = bgColor,
         shape = RoundedCornerShape(8.dp)
@@ -981,7 +982,7 @@ private fun SentimentBadge(sentiment: String, strength: String) {
             text = "${sentiment.capitalize()} ($strength)",
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
-            color = textColor,
+            color = accent,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
         )
     }
@@ -989,6 +990,7 @@ private fun SentimentBadge(sentiment: String, strength: String) {
 
 @Composable
 private fun SentimentGauge(score: Double) {
+    val theme = LocalAppTheme.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1000,7 +1002,7 @@ private fun SentimentGauge(score: Double) {
             modifier = Modifier
                 .fillMaxHeight()
                 .fillMaxWidth(fraction = 0.5f * (1f - (score / 2.0).toFloat().coerceIn(-1f, 0f)))
-                .background(Color(0xFFDC3545), RoundedCornerShape(topStart = 4.dp, bottomStart = 4.dp))
+                .background(theme.negative, RoundedCornerShape(topStart = 4.dp, bottomStart = 4.dp))
         )
         
         // Neutral center
@@ -1008,7 +1010,7 @@ private fun SentimentGauge(score: Double) {
             modifier = Modifier
                 .fillMaxHeight()
                 .fillMaxWidth(fraction = 0.1f)
-                .background(Color(0xFFE9ECEF))
+                .background(theme.mutedSurface)
         )
         
         // Positive side
@@ -1016,7 +1018,7 @@ private fun SentimentGauge(score: Double) {
             modifier = Modifier
                 .fillMaxHeight()
                 .weight(1f)
-                .background(Color(0xFF28A745), RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
+                .background(theme.positive, RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
         )
     }
 }
@@ -1051,13 +1053,14 @@ fun QueryUnderstandingCard(
     queryUnderstanding: QueryUnderstanding,
     modifier: Modifier = Modifier
 ) {
+    val theme = LocalAppTheme.current
     Card(
         modifier = modifier
             .fillMaxWidth()
             .padding(12.dp),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFE3F2FD)
+            containerColor = theme.primary.copy(alpha = 0.14f).compositeOver(theme.card)
         )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -1068,14 +1071,14 @@ fun QueryUnderstandingCard(
                 Icon(
                     imageVector = Icons.Default.CheckCircle,
                     contentDescription = "Query understood",
-                    tint = Color(0xFF1976D2),
+                    tint = theme.primary,
                     modifier = Modifier.size(20.dp)
                 )
                 Text(
                     text = "Query Understood",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF1565C0)
+                    color = theme.primary
                 )
             }
             
@@ -1088,15 +1091,15 @@ fun QueryUnderstandingCard(
             Text(
                 text = "Analysis: $intents | Timeframe: $timeframe",
                 fontSize = 11.sp,
-                color = Color(0xFF0D47A1),
+                color = theme.text,
                 modifier = Modifier.padding(vertical = 4.dp)
             )
             
             if (confidence < 0.7) {
                 Text(
-                    text = "⚠️ Interpretation confidence: ${(confidence * 100).toInt()}% (ask more specific question for better results)",
+                    text = "Interpretation confidence: ${(confidence * 100).toInt()}% — ask a more specific question for better results",
                     fontSize = 10.sp,
-                    color = Color(0xFF856404)
+                    color = if (theme.isLight) Color(0xFF6D4C00) else Color(0xFFFFE082)
                 )
             }
         }

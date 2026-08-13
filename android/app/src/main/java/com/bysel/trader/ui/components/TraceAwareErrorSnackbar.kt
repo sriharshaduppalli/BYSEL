@@ -36,7 +36,7 @@ fun extractTraceIdFromMessage(message: String?): String? {
         ?.takeIf { it.isNotBlank() }
 }
 
-/** User-facing copy without support-trace noise. */
+/** User-facing copy without support-trace noise or raw HTTP status codes. */
 fun sanitizeErrorMessageForDisplay(message: String?): String {
     if (message.isNullOrBlank()) return "Something went wrong. Please try again."
     val cleaned = message
@@ -46,6 +46,17 @@ fun sanitizeErrorMessageForDisplay(message: String?): String {
         .replace(TRACE_INLINE_PATTERN, "")
         .replace(Regex("\\n{2,}"), "\n")
         .trim()
+    val lower = cleaned.lowercase()
+    if (
+        lower.contains("429") ||
+        lower.contains("too many requests") ||
+        lower.contains("rate limit")
+    ) {
+        return "Market data is busy right now. Last prices stay on screen — try again in a few seconds."
+    }
+    if (Regex("(?i)^HTTP\\s+\\d{3}").containsMatchIn(cleaned)) {
+        return "Couldn't refresh right now. Please try again in a few seconds."
+    }
     return cleaned.ifBlank { "Something went wrong. Please try again." }
 }
 

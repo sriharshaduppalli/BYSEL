@@ -219,6 +219,10 @@ data class AppTheme(
     /** Nested panel / elevated surface above [card]. */
     val surfaceElevated: Color
         get() = surfaceElevatedColor()
+
+    /** Soft PnL chip wash that follows the active skin instead of hardcoded greens/reds. */
+    fun pnlWash(isPositive: Boolean, alpha: Float = 0.18f): Color =
+        (if (isPositive) positive else negative).copy(alpha = alpha)
 }
 
 fun getTheme(themeName: String): AppTheme {

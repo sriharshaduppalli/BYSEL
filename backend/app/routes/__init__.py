@@ -2997,8 +2997,20 @@ async def portfolio_health_endpoint(
             "quantity": h.quantity,
             "avgPrice": h.avg_price,
         })
-    result = calculate_portfolio_health(holdings_list)
-    return result
+    try:
+        result = await asyncio.to_thread(calculate_portfolio_health, holdings_list)
+        return result
+    except Exception as exc:
+        logger.warning("portfolio_health_endpoint failed reason=%s", exc)
+        return {
+            "overallScore": 0,
+            "grade": "N/A",
+            "breakdown": {},
+            "suggestions": ["Health score is temporarily unavailable. Try refresh in a few seconds."],
+            "summary": "Couldn't refresh portfolio health right now. Your holdings are unchanged.",
+            "sectorAllocation": {},
+            "riskLevel": "none",
+        }
 
 
 # ==================== MARKET HEATMAP ====================

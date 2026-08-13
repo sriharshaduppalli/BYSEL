@@ -131,31 +131,42 @@ def calculate_portfolio_health(holdings: List[Dict]) -> Dict:
             "riskLevel": "none",
         }
 
-    # Fetch current prices and compute values
+    # Fetch current prices in one batch (never N serial Yahoo calls — that 429s refresh).
+    symbols = [
+        str(h.get("symbol") or "").upper()
+        for h in holdings
+        if (h.get("quantity", 0) or 0) > 0 and h.get("symbol")
+    ]
+    live_by_symbol: Dict[str, float] = {}
+    try:
+        from .market_data import fetch_quotes, _safe_number
+        for quote in fetch_quotes(symbols) or []:
+            sym = str(quote.get("symbol") or "").upper()
+            last = _safe_number(quote.get("last"), 0.0)
+            if sym and last > 0:
+                live_by_symbol[sym] = last
+    except Exception as exc:
+        logger.warning("portfolio_health quote batch failed reason=%s", exc)
+
     portfolio_data = []
     total_value = 0
     total_invested = 0
 
     for h in holdings:
-        sym = h.get("symbol", "")
+        sym = str(h.get("symbol") or "").upper()
         qty = h.get("quantity", 0)
         avg_price = h.get("avgPrice", 0) or h.get("avg_price", 0)
 
         if qty <= 0:
             continue
 
-        try:
-            quote = fetch_quote(sym)
-            current_price = quote.get("last", avg_price)
-        except Exception:
-            current_price = avg_price
-
+        current_price = live_by_symbol.get(sym) or avg_price
         value = current_price * qty
         invested = avg_price * qty
         pnl = value - invested
         pnl_pct = ((current_price - avg_price) / avg_price * 100) if avg_price > 0 else 0
 
-        sector = SECTOR_MAP.get(sym, _get_sector_from_yahoo(sym))
+        sector = SECTOR_MAP.get(sym, "Other")
 
         portfolio_data.append({
             "symbol": sym,

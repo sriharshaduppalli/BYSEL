@@ -702,7 +702,7 @@ private fun SpotTradingWorkspace(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (marketStatus.isOpen) Color(0xFF1B5E20).copy(alpha = 0.3f)
+                    containerColor = if (marketStatus.isOpen) LocalAppTheme.current.pnlWash(true, 0.28f)
                     else LocalAppTheme.current.primary.copy(alpha = 0.12f)
                 ),
                 shape = RoundedCornerShape(8.dp)
@@ -763,12 +763,12 @@ private fun SpotTradingWorkspace(
                                 Box(modifier = Modifier
                                     .fillMaxWidth(0.4f)
                                     .height(16.dp)
-                                    .background(Color.Gray.copy(alpha = 0.2f)))
+                                    .background(LocalAppTheme.current.mutedSurface))
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Box(modifier = Modifier
                                     .fillMaxWidth(0.6f)
                                     .height(14.dp)
-                                    .background(Color.Gray.copy(alpha = 0.15f)))
+                                    .background(LocalAppTheme.current.mutedSurface.copy(alpha = 0.7f)))
                             }
                         }
                     }

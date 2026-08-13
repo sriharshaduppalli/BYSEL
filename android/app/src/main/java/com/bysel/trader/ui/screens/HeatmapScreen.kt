@@ -22,6 +22,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -34,7 +35,9 @@ import com.bysel.trader.data.models.HeatmapSector
 import com.bysel.trader.data.models.HeatmapStock
 import com.bysel.trader.data.models.MarketHeatmap
 import com.bysel.trader.ui.components.PullToRefreshBox
+import com.bysel.trader.ui.theme.AppTheme
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.contentColorForFill
 import java.util.Calendar
 import java.util.TimeZone
 import kotlin.math.max
@@ -323,6 +326,7 @@ private fun HeatmapHeader(heatmap: MarketHeatmap?) {
         "FEARFUL" -> listOf(Color(0xFFB71C1C), Color(0xFF4A148C))
         else -> listOf(Color(0xFF1A237E), Color(0xFF7C4DFF))
     }
+    val onMood = contentColorForFill(moodColors.last())
 
     Box(
         modifier = Modifier
@@ -342,21 +346,21 @@ private fun HeatmapHeader(heatmap: MarketHeatmap?) {
                     Icon(
                         Icons.Filled.GridView,
                         contentDescription = null,
-                        tint = LocalAppTheme.current.text,
+                        tint = onMood,
                         modifier = Modifier.size(28.dp)
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
                             "Smart Sentiment Heatmap",
-                            color = LocalAppTheme.current.text,
+                            color = onMood,
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp
                         )
                         if (heatmap != null) {
                             Text(
                                 "Market Mood: ${heatmap.moodEmoji} ${heatmap.mood}",
-                                color = LocalAppTheme.current.text.copy(alpha = 0.9f),
+                                color = onMood.copy(alpha = 0.9f),
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
                             )
@@ -368,7 +372,7 @@ private fun HeatmapHeader(heatmap: MarketHeatmap?) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     heatmap.moodDescription,
-                    color = LocalAppTheme.current.text.copy(alpha = 0.8f),
+                    color = onMood.copy(alpha = 0.85f),
                     fontSize = 12.sp
                 )
             }
@@ -481,6 +485,7 @@ private fun MarketBreathCard(
             )
             Spacer(modifier = Modifier.height(8.dp))
 
+            val theme = LocalAppTheme.current
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -492,7 +497,7 @@ private fun MarketBreathCard(
                         modifier = Modifier
                             .weight(advancePct.coerceAtLeast(0.01f))
                             .fillMaxHeight()
-                            .background(Color(0xFF00C853))
+                            .background(theme.positive)
                     )
                 }
                 if (unchangedPct > 0.01f) {
@@ -500,7 +505,7 @@ private fun MarketBreathCard(
                         modifier = Modifier
                             .weight(unchangedPct)
                             .fillMaxHeight()
-                            .background(Color(0xFF78909C))
+                            .background(theme.textSecondary.copy(alpha = 0.55f))
                     )
                 }
                 if (declinePct > 0f) {
@@ -508,7 +513,7 @@ private fun MarketBreathCard(
                         modifier = Modifier
                             .weight(declinePct.coerceAtLeast(0.01f))
                             .fillMaxHeight()
-                            .background(Color(0xFFE53935))
+                            .background(theme.negative)
                     )
                 }
             }
@@ -519,9 +524,9 @@ private fun MarketBreathCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                BreathLabel("Advances", breadth.advances, Color(0xFF00C853), advancePct)
-                BreathLabel("Unchanged", breadth.unchanged, Color(0xFF78909C), unchangedPct)
-                BreathLabel("Declines", breadth.declines, Color(0xFFE53935), declinePct)
+                BreathLabel("Advances", breadth.advances, theme.positive, advancePct)
+                BreathLabel("Unchanged", breadth.unchanged, theme.textSecondary, unchangedPct)
+                BreathLabel("Declines", breadth.declines, theme.negative, declinePct)
             }
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -548,7 +553,7 @@ private fun MarketBreathCard(
             )
 
             Spacer(modifier = Modifier.height(12.dp))
-            HorizontalDivider(color = Color(0xFF333333))
+            HorizontalDivider(color = LocalAppTheme.current.cardOutline)
             Spacer(modifier = Modifier.height(12.dp))
 
             Row(
@@ -561,7 +566,7 @@ private fun MarketBreathCard(
                     Text("Best Sector", color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
                     Text(
                         "${heatmap.bestSector.name} (${String.format("%+.2f", bestChange)}%)",
-                        color = Color(0xFF00C853),
+                        color = LocalAppTheme.current.positive,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         maxLines = 2,
@@ -575,7 +580,7 @@ private fun MarketBreathCard(
                     Text("Worst Sector", color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
                     Text(
                         "${heatmap.worstSector.name} (${String.format("%+.2f", worstChange)}%)",
-                        color = Color(0xFFE53935),
+                        color = LocalAppTheme.current.negative,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         maxLines = 2,
@@ -636,10 +641,11 @@ private fun BreathDistributionGraph(
     samples: List<BreathSample>,
     modifier: Modifier = Modifier,
 ) {
-    val advanceColor = Color(0xFF00C853)
-    val declineColor = Color(0xFFE53935)
-    val unchangedColor = Color(0xFF78909C)
-    val gridColor = LocalAppTheme.current.textSecondary.copy(alpha = 0.2f)
+    val theme = LocalAppTheme.current
+    val advanceColor = theme.positive
+    val declineColor = theme.negative
+    val unchangedColor = theme.textSecondary.copy(alpha = 0.55f)
+    val gridColor = theme.textSecondary.copy(alpha = 0.2f)
 
     Canvas(modifier = modifier) {
         if (samples.isEmpty()) return@Canvas
@@ -735,16 +741,21 @@ private fun BreathLabel(label: String, count: Int, color: Color, share: Float) {
     }
 }
 
+private fun heatmapIntensityFill(intensity: String, theme: AppTheme): Color = when (intensity) {
+    "strong_positive" -> theme.positive
+    "positive" -> theme.positive.copy(alpha = 0.78f).compositeOver(theme.card)
+    "slight_positive" -> theme.positive.copy(alpha = 0.40f).compositeOver(theme.card)
+    "neutral" -> Color(0xFFFFB300).copy(alpha = 0.55f).compositeOver(theme.card)
+    "slight_negative" -> theme.negative.copy(alpha = 0.40f).compositeOver(theme.card)
+    "negative" -> theme.negative.copy(alpha = 0.78f).compositeOver(theme.card)
+    "strong_negative" -> theme.negative
+    else -> theme.mutedSurface
+}
+
 @Composable
 private fun SectorHeatmapCard(sector: HeatmapSector, onStockClick: (String) -> Unit) {
-    val sectorColor = when (sector.intensity) {
-        "strong_positive" -> Color(0xFF00C853)
-        "positive" -> Color(0xFF43A047)
-        "neutral" -> Color(0xFFFFB300)
-        "negative" -> Color(0xFFE53935)
-        "strong_negative" -> Color(0xFFB71C1C)
-        else -> LocalAppTheme.current.textSecondary
-    }
+    val theme = LocalAppTheme.current
+    val sectorColor = heatmapIntensityFill(sector.intensity, theme)
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -824,15 +835,9 @@ private fun StockHeatTile(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    val bgColor = when (stock.intensity) {
-        "strong_positive" -> Color(0xFF00C853)
-        "positive" -> Color(0xFF2E7D32)
-        "slight_positive" -> Color(0xFF1B5E20).copy(alpha = 0.7f)
-        "slight_negative" -> Color(0xFF4E342E).copy(alpha = 0.7f)
-        "negative" -> Color(0xFFC62828)
-        "strong_negative" -> Color(0xFFB71C1C)
-        else -> Color(0xFF424242)
-    }
+    val theme = LocalAppTheme.current
+    val bgColor = heatmapIntensityFill(stock.intensity, theme)
+    val onTile = contentColorForFill(bgColor)
 
     Card(
         modifier = modifier
@@ -850,7 +855,7 @@ private fun StockHeatTile(
         ) {
             Text(
                 stock.symbol,
-                color = LocalAppTheme.current.text,
+                color = onTile,
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
@@ -858,7 +863,7 @@ private fun StockHeatTile(
             )
             Text(
                 "${String.format("%+.1f", stock.pctChange)}%",
-                color = LocalAppTheme.current.text.copy(alpha = 0.9f),
+                color = onTile.copy(alpha = 0.9f),
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Medium
             )

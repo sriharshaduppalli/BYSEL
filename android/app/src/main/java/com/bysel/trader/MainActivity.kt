@@ -797,6 +797,13 @@ fun BYSELApp(
                         } else {
                             selectedTab
                         }
+                        val navColors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = appTheme.primary,
+                            selectedTextColor = appTheme.primary,
+                            unselectedIconColor = appTheme.textSecondary,
+                            unselectedTextColor = appTheme.textSecondary,
+                            indicatorColor = Color.Transparent,
+                        )
                         NavigationBar(
                             modifier = Modifier.background(appTheme.card),
                             containerColor = appTheme.card
@@ -807,13 +814,7 @@ fun BYSELApp(
                         label = { Text("Home", fontSize = 10.sp) },
                         selected = navHighlightTab == 0,
                         onClick = { selectRootTab(0) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = appTheme.primary,
-                            selectedTextColor = appTheme.primary,
-                            unselectedIconColor = Color.Gray,
-                            unselectedTextColor = Color.Gray,
-                            indicatorColor = Color.Transparent
-                        )
+                        colors = navColors
                     )
                     // Tab 1: AI Assistant
                     NavigationBarItem(
@@ -821,13 +822,7 @@ fun BYSELApp(
                         label = { Text("AI", fontSize = 10.sp) },
                         selected = navHighlightTab == 1,
                         onClick = { selectRootTab(1) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = appTheme.primary,
-                            selectedTextColor = appTheme.primary,
-                            unselectedIconColor = Color.Gray,
-                            unselectedTextColor = Color.Gray,
-                            indicatorColor = Color.Transparent
-                        )
+                        colors = navColors
                     )
                     // Tab 2: Trading
                     NavigationBarItem(
@@ -835,13 +830,7 @@ fun BYSELApp(
                         label = { Text("Trade", fontSize = 10.sp) },
                         selected = navHighlightTab == 2,
                         onClick = { selectRootTab(2) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = appTheme.primary,
-                            selectedTextColor = appTheme.primary,
-                            unselectedIconColor = Color.Gray,
-                            unselectedTextColor = Color.Gray,
-                            indicatorColor = Color.Transparent
-                        )
+                        colors = navColors
                     )
                     // Tab 3: Portfolio
                     NavigationBarItem(
@@ -849,13 +838,7 @@ fun BYSELApp(
                         label = { Text("Portfolio", fontSize = 10.sp) },
                         selected = navHighlightTab == 3,
                         onClick = { selectRootTab(3) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = appTheme.primary,
-                            selectedTextColor = appTheme.primary,
-                            unselectedIconColor = Color.Gray,
-                            unselectedTextColor = Color.Gray,
-                            indicatorColor = Color.Transparent
-                        )
+                        colors = navColors
                     )
                     // Tab 4: Heatmap
                     NavigationBarItem(
@@ -863,13 +846,7 @@ fun BYSELApp(
                         label = { Text("Heatmap", fontSize = 10.sp) },
                         selected = navHighlightTab == 4,
                         onClick = { selectRootTab(4) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = appTheme.primary,
-                            selectedTextColor = appTheme.primary,
-                            unselectedIconColor = Color.Gray,
-                            unselectedTextColor = Color.Gray,
-                            indicatorColor = Color.Transparent
-                        )
+                        colors = navColors
                     )
                     // Tab 5: More (Search, Alerts, Settings) — badge when price alerts are armed
                     NavigationBarItem(
@@ -903,13 +880,7 @@ fun BYSELApp(
                         label = { Text("More", fontSize = 10.sp) },
                         selected = navHighlightTab in 5..27,
                         onClick = { selectRootTab(5) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = appTheme.primary,
-                            selectedTextColor = appTheme.primary,
-                            unselectedIconColor = Color.Gray,
-                            unselectedTextColor = Color.Gray,
-                            indicatorColor = Color.Transparent
-                        )
+                        colors = navColors
                     )
                         }
                     }
@@ -1129,7 +1100,10 @@ fun BYSELApp(
                                         error = error,
                                         portfolioHealth = portfolioHealth,
                                         healthLoading = healthLoading,
-                                        onRefresh = { viewModel.refreshHoldings() },
+                                        onRefresh = {
+                                            viewModel.refreshHoldings()
+                                            viewModel.loadPortfolioHealth()
+                                        },
                                         onRefreshHealth = { viewModel.loadPortfolioHealth() },
                                         onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
                                         onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") },

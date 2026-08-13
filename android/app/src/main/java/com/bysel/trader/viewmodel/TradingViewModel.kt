@@ -783,9 +783,17 @@ class TradingViewModel(
     fun refreshHoldings() {
         viewModelScope.launch {
             repository.getHoldings().collectLatest { result ->
-                if (result is Result.Success) {
-                    _holdings.value = result.data
-                    lastHoldingsRefreshAt = System.currentTimeMillis()
+                when (result) {
+                    is Result.Success -> {
+                        _holdings.value = result.data
+                        lastHoldingsRefreshAt = System.currentTimeMillis()
+                    }
+                    is Result.Error -> {
+                        if (_holdings.value.isEmpty()) {
+                            _error.value = result.message
+                        }
+                    }
+                    else -> {}
                 }
             }
         }
@@ -2356,6 +2364,15 @@ class TradingViewModel(
 
     fun clearError() { _error.value = null }
 
+    private fun isTransientMarketBusyMessage(message: String): Boolean {
+        val lower = message.lowercase()
+        return lower.contains("429") ||
+            lower.contains("too many requests") ||
+            lower.contains("rate limit") ||
+            lower.contains("market data is busy") ||
+            Regex("(?i)^HTTP\\s+\\d{3}").containsMatchIn(message)
+    }
+
     // Converts recent ChatMessage history to ConversationTurn list for the backend NLP context
     private fun buildConversationHistory(limit: Int = 6): List<ConversationTurn> =
         _chatHistory.value.takeLast(limit).map { msg ->
@@ -2798,8 +2815,16 @@ class TradingViewModel(
         viewModelScope.launch {
             _healthLoading.value = true
             when (val r = repository.getPortfolioHealth()) {
-                is Result.Success -> _portfolioHealth.value = r.data
-                is Result.Error -> _error.value = r.message
+                is Result.Success -> {
+                    _portfolioHealth.value = r.data
+                    _error.value = _error.value?.takeUnless { isTransientMarketBusyMessage(it) }
+                }
+                is Result.Error -> {
+                    // Keep the last score. Never flash raw HTTP 429 on Portfolio.
+                    if (_portfolioHealth.value == null && !isTransientMarketBusyMessage(r.message)) {
+                        _error.value = r.message
+                    }
+                }
                 else -> {}
             }
             _healthLoading.value = false

@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.bysel.trader.data.api.ChartPattern
 import com.bysel.trader.data.models.HistoryCandle
+import com.bysel.trader.ui.theme.LocalAppTheme
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -112,7 +113,7 @@ fun TradingViewChart(
                     "L" to lastCandle.low,
                     "C" to lastCandle.close,
                 ).forEach { (label, value) ->
-                    Text("$label: ${String.format("%.2f", value)}", color = Color.Gray, fontSize = 11.sp)
+                    Text("$label: ${String.format("%.2f", value)}", color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
                 }
             }
             Text(
@@ -206,8 +207,8 @@ private fun LazyRowChips(
                     onClick = { onToggle(overlay) },
                     label = { Text(overlay.label, fontSize = 10.sp) },
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = Color(0xFF1976D2).copy(alpha = 0.2f),
-                        selectedLabelColor = Color(0xFF42A5F5)
+                        selectedContainerColor = LocalAppTheme.current.primary.copy(alpha = 0.2f),
+                        selectedLabelColor = LocalAppTheme.current.primary
                     ),
                     modifier = Modifier.height(28.dp)
                 )

@@ -9,7 +9,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -154,7 +153,8 @@ fun CreateAlertDialog(
                         onClick = { alertType = "ABOVE" },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (alertType == "ABOVE") LocalAppTheme.current.primary else Color(0xFF333333)
+                            containerColor = if (alertType == "ABOVE") LocalAppTheme.current.primary else LocalAppTheme.current.mutedSurface,
+                            contentColor = if (alertType == "ABOVE") LocalAppTheme.current.onPrimary else LocalAppTheme.current.text,
                         )
                     ) {
                         Text("Above")
@@ -163,7 +163,8 @@ fun CreateAlertDialog(
                         onClick = { alertType = "BELOW" },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (alertType == "BELOW") LocalAppTheme.current.primary else Color(0xFF333333)
+                            containerColor = if (alertType == "BELOW") LocalAppTheme.current.primary else LocalAppTheme.current.mutedSurface,
+                            contentColor = if (alertType == "BELOW") LocalAppTheme.current.onPrimary else LocalAppTheme.current.text,
                         )
                     ) {
                         Text("Below")

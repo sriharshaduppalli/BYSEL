@@ -258,8 +258,8 @@ fun UpgradedQuoteCard(quote: Quote, onClick: () -> Unit) {
                     Row(
                         modifier = Modifier
                             .background(
-                                color = if (quote.pctChange > 0) Color(0xFF1B5E20).copy(alpha = 0.3f)
-                                else Color(0xFFB71C1C).copy(alpha = 0.3f),
+                        color = if (quote.pctChange > 0) LocalAppTheme.current.pnlWash(true)
+                                else LocalAppTheme.current.pnlWash(false),
                                 shape = RoundedCornerShape(8.dp)
                             )
                             .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -867,7 +867,7 @@ fun PortfolioHealthCard(
                             .height(10.dp)
                             .clip(RoundedCornerShape(5.dp)),
                         color = scoreColor,
-                        trackColor = Color(0xFF333333)
+                        trackColor = LocalAppTheme.current.mutedSurface
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(

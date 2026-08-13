@@ -3020,8 +3020,8 @@ fun GainerLosersCard(
             Row(
                 modifier = Modifier
                     .background(
-                        color = if (isGainer) Color(0xFF1B5E20).copy(alpha = 0.3f)
-                        else Color(0xFFB71C1C).copy(alpha = 0.3f),
+                        color = if (isGainer) LocalAppTheme.current.pnlWash(true)
+                        else LocalAppTheme.current.pnlWash(false),
                         shape = RoundedCornerShape(8.dp)
                     )
                     .padding(horizontal = 12.dp, vertical = 8.dp),

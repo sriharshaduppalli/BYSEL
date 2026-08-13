@@ -36,6 +36,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.HistoryCandle
+import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.utils.TechnicalIndicators
 import java.time.Instant
 import java.time.LocalDate
@@ -208,11 +209,12 @@ fun CandlestickChart(
         "${rangeLabel}:${history.size}:${history.firstOrNull()?.timestamp}:${history.lastOrNull()?.timestamp}"
     }
 
-    val axisLabelStyle = remember {
-        TextStyle(color = Color(0xFF9E9E9E), fontSize = 10.sp, fontWeight = FontWeight.Medium)
+    val theme = LocalAppTheme.current
+    val axisLabelStyle = remember(theme.textSecondary) {
+        TextStyle(color = theme.textSecondary, fontSize = 10.sp, fontWeight = FontWeight.Medium)
     }
-    val gridColor = Color(0x22FFFFFF)
-    val axisLineColor = Color(0x33FFFFFF)
+    val gridColor = theme.text.copy(alpha = 0.12f)
+    val axisLineColor = theme.text.copy(alpha = 0.20f)
 
     Column(modifier = modifier) {
         val lastCandle = history.last()
@@ -222,10 +224,10 @@ fun CandlestickChart(
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(text = "O: ${String.format("%.2f", lastCandle.open)}", color = Color.Gray, fontSize = 11.sp)
-            Text(text = "H: ${String.format("%.2f", lastCandle.high)}", color = Color.Gray, fontSize = 11.sp)
-            Text(text = "L: ${String.format("%.2f", lastCandle.low)}", color = Color.Gray, fontSize = 11.sp)
-            Text(text = "C: ${String.format("%.2f", lastCandle.close)}", color = Color.Gray, fontSize = 11.sp)
+            Text(text = "O: ${String.format("%.2f", lastCandle.open)}", color = theme.textSecondary, fontSize = 11.sp)
+            Text(text = "H: ${String.format("%.2f", lastCandle.high)}", color = theme.textSecondary, fontSize = 11.sp)
+            Text(text = "L: ${String.format("%.2f", lastCandle.low)}", color = theme.textSecondary, fontSize = 11.sp)
+            Text(text = "C: ${String.format("%.2f", lastCandle.close)}", color = theme.textSecondary, fontSize = 11.sp)
         }
 
         Row(
@@ -256,7 +258,7 @@ fun CandlestickChart(
             val rsiColor = when {
                 lastRsi >= 70 -> Color(0xFFE53935)
                 lastRsi <= 30 -> Color(0xFF00C853)
-                else -> Color.Gray
+                else -> theme.textSecondary
             }
             val rsiLabel = when {
                 lastRsi >= 70 -> "Overbought"
@@ -274,7 +276,7 @@ fun CandlestickChart(
 
         Text(
             text = "$rangeLabel · ${history.size} candles · drag to pan · pinch / slider to zoom",
-            color = Color.Gray,
+            color = theme.textSecondary,
             fontSize = 10.sp,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
             maxLines = 1,

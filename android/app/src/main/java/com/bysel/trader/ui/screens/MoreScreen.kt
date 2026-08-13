@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.sp
 import com.bysel.trader.BuildConfig
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.theme.ScreenHeader
+import com.bysel.trader.ui.theme.contentColorForFill
 
 private data class MoreMenuEntry(
     val icon: ImageVector,
@@ -446,7 +447,7 @@ private fun MoreMenuItem(entry: MoreMenuEntry) {
                     Icon(
                         imageVector = entry.icon,
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = contentColorForFill(entry.gradientColors.last()),
                         modifier = Modifier.size(22.dp),
                     )
                 }

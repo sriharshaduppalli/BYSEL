@@ -50,9 +50,35 @@ open class TradingRepository(private val database: BYSELDatabase) {
     private val liveMarketDataClient = LiveMarketDataClient(apiService)
 
     // ==================== QUOTES ====================
+    private fun isRateLimited(e: Exception): Boolean {
+        if (e is HttpException && e.code() == 429) return true
+        val raw = e.message.orEmpty()
+        return raw.contains("429") ||
+            raw.contains("too many requests", ignoreCase = true) ||
+            raw.contains("rate limit", ignoreCase = true)
+    }
+
+    private fun retryAfterMs(e: Exception): Long {
+        val header = (e as? HttpException)?.response()?.headers()?.get("Retry-After")
+        val seconds = header?.toLongOrNull()
+        return ((seconds ?: 2L) * 1000L).coerceIn(800L, 8_000L)
+    }
+
+    private suspend fun <T> callWithRateLimitRetry(block: suspend () -> T): T {
+        return try {
+            block()
+        } catch (e: Exception) {
+            if (!isRateLimited(e)) throw e
+            delay(retryAfterMs(e))
+            block()
+        }
+    }
+
     private fun toNetworkErrorMessage(e: Exception, fallback: String): String {
         val raw = e.message.orEmpty()
         return when {
+            isRateLimited(e) ->
+                "Market data is busy right now. Last prices stay on screen — try again in a few seconds."
             e is java.net.SocketTimeoutException ||
                 raw.contains("timeout", ignoreCase = true) ||
                 raw.contains("timed out", ignoreCase = true) ->
@@ -62,6 +88,7 @@ open class TradingRepository(private val database: BYSELDatabase) {
                 "No internet connection. Showing last saved data when available."
             raw.contains("503") || raw.contains("502") || raw.contains("504") ->
                 "Market server is temporarily unavailable. Retry in a moment."
+            raw.startsWith("HTTP ", ignoreCase = true) -> fallback
             raw.isNotBlank() && raw.length < 120 -> "$fallback ($raw)"
             else -> fallback
         }
@@ -210,13 +237,13 @@ open class TradingRepository(private val database: BYSELDatabase) {
             emit(Result.Loading)
         }
         try {
-            val holdings = apiService.getHoldings()
+            val holdings = callWithRateLimitRetry { apiService.getHoldings() }
             database.holdingDao().clearAll()
             database.holdingDao().insertHoldings(holdings)
             emit(Result.Success(holdings))
         } catch (e: Exception) {
             if (!servedCache) {
-                emit(Result.Error(e.message ?: "Unknown error"))
+                emit(Result.Error(toNetworkErrorMessage(e, "Couldn't refresh holdings")))
             }
         }
     }
@@ -484,20 +511,6 @@ open class TradingRepository(private val database: BYSELDatabase) {
     }
 
     // ==================== AI STOCK ASSISTANT ====================
-    private fun isRateLimited(e: Exception): Boolean {
-        if (e is HttpException && e.code() == 429) return true
-        val raw = e.message.orEmpty()
-        return raw.contains("429") ||
-            raw.contains("too many requests", ignoreCase = true) ||
-            raw.contains("rate limit", ignoreCase = true)
-    }
-
-    private fun retryAfterMs(e: Exception): Long {
-        val header = (e as? HttpException)?.response()?.headers()?.get("Retry-After")
-        val seconds = header?.toLongOrNull()
-        return ((seconds ?: 2L) * 1000L).coerceIn(800L, 8_000L)
-    }
-
     private fun toAiErrorMessage(e: Exception, fallback: String): String {
         val raw = e.message.orEmpty()
         return when {
@@ -647,10 +660,10 @@ open class TradingRepository(private val database: BYSELDatabase) {
     // ==================== PORTFOLIO HEALTH ====================
     suspend fun getPortfolioHealth(): Result<PortfolioHealthScore> {
         return try {
-            val health = apiService.getPortfolioHealth()
+            val health = callWithRateLimitRetry { apiService.getPortfolioHealth() }
             Result.Success(health)
         } catch (e: Exception) {
-            Result.Error(e.message ?: "Unknown error")
+            Result.Error(toNetworkErrorMessage(e, "Couldn't refresh portfolio health"))
         }
     }
 
