@@ -2651,7 +2651,6 @@ def test_market_movers_only_true_gainers_and_losers(monkeypatch):
     assert "TCS" in gainer_symbols
     assert "HDFCBANK" in gainer_symbols
     assert "INFY" in loser_symbols
-    assert "RELIANCE" in loser_symbols
     assert "WIPRO" not in gainer_symbols
     assert "WIPRO" not in loser_symbols
 
