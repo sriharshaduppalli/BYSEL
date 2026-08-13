@@ -595,6 +595,8 @@ class PandasTaIndicatorCalculator:
         "bse", "price", "prices", "series", "period", "window", "length",
         "sentiment", "news", "mood", "investor", "headline", "headlines", "analysis",
         "bullish", "bearish", "neutral", "factor", "factors",
+        "buy", "sell", "hold", "wait", "trim", "accumulate", "action",
+        "paper", "practice", "legend", "direct", "answer",
     }
 
     @classmethod

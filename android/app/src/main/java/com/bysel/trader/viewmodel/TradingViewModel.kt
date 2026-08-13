@@ -150,7 +150,7 @@ class TradingViewModel(
     // Alerts manager instance (initialized directly to avoid lateinit)
     private val alertsManager: AlertsManager = AlertsManager(getApplication())
     // initialize fast refresh enabled from settings
-    private val _fastRefreshEnabled = MutableStateFlow(settingsPrefs.getBoolean("fast_refresh_enabled", false))
+    private val _fastRefreshEnabled = MutableStateFlow(settingsPrefs.getBoolean("fast_refresh_enabled", true))
     val fastRefreshEnabled: StateFlow<Boolean> = _fastRefreshEnabled.asStateFlow()
 
     // Single-quote detail
@@ -363,6 +363,7 @@ class TradingViewModel(
     private val HEATMAP_STALE_THRESHOLD = 45_000L
     private val RESUME_HEATMAP_DELAY = 500L
     private val WARM_BACKEND_BUDGET_MS = 12_000L
+    private val KEEPALIVE_INTERVAL_MS = 10 * 60_000L
     private val TRIGGER_AUTO_EVAL_INTERVAL = 30_000L
     private var lastForegroundWarmupAt = 0L
     private var lastQuotesRefreshAt = 0L
@@ -380,6 +381,7 @@ class TradingViewModel(
     private var activeHistoryRequestKey: String? = null
     private var quotesRefreshJob: Job? = null
     private var heatmapJob: Job? = null
+    private var keepaliveJob: Job? = null
     private val defaultSymbols = listOf(
         "RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN",
         "ICICIBANK", "ITC", "LT", "KOTAKBANK", "HINDUNILVR",
@@ -1323,21 +1325,38 @@ class TradingViewModel(
             if (_fastRefreshEnabled.value) {
                 startFastRefresh(symbols = trackedSymbols())
             }
+            startKeepaliveLoop()
         }
     }
 
     fun onAppBackgroundPause() {
         stopFastRefresh()
+        keepaliveJob?.cancel()
+        keepaliveJob = null
         // Drop in-flight heatmap poll work so return-to-app is not stuck behind it.
         heatmapJob?.cancel()
         heatmapJob = null
         _heatmapLoading.value = false
     }
 
+    private fun startKeepaliveLoop() {
+        if (keepaliveJob?.isActive == true) return
+        keepaliveJob = viewModelScope.launch {
+            while (isActive) {
+                kotlinx.coroutines.delay(KEEPALIVE_INTERVAL_MS)
+                runCatching { repository.warmMarketBackend() }
+            }
+        }
+    }
+
     fun setFastRefreshEnabled(enabled: Boolean) {
         _fastRefreshEnabled.value = enabled
         settingsPrefs.edit().putBoolean("fast_refresh_enabled", enabled).apply()
-        if (!enabled) stopFastRefresh()
+        if (!enabled) {
+            stopFastRefresh()
+        } else {
+            startFastRefresh(symbols = trackedSymbols())
+        }
     }
 
     fun setFastRefreshPlaying(play: Boolean) {
@@ -2806,9 +2825,14 @@ class TradingViewModel(
 
         heatmapJob?.cancel()
         heatmapJob = viewModelScope.launch {
-            _heatmapLoading.value = true
+            val showSpinner = force || _marketHeatmap.value == null
+            if (showSpinner) {
+                _heatmapLoading.value = true
+            }
             try {
-                when (val r = repository.getMarketHeatmap()) {
+                when (val r = repository.getMarketHeatmap(
+                    wakeOnFailure = _marketHeatmap.value == null,
+                )) {
                     is Result.Success -> {
                         _marketHeatmap.value = r.data
                         lastHeatmapRefreshAt = System.currentTimeMillis()

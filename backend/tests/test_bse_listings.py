@@ -18,6 +18,16 @@ def test_extract_symbol_recognizes_bse_code_and_prefix():
     assert extract_symbol_from_query("BSE:ABB outlook").upper() == "ABB"
 
 
+def test_extract_symbol_ignores_wait_action_label():
+    assert extract_symbol_from_query("WAIT") is None
+    assert extract_symbol_from_query("Action: WAIT") is None
+    assert extract_symbol_from_query("HOLD / wait — no clear edge yet") is None
+    assert extract_symbol_from_query("Should I wait on RELIANCE?") == "RELIANCE"
+    assert extract_symbol_from_query(
+        "**Action:** WAIT\nSELL = exit/avoid · WAIT = skip until setup improves"
+    ) is None
+
+
 def test_catalog_includes_bse_code_and_nse_symbol():
     market_data.invalidate_stock_catalog()
     catalog = market_data.get_stock_catalog()

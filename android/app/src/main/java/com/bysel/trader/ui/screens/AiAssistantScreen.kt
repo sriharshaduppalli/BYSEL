@@ -1430,14 +1430,23 @@ private fun ChatBubble(
 
 @Composable
 private fun TypingIndicator(likelyColdStart: Boolean = false) {
-    // Keep status copy neutral — never mention server wake/cold-start (it confuses users
-    // and previously looked like a real status even on warm, healthy replies).
-    var statusText by remember { mutableStateOf("AI is thinking…") }
+    var statusText by remember {
+        mutableStateOf(
+            if (likelyColdStart) "Waking the market server…" else "AI is thinking…"
+        )
+    }
     LaunchedEffect(likelyColdStart) {
-        kotlinx.coroutines.delay(8_000L)
-        statusText = "Still working…"
-        kotlinx.coroutines.delay(15_000L)
-        statusText = "Taking a bit longer — finishing analysis…"
+        if (likelyColdStart) {
+            kotlinx.coroutines.delay(6_000L)
+            statusText = "Still waking — first reply can take longer…"
+            kotlinx.coroutines.delay(20_000L)
+            statusText = "Finishing analysis…"
+        } else {
+            kotlinx.coroutines.delay(8_000L)
+            statusText = "Still working…"
+            kotlinx.coroutines.delay(15_000L)
+            statusText = "Taking a bit longer — finishing analysis…"
+        }
     }
 
     Row(

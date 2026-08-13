@@ -66,7 +66,9 @@ fun SettingsScreen(
     onLogoutAllDevices: () -> Unit = {},
     onOpenPriceAlerts: () -> Unit = {},
     heatmapInterval: Int = 5000,
-    onHeatmapIntervalChange: (Int) -> Unit = {}
+    onHeatmapIntervalChange: (Int) -> Unit = {},
+    liveQuotesEnabled: Boolean = true,
+    onLiveQuotesChange: (Boolean) -> Unit = {},
 ) {
     val authRepository = remember { AuthRepository() }
     val scope = rememberCoroutineScope()
@@ -643,6 +645,19 @@ fun SettingsScreen(
                 title = "Heatmap Refresh Interval",
                 subtitle = "${localHeatmapInterval / 1000}s",
                 onClick = { showIntervalDialog = true }
+            )
+        }
+        item {
+            SettingItem(
+                icon = Icons.Filled.ShowChart,
+                title = "Live quote stream",
+                subtitle = if (liveQuotesEnabled) {
+                    "WebSocket ticks while Trade or Detail is open"
+                } else {
+                    "Off — REST snapshots only (prices can lag ~20s)"
+                },
+                value = liveQuotesEnabled,
+                onValueChange = onLiveQuotesChange,
             )
         }
         item {

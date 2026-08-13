@@ -73,16 +73,15 @@ object RetrofitClient {
     /**
      * Dedicated client for AI endpoints.
      *
-     * Render free-tier cold starts often exceed 30–60s. The shared [httpClient] uses a 25s
-     * callTimeout, which is why the first AI chat message used to fail with a generic
-     * "couldn't process that" error.
+     * Warm path should finish well under this. Keep 60s headroom for a single
+     * remaining cold start after /warmup, but fail faster than the old 90s hang.
      */
     val aiHttpClient: OkHttpClient by lazy {
         httpClient.newBuilder()
-            .callTimeout(90, TimeUnit.SECONDS)
-            .connectTimeout(45, TimeUnit.SECONDS)
-            .readTimeout(90, TimeUnit.SECONDS)
-            .writeTimeout(45, TimeUnit.SECONDS)
+            .callTimeout(60, TimeUnit.SECONDS)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
             .build()
     }
 

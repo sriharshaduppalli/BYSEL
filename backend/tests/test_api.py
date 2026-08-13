@@ -2229,7 +2229,7 @@ def test_market_heatmap_returns_persisted_snapshot_when_market_closed(monkeypatc
 def test_market_heatmap_rebuilds_last_session_when_closed_without_snapshot(monkeypatch, tmp_path):
     snapshot_path = tmp_path / "market_heatmap_snapshot.json"
 
-    def _fake_fetch_quotes(symbols, max_age_seconds=None):
+    def _fake_fetch_quotes(symbols, max_age_seconds=None, **_kwargs):
         return [
             {
                 "symbol": symbol,
@@ -2244,13 +2244,21 @@ def test_market_heatmap_rebuilds_last_session_when_closed_without_snapshot(monke
     monkeypatch.setattr(market_heatmap_module, "_HEATMAP_CACHE", {"data": None, "timestamp": 0})
     monkeypatch.setattr(market_heatmap_module, "_is_nse_market_open", lambda: False)
     monkeypatch.setattr(market_heatmap_module, "fetch_quotes", _fake_fetch_quotes)
+    monkeypatch.setattr(market_heatmap_module, "_schedule_heatmap_refresh", lambda **_k: None)
+    monkeypatch.setattr(market_heatmap_module, "_warm_heatmap_universe_async", lambda: None)
+    monkeypatch.setattr(
+        "app.heatmap_universe.get_heatmap_sector_symbols",
+        lambda: {k: list(v) for k, v in market_heatmap_module.SECTOR_STOCKS.items() if v},
+    )
 
-    result = market_heatmap_module.get_market_heatmap()
+    first = market_heatmap_module.get_market_heatmap()
+    assert first["isStale"] is True
+    assert first["marketOpen"] is False
+    assert first["marketBreadth"]["total"] == 0
 
+    result = market_heatmap_module._refresh_heatmap_sync(market_open=False)
     assert result["marketBreadth"]["total"] > 0
     assert any(sector.get("stocks") for sector in result["sectors"])
-    assert result["isStale"] is True
-    assert result["marketOpen"] is False
     assert snapshot_path.exists()
     # Second call should hit the persisted snapshot without needing quotes.
     monkeypatch.setattr(
@@ -2261,6 +2269,56 @@ def test_market_heatmap_rebuilds_last_session_when_closed_without_snapshot(monke
     monkeypatch.setattr(market_heatmap_module, "_HEATMAP_CACHE", {"data": None, "timestamp": 0})
     again = market_heatmap_module.get_market_heatmap()
     assert again["marketBreadth"]["total"] == result["marketBreadth"]["total"]
+
+
+def test_heatmap_leaders_paint_before_full_universe(monkeypatch, tmp_path):
+    fetched = []
+
+    def _fake_fetch_quotes(symbols, max_age_seconds=None, **_kwargs):
+        fetched.append(list(symbols))
+        return [
+            {
+                "symbol": symbol,
+                "last": 100.0,
+                "pctChange": 1.25,
+                "change": 1.0,
+            }
+            for symbol in symbols
+        ]
+
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_SNAPSHOT_PATH", tmp_path / "snap.json")
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_CACHE", {"data": None, "timestamp": 0})
+    monkeypatch.setattr(market_heatmap_module, "fetch_quotes", _fake_fetch_quotes)
+    from app.market_data import _quote_cache
+
+    _quote_cache.clear()
+
+    result = market_heatmap_module._build_heatmap_from_quotes(market_open=True, leaders_only=True)
+    assert fetched, "leaders pass should hit Yahoo"
+    first_batch = fetched[0]
+    assert "HDFCBANK" in first_batch
+    assert "TCS" in first_batch
+    assert "20MICRONS" not in first_batch
+    banking = next(s for s in result["sectors"] if s["name"] == "Banking")
+    assert any(stock["symbol"] == "HDFCBANK" for stock in banking["stocks"])
+    assert result["marketBreadth"]["total"] > 0
+
+
+def test_open_market_heatmap_does_not_block_on_yahoo(monkeypatch, tmp_path):
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_SNAPSHOT_PATH", tmp_path / "missing.json")
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_CACHE", {"data": None, "timestamp": 0})
+    monkeypatch.setattr(market_heatmap_module, "_is_nse_market_open", lambda: True)
+    monkeypatch.setattr(market_heatmap_module, "_schedule_heatmap_refresh", lambda **_k: None)
+    monkeypatch.setattr(
+        market_heatmap_module,
+        "fetch_quotes",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("request path must not hit Yahoo")),
+    )
+
+    result = market_heatmap_module.get_market_heatmap()
+    assert result["isStale"] is True
+    assert result["marketOpen"] is True
+    assert result["marketBreadth"]["total"] == 0
 
 
 def test_investor_portfolio_insights_endpoint_returns_changes_and_ideas(monkeypatch):

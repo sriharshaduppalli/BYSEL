@@ -145,7 +145,7 @@ private val HomeGuideSteps = listOf(
     ),
     HomeGuideStep(
         title = "Live refresh",
-        body = "Pull down anywhere on Home, or tap Refresh / Fast Refresh, to sync quotes and market news.",
+        body = "Pull down anywhere on Home, or tap Refresh, to sync quotes and market news.",
         actionLabel = "Refresh now",
         icon = Icons.Filled.Refresh,
     ),

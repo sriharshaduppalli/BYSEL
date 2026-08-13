@@ -242,6 +242,13 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        // AGP 8.4 path for 16 KB devices: compress JNI libs so Play install doesn't
+        // require PAGE_ALIGNMENT_16K zip layout (ELF LOAD align still 16 KB via NDK r28 +
+        // tasks-genai 0.10.35). Prefer AGP 8.5.1+ + useLegacyPackaging=false when Gradle
+        // upgrade is available.
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 

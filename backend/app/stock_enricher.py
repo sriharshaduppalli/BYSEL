@@ -16,6 +16,7 @@ import asyncio
 import csv
 import io
 import logging
+import os
 import re
 import threading
 from time import time
@@ -1332,6 +1333,9 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
         "ANALYZE", "ANALYSE", "COMPARE", "PREDICT", "FORECAST",
         "ACCUMULATE", "PARK", "REBALANCE", "HOLD", "WATCH", "EXIT",
         "ENTER", "INVEST", "RECOMMEND",
+        # Stance / action labels from the composer — never tickers.
+        "WAIT", "TRIM", "ACTION", "DIRECT", "ANSWER", "LEGEND",
+        "PAPER", "PRACTICE", "SKIP", "MEANING", "BIAS", "INVALIDATION",
         # adjectives / descriptors
         "NEAR", "STRONG", "WEAK", "QUICK", "FAIR", "FAIRLY",
         "BLUE", "CHIP", "CHIPS", "ENTRY", "SETUP", "WITH", "FROM",
@@ -1377,18 +1381,24 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
         return _resolve_listed_symbol(amp.group(1))
     tokens = re.findall(r'\b[A-Z][A-Z0-9\-]{1,9}\b', q_upper)
     for tok in tokens:
-        if tok not in _SKIP and len(tok) >= 3:
-            return _resolve_listed_symbol(tok)
+        if tok in _SKIP or len(tok) < 3:
+            continue
+        resolved = _resolve_listed_symbol(tok)
+        if _is_catalog_symbol(resolved):
+            return resolved
 
     # Step 4: fuzzy matching fallback for typos (e.g., "RELIANGE" → "RELIANCE")
     from difflib import get_close_matches
     extracted_tokens = re.findall(r'\b[A-Za-z0-9\-]{3,10}\b', query.upper())
     if extracted_tokens:
         for token in extracted_tokens:
-            if token not in _SKIP:
-                candidates = get_close_matches(token, list(_NAME_TO_SYMBOL.values()), n=1, cutoff=0.75)
-                if candidates:
-                    return _resolve_listed_symbol(candidates[0])
+            if token in _SKIP:
+                continue
+            candidates = get_close_matches(token, list(_NAME_TO_SYMBOL.values()), n=1, cutoff=0.75)
+            if candidates:
+                resolved = _resolve_listed_symbol(candidates[0])
+                if _is_catalog_symbol(resolved):
+                    return resolved
 
     return None
 
@@ -1490,10 +1500,10 @@ def _fetch_nse_fundamentals(symbol: str) -> dict:
         session = requests.Session()
         session.headers.update(_NSE_HEADERS)
         # Step 1: visit home page to get cookies (NSE checks for session)
-        session.get("https://www.nseindia.com/", timeout=8)
+        session.get("https://www.nseindia.com/", timeout=4)
         resp = session.get(
             f"https://www.nseindia.com/api/quote-equity?symbol={symbol}",
-            timeout=8,
+            timeout=4,
         )
         if resp.status_code != 200:
             logger.warning("NSE API returned %s for %s", resp.status_code, symbol)
@@ -1510,7 +1520,7 @@ def _fetch_nse_fundamentals(symbol: str) -> dict:
         try:
             trade_resp = session.get(
                 f"https://www.nseindia.com/api/quote-equity?symbol={symbol}&section=trade_info",
-                timeout=8,
+                timeout=4,
             )
             if trade_resp.status_code == 200:
                 td = trade_resp.json() or {}
@@ -1552,6 +1562,22 @@ _YF_HEADERS = {
 }
 
 
+def _is_catalog_symbol(symbol: str) -> bool:
+    """True when the token is a real NSE/BSE listing, not an English filler."""
+    resolved = _resolve_listed_symbol(symbol)
+    if not resolved or resolved.isdigit():
+        return bool(resolved)
+    try:
+        from app.market_data import INDIAN_STOCKS, get_stock_catalog
+
+        if resolved in INDIAN_STOCKS:
+            return True
+        catalog = get_stock_catalog()
+        return resolved in catalog
+    except Exception:
+        return False
+
+
 def _resolve_listed_symbol(symbol: str) -> str:
     """Map retired/renamed NSE tickers to the current listed symbol."""
     try:
@@ -1580,11 +1606,11 @@ def _fetch_yahoo_fundamentals(symbol: str) -> dict:
             "https://query1.finance.yahoo.com/v10/finance/quoteSummary/"
             f"{yf_sym}?modules=summaryDetail,summaryProfile,defaultKeyStatistics"
         )
-        resp = requests.get(url, headers=_YF_HEADERS, timeout=10)
+        resp = requests.get(url, headers=_YF_HEADERS, timeout=6)
         if resp.status_code != 200:
             # try query2 mirror
             url2 = url.replace("query1", "query2")
-            resp = requests.get(url2, headers=_YF_HEADERS, timeout=10)
+            resp = requests.get(url2, headers=_YF_HEADERS, timeout=6)
         if resp.status_code != 200:
             logger.warning("Yahoo Finance direct API %s for %s", resp.status_code, symbol)
             return {}
@@ -1631,7 +1657,7 @@ def _fetch_google_news_headlines(symbol: str, company_name: str = "") -> list[st
             f"https://news.google.com/rss/search"
             f"?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
         )
-        resp = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+        resp = requests.get(url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
         if resp.status_code != 200:
             return []
         root = ET.fromstring(resp.content)
@@ -1655,6 +1681,11 @@ def _fetch_yfinance(symbol: str) -> dict:
     try:
         import yfinance as yf
         from app.market_data import _yf_ticker
+
+        deadline = time() + float(os.getenv("ENRICH_DEADLINE_SECONDS", "12"))
+
+        def _time_left() -> float:
+            return deadline - time()
 
         symbol = _resolve_listed_symbol(symbol)
 
@@ -1686,7 +1717,7 @@ def _fetch_yfinance(symbol: str) -> dict:
 
         # --- Source 1: NSE India API (when an NSE listing exists) ---
         nse: dict = {}
-        if use_nse_api:
+        if use_nse_api and _time_left() > 3:
             nse = _fetch_nse_fundamentals(nse_api_symbol)
         company_name: str = nse.get("company_name") or ""
         sector: str = nse.get("sector") or ""
@@ -1697,7 +1728,9 @@ def _fetch_yfinance(symbol: str) -> dict:
         week52_low = nse.get("week52_low")
 
         # --- Source 1b: Yahoo Finance direct API (fills gaps when NSE is blocked) ---
-        yf_fund = _fetch_yahoo_fundamentals(analysis_symbol or symbol)
+        yf_fund: dict = {}
+        if _time_left() > 3:
+            yf_fund = _fetch_yahoo_fundamentals(analysis_symbol or symbol)
         if not pe:
             pe = yf_fund.get("pe")
         div_yield = yf_fund.get("div_yield")
@@ -1742,40 +1775,41 @@ def _fetch_yfinance(symbol: str) -> dict:
         pb = None
         roe = None
         eps = None
-        try:
-            info = ticker.info or {}
-            if not div_yield:
-                div_yield = info.get("dividendYield")
-            if not pe:
-                pe = info.get("trailingPE") or info.get("forwardPE")
-            pb = info.get("priceToBook")
-            roe = info.get("returnOnEquity")
-            if roe is not None:
-                try:
-                    roe_f = float(roe)
-                    # yfinance often returns ROE as fraction (0.18 → 18%)
-                    roe = roe_f * 100.0 if abs(roe_f) <= 1.5 else roe_f
-                except (TypeError, ValueError):
-                    roe = None
-            eps = info.get("trailingEps") or info.get("epsTrailingTwelveMonths")
-            if not sector or sector == "N/A":
-                sector = info.get("sector") or info.get("industry") or _SYMBOL_SECTOR.get(symbol, "N/A")
-            if not company_name or company_name == symbol:
-                company_name = (info.get("longName") or info.get("shortName")
-                                or _NSE_EQUITY_MAP.get(symbol)
-                                or _SYMBOL_COMPANY.get(symbol, symbol))
-            if not market_cap:
-                market_cap = info.get("marketCap")
-            if not week52_high:
-                week52_high = info.get("fiftyTwoWeekHigh")
-            if not week52_low:
-                week52_low = info.get("fiftyTwoWeekLow")
-            if not price:
-                price = (info.get("currentPrice")
-                         or info.get("regularMarketPrice")
-                         or info.get("previousClose"))
-        except Exception as e:
-            logger.warning("ticker.info failed for %s: %s", symbol, e)
+        if _time_left() > 3:
+            try:
+                info = ticker.info or {}
+                if not div_yield:
+                    div_yield = info.get("dividendYield")
+                if not pe:
+                    pe = info.get("trailingPE") or info.get("forwardPE")
+                pb = info.get("priceToBook")
+                roe = info.get("returnOnEquity")
+                if roe is not None:
+                    try:
+                        roe_f = float(roe)
+                        # yfinance often returns ROE as fraction (0.18 → 18%)
+                        roe = roe_f * 100.0 if abs(roe_f) <= 1.5 else roe_f
+                    except (TypeError, ValueError):
+                        roe = None
+                eps = info.get("trailingEps") or info.get("epsTrailingTwelveMonths")
+                if not sector or sector == "N/A":
+                    sector = info.get("sector") or info.get("industry") or _SYMBOL_SECTOR.get(symbol, "N/A")
+                if not company_name or company_name == symbol:
+                    company_name = (info.get("longName") or info.get("shortName")
+                                    or _NSE_EQUITY_MAP.get(symbol)
+                                    or _SYMBOL_COMPANY.get(symbol, symbol))
+                if not market_cap:
+                    market_cap = info.get("marketCap")
+                if not week52_high:
+                    week52_high = info.get("fiftyTwoWeekHigh")
+                if not week52_low:
+                    week52_low = info.get("fiftyTwoWeekLow")
+                if not price:
+                    price = (info.get("currentPrice")
+                             or info.get("regularMarketPrice")
+                             or info.get("previousClose"))
+            except Exception as e:
+                logger.warning("ticker.info failed for %s: %s", symbol, e)
 
         # 52-week position string
         pos_52w = None
@@ -1791,20 +1825,21 @@ def _fetch_yfinance(symbol: str) -> dict:
 
         # --- Source 4: yf.download() for OHLCV (technicals) ---
         closes, highs, lows = [], [], []
-        try:
-            hist = yf.download(yf_sym, period="1y", progress=False, auto_adjust=True)
-            if not hist.empty:
-                # Newer yfinance returns MultiIndex columns (field, ticker) — flatten
-                if hasattr(hist.columns, "levels"):
-                    hist.columns = hist.columns.get_level_values(0)
-                if "Close" in hist.columns:
-                    closes = [float(v) for v in hist["Close"].dropna()]
-                if "High" in hist.columns:
-                    highs = [float(v) for v in hist["High"].dropna()]
-                if "Low" in hist.columns:
-                    lows = [float(v) for v in hist["Low"].dropna()]
-        except Exception as e:
-            logger.warning("yf.download failed for %s: %s", symbol, e)
+        if _time_left() > 4:
+            try:
+                hist = yf.download(yf_sym, period="1y", progress=False, auto_adjust=True)
+                if not hist.empty:
+                    # Newer yfinance returns MultiIndex columns (field, ticker) — flatten
+                    if hasattr(hist.columns, "levels"):
+                        hist.columns = hist.columns.get_level_values(0)
+                    if "Close" in hist.columns:
+                        closes = [float(v) for v in hist["Close"].dropna()]
+                    if "High" in hist.columns:
+                        highs = [float(v) for v in hist["High"].dropna()]
+                    if "Low" in hist.columns:
+                        lows = [float(v) for v in hist["Low"].dropna()]
+            except Exception as e:
+                logger.warning("yf.download failed for %s: %s", symbol, e)
 
         current = closes[-1] if closes else price
 
@@ -1892,19 +1927,21 @@ def _fetch_yfinance(symbol: str) -> dict:
                 sector_trend = f"Neutral (stock {ret_1m:+.1f}% in 1 month)"
 
         # --- Source 2: Google News RSS (primary for headlines) ---
-        headlines = _fetch_google_news_headlines(symbol, company_name)
+        headlines: list[str] = []
+        if _time_left() > 2:
+            headlines = _fetch_google_news_headlines(symbol, company_name)
 
-        # Fallback: yfinance news if Google News returned nothing
-        if not headlines:
-            try:
-                raw_news = ticker.news or []
-                for item in raw_news[:8]:
-                    title = (item.get("title")
-                             or (item.get("content") or {}).get("title", ""))
-                    if title:
-                        headlines.append(title)
-            except Exception:
-                pass
+            # Fallback: yfinance news if Google News returned nothing
+            if not headlines:
+                try:
+                    raw_news = ticker.news or []
+                    for item in raw_news[:8]:
+                        title = (item.get("title")
+                                 or (item.get("content") or {}).get("title", ""))
+                        if title:
+                            headlines.append(title)
+                except Exception:
+                    pass
 
         sentiment = _news_sentiment(headlines) if headlines else {}
 
@@ -1986,7 +2023,15 @@ async def enrich(symbol: str) -> dict:
     if cached and (now - cached[0]) < _CACHE_TTL:
         return cached[1]
     loop = asyncio.get_event_loop()
-    data = await loop.run_in_executor(None, _fetch_yfinance, symbol)
+    budget = float(os.getenv("ENRICH_DEADLINE_SECONDS", "12")) + 2.0
+    try:
+        data = await asyncio.wait_for(
+            loop.run_in_executor(None, _fetch_yfinance, symbol),
+            timeout=budget,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("enrich deadline exceeded for %s", symbol)
+        return cached[1] if cached else {}
     if data:
         _cache[symbol] = (now, data)
     return data

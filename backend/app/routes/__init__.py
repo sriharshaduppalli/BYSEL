@@ -2016,9 +2016,44 @@ async def get_symbols_count():
 
 # ==================== HEALTH ====================
 
+_last_background_warm_at = 0.0
+_BACKGROUND_WARM_MIN_INTERVAL = 45.0
+
+
+def _kick_background_warmup(force: bool = False) -> bool:
+    """Non-blocking quote + ISM warm. Deduped so Render health pings stay cheap."""
+    global _last_background_warm_at
+    now = time.time()
+    if not force and (now - _last_background_warm_at) < _BACKGROUND_WARM_MIN_INTERVAL:
+        return False
+    _last_background_warm_at = now
+
+    def _warm():
+        try:
+            from ..market_data import fetch_quotes, get_default_symbols
+            fetch_quotes(get_default_symbols())
+        except Exception as exc:
+            logger.warning("warmup.quotes_failed reason=%s", exc)
+        try:
+            from ..market_heatmap import kick_heatmap_refresh
+            kick_heatmap_refresh()
+        except Exception as exc:
+            logger.warning("warmup.heatmap_failed reason=%s", exc)
+        try:
+            from ..llm_integration import llm_available
+            llm_available()
+        except Exception as exc:
+            logger.warning("warmup.llm_failed reason=%s", exc)
+
+    threading.Thread(target=_warm, name="bysel-warmup", daemon=True).start()
+    return True
+
+
 @router.get("/health", response_model=HealthCheck)
 async def health_check():
-    """Health check endpoint."""
+    """Fast liveness for Render. Kicks a throttled background warm so the
+    next user request is less likely to pay a full Yahoo/ISM cold start."""
+    _kick_background_warmup(force=False)
     return HealthCheck(status="healthy", version="2.0.0")
 
 
@@ -2035,14 +2070,7 @@ async def warmup_endpoint(db: Session = Depends(get_db)):
     except Exception as exc:
         logger.warning("warmup.db_ping_failed reason=%s", exc)
 
-    def _warm_quotes():
-        try:
-            from ..market_data import fetch_quotes, get_default_symbols
-            fetch_quotes(get_default_symbols())
-        except Exception as exc:
-            logger.warning("warmup.quotes_failed reason=%s", exc)
-
-    threading.Thread(target=_warm_quotes, name="bysel-warmup-quotes", daemon=True).start()
+    _kick_background_warmup(force=True)
     return {
         "status": "warming",
         "db": db_ok,
@@ -2567,7 +2595,7 @@ async def ai_ask_endpoint(
                             llm_context[key] = enriched_ctx.get(key)
                 except Exception:
                     pass
-                llm_result = ask_llm(ism_query, context=llm_context or None)
+                llm_result = await asyncio.to_thread(ask_llm, ism_query, llm_context or None)
                 if llm_result and llm_result.get("answer") and llm_result.get("confidence", 0) >= 0.35:
                     logger.info("DEBUG: Using Indian Stock LLM (confidence=%.2f)", llm_result.get("confidence", 0))
                     merged = {
@@ -2725,10 +2753,15 @@ async def ai_ask_endpoint(
                 if intent_result.get("intent") == "CALCULATION":
                     gemini_style_prompt += " If this is a calculation query, show formula and step-by-step math."
 
-                gemini_result = ask_gemini(
-                    normalized_query,
-                    context=enriched_ctx,
-                    system_prompt=gemini_style_prompt,
+                gemini_timeout = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "20"))
+                gemini_result = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        ask_gemini,
+                        normalized_query,
+                        enriched_ctx,
+                        gemini_style_prompt,
+                    ),
+                    timeout=gemini_timeout,
                 )
                 if gemini_result.get("answer") and not gemini_result.get("error"):
                     logger.info("DEBUG: Gemini returned answer, using Gemini response")
@@ -2785,7 +2818,7 @@ async def ai_ask_endpoint(
 async def ai_analyze_endpoint(symbol: str):
     """Get comprehensive AI analysis for a stock including technical,
     fundamental analysis, score, prediction, and plain-English summary."""
-    result = analyze_stock(symbol.upper())
+    result = await asyncio.to_thread(analyze_stock, symbol.upper())
     if "error" in result and "predictions" not in result:
         raise HTTPException(status_code=404, detail=result["error"])
     return result
@@ -2817,7 +2850,7 @@ async def ai_recommendations_endpoint(limit: int = 10):
     """Get best stocks to buy for different timeframes (day, month, 3-months)
     with predicted targets, confidence scores, and model accuracy metrics."""
     from .ai_engine import get_best_stocks_to_buy
-    result = get_best_stocks_to_buy(limit=limit)
+    result = await asyncio.to_thread(get_best_stocks_to_buy, limit)
     return result
 
 
@@ -2994,7 +3027,9 @@ async def signal_lab_buckets_endpoint(
     ):
         return cached[1]
 
-    payload = _build_signal_lab_buckets_payload(limit_per_bucket=limitPerBucket)
+    payload = await asyncio.to_thread(
+        _build_signal_lab_buckets_payload, limitPerBucket
+    )
     _SIGNAL_LAB_CACHE[limitPerBucket] = (now, payload)
     _trim_signal_lab_cache()
     return payload

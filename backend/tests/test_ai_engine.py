@@ -63,6 +63,14 @@ def test_extract_symbols_ignores_generic_screening_phrases():
     assert symbols == []
 
 
+def test_extract_symbols_ignores_wait_action_label():
+    assert "WAIT" not in ai_engine._extract_symbols("Action: WAIT")
+    assert "WAIT" not in ai_engine._extract_symbols("should I wait now?")
+    symbols = ai_engine._extract_symbols("should I wait on reliance?")
+    assert "WAIT" not in symbols
+    assert "RELIANCE" in symbols
+
+
 def test_ai_assistant_prefers_user_query_over_context_symbol(monkeypatch):
     monkeypatch.setattr(ai_engine, "analyze_stock", _fake_analysis)
 
@@ -107,3 +115,25 @@ def test_ai_assistant_routes_technical_sector_query_to_screening(monkeypatch):
 
     assert response["type"] == "screening"
     assert response["stocks"]
+
+
+def test_analyze_stock_uses_in_memory_cache():
+    payload = {"symbol": "INFY", "score": 70, "signal": "HOLD"}
+    ai_engine._ANALYSIS_CACHE.clear()
+    ai_engine._cache_analysis("INFY", payload)
+    assert ai_engine.analyze_stock("INFY") == payload
+
+
+def test_recommendations_reuse_analysis_cache(monkeypatch):
+    ai_engine._ANALYSIS_CACHE.clear()
+    ai_engine._RECOMMENDATIONS_CACHE["data"] = None
+    ai_engine._RECOMMENDATIONS_CACHE["timestamp"] = 0
+
+    fake = _fake_analysis("RELIANCE")
+    monkeypatch.setattr(ai_engine, "analyze_stock", lambda symbol: {**fake, "symbol": symbol, "name": symbol})
+
+    first = ai_engine.get_best_stocks_to_buy(limit=3)
+    assert "recommendations" in first
+    assert first.get("error") is None
+    cached = ai_engine.get_best_stocks_to_buy(limit=3)
+    assert cached is first

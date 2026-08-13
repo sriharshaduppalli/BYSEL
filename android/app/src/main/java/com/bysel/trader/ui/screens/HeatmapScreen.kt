@@ -178,13 +178,11 @@ fun HeatmapScreen(
         if (!isActive) return@LaunchedEffect
         val pollMs = heatmapInterval.toLong().coerceIn(5_000L, 30_000L)
         while (true) {
+            kotlinx.coroutines.delay(pollMs)
             marketOpen = isNseMarketOpen()
             if (marketOpen) {
-                // ViewModel single-flight + debounce drops overlaps.
+                // Silent poll — spinner only on first load / pull-to-refresh.
                 onRefresh()
-                kotlinx.coroutines.delay(pollMs)
-            } else {
-                kotlinx.coroutines.delay(60_000L)
             }
         }
     }
@@ -249,6 +247,10 @@ fun HeatmapScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    if (isLoading || heatmap?.isStale == true) {
+                        CircularProgressIndicator(color = LocalAppTheme.current.primary)
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
                     Text(
                         text = heatmap?.staleReason
                             ?: heatmap?.moodDescription?.takeIf { it.isNotBlank() }
@@ -272,7 +274,7 @@ private fun MarketStatusBanner(marketOpen: Boolean, staleReason: String? = null)
 
     val theme = LocalAppTheme.current
     val (bgColor, icon, message) = when {
-        marketOpen -> Triple(Color(0xFF1B5E20), Icons.Filled.TrendingUp, "Market Open  •  Live quotes (server refreshes ~30s)")
+        marketOpen -> Triple(Color(0xFF1B5E20), Icons.Filled.TrendingUp, "Market open  •  Quotes refresh in the background (up to ~90s stale)")
         isWeekend -> Triple(
             theme.card,
             Icons.Filled.Weekend,

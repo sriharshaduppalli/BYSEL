@@ -310,6 +310,11 @@ async def startup_event():
         logger.info("LLM available: %s", llm_available())
     except Exception as e:
         logger.error("LLM startup check failed: %s", e)
+    try:
+        from .routes import _kick_background_warmup
+        _kick_background_warmup(force=True)
+    except Exception as e:
+        logger.warning("Startup quote warmup skipped: %s", e)
 
 
 @app.get("/ai/enricher-test/{symbol}")

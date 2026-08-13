@@ -152,35 +152,17 @@ def get_market_heatmap() -> Dict:
             _HEATMAP_CACHE["timestamp"] = now
             return stamped
 
-        # Render disks are ephemeral — after redeploy there is often no snapshot.
-        # Build from last-session quotes so closed-market heatmap is never blank zeros.
-        try:
-            rebuilt = _build_heatmap_from_quotes(market_open=False)
-            if _is_valid_heatmap_snapshot(rebuilt):
-                rebuilt["isStale"] = True
-                rebuilt["marketOpen"] = False
-                rebuilt["staleReason"] = (
-                    "Market closed — showing last session quotes (fresh snapshot rebuilt)."
-                )
-                rebuilt["moodDescription"] = (
-                    f"{rebuilt.get('moodDescription', '')} "
-                    "(Last session data — market is closed.)"
-                ).strip()
-                _persist_heatmap_snapshot(rebuilt)
-                _HEATMAP_CACHE["data"] = rebuilt
-                _HEATMAP_CACHE["timestamp"] = now
-                return rebuilt
-        except Exception as exc:
-            logger.error("heatmap.closed_rebuild_failed reason=%s", exc)
-
+        # Never block the HTTP request on Yahoo. Rebuild last-session quotes
+        # in the background; the next poll picks up tiles as they land.
         empty = _empty_heatmap_payload(
-            mood_desc="Market is closed and last-session heatmap data is temporarily unavailable."
+            mood_desc="Market is closed — rebuilding last-session heatmap in the background."
         )
         empty["isStale"] = True
         empty["marketOpen"] = False
         empty["staleReason"] = empty["moodDescription"]
         _HEATMAP_CACHE["data"] = empty
         _HEATMAP_CACHE["timestamp"] = now
+        _schedule_heatmap_refresh(market_open=False)
         return empty
 
     # Open market, no cache yet — never block the client on a full Yahoo rebuild.
@@ -209,6 +191,11 @@ def get_market_heatmap() -> Dict:
     return empty
 
 
+def kick_heatmap_refresh() -> None:
+    """Non-blocking warmup hook so keepalive can fill tiles before the user opens Heatmap."""
+    _schedule_heatmap_refresh(market_open=_is_nse_market_open())
+
+
 def _schedule_heatmap_refresh(*, market_open: bool) -> None:
     global _HEATMAP_REFRESH_IN_FLIGHT
     with _HEATMAP_REFRESH_LOCK:
@@ -227,26 +214,51 @@ def _schedule_heatmap_refresh(*, market_open: bool) -> None:
     threading.Thread(target=_runner, name="heatmap-refresh", daemon=True).start()
 
 
+def _warm_heatmap_universe_async() -> None:
+    def _warm():
+        try:
+            from .heatmap_universe import build_heatmap_universe
+
+            build_heatmap_universe()
+        except Exception as exc:
+            logger.warning("heatmap.universe_warm_failed reason=%s", exc)
+
+    threading.Thread(target=_warm, name="heatmap-universe", daemon=True).start()
+
+
+def _publish_heatmap(payload: Dict, *, now: float) -> Dict:
+    _HEATMAP_CACHE["data"] = payload
+    _HEATMAP_CACHE["timestamp"] = now
+    return payload
+
+
 def _refresh_heatmap_sync(*, market_open: bool) -> Dict:
     now = time.time()
     try:
-        result = _build_heatmap_from_quotes(market_open=market_open)
+        # Overlap NSE/BSE catalog I/O with the fast curated-leader Yahoo fetch.
+        _warm_heatmap_universe_async()
+        leaders = _build_heatmap_from_quotes(market_open=market_open, leaders_only=True)
+        if _is_valid_heatmap_snapshot(leaders):
+            _persist_heatmap_snapshot(leaders)
+            _publish_heatmap(leaders, now=time.time())
+
+        result = _build_heatmap_from_quotes(market_open=market_open, leaders_only=False)
         if _is_valid_heatmap_snapshot(result):
             _persist_heatmap_snapshot(result)
-        else:
-            persisted = _load_persisted_heatmap_snapshot()
-            if persisted:
-                stamped = _stamp_stale(
-                    persisted,
-                    market_open=market_open,
-                    reason="Live heatmap incomplete — showing last saved snapshot.",
-                )
-                _HEATMAP_CACHE["data"] = stamped
-                _HEATMAP_CACHE["timestamp"] = now
-                return stamped
+            return _publish_heatmap(result, now=time.time())
 
-        _HEATMAP_CACHE["data"] = result
-        _HEATMAP_CACHE["timestamp"] = now
+        persisted = _load_persisted_heatmap_snapshot()
+        if persisted:
+            stamped = _stamp_stale(
+                persisted,
+                market_open=market_open,
+                reason="Live heatmap incomplete — showing last saved snapshot.",
+            )
+            return _publish_heatmap(stamped, now=time.time())
+
+        cached = _HEATMAP_CACHE.get("data")
+        if _is_valid_heatmap_snapshot(cached):
+            return cached
         return result
     except Exception as exc:
         logger.error("heatmap.live_build_failed reason=%s", exc)
@@ -257,9 +269,10 @@ def _refresh_heatmap_sync(*, market_open: bool) -> Dict:
                 market_open=market_open,
                 reason="Live heatmap failed — showing last saved snapshot.",
             )
-            _HEATMAP_CACHE["data"] = stamped
-            _HEATMAP_CACHE["timestamp"] = now
-            return stamped
+            return _publish_heatmap(stamped, now=now)
+        cached = _HEATMAP_CACHE.get("data")
+        if _is_valid_heatmap_snapshot(cached):
+            return cached
         empty = _empty_heatmap_payload(mood_desc=f"Heatmap temporarily unavailable ({exc}).")
         empty["staleReason"] = empty["moodDescription"]
         return empty
@@ -273,17 +286,60 @@ def _stamp_stale(payload: Dict, *, market_open: bool, reason: str) -> Dict:
     return stamped
 
 
-def _build_heatmap_from_quotes(*, market_open: bool) -> Dict:
-    """Assemble heatmap from the full active equity universe.
+def _curated_leader_symbols() -> List[str]:
+    """HDFCBANK / TCS / RELIANCE-class names the heatmap tiles should paint first."""
+    seen: List[str] = []
+    seen_set = set()
+    for symbols in SECTOR_STOCKS.values():
+        for sym in symbols:
+            key = str(sym or "").strip().upper()
+            if not key or key in seen_set:
+                continue
+            seen_set.add(key)
+            seen.append(key)
+    return seen
 
-    Quotes refresh on a rotating budget so Yahoo rate limits are respected while
-    Market Breath / TQI still cover every listed symbol that already has a quote.
+
+def _curated_sector_symbols() -> Dict[str, List[str]]:
+    return {name: list(symbols) for name, symbols in SECTOR_STOCKS.items() if symbols}
+
+
+def _fetch_heatmap_quotes(symbols: List[str]) -> List[dict]:
+    """Yahoo pull tuned for heatmap: larger batches, threads on, no per-symbol fallback."""
+    if not symbols:
+        return []
+    try:
+        return fetch_quotes(
+            symbols,
+            max_age_seconds=0,
+            batch_size=max(80, int(os.getenv("QUOTE_BATCH_SIZE", "40") or 40)),
+            yf_threads=True,
+            individual_fallback=False,
+        )
+    except TypeError:
+        return fetch_quotes(symbols, max_age_seconds=0)
+
+
+def _build_heatmap_from_quotes(*, market_open: bool, leaders_only: bool = False) -> Dict:
+    """Assemble heatmap from quotes.
+
+    First pass (`leaders_only=True`) uses the curated ~130 names so tiles paint
+    without waiting on the full NSE/BSE catalog or an alphabetical Yahoo walk.
+    Later passes cover the rest of the universe on a rotating budget.
     """
     global _HEATMAP_REFRESH_OFFSET
-    from .heatmap_universe import get_heatmap_sector_symbols, universe_size
+    from .heatmap_universe import get_heatmap_sector_symbols, cached_universe_size
     from .market_data import _quote_cache
 
-    sector_symbols = get_heatmap_sector_symbols()
+    if leaders_only:
+        sector_symbols = _curated_sector_symbols()
+    else:
+        try:
+            sector_symbols = get_heatmap_sector_symbols()
+        except Exception as exc:
+            logger.warning("heatmap.universe_unavailable reason=%s", exc)
+            sector_symbols = _curated_sector_symbols()
+
     all_symbols = sorted({sym for symbols in sector_symbols.values() for sym in symbols})
     fresh_age = _HEATMAP_QUOTE_MAX_AGE_OPEN if market_open else _HEATMAP_QUOTE_STALE_ACCEPT
 
@@ -299,12 +355,17 @@ def _build_heatmap_from_quotes(*, market_open: bool) -> Dict:
             missing.append(sym)
 
     if missing:
-        start = _HEATMAP_REFRESH_OFFSET % len(missing)
-        budget = max(1, _HEATMAP_QUOTE_REFRESH_BUDGET)
-        window = [missing[(start + i) % len(missing)] for i in range(min(budget, len(missing)))]
-        _HEATMAP_REFRESH_OFFSET = start + len(window)
-        # Force refresh this window (ignore cache age).
-        fetched = fetch_quotes(window, max_age_seconds=0)
+        missing_set = set(missing)
+        leaders = [sym for sym in _curated_leader_symbols() if sym in missing_set]
+        rest = [sym for sym in missing if sym not in set(leaders)]
+        window: List[str] = list(leaders)
+        if rest and not leaders_only:
+            start = _HEATMAP_REFRESH_OFFSET % len(rest)
+            budget = max(1, _HEATMAP_QUOTE_REFRESH_BUDGET)
+            tail = [rest[(start + i) % len(rest)] for i in range(min(budget, len(rest)))]
+            _HEATMAP_REFRESH_OFFSET = start + len(tail)
+            window.extend(tail)
+        fetched = _fetch_heatmap_quotes(window)
         for quote in fetched or []:
             if isinstance(quote, dict) and quote.get("symbol"):
                 quotes_dict[quote["symbol"]] = quote
@@ -355,7 +416,7 @@ def _build_heatmap_from_quotes(*, market_open: bool) -> Dict:
 
     best_sector = sectors_data[0] if sectors_data else None
     worst_sector = sectors_data[-1] if sectors_data else None
-    catalog_size = universe_size()
+    catalog_size = cached_universe_size() or len(all_symbols)
 
     return {
         "sectors": sectors_data,
@@ -388,10 +449,10 @@ def _build_heatmap_from_quotes(*, market_open: bool) -> Dict:
 
 
 def _empty_heatmap_payload(mood_desc: str = "No heatmap data available.") -> Dict:
-    from .heatmap_universe import HEATMAP_SECTOR_ORDER, universe_size
+    from .heatmap_universe import HEATMAP_SECTOR_ORDER, cached_universe_size
 
     try:
-        catalog_size = universe_size()
+        catalog_size = cached_universe_size()
     except Exception:
         catalog_size = 0
 
@@ -443,7 +504,8 @@ def _is_nse_market_open() -> bool:
         return False
 
     current_minutes = ist.hour * 60 + ist.minute
-    return (9 * 60 + 15) <= current_minutes <= (15 * 60 + 30)
+    # Match Android / CAS: live window through F&O close 15:40 IST.
+    return (9 * 60 + 15) <= current_minutes <= (15 * 60 + 40)
 
 
 def _is_valid_heatmap_snapshot(payload: Optional[Dict]) -> bool:
@@ -514,14 +576,6 @@ def _analyze_sector(
         change = quote.get("change", 0)
         pct_change = quote.get("pctChange", 0)
         name = INDIAN_STOCKS.get(sym, (None, sym))[1]
-        if name == sym:
-            try:
-                from .market_data import get_stock_catalog
-
-                catalog_name = get_stock_catalog().get(sym, (None, sym))[1]
-                name = catalog_name or sym
-            except Exception:
-                pass
 
         if pct_change > 0.05:
             advances += 1

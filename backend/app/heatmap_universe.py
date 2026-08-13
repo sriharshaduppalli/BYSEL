@@ -217,3 +217,9 @@ def get_heatmap_sector_symbols() -> Dict[str, List[str]]:
 def universe_size() -> int:
     _, mapping = build_heatmap_universe()
     return len(mapping)
+
+
+def cached_universe_size() -> int:
+    """Return catalog size only if the universe is already built — never hits NSE/BSE I/O."""
+    mapping = _symbol_sector_cache
+    return len(mapping) if mapping else 0

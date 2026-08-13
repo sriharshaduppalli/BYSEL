@@ -8,6 +8,7 @@ Falls back gracefully when the key is absent.
 import os
 import re
 import logging
+import asyncio
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -1166,7 +1167,8 @@ def _get_client():
 
     try:
         from groq import AsyncGroq
-        _client = AsyncGroq(api_key=api_key)
+        timeout = float(os.environ.get("GROQ_TIMEOUT_SECONDS", "20"))
+        _client = AsyncGroq(api_key=api_key, timeout=timeout)
         model = os.environ.get("GROQ_MODEL", _DEFAULT_MODEL)
         logger.info("Groq client initialised (model=%s)", model)
         return _client
@@ -1557,11 +1559,15 @@ TONE ADJUSTMENTS:
     temperature = 0.5 if intent in ("PREDICT", "SECTOR_SCREEN", "MULTI_STOCK") else 0.35
 
     try:
-        response = await client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=2048,
+        groq_timeout = float(os.environ.get("GROQ_TIMEOUT_SECONDS", "20"))
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=2048,
+            ),
+            timeout=groq_timeout,
         )
         text = response.choices[0].message.content or ""
         text = text.strip()

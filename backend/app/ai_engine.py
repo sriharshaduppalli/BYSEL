@@ -1018,6 +1018,10 @@ def analyze_stock(symbol: str) -> Dict:
       - Overall score (0-100)
       - Plain-English summary
     """
+    symbol = (symbol or "").upper()
+    cached = _get_cached_analysis(symbol)
+    if cached:
+        return cached
     try:
         ticker = yf.Ticker(_yf_ticker(symbol))
         hist = ticker.history(period="1y")
@@ -1088,7 +1092,7 @@ def analyze_stock(symbol: str) -> Dict:
         if recent_headlines:
             summary = f"{summary} {news_summary}"
 
-        return {
+        result = {
             "symbol": symbol,
             "name": name,
             "currentPrice": round(float(current), 2),
@@ -1126,6 +1130,8 @@ def analyze_stock(symbol: str) -> Dict:
             "disclaimer": "AI analysis is for educational purposes only. Not financial advice. Always do your own research.",
             "lastUpdated": datetime.utcnow().isoformat(),
         }
+        _cache_analysis(symbol, result)
+        return result
 
     except Exception as e:
         logger.error(f"Analysis error for {symbol}: {e}")
@@ -1167,11 +1173,31 @@ def get_best_stocks_to_buy(limit: int = 10) -> Dict:
     scored_stocks = []
     
     try:
-        # Score each stock for different timeframes
-        for symbol in top_stocks[:limit + 5]:  # Analyze a few more to ensure we have enough
+        symbols = top_stocks[:limit + 5]
+        analyses: Dict[str, Dict] = {}
+        budget = float(os.getenv("RECOMMENDATIONS_BUDGET_SECONDS", "25"))
+        deadline = time.time() + budget
+        from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeout
+        workers = min(6, max(2, len(symbols)))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(analyze_stock, sym): sym for sym in symbols}
             try:
-                analysis = analyze_stock(symbol)
-                if "error" in analysis:
+                remaining = max(0.5, deadline - time.time())
+                for fut in as_completed(futures, timeout=remaining):
+                    sym = futures[fut]
+                    try:
+                        analyses[sym] = fut.result()
+                    except Exception as exc:
+                        logger.warning("Error scoring %s: %s", sym, exc)
+                    if time.time() >= deadline:
+                        break
+            except FuturesTimeout:
+                logger.warning("recommendations budget exhausted after %.0fs", budget)
+
+        for symbol in symbols:
+            analysis = analyses.get(symbol)
+            try:
+                if not analysis or "error" in analysis:
                     continue
                 
                 # Extract scores for each timeframe
@@ -1872,9 +1898,16 @@ _SYMBOL_NOISE_WORDS = {
     "value",
     "versus",
     "volatility",
+    "wait",
     "what",
     "which",
     "with",
+    "hold",
+    "trim",
+    "action",
+    "accumulate",
+    "paper",
+    "practice",
 }
 
 

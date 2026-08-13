@@ -29,6 +29,9 @@ _INDICATOR_TOKENS = {
     "BANDS", "BAND", "BANDWIDTH", "UPPER", "LOWER", "MIDDLE", "STOP", "STOPS",
     "SENTIMENT", "NEWS", "MOOD", "HEADLINE", "HEADLINES", "ANALYSIS",
     "FULL", "MATH", "QUANT", "QUANTITATIVE", "STACK", "PLAN", "CHECK",
+    # Composer action/stance labels — never treat as tickers.
+    "BUY", "SELL", "HOLD", "WAIT", "TRIM", "ACCUMULATE",
+    "ACTION", "DIRECT", "ANSWER", "LEGEND", "PAPER", "PRACTICE",
 }
 
 
@@ -333,8 +336,9 @@ def _prior_symbol_from_history(history: list | None) -> str | None:
         if m:
             cand = m.group(1)
             if cand not in {
-                "RSI", "MACD", "BUY", "SELL", "HOLD", "WAIT", "ACTION",
+                "RSI", "MACD", "BUY", "SELL", "HOLD", "WAIT", "TRIM", "ACTION",
                 "DIRECT", "ANSWER", "SENTIMENT", "BYSEL", "NSE", "BSE",
+                "ACCUMULATE", "LEGEND", "PAPER", "PRACTICE",
             }:
                 return cand
     return None

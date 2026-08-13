@@ -781,10 +781,16 @@ open class TradingRepository(private val database: BYSELDatabase) {
     }
 
     // ==================== MARKET HEATMAP ====================
-    suspend fun getMarketHeatmap(): Result<MarketHeatmap> {
+    suspend fun getMarketHeatmap(wakeOnFailure: Boolean = true): Result<MarketHeatmap> {
         return try {
             Result.Success(apiService.getMarketHeatmap())
         } catch (first: Exception) {
+            if (!wakeOnFailure) {
+                return Result.Error(
+                    first.message
+                        ?: "Heatmap unavailable — server may be waking up. Retry in a moment."
+                )
+            }
             // Render free tier may be asleep; wake market /health then retry once.
             return try {
                 warmMarketBackend()

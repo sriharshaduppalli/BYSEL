@@ -36,7 +36,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material3.*
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -358,7 +361,8 @@ fun BiometricLockScreen(onRetry: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF121212)),
+            .background(Color(0xFF121212))
+            .systemBarsPadding(),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -565,6 +569,7 @@ fun BYSELApp(
     val walletBalance by viewModel.walletBalance.collectAsStateWithLifecycle()
     val marketStatus by viewModel.marketStatus.collectAsStateWithLifecycle()
     val lastQuoteUpdateAt by viewModel.lastQuoteUpdateAt.collectAsStateWithLifecycle()
+    val liveQuotesEnabled by viewModel.fastRefreshEnabled.collectAsStateWithLifecycle()
     val investorPortfolios by viewModel.investorPortfolios.collectAsStateWithLifecycle()
     val investorPortfoliosLoading by viewModel.investorPortfoliosLoading.collectAsStateWithLifecycle()
     val investorPortfolioChanges by viewModel.investorPortfolioChanges.collectAsStateWithLifecycle()
@@ -641,7 +646,7 @@ fun BYSELApp(
         if (selectedTab == 0 || selectedTab == 2) {
             viewModel.refreshWallet(force = false)
         }
-        if (selectedTab == 6 || selectedTab == 20) {
+        if (selectedTab == 20) {
             viewModel.loadSignalLabBuckets()
         }
         if (selectedTab == 20) {
@@ -768,11 +773,11 @@ fun BYSELApp(
                 Surface(
                     modifier = Modifier
                         .fillMaxSize()
-                        .safeDrawingPadding()
                         .padding(horizontal = contentHorizontalPadding),
                     color = appTheme.surface
                 ) {
                     Scaffold(
+                    contentWindowInsets = WindowInsets.safeDrawing,
                     snackbarHost = {
                         SnackbarHost(hostState = snackbarHostState) { data ->
                             Snackbar(
@@ -1292,6 +1297,10 @@ fun BYSELApp(
                                         val clamped = interval.coerceIn(1_000, 10_000)
                                         heatmapInterval = clamped
                                         prefs.edit().putInt("heatmapInterval", clamped).apply()
+                                    },
+                                    liveQuotesEnabled = liveQuotesEnabled,
+                                    onLiveQuotesChange = { enabled ->
+                                        viewModel.setFastRefreshEnabled(enabled)
                                     },
                                     onLogout = onLogout,
                                     onLogoutAllDevices = onLogoutAllDevices,

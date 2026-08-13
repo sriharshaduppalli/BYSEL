@@ -1048,7 +1048,14 @@ def fetch_quote(symbol: str) -> dict:
         return _empty_quote(symbol)
 
 
-def fetch_quotes(symbols: List[str], max_age_seconds: Optional[float] = None) -> List[dict]:
+def fetch_quotes(
+    symbols: List[str],
+    max_age_seconds: Optional[float] = None,
+    *,
+    batch_size: Optional[int] = None,
+    yf_threads: bool = False,
+    individual_fallback: bool = True,
+) -> List[dict]:
     """Fetch quotes for multiple symbols with optimized batching and caching.
     
     Optimization: 
@@ -1058,6 +1065,9 @@ def fetch_quotes(symbols: List[str], max_age_seconds: Optional[float] = None) ->
 
     max_age_seconds: if set, treat cache entries older than this as misses
     (used by live heatmap to refresh every 1–2s while market is open).
+    batch_size / yf_threads: heatmap uses a larger Yahoo batch with threads
+    so curated leaders paint in one or two downloads instead of many sequential ones.
+    individual_fallback: per-symbol Yahoo calls for batch misses (disable on heatmap).
     """
     if not symbols:
         return []
@@ -1065,6 +1075,7 @@ def fetch_quotes(symbols: List[str], max_age_seconds: Optional[float] = None) ->
     results = []
     uncached = []
     symbol_map = {}  # Track position for results ordering
+    size = max(1, int(batch_size or QUOTE_BATCH_SIZE))
 
     # Separate cached from uncached, preserving order
     for idx, s in enumerate(symbols):
@@ -1077,19 +1088,22 @@ def fetch_quotes(symbols: List[str], max_age_seconds: Optional[float] = None) ->
 
     # Fetch uncached symbols in batches
     if uncached:
-        for start in range(0, len(uncached), QUOTE_BATCH_SIZE):
-            batch_symbols = uncached[start:start + QUOTE_BATCH_SIZE]
-            fetched = _fetch_batch_quotes(batch_symbols)
+        for start in range(0, len(uncached), size):
+            batch_symbols = uncached[start:start + size]
+            fetched = _fetch_batch_quotes(batch_symbols, yf_threads=yf_threads)
             for idx, symbol in enumerate(batch_symbols):
-                quote = fetched.get(symbol) or fetch_quote(symbol)
-                results.append((symbol_map[symbol], quote))
+                quote = fetched.get(symbol)
+                if quote is None and individual_fallback:
+                    quote = fetch_quote(symbol)
+                if quote:
+                    results.append((symbol_map[symbol], quote))
 
     # Sort by original order and extract quotes
     results.sort(key=lambda x: x[0])
     return [q for _, q in results]
 
 
-def _fetch_batch_quotes(batch_symbols: List[str]) -> dict:
+def _fetch_batch_quotes(batch_symbols: List[str], *, yf_threads: bool = False) -> dict:
     """Fetch a batch of quotes (max QUOTE_BATCH_SIZE) efficiently."""
     results = {}
     
@@ -1100,7 +1114,7 @@ def _fetch_batch_quotes(batch_symbols: List[str]) -> dict:
             period="2d",
             group_by="ticker",
             progress=False,
-            threads=False,
+            threads=bool(yf_threads),
             timeout=15,  # Add timeout to prevent hanging
         )
 

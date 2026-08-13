@@ -22,6 +22,7 @@ services:
         value: "5"
       - key: HEATMAP_QUOTE_MAX_AGE_OPEN
         value: "90"
+      # Long-tail universe only. Curated leaders (~130 names) always fetch first.
       - key: HEATMAP_QUOTE_REFRESH_BUDGET
         value: "60"
       - key: MARKET_NEWS_BUDGET_SECONDS
@@ -51,5 +52,8 @@ services:
       # Never enable debug reset codes in production
       - key: AUTH_PASSWORD_RESET_DEBUG_RESPONSE
         value: "false"
+    # Free plan sleeps after ~15 min idle. Keepalive: hit GET /warmup every
+    # 10 min (UptimeRobot/cron) or upgrade this service off free. /health stays
+    # fast and only kicks a throttled background warm.
     plan: free
     healthCheckPath: /health
