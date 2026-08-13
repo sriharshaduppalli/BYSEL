@@ -641,9 +641,12 @@ class ConfidenceExplainer:
             "confidenceLevel": confidence_level,
             "factors": confidence_factors,
             "caveats": caveats,
-            "interpretation": f"{confidence_level} confidence ({round(overall, 0)}%). "
-                            f"Model shows {'strong' if overall >= 75 else 'moderate' if overall >= 60 else 'weak'} "
-                            f"conviction based on data quality, market volatility, and historical accuracy.",
+            "interpretation": (
+                f"{str(prediction.get('signal', 'HOLD')).replace('_', ' ')} — "
+                f"{confidence_level} confidence ({round(overall, 0)}%). "
+                f"Model shows {'strong' if overall >= 75 else 'moderate' if overall >= 60 else 'weak'} "
+                f"conviction based on data quality, market volatility, and historical accuracy."
+            ),
         }
     
     @staticmethod

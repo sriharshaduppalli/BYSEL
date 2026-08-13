@@ -39,7 +39,14 @@ SECTOR_MAP = {
     # IT
     "TCS": "IT", "INFY": "IT", "WIPRO": "IT", "HCLTECH": "IT",
     "TECHM": "IT", "LTIM": "IT", "MPHASIS": "IT", "COFORGE": "IT",
-    "PERSISTENT": "IT", "LTTS": "IT", "TATAELXSI": "IT", "HAPPSTMNDS": "IT",
+    "PERSISTENT": "IT", "LTTS": "IT", "HAPPSTMNDS": "IT",
+
+    # Semiconductor / OSAT / electronics manufacturing
+    "MOSCHIP": "Semiconductor", "KAYNES": "Semiconductor", "SYRMA": "Semiconductor",
+    "DIXON": "Semiconductor", "AVALON": "Semiconductor", "CYIENTDLM": "Semiconductor",
+    "CGPOWER": "Semiconductor", "TATAELXSI": "Semiconductor", "CYIENT": "Semiconductor",
+    "RIR": "Semiconductor", "PGEL": "Semiconductor", "CENTUM": "Semiconductor",
+    "SPELS": "Semiconductor",
 
     # Pharma & Healthcare
     "SUNPHARMA": "Pharma", "DRREDDY": "Pharma", "CIPLA": "Pharma",

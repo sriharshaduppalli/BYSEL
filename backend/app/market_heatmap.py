@@ -29,7 +29,8 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────
 _HEATMAP_CACHE = {"data": None, "timestamp": 0}
 _HEATMAP_CACHE_TTL_OPEN = float(os.getenv("HEATMAP_CACHE_TTL_OPEN", "2"))
-_HEATMAP_CACHE_TTL_CLOSED = float(os.getenv("HEATMAP_CACHE_TTL_CLOSED", "120"))
+# After hours the tape is frozen — serve the same snapshot for the rest of the evening.
+_HEATMAP_CACHE_TTL_CLOSED = float(os.getenv("HEATMAP_CACHE_TTL_CLOSED", "21600"))
 # Full-universe quotes cannot refresh every 1–2s (Yahoo rate limits).
 # Heatmap payload still caches ~2s; underlying quotes refresh on this TTL.
 _HEATMAP_QUOTE_MAX_AGE_OPEN = float(os.getenv("HEATMAP_QUOTE_MAX_AGE_OPEN", "45"))
@@ -62,6 +63,11 @@ SECTOR_STOCKS = {
     "IT": [
         "TCS", "INFY", "WIPRO", "HCLTECH", "TECHM",
         "LTIM", "MPHASIS", "COFORGE", "PERSISTENT", "LTTS",
+    ],
+    "Semiconductor": [
+        "MOSCHIP", "KAYNES", "SYRMA", "DIXON", "AVALON",
+        "CYIENTDLM", "CGPOWER", "TATAELXSI", "CYIENT", "RIR",
+        "PGEL", "CENTUM", "SPELS",
     ],
     "Pharma": [
         "SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB", "LUPIN",
@@ -119,11 +125,10 @@ def get_market_heatmap() -> Dict:
     While the market is open, serve a 1–2s cache and refresh in the background
     so Android clients polling every 1–2s always get a fast response.
 
-    When the market is closed:
-      1) Prefer the last persisted in-session snapshot
-      2) Otherwise rebuild from provider last-session quotes (Yahoo still
-         returns the prior close session after hours) and persist it
-      Never return an all-zero empty shell when quotes are available.
+    When the market is closed the tape (and TQI) is frozen:
+      1) Serve the in-memory / persisted last-session snapshot
+      2) Rebuild from Yahoo only once if no snapshot exists yet
+      Never keep walking a rotating quote window after hours.
     """
     now = time.time()
     market_open = _is_nse_market_open()
@@ -141,21 +146,25 @@ def get_market_heatmap() -> Dict:
         return cached
 
     if not market_open:
-        persisted = _load_persisted_heatmap_snapshot()
-        if persisted:
+        frozen = _closed_session_snapshot()
+        if frozen:
             stamped = _stamp_stale(
-                persisted,
+                frozen,
                 market_open=False,
-                reason="Market closed — showing last saved session snapshot.",
+                reason="Market closed — TQI frozen at last session snapshot.",
             )
-            _HEATMAP_CACHE["data"] = stamped
-            _HEATMAP_CACHE["timestamp"] = now
+            if not _snapshot_covers_curated_sectors(frozen):
+                _HEATMAP_CACHE["data"] = stamped
+                _HEATMAP_CACHE["timestamp"] = now
+                _schedule_heatmap_refresh(market_open=False)
+            else:
+                return _publish_heatmap(stamped, now=now)
             return stamped
 
         # Never block the HTTP request on Yahoo. Rebuild last-session quotes
-        # in the background; the next poll picks up tiles as they land.
+        # once in the background, then freeze.
         empty = _empty_heatmap_payload(
-            mood_desc="Market is closed — rebuilding last-session heatmap in the background."
+            mood_desc="Market is closed — loading last-session heatmap."
         )
         empty["isStale"] = True
         empty["marketOpen"] = False
@@ -192,8 +201,15 @@ def get_market_heatmap() -> Dict:
 
 
 def kick_heatmap_refresh() -> None:
-    """Non-blocking warmup hook so keepalive can fill tiles before the user opens Heatmap."""
-    _schedule_heatmap_refresh(market_open=_is_nse_market_open())
+    """Non-blocking warmup hook so keepalive can fill tiles before the user opens Heatmap.
+
+    After hours, a valid snapshot is already the close print — do not rebuild,
+    or TQI/breadth will keep drifting as Yahoo's rotating window fills.
+    """
+    market_open = _is_nse_market_open()
+    if not market_open and _snapshot_covers_curated_sectors(_closed_session_snapshot()):
+        return
+    _schedule_heatmap_refresh(market_open=market_open)
 
 
 def _schedule_heatmap_refresh(*, market_open: bool) -> None:
@@ -226,7 +242,64 @@ def _warm_heatmap_universe_async() -> None:
     threading.Thread(target=_warm, name="heatmap-universe", daemon=True).start()
 
 
+def _quoted_count(payload: Optional[Dict]) -> int:
+    if not isinstance(payload, dict):
+        return 0
+    if payload.get("quotedCount"):
+        return int(payload.get("quotedCount") or 0)
+    breadth = payload.get("marketBreadth") or {}
+    return int(breadth.get("total") or 0)
+
+
+def _snapshot_sector_names(payload: Optional[Dict]) -> set:
+    if not isinstance(payload, dict):
+        return set()
+    return {
+        str(sector.get("name") or "")
+        for sector in (payload.get("sectors") or [])
+        if isinstance(sector, dict) and sector.get("name")
+    }
+
+
+def _snapshot_covers_curated_sectors(payload: Optional[Dict]) -> bool:
+    return bool(payload) and set(SECTOR_STOCKS).issubset(_snapshot_sector_names(payload))
+
+
+def _merge_missing_curated_sectors(base: Dict, fresh: Dict) -> Dict:
+    """Keep the frozen close print, but splice in newly added heatmap buckets."""
+    merged = dict(base)
+    existing = _snapshot_sector_names(merged)
+    extras = [
+        dict(sector)
+        for sector in (fresh.get("sectors") or [])
+        if isinstance(sector, dict)
+        and sector.get("name") in SECTOR_STOCKS
+        and sector.get("name") not in existing
+        and sector.get("stocks")
+    ]
+    if extras:
+        merged["sectors"] = list(merged.get("sectors") or []) + extras
+    return merged
+
+
+def _closed_session_snapshot() -> Optional[Dict]:
+    cached = _HEATMAP_CACHE.get("data")
+    if _is_valid_heatmap_snapshot(cached):
+        return cached
+    return _load_persisted_heatmap_snapshot()
+
+
 def _publish_heatmap(payload: Dict, *, now: float) -> Dict:
+    current = _HEATMAP_CACHE.get("data")
+    if (
+        _is_valid_heatmap_snapshot(current)
+        and _is_valid_heatmap_snapshot(payload)
+        and _quoted_count(current) > 0
+        and _quoted_count(payload) < _quoted_count(current) * 0.6
+    ):
+        # Never replace a fuller tape with a thinner leaders-only pass — that
+        # is what made TQI jump on every refresh interval.
+        return current
     _HEATMAP_CACHE["data"] = payload
     _HEATMAP_CACHE["timestamp"] = now
     return payload
@@ -235,14 +308,53 @@ def _publish_heatmap(payload: Dict, *, now: float) -> Dict:
 def _refresh_heatmap_sync(*, market_open: bool) -> Dict:
     now = time.time()
     try:
+        if not market_open:
+            frozen = _closed_session_snapshot()
+            if frozen and _snapshot_covers_curated_sectors(frozen):
+                stamped = _stamp_stale(
+                    frozen,
+                    market_open=False,
+                    reason="Market closed — TQI frozen at last session snapshot.",
+                )
+                return _publish_heatmap(stamped, now=now)
+
+            payload = _build_heatmap_from_quotes(market_open=False, leaders_only=True)
+            if frozen and _is_valid_heatmap_snapshot(payload):
+                merged = _merge_missing_curated_sectors(frozen, payload)
+                stamped = _stamp_stale(
+                    merged,
+                    market_open=False,
+                    reason="Market closed — TQI frozen at last session snapshot.",
+                )
+                _persist_heatmap_snapshot(stamped)
+                return _publish_heatmap(stamped, now=time.time())
+
+            # One-shot last-session rebuild. Leaders only so the universe (and
+            # TQI) is stable — do not walk the rotating full-catalog window.
+            if _is_valid_heatmap_snapshot(payload):
+                stamped = _stamp_stale(
+                    payload,
+                    market_open=False,
+                    reason="Market closed — TQI frozen at last session snapshot.",
+                )
+                _persist_heatmap_snapshot(stamped)
+                return _publish_heatmap(stamped, now=time.time())
+            empty = _empty_heatmap_payload(
+                mood_desc="Market closed — last-session heatmap is unavailable."
+            )
+            empty["staleReason"] = empty["moodDescription"]
+            return empty
+
         # Overlap NSE/BSE catalog I/O with the fast curated-leader Yahoo fetch.
         _warm_heatmap_universe_async()
-        leaders = _build_heatmap_from_quotes(market_open=market_open, leaders_only=True)
-        if _is_valid_heatmap_snapshot(leaders):
-            _persist_heatmap_snapshot(leaders)
-            _publish_heatmap(leaders, now=time.time())
+        current = _HEATMAP_CACHE.get("data")
+        if not _is_valid_heatmap_snapshot(current):
+            leaders = _build_heatmap_from_quotes(market_open=True, leaders_only=True)
+            if _is_valid_heatmap_snapshot(leaders):
+                _persist_heatmap_snapshot(leaders)
+                _publish_heatmap(leaders, now=time.time())
 
-        result = _build_heatmap_from_quotes(market_open=market_open, leaders_only=False)
+        result = _build_heatmap_from_quotes(market_open=True, leaders_only=False)
         if _is_valid_heatmap_snapshot(result):
             _persist_heatmap_snapshot(result)
             return _publish_heatmap(result, now=time.time())
@@ -540,6 +652,11 @@ def _load_persisted_heatmap_snapshot() -> Optional[Dict]:
 
 
 def _persist_heatmap_snapshot(payload: Dict) -> None:
+    if not _is_valid_heatmap_snapshot(payload):
+        return
+    existing = _load_persisted_heatmap_snapshot()
+    if existing and _quoted_count(payload) < _quoted_count(existing):
+        return
     try:
         _HEATMAP_SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = _HEATMAP_SNAPSHOT_PATH.with_suffix(".tmp")

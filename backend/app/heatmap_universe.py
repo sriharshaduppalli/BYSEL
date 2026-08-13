@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 HEATMAP_SECTOR_ORDER: List[str] = [
     "Banking",
     "IT",
+    "Semiconductor",
     "Pharma",
     "Auto",
     "FMCG",
@@ -44,6 +45,9 @@ _SECTOR_ALIASES: Dict[str, str] = {
     "insurance": "Finance",
     "it": "IT",
     "technology": "IT",
+    "semiconductor": "Semiconductor",
+    "semicon": "Semiconductor",
+    "electronics manufacturing": "Semiconductor",
     "pharma": "Pharma",
     "pharmaceuticals": "Pharma",
     "healthcare": "Pharma",
@@ -74,6 +78,11 @@ _SECTOR_ALIASES: Dict[str, str] = {
 _NAME_RULES: List[Tuple[re.Pattern, str]] = [
     (re.compile(r"\b(bank|banking)\b", re.I), "Banking"),
     (re.compile(r"\b(nbfc|finance|finserv|financial|insurance|life insurance|general insurance)\b", re.I), "Finance"),
+    # Chip / OSAT / VLSI before generic "technologies" → IT.
+    (re.compile(
+        r"\b(semiconductor|semi-conductor|vlsi|osat|asic|foundry|moschip|chip design)\b",
+        re.I,
+    ), "Semiconductor"),
     (re.compile(r"\b(software|infotech|information technology|technologies|tech |systems|consult)\b", re.I), "IT"),
     (re.compile(r"\b(pharma|pharmaceutical|laborator|lab\b|hospital|healthcare|health care)\b", re.I), "Pharma"),
     (re.compile(r"\b(auto|motor|motors|tyre|tire|vehicle)\b", re.I), "Auto"),

@@ -20,6 +20,35 @@ _DEFAULT_MODEL = "llama-3.1-8b-instant"
 
 _client = None
 
+
+def _is_rate_limit_error(exc: BaseException) -> bool:
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status == 429:
+        return True
+    text = str(exc).lower()
+    return (
+        "429" in text
+        or "rate limit" in text
+        or "too many requests" in text
+        or "resource_exhausted" in text
+        or "quota" in text
+    )
+
+
+def _retry_after_seconds(exc: BaseException, default: float = 1.5) -> float:
+    headers = getattr(getattr(exc, "response", None), "headers", None) or {}
+    raw = None
+    try:
+        raw = headers.get("retry-after") or headers.get("Retry-After")
+    except Exception:
+        raw = None
+    try:
+        return min(8.0, max(0.8, float(raw)))
+    except (TypeError, ValueError):
+        return default
+
 # ---------------------------------------------------------------------------
 # Base system prompt (always included)
 # ---------------------------------------------------------------------------
@@ -1623,26 +1652,40 @@ TONE ADJUSTMENTS:
     # Tune temperature per intent
     temperature = 0.5 if intent in ("PREDICT", "SECTOR_SCREEN", "MULTI_STOCK") else 0.35
 
-    try:
-        groq_timeout = float(os.environ.get("GROQ_TIMEOUT_SECONDS", "20"))
-        response = await asyncio.wait_for(
-            client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=2048,
-            ),
-            timeout=groq_timeout,
-        )
-        text = response.choices[0].message.content or ""
-        text = text.strip()
-        if not text:
-            return {"error": "Empty response from Groq"}
-        # Don't strip Groq responses — only strip fallback LLM responses
-        # Groq should never include metadata due to system prompt
-        return {
-            "answer": text,
-        }
-    except Exception as e:
-        logger.error("Groq API error: %s", e)
-        return {"error": f"Groq error: {str(e)}"}
+    last_error: Exception | None = None
+    for attempt in range(2):
+        try:
+            groq_timeout = float(os.environ.get("GROQ_TIMEOUT_SECONDS", "20"))
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=2048,
+                ),
+                timeout=groq_timeout,
+            )
+            text = response.choices[0].message.content or ""
+            text = text.strip()
+            if not text:
+                return {"error": "Empty response from Groq"}
+            return {
+                "answer": text,
+            }
+        except Exception as e:
+            last_error = e
+            if attempt == 0 and _is_rate_limit_error(e):
+                delay = _retry_after_seconds(e)
+                logger.warning("Groq rate limited, retrying in %.1fs error=%s", delay, e)
+                await asyncio.sleep(delay)
+                continue
+            logger.error("Groq API error: %s", e)
+            return {
+                "error": f"Groq error: {str(e)}",
+                "rate_limited": _is_rate_limit_error(e),
+            }
+    logger.error("Groq API error after retry: %s", last_error)
+    return {
+        "error": f"Groq error: {last_error}",
+        "rate_limited": True,
+    }

@@ -8,9 +8,11 @@ import com.bysel.trader.data.live.LiveMarketDataClient
 import com.bysel.trader.data.api.TradeHistory
 import com.bysel.trader.data.local.BYSELDatabase
 import com.bysel.trader.data.models.*
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import retrofit2.HttpException
 import java.util.UUID
 
 open class TradingRepository(private val database: BYSELDatabase) {
@@ -482,9 +484,25 @@ open class TradingRepository(private val database: BYSELDatabase) {
     }
 
     // ==================== AI STOCK ASSISTANT ====================
+    private fun isRateLimited(e: Exception): Boolean {
+        if (e is HttpException && e.code() == 429) return true
+        val raw = e.message.orEmpty()
+        return raw.contains("429") ||
+            raw.contains("too many requests", ignoreCase = true) ||
+            raw.contains("rate limit", ignoreCase = true)
+    }
+
+    private fun retryAfterMs(e: Exception): Long {
+        val header = (e as? HttpException)?.response()?.headers()?.get("Retry-After")
+        val seconds = header?.toLongOrNull()
+        return ((seconds ?: 2L) * 1000L).coerceIn(800L, 8_000L)
+    }
+
     private fun toAiErrorMessage(e: Exception, fallback: String): String {
         val raw = e.message.orEmpty()
         return when {
+            isRateLimited(e) ->
+                "AI is rate-limited right now. Wait a few seconds and try again."
             e is java.net.SocketTimeoutException ||
                 raw.contains("timeout", ignoreCase = true) ||
                 raw.contains("timed out", ignoreCase = true) ->
@@ -530,14 +548,23 @@ open class TradingRepository(private val database: BYSELDatabase) {
         chatHistory: List<ConversationTurn>? = null,
         tier: String = "auto",
     ): Result<AiAssistantResponse> {
-        return try {
-            val response = aiApiService.aiAsk(
-                AiQuery(query = query, conversationHistory = chatHistory, tier = tier)
-            )
-            Result.Success(response)
-        } catch (e: Exception) {
-            Result.Error(toAiErrorMessage(e, "AI request failed"))
+        var lastError: Exception? = null
+        repeat(2) { attempt ->
+            try {
+                val response = aiApiService.aiAsk(
+                    AiQuery(query = query, conversationHistory = chatHistory, tier = tier)
+                )
+                return Result.Success(response)
+            } catch (e: Exception) {
+                lastError = e
+                if (attempt == 0 && isRateLimited(e)) {
+                    delay(retryAfterMs(e))
+                } else {
+                    return Result.Error(toAiErrorMessage(e, "AI request failed"))
+                }
+            }
         }
+        return Result.Error(toAiErrorMessage(lastError ?: Exception("rate limited"), "AI request failed"))
     }
 
     suspend fun aiAnalyze(symbol: String): Result<StockAnalysis> {

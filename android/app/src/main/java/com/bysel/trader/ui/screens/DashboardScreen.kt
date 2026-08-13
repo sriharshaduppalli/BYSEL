@@ -402,8 +402,7 @@ fun DashboardScreen(
                 dashboardViewModel.refreshMarketNews(personalNewsSymbols)
                 dashboardViewModel.refreshMarketMovers(staggerMs = 400L)
                 dashboardViewModel.refreshPracticeIdeas()
-                val up = quotes.count { it.pctChange >= 0.0 }
-                val down = quotes.count { it.pctChange < 0.0 }
+                val (up, down) = sessionBreadth(quotes)
                 val share = if (up + down > 0) up.toDouble() / (up + down).toDouble() else null
                 dashboardViewModel.refreshIntradayTips(advanceShare = share)
                 dashboardViewModel.refreshInvestorTips()
@@ -585,21 +584,22 @@ fun DashboardContent(
     }
     val localGainers = remember(quotes, pinnedStocks) {
         quotes
-            .filter { it.symbol !in setOf("NIFTY50", "SENSEX", "BANKNIFTY", "NIFTYIT") }
+            .filter { it.symbol.uppercase() !in HOME_INDEX_SYMBOLS }
+            .filter { it.pctChange > 0.0 && !pinnedStocks.contains(it.symbol) }
             .sortedByDescending { it.pctChange }
-            .filter { !pinnedStocks.contains(it.symbol) }
             .take(8)
     }
     val localLosers = remember(quotes, pinnedStocks) {
         quotes
-            .filter { it.symbol !in setOf("NIFTY50", "SENSEX", "BANKNIFTY", "NIFTYIT") }
+            .filter { it.symbol.uppercase() !in HOME_INDEX_SYMBOLS }
+            .filter { it.pctChange < 0.0 && !pinnedStocks.contains(it.symbol) }
             .sortedBy { it.pctChange }
-            .filter { !pinnedStocks.contains(it.symbol) }
             .take(8)
     }
     val topGainers = remember(marketGainers, localGainers) {
-        if (marketGainers.isNotEmpty()) {
-            marketGainers.map {
+        val fromMarket = marketGainers
+            .filter { it.pctChange > 0.0 }
+            .map {
                 Quote(
                     symbol = it.symbol,
                     last = it.last,
@@ -607,13 +607,12 @@ fun DashboardContent(
                     volume = it.volume,
                 )
             }
-        } else {
-            localGainers
-        }
+        fromMarket.ifEmpty { localGainers }
     }
     val topLosers = remember(marketLosers, localLosers) {
-        if (marketLosers.isNotEmpty()) {
-            marketLosers.map {
+        val fromMarket = marketLosers
+            .filter { it.pctChange < 0.0 }
+            .map {
                 Quote(
                     symbol = it.symbol,
                     last = it.last,
@@ -621,20 +620,23 @@ fun DashboardContent(
                     volume = it.volume,
                 )
             }
-        } else {
-            localLosers
-        }
+        fromMarket.ifEmpty { localLosers }
     }
-    val moversAreMarketWide = marketGainers.isNotEmpty() || marketLosers.isNotEmpty()
-    val totalValue = remember(holdings) { holdings.sumOf { it.qty * it.last } }
+    val moversAreMarketWide = marketGainers.any { it.pctChange > 0.0 } ||
+        marketLosers.any { it.pctChange < 0.0 }
+    val totalValue = remember(holdings, quotes) {
+        holdings.sumOf { it.qty * liveHoldingPrice(it, quotes) }
+    }
     val totalInvested = remember(holdings) { holdings.sumOf { it.qty * it.avgPrice } }
     val totalPnL = remember(totalValue, totalInvested) { totalValue - totalInvested }
     val totalPnLPercent = remember(totalValue, totalInvested) {
         if (totalInvested > 0.0) (totalPnL / totalInvested) * 100.0 else 0.0
     }
-    val positiveCount = remember(quotes) { quotes.count { it.pctChange >= 0.0 } }
-    val negativeCount = remember(quotes) { quotes.count { it.pctChange < 0.0 } }
-    val averageMove = remember(quotes) { if (quotes.isEmpty()) 0.0 else quotes.map { it.pctChange }.average() }
+    val (positiveCount, negativeCount) = remember(quotes) { sessionBreadth(quotes) }
+    val averageMove = remember(quotes) {
+        val tape = quotes.filter { it.symbol.uppercase() !in HOME_INDEX_SYMBOLS }
+        if (tape.isEmpty()) 0.0 else tape.map { it.pctChange }.average()
+    }
     val marketMoodTitle = remember(positiveCount, negativeCount, averageMove) {
         when {
             averageMove >= 0.75 && positiveCount >= negativeCount -> "Risk-On Session"
@@ -676,7 +678,7 @@ fun DashboardContent(
             DashboardMetric(
                 title = "Breadth",
                 value = "$positiveCount up / $negativeCount down",
-                caption = "Session leadership at a glance",
+                caption = "Tracked names on Home (not full NSE)",
                 accent = if (positiveCount >= negativeCount) theme.positive else theme.negative,
             ),
             DashboardMetric(
@@ -1085,7 +1087,7 @@ fun DashboardContent(
                                             }
                                         }
                                     }
-                                    PortfolioSummaryCard(holdings)
+                                    PortfolioSummaryCard(holdings, quotes)
                                 }
                             }
                             Spacer(modifier = Modifier.height(20.dp))
@@ -1140,7 +1142,8 @@ fun DashboardContent(
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
                                 WatchlistWidget(
                                     isPinned = true,
-                                    quotes = watchlistQuotes.ifEmpty { focusQuotes },
+                                    quotes = watchlistQuotes,
+                                    trackedCount = watchlistSymbols.size,
                                     onPinClick = { dashboardViewModel.toggleWatchlistPin() },
                                     onQuoteClick = { onTradeClick(it.symbol) },
                                     onTradeClick = onQuickTradeClick?.let { handler -> { handler(it.symbol) } },
@@ -1182,7 +1185,8 @@ fun DashboardContent(
             item {
                 WatchlistWidget(
                     isPinned = false,
-                    quotes = watchlistQuotes.ifEmpty { focusQuotes },
+                    quotes = watchlistQuotes,
+                    trackedCount = watchlistSymbols.size,
                     onPinClick = { dashboardViewModel.toggleWatchlistPin() },
                     onQuoteClick = { onTradeClick(it.symbol) },
                     onTradeClick = onQuickTradeClick?.let { handler -> { handler(it.symbol) } },
@@ -1228,6 +1232,16 @@ fun DashboardContent(
                 onClick = { onTradeClick(quote.symbol) }
             )
         }
+        if (topGainers.isEmpty()) {
+            item {
+                Text(
+                    text = "No names are up in the current snapshot.",
+                    fontSize = 13.sp,
+                    color = LocalAppTheme.current.textSecondary,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
+            }
+        }
 
         item {
             SectionHeader(
@@ -1248,6 +1262,16 @@ fun DashboardContent(
                 onPinClick = { dashboardViewModel.togglePin(quote.symbol) },
                 onClick = { onTradeClick(quote.symbol) }
             )
+        }
+        if (topLosers.isEmpty()) {
+            item {
+                Text(
+                    text = "No names are down in the current snapshot.",
+                    fontSize = 13.sp,
+                    color = LocalAppTheme.current.textSecondary,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
+            }
         }
         
         item {
@@ -1718,7 +1742,11 @@ private fun HomeQuoteBoardCard(
                 color = if (quote.pctChange >= 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative,
             )
             Text(
-                text = if ((quote.volume ?: 0L) > 0L) "Volume ${formatCompactVolume(quote.volume)}" else "Open stock context and decide fast",
+                text = if (quote.effectiveVolume() > 0L) {
+                    "Volume ${formatCompactVolume(quote.effectiveVolume())}"
+                } else {
+                    "Open stock context and decide fast"
+                },
                 color = LocalAppTheme.current.textSecondary,
                 fontSize = 12.sp,
             )
@@ -2845,13 +2873,25 @@ private data class IdeaChip(
 
 private fun formatCompactCurrency(value: Double): String = formatInrCompact(value)
 
+private val HOME_INDEX_SYMBOLS = setOf("NIFTY50", "SENSEX", "BANKNIFTY", "NIFTYIT")
+
+private fun sessionBreadth(quotes: List<Quote>): Pair<Int, Int> {
+    val tape = quotes.filter { it.symbol.uppercase() !in HOME_INDEX_SYMBOLS }
+    return tape.count { it.pctChange > 0.0 } to tape.count { it.pctChange < 0.0 }
+}
+
+private fun liveHoldingPrice(holding: Holding, quotes: List<Quote>): Double {
+    val live = quotes.firstOrNull { it.symbol.equals(holding.symbol, ignoreCase = true) }?.last
+    return if (live != null && live > 0.0) live else holding.last
+}
+
 private fun formatSignedPercent(value: Double): String = formatSignedPct(value)
 
 private fun formatCompactVolume(value: Long?): String = formatVolumeCompact(value)
 
 @Composable
-fun PortfolioSummaryCard(holdings: List<Holding>) {
-    val totalValue = holdings.sumOf { it.qty * it.last }
+fun PortfolioSummaryCard(holdings: List<Holding>, quotes: List<Quote> = emptyList()) {
+    val totalValue = holdings.sumOf { it.qty * liveHoldingPrice(it, quotes) }
     val totalInvested = holdings.sumOf { it.qty * it.avgPrice }
     val totalPnL = totalValue - totalInvested
     val totalPnLPercent = if (totalInvested > 0) (totalPnL / totalInvested) * 100 else 0.0

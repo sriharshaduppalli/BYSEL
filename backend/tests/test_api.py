@@ -1511,6 +1511,33 @@ def test_ai_ask_passes_concise_style_to_groq(monkeypatch):
     assert captured["response_style"] == "concise"
 
 
+def test_groq_rate_limit_helpers():
+    from app.groq_llm import _is_rate_limit_error, _retry_after_seconds
+
+    class RateLimitExc(Exception):
+        status_code = 429
+        response = type("Resp", (), {"headers": {"Retry-After": "3"}})()
+
+    exc = RateLimitExc("Error code: 429 - rate limit reached")
+    assert _is_rate_limit_error(exc) is True
+    assert _retry_after_seconds(exc) == 3.0
+    assert _is_rate_limit_error(Exception("timeout")) is False
+
+
+def test_ai_ask_http_429_is_softened_to_chat_answer(monkeypatch):
+    from fastapi import HTTPException
+
+    def _boom(_query):
+        raise HTTPException(status_code=429, detail="provider busy")
+
+    monkeypatch.setattr("app.groq_llm.classify_intent", _boom)
+    response = client.post("/ai/ask", json={"query": "Should I buy TCS?"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body.get("source") == "rate-limit"
+    assert "rate-limited" in body.get("answer", "").lower() or "try again" in body.get("answer", "").lower()
+
+
 def test_ai_ask_passes_detailed_style_to_groq(monkeypatch):
     captured = {}
 
@@ -2283,6 +2310,156 @@ def test_market_heatmap_rebuilds_last_session_when_closed_without_snapshot(monke
     assert again["marketBreadth"]["total"] == result["marketBreadth"]["total"]
 
 
+def _curated_close_snapshot(**overrides):
+    sectors = []
+    for name, symbols in market_heatmap_module.SECTOR_STOCKS.items():
+        sectors.append(
+            {
+                "name": name,
+                "avgChange": 0.5,
+                "advances": 1,
+                "declines": 0,
+                "unchanged": 0,
+                "totalStocks": 1,
+                "stocks": [{"symbol": symbols[0], "change": 1.0, "pctChange": 0.5}],
+            }
+        )
+    payload = {
+        "sectors": sectors,
+        "marketBreadth": {
+            "advances": 2,
+            "declines": 1,
+            "unchanged": 0,
+            "total": 3,
+            "advanceRatio": 0.667,
+        },
+        "mood": "BULLISH",
+        "moodEmoji": "🟢",
+        "moodDescription": "Close print",
+        "bestSector": {"name": "IT", "change": 0.8},
+        "worstSector": {"name": "IT", "change": 0.8},
+        "lastUpdated": "2026-08-13T10:00:00",
+        "quotedCount": 3,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_closed_refresh_does_not_rebuild_existing_snapshot(monkeypatch, tmp_path):
+    snapshot = _curated_close_snapshot()
+    snapshot_path = tmp_path / "market_heatmap_snapshot.json"
+    snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_SNAPSHOT_PATH", snapshot_path)
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_CACHE", {"data": None, "timestamp": 0})
+    monkeypatch.setattr(market_heatmap_module, "_is_nse_market_open", lambda: False)
+    monkeypatch.setattr(
+        market_heatmap_module,
+        "fetch_quotes",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("closed snapshot must not hit Yahoo")),
+    )
+
+    first = market_heatmap_module._refresh_heatmap_sync(market_open=False)
+    second = market_heatmap_module._refresh_heatmap_sync(market_open=False)
+    assert first["marketBreadth"]["total"] == 3
+    assert first["lastUpdated"] == snapshot["lastUpdated"]
+    assert second["marketBreadth"]["advanceRatio"] == first["marketBreadth"]["advanceRatio"]
+    assert second["quotedCount"] == first["quotedCount"]
+
+
+def test_kick_heatmap_refresh_skips_when_closed_with_snapshot(monkeypatch, tmp_path):
+    snapshot = _curated_close_snapshot(mood="EUPHORIC", quotedCount=1)
+    snapshot_path = tmp_path / "snap.json"
+    snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+    scheduled = []
+
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_SNAPSHOT_PATH", snapshot_path)
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_CACHE", {"data": None, "timestamp": 0})
+    monkeypatch.setattr(market_heatmap_module, "_is_nse_market_open", lambda: False)
+    monkeypatch.setattr(
+        market_heatmap_module,
+        "_schedule_heatmap_refresh",
+        lambda **kwargs: scheduled.append(kwargs),
+    )
+
+    market_heatmap_module.kick_heatmap_refresh()
+    assert scheduled == []
+
+
+def test_closed_refresh_splices_missing_semiconductor_without_changing_breadth(monkeypatch, tmp_path):
+    snapshot = {
+        "sectors": [
+            {
+                "name": "IT",
+                "avgChange": 0.8,
+                "advances": 2,
+                "declines": 1,
+                "unchanged": 0,
+                "totalStocks": 3,
+                "stocks": [{"symbol": "TCS", "change": 1.1, "pctChange": 0.8}],
+            }
+        ],
+        "marketBreadth": {
+            "advances": 2,
+            "declines": 1,
+            "unchanged": 0,
+            "total": 3,
+            "advanceRatio": 0.667,
+        },
+        "mood": "BULLISH",
+        "lastUpdated": "2026-08-13T10:00:00",
+        "quotedCount": 3,
+    }
+    snapshot_path = tmp_path / "snap.json"
+    snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+
+    def _fake_fetch_quotes(symbols, max_age_seconds=None, **_kwargs):
+        return [
+            {"symbol": symbol, "last": 100.0, "pctChange": 1.0, "change": 1.0}
+            for symbol in symbols
+        ]
+
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_SNAPSHOT_PATH", snapshot_path)
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_CACHE", {"data": None, "timestamp": 0})
+    monkeypatch.setattr(market_heatmap_module, "fetch_quotes", _fake_fetch_quotes)
+    from app.market_data import _quote_cache
+
+    _quote_cache.clear()
+
+    result = market_heatmap_module._refresh_heatmap_sync(market_open=False)
+    assert result["marketBreadth"]["advanceRatio"] == 0.667
+    assert result["quotedCount"] == 3
+    names = {sector["name"] for sector in result["sectors"]}
+    assert "IT" in names
+    assert "Semiconductor" in names
+    semiconductor = next(s for s in result["sectors"] if s["name"] == "Semiconductor")
+    assert any(stock["symbol"] == "MOSCHIP" for stock in semiconductor["stocks"])
+
+
+def test_publish_heatmap_does_not_replace_fuller_snapshot_with_thinner(monkeypatch):
+    fuller = {
+        "sectors": [{"name": "IT", "stocks": [{"symbol": "TCS"}], "totalStocks": 80}],
+        "marketBreadth": {"advances": 50, "declines": 30, "unchanged": 0, "total": 80, "advanceRatio": 0.625},
+        "quotedCount": 80,
+        "mood": "BULLISH",
+    }
+    thinner = {
+        "sectors": [{"name": "IT", "stocks": [{"symbol": "TCS"}], "totalStocks": 12}],
+        "marketBreadth": {"advances": 10, "declines": 2, "unchanged": 0, "total": 12, "advanceRatio": 0.833},
+        "quotedCount": 12,
+        "mood": "EUPHORIC",
+    }
+    monkeypatch.setattr(
+        market_heatmap_module,
+        "_HEATMAP_CACHE",
+        {"data": fuller, "timestamp": 1},
+    )
+    published = market_heatmap_module._publish_heatmap(thinner, now=99)
+    assert published["quotedCount"] == 80
+    assert published["marketBreadth"]["advanceRatio"] == 0.625
+    assert market_heatmap_module._HEATMAP_CACHE["data"]["quotedCount"] == 80
+
+
 def test_heatmap_leaders_paint_before_full_universe(monkeypatch, tmp_path):
     fetched = []
 
@@ -2314,6 +2491,45 @@ def test_heatmap_leaders_paint_before_full_universe(monkeypatch, tmp_path):
     banking = next(s for s in result["sectors"] if s["name"] == "Banking")
     assert any(stock["symbol"] == "HDFCBANK" for stock in banking["stocks"])
     assert result["marketBreadth"]["total"] > 0
+
+
+def test_heatmap_includes_semiconductor_leaders(monkeypatch, tmp_path):
+    fetched = []
+
+    def _fake_fetch_quotes(symbols, max_age_seconds=None, **_kwargs):
+        fetched.append(list(symbols))
+        return [
+            {
+                "symbol": symbol,
+                "last": 210.0,
+                "pctChange": 0.9,
+                "change": 1.8,
+            }
+            for symbol in symbols
+        ]
+
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_SNAPSHOT_PATH", tmp_path / "snap.json")
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_CACHE", {"data": None, "timestamp": 0})
+    monkeypatch.setattr(market_heatmap_module, "fetch_quotes", _fake_fetch_quotes)
+    from app.heatmap_universe import HEATMAP_SECTOR_ORDER, _classify_from_name
+    from app.market_data import _quote_cache
+
+    _quote_cache.clear()
+
+    assert "Semiconductor" in HEATMAP_SECTOR_ORDER
+    assert "MOSCHIP" in market_heatmap_module.SECTOR_STOCKS["Semiconductor"]
+    assert "KAYNES" in market_heatmap_module.SECTOR_STOCKS["Semiconductor"]
+    assert _classify_from_name("SPEL Semiconductor Ltd.") == "Semiconductor"
+    assert _classify_from_name("Moschip Technologies Limited") == "Semiconductor"
+
+    result = market_heatmap_module._build_heatmap_from_quotes(market_open=True, leaders_only=True)
+    first_batch = fetched[0]
+    assert "MOSCHIP" in first_batch
+    assert "KAYNES" in first_batch
+    assert "DIXON" in first_batch
+    semiconductor = next(s for s in result["sectors"] if s["name"] == "Semiconductor")
+    symbols = {stock["symbol"] for stock in semiconductor["stocks"]}
+    assert {"MOSCHIP", "KAYNES", "DIXON"} <= symbols
 
 
 def test_open_market_heatmap_does_not_block_on_yahoo(monkeypatch, tmp_path):
@@ -2396,6 +2612,47 @@ def test_admin_delete_user_rejects_wrong_admin_token(monkeypatch):
         headers={"X-Admin-Token": "wrong-token"},
     )
     assert response.status_code == 403
+
+
+def test_market_movers_only_true_gainers_and_losers(monkeypatch):
+    import app.market_data as market_data_module
+
+    monkeypatch.setattr(
+        market_data_module,
+        "_MOVERS_CACHE",
+        {"fetched_at": 0.0, "payload": None, "refreshing": False},
+    )
+
+    def _fake_fetch_quotes(symbols, max_age_seconds=None, **_kwargs):
+        by_symbol = {
+            "TCS": 2.4,
+            "INFY": -1.8,
+            "WIPRO": 0.0,
+            "RELIANCE": -0.3,
+            "HDFCBANK": 1.1,
+        }
+        return [
+            {
+                "symbol": str(symbol).upper(),
+                "last": 100.0,
+                "pctChange": by_symbol.get(str(symbol).upper(), -0.5),
+                "volume": 1_000_000,
+            }
+            for symbol in symbols
+        ]
+
+    monkeypatch.setattr(market_data_module, "fetch_quotes", _fake_fetch_quotes)
+
+    payload = market_data_module.fetch_market_movers(limit=8)
+    gainer_symbols = {row["symbol"] for row in payload["gainers"]}
+    loser_symbols = {row["symbol"] for row in payload["losers"]}
+    assert all(row["pctChange"] > 0 for row in payload["gainers"])
+    assert all(row["pctChange"] < 0 for row in payload["losers"])
+    assert "TCS" in gainer_symbols
+    assert "HDFCBANK" in gainer_symbols
+    assert "INFY" in loser_symbols
+    assert "WIPRO" not in gainer_symbols
+    assert "WIPRO" not in loser_symbols
 
 
 def test_otp_debug_requires_debug_token(monkeypatch):

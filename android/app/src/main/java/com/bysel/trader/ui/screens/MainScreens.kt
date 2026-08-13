@@ -172,14 +172,26 @@ fun WatchlistScreen(
                         verticalArrangement = Arrangement.Center,
                     ) {
                         Text(
-                            text = "No tracked symbols yet",
+                            text = when {
+                                quotes.isNotEmpty() && sortMode == WatchlistSortMode.GAINERS ->
+                                    "No gainers this session"
+                                quotes.isNotEmpty() && sortMode == WatchlistSortMode.LOSERS ->
+                                    "No losers this session"
+                                else -> "No tracked symbols yet"
+                            },
                             fontWeight = FontWeight.Bold,
                             color = LocalAppTheme.current.text,
                             fontSize = 16.sp,
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Search the full NSE listed universe, tap Watch, then open Trade → My list.",
+                            text = when {
+                                quotes.isNotEmpty() && sortMode == WatchlistSortMode.GAINERS ->
+                                    "None of these names are up. Try Top move or Losers."
+                                quotes.isNotEmpty() && sortMode == WatchlistSortMode.LOSERS ->
+                                    "None of these names are down. Try Top move or Gainers."
+                                else -> "Search the full NSE listed universe, tap Watch, then open Trade → My list."
+                            },
                             color = LocalAppTheme.current.textSecondary,
                             fontSize = 13.sp,
                         )

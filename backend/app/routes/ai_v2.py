@@ -63,7 +63,11 @@ async def analyze_stock_enhanced(
                 "confidenceBreakdown": enhanced["enhancements"]["confidenceBreakdown"],
                 "predictionReasoning": {
                     "signal": enhanced["base"]["signal"],
-                    "whyConfident": enhanced["enhancements"]["interpretations"]["whyConfident"],
+                    "whyConfident": (
+                        enhanced["enhancements"]["interpretations"].get("whyConfident")
+                        or enhanced.get("recommendedAction", {}).get("reason")
+                        or ""
+                    ),
                     "caveats": enhanced["enhancements"]["interpretations"]["caveatListings"]
                 },
                 "eventRiskAnalysis": enhanced["enhancements"]["eventRiskAdjustment"] if enhanced["enhancements"]["eventRiskAdjustment"]["eventRisks"] else None,

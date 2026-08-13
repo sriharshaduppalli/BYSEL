@@ -679,22 +679,20 @@ class TradingViewModel(
     }
 
     // --- Quotes / holdings / wallet ---
+    private fun mergeQuotesWithExisting(incoming: List<Quote>): List<Quote> {
+        val merged = _quotes.value.associateBy { it.symbol.uppercase() }.toMutableMap()
+        incoming.forEach { quote ->
+            val key = quote.symbol.uppercase()
+            merged[key] = quote.withLiquidityFrom(merged[key])
+        }
+        return merged.values.sortedBy { it.symbol }
+    }
+
     fun refreshQuotes(force: Boolean = false, symbolsOverride: List<String>? = null) {
         val symbols = symbolsOverride?.takeIf { it.isNotEmpty() } ?: trackedSymbols()
         val now = System.currentTimeMillis()
         if (!force && now - lastQuotesRefreshRequestAt < QUOTE_REFRESH_DEBOUNCE) return
         lastQuotesRefreshRequestAt = now
-
-        fun mergeQuotesWithExisting(incoming: List<Quote>): List<Quote> {
-            val existing = _quotes.value
-            return if (existing.size > incoming.size) {
-                val merged = existing.associateBy { it.symbol }.toMutableMap()
-                incoming.forEach { quote -> merged[quote.symbol] = quote }
-                merged.values.sortedBy { it.symbol }
-            } else {
-                incoming
-            }
-        }
 
         quotesRefreshJob?.cancel()
         quotesRefreshJob = viewModelScope.launch {
@@ -773,9 +771,8 @@ class TradingViewModel(
 
         viewModelScope.launch {
             repository.getAllQuotesFromApi().collectLatest { result ->
-                if (result is Result.Success) {
-                    val existing = _quotes.value
-                    _quotes.value = if (result.data.size >= existing.size) result.data else existing
+                if (result is Result.Success && result.data.isNotEmpty()) {
+                    _quotes.value = mergeQuotesWithExisting(result.data)
                     markQuoteUpdate()
                     syncSelectedQuoteFrom(_quotes.value)
                 }
@@ -1244,7 +1241,7 @@ class TradingViewModel(
                                 return@collectLatest
                             }
                             lastStreamEmitAt = now
-                            _quotes.value = result.data
+                            _quotes.value = mergeQuotesWithExisting(result.data)
                             markQuoteUpdate(now)
                             syncSelectedQuoteFrom(result.data)
                             evaluateAlerts(result.data)
@@ -2810,9 +2807,16 @@ class TradingViewModel(
     }
 
     fun loadMarketHeatmap(force: Boolean = false) {
-        // When the market is closed, still allow an initial load so the UI can
-        // show the backend's last persisted session snapshot.
-        if (!force && !isNseMarketOpen() && _marketHeatmap.value != null) return
+        // After hours, freeze the last real snapshot so TQI doesn't drift on
+        // keepalive / poll. Empty shells may still retry once to pick up persist.
+        val current = _marketHeatmap.value
+        val hasRealSnapshot = (current?.quotedCount ?: 0) > 0 ||
+            (current?.marketBreadth?.total ?: 0) > 0
+        val hasSemiconductor = current?.sectors?.any {
+            it.name.equals("Semiconductor", ignoreCase = true)
+        } == true
+        val sessionClosed = !isNseMarketOpen() || current?.marketOpen == false
+        if (!force && sessionClosed && hasRealSnapshot && hasSemiconductor) return
 
         val now = System.currentTimeMillis()
         if (!force && _marketHeatmap.value != null && (now - lastHeatmapRefreshAt) < HEATMAP_REFRESH_DEBOUNCE) {
@@ -2831,7 +2835,16 @@ class TradingViewModel(
                     wakeOnFailure = _marketHeatmap.value == null,
                 )) {
                     is Result.Success -> {
-                        _marketHeatmap.value = r.data
+                        val incoming = r.data
+                        val existing = _marketHeatmap.value
+                        val incomingEmpty =
+                            incoming.quotedCount <= 0 && incoming.marketBreadth.total <= 0
+                        val existingReal =
+                            (existing?.quotedCount ?: 0) > 0 ||
+                                (existing?.marketBreadth?.total ?: 0) > 0
+                        if (!(incomingEmpty && existingReal)) {
+                            _marketHeatmap.value = incoming
+                        }
                         lastHeatmapRefreshAt = System.currentTimeMillis()
                         _error.value = null
                     }

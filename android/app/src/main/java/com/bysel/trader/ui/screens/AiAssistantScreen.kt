@@ -1214,7 +1214,7 @@ private fun ChatBubble(
                 PredictionReasoningCard(
                     symbol = actionSymbol.orEmpty(),
                     signal = message.enhancedFeatures.predictionReasoning.signal,
-                    whyConfident = message.enhancedFeatures.predictionReasoning.whyConfident,
+                    whyConfident = message.enhancedFeatures.predictionReasoning.whyConfident.orEmpty(),
                     caveats = message.enhancedFeatures.predictionReasoning.caveats,
                     modifier = Modifier.fillMaxWidth()
                 )

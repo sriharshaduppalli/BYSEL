@@ -12,9 +12,17 @@ enum class WatchlistSortMode(val label: String) {
 }
 
 fun List<Quote>.sortedByWatchlistMode(mode: WatchlistSortMode): List<Quote> = when (mode) {
-    WatchlistSortMode.MOVE -> sortedByDescending { kotlin.math.abs(it.pctChange) }
-    WatchlistSortMode.GAINERS -> sortedByDescending { it.pctChange }
-    WatchlistSortMode.LOSERS -> sortedBy { it.pctChange }
-    WatchlistSortMode.VOLUME -> sortedByDescending { it.volume ?: 0L }
+    WatchlistSortMode.MOVE -> sortedWith(
+        compareByDescending<Quote> { kotlin.math.abs(it.pctChange) }.thenBy { it.symbol.uppercase() },
+    )
+    WatchlistSortMode.GAINERS -> filter { it.pctChange > 0.0 }.sortedWith(
+        compareByDescending<Quote> { it.pctChange }.thenBy { it.symbol.uppercase() },
+    )
+    WatchlistSortMode.LOSERS -> filter { it.pctChange < 0.0 }.sortedWith(
+        compareBy<Quote> { it.pctChange }.thenBy { it.symbol.uppercase() },
+    )
+    WatchlistSortMode.VOLUME -> sortedWith(
+        compareByDescending<Quote> { it.effectiveVolume() }.thenBy { it.symbol.uppercase() },
+    )
     WatchlistSortMode.ALPHA -> sortedBy { it.symbol.uppercase() }
 }
