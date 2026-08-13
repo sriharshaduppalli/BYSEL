@@ -2596,19 +2596,16 @@ class TradingViewModel(
 
     private fun shouldUseEnhancedAnalysis(query: String, symbol: String?): Boolean {
         if (symbol == null) return false
-
-        // Check if query contains analysis-related keywords
-        val analysisKeywords = listOf(
-            "analyze", "analysis", "predict", "prediction", "forecast",
-            "should i buy", "should i sell", "is it overvalued", "is it undervalued",
-            "fair value", "technical", "fundamental", "confidence", "risk",
-            "sentiment", "recommend", "advise", "opinion",
-            "entry", "target", "stop-loss", "stop loss", "profit", "signal",
-            "risk reward", "risk-reward", "momentum", "breakout", "swing"
-        )
-
-        val lowerQuery = query.lowercase()
-        return analysisKeywords.any { lowerQuery.contains(it) }
+        val q = query.lowercase()
+        // Focused follow-ups (news/quote/sentiment/TA) must keep their own answer
+        // shape — do not overlay the full analysis card deck on every chip tap.
+        val focusedFollowUp = Regex(
+            """\b(news|headline|catalyst|sentiment|quote|ltp|price of|current price|what(?:'s| is) the price|technical analysis|support and resistance|practice levels)\b"""
+        ).containsMatchIn(q)
+        if (focusedFollowUp && !Regex("""\b(should i buy|should i sell)\b""").containsMatchIn(q)) {
+            return false
+        }
+        return Regex("""\b(analyze|analysis of|should i buy|should i sell)\b""").containsMatchIn(q)
     }
 
     @Suppress("UNCHECKED_CAST")

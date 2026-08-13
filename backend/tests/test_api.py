@@ -1563,6 +1563,18 @@ def test_classify_intent_detects_small_talk_and_calculation_queries():
     assert calc_result["intent"] == "CALCULATION"
 
 
+def test_classify_intent_keeps_stock_followup_chips_distinct():
+    from app.groq_llm import classify_intent
+
+    assert classify_intent("Latest news on RELIANCE")["intent"] == "NEWS"
+    assert classify_intent("RELIANCE market sentiment")["intent"] == "SENTIMENT"
+    assert classify_intent("What is the price of RELIANCE?")["intent"] == "QUOTE"
+    assert classify_intent("Technical analysis of RELIANCE")["intent"] == "TECHNICAL"
+    assert classify_intent("Should I buy RELIANCE?")["intent"] == "BUY_SELL"
+    assert classify_intent("Predict RELIANCE price")["intent"] == "PREDICT"
+    assert classify_intent("Is RELIANCE overvalued?")["intent"] == "FUNDAMENTAL"
+
+
 def test_expand_acronyms_supports_extended_market_terms():
     from app.groq_llm import expand_acronyms_in_query
 

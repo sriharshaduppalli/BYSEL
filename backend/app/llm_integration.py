@@ -1165,7 +1165,22 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
             try:
                 from indian_stock_llm.answer_composer import resolve_stock_response_profile
 
-                hint_intent = str(ctx.get("intent") or "general_query")
+                hint_intent = str(ctx.get("intent") or ctx.get("groq_intent") or "general_query")
+                groq_to_ism = {
+                    "NEWS": "events_news",
+                    "SENTIMENT": "events_news",
+                    "QUOTE": "price_action",
+                    "TECHNICAL": "stock_analysis",
+                    "BUY_SELL": "price_action",
+                    "PREDICT": "prediction",
+                    "FUNDAMENTAL": "fundamentals",
+                    "COMPARE": "compare",
+                    "CALCULATION": "market_calculations",
+                }
+                mapped = groq_to_ism.get(str(hint_intent).upper())
+                if mapped:
+                    hint_intent = mapped
+                    ctx["intent"] = mapped
                 response_profile = resolve_stock_response_profile(cleaned, hint_intent)
             except Exception:
                 response_profile = "stock_analysis"
@@ -1281,6 +1296,7 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
         need_sentiment = response_profile in {
             "news",
             "sentiment",
+            "risks",
             "stock_analysis",
             "trade_plan",
             "calculations",

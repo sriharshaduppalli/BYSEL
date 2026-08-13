@@ -37,9 +37,21 @@ Read the user's question carefully. Before any analysis, answer it directly:
 - "What is X price?" → Give the price from the context data
 - "Compare A vs B?" → State which is better in one sentence
 - "Predict X price?" → Give a range estimate with probability
+- News / sentiment / quote / technicals / valuation → Answer THAT ask only
 - General questions (news, market, sector) → Answer directly without stock analysis template
 
-STEP 2 — STRUCTURED ANALYSIS (only if a specific stock is asked about):
+STEP 2 — MATCH THE ASK (do not dump a full dossier every time):
+If an INTENT FOCUS block is present below, follow it and DO NOT append RSI/MACD/P/E/BUY sections unless that block asks for them.
+- News / headlines → 4–6 headlines + one-line price. No trade plan.
+- Quote / LTP → last, OHLC, volume, support/resistance only.
+- Sentiment → mood + 2–3 drivers. No buy/sell template.
+- Technical / S&R / RSI → technicals only.
+- Predict / forecast → scenarios only. Not a guarantee.
+- Fundamentals / overvalued → valuation only.
+- Should I buy / trade plan → BUY/SELL/HOLD + entry/SL/target.
+- "Analyze X" (full analysis) → then you MAY use the structured sections below.
+
+STEP 3 — STRUCTURED ANALYSIS (ONLY for full "Analyze X" or buy/sell with no narrower intent):
 
 1. SYMBOL & CONTEXT
    - Stock symbol, full name, sector, market cap
@@ -146,7 +158,7 @@ The user wants a clear BUY / SELL / HOLD decision. Structure as:
 
     "TECHNICAL": """
 --- TECHNICAL ANALYSIS FOCUS ---
-Deep technical breakdown:
+Deep technical breakdown ONLY — do not add P/E, news dump, or a buy/sell call unless asked:
 1. RSI [value]: Is it overbought/oversold? Any divergence visible?
 2. MACD: Histogram direction, signal line crossover, bullish/bearish confirmation
 3. BOLLINGER BANDS: Band position, squeeze (low volatility before move) or expansion
@@ -155,6 +167,34 @@ Deep technical breakdown:
 6. PATTERN: Any forming chart pattern (flag, triangle, H&S, double bottom)
 7. SHORT-TERM OUTLOOK: Next 5-10 trading sessions — likely direction with probability
 Refer to the PRE-COMPUTED SIGNALS for ready conclusions on each indicator.
+End with: ask “Should I buy …?” if they want a paper trade plan.
+""",
+
+    "NEWS": """
+--- NEWS FOCUS ---
+The user asked for NEWS, not a trade. Structure as:
+1. 4–6 latest headlines from context (date + one-line why it matters)
+2. One-line price context (last + % change) only
+3. What to watch next (catalyst)
+DO NOT output RSI/MACD/P/E, entry/stop, or BUY/SELL. If headlines are missing, say so.
+""",
+
+    "SENTIMENT": """
+--- SENTIMENT FOCUS ---
+The user asked how the tape/mood feels, not for a full dossier:
+1. Overall label (bullish/bearish/mixed) + score if present
+2. 2–4 drivers (news, RSI, flows) from context
+3. One-line price/trend context
+DO NOT dump a 7-section analysis or a buy/sell plan.
+""",
+
+    "QUOTE": """
+--- LIVE QUOTE FOCUS ---
+Answer with a quote snapshot only:
+1. Last price, % change
+2. Open / High / Low / Prev close / Volume if present
+3. Nearby support / resistance if present
+DO NOT add RSI essays, news lists, or BUY/SELL. Offer a follow-up for technicals or a paper plan.
 """,
 
     "FUNDAMENTAL": """
@@ -600,7 +640,7 @@ def classify_intent(query: str) -> dict:
     scores: Dict[str, int] = {
         "PREDICT": 0, "COMPARE": 0, "BUY_SELL": 0, "TECHNICAL": 0,
         "FUNDAMENTAL": 0, "SECTOR_SCREEN": 0, "PORTFOLIO": 0, "EDUCATIONAL": 0,
-        "CALCULATION": 0, "DERIVATIVES": 0,
+        "CALCULATION": 0, "DERIVATIVES": 0, "NEWS": 0, "SENTIMENT": 0, "QUOTE": 0,
     }
 
     # PREDICT
@@ -630,15 +670,40 @@ def classify_intent(query: str) -> dict:
 
     # TECHNICAL
     for kw in ["rsi", "macd", "bollinger", "moving average", "sma", "ema",
-               "support level", "resistance level", "chart", "technical analysis",
+               "support level", "resistance level", "support and resistance",
+               "chart", "technical analysis", "practice levels",
                "oversold", "overbought", "candlestick", "breakout setup", "golden cross",
              "death cross", "trend reversal", "price action", "vwap", "atr", "adx",
              "supertrend", "stochastic", "ichimoku", "volume profile"]:
         if kw in q: scores["TECHNICAL"] += 2
 
+    # NEWS — stock chips like "Latest news on RELIANCE"
+    for kw in ["latest news", "news on", "headlines", "catalysts", "what's happening",
+               "whats happening"]:
+        if kw in q:
+            scores["NEWS"] += 4
+    if re.search(r"\bnews\b", q) and not re.search(r"\b(what is|define|meaning)\b", q):
+        scores["NEWS"] += 3
+
+    # SENTIMENT
+    for kw in ["sentiment", "market mood", "bullish or bearish", "how are investors feeling"]:
+        if kw in q:
+            scores["SENTIMENT"] += 4
+
+    # QUOTE / LTP — beat EDUCATIONAL "what is" on live price asks
+    for kw in ["current price", "share price", "stock price", "live price", "last traded",
+               "ltp", "trading at"]:
+        if kw in q:
+            scores["QUOTE"] += 4
+    if re.search(r"\bwhat(?:'s| is) the price\b", q) or re.search(r"\bprice of\b", q):
+        scores["QUOTE"] += 8
+    if re.search(r"^[a-z0-9.&-]{2,15}\s+price\??$", q.strip()):
+        scores["QUOTE"] += 6
+
     # FUNDAMENTAL
     for kw in ["pe ratio", "p/e", "earnings", " eps", "revenue", "quarterly results",
-               "fundamentals", "valuation", "roe", "roce", "debt", "balance sheet",
+               "fundamentals", "valuation", "overvalued", "undervalued", "fair value",
+               "roe", "roce", "debt", "balance sheet",
              "promoter", "pledging", "dividend yield", "payout", "ev to ebitda", "ev/ebitda",
              "price to book", "pb ratio", "cash flow", "free cash flow", "ebitda margin", "book value"]:
         if kw in q: scores["FUNDAMENTAL"] += 2

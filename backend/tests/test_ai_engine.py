@@ -137,3 +137,66 @@ def test_recommendations_reuse_analysis_cache(monkeypatch):
     assert first.get("error") is None
     cached = ai_engine.get_best_stocks_to_buy(limit=3)
     assert cached is first
+
+
+def test_stock_chip_queries_resolve_distinct_response_profiles():
+    from indian_stock_llm.answer_composer import resolve_stock_response_profile
+
+    cases = {
+        "Should I buy RELIANCE?": "trade_plan",
+        "Predict RELIANCE price": "prediction",
+        "Technical analysis of RELIANCE": "technical",
+        "Support and resistance for RELIANCE": "technical",
+        "Practice levels for RELIANCE": "technical",
+        "Latest news on RELIANCE": "news",
+        "RELIANCE market sentiment": "sentiment",
+        "What is the price of RELIANCE?": "quote",
+        "Is RELIANCE overvalued?": "fundamentals",
+        "Analyze RELIANCE": "stock_analysis",
+        "Best entry price for RELIANCE with stop-loss": "trade_plan",
+        "Profit potential for RELIANCE this quarter": "trade_plan",
+        "What are risks in RELIANCE now?": "risks",
+    }
+    for query, expected in cases.items():
+        assert resolve_stock_response_profile(query, "general_query") == expected, query
+
+
+def test_custom_llm_composer_uses_distinct_shapes_for_stock_chips():
+    from indian_stock_llm.answer_composer import compose_structured_answer
+
+    ctx = {
+        "symbol": "RELIANCE",
+        "current_price": 1400.0,
+        "pct_change": 1.2,
+        "technical": {"rsi": 55.0, "trend": "bullish"},
+        "fundamental": {"pe": 24.0},
+        "trading_levels": {"support": 1350.0, "resistance": 1450.0, "stop_loss": 1320.0},
+        "news_headlines": ["Jio tariff hike announced"],
+        "sentiment": {"overall": "bullish", "composite_score": 0.4, "ok": True},
+        "sentiment_pack": {"ok": True, "label": "bullish", "composite_score": 0.4},
+    }
+
+    def _compose(query: str, intent: str) -> str:
+        return compose_structured_answer(
+            query=query,
+            intent=intent,
+            market_context=ctx,
+            context_lines=[],
+        ) or ""
+
+    news = _compose("Latest news on RELIANCE", "events_news")
+    quote = _compose("What is the price of RELIANCE?", "price_action")
+    ta = _compose("Technical analysis of RELIANCE", "stock_analysis")
+    plan = _compose("Should I buy RELIANCE?", "price_action")
+    risks = _compose("What are risks in RELIANCE now?", "events_news")
+
+    assert "news" in news.lower()
+    assert "not a buy/sell call" in news.lower()
+    assert "live quote" in quote.lower()
+    assert "technical analysis" in ta.lower()
+    assert "paper trade plan" in plan.lower() or "direct answer" in plan.lower()
+    assert "key risks" in risks.lower()
+    assert "PRIMARY SIGNAL" not in news
+    assert news.lower().startswith("**reliance** — news")
+    assert quote.lower().startswith("**reliance** — live quote")
+    assert "direct answer" in plan.lower() or "paper trade plan" in plan.lower()

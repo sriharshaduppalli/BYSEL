@@ -118,7 +118,9 @@ def resolve_stock_response_profile(query: str, intent: str) -> str:
         re.search(
             r"\b(should i buy|should i sell|buy or sell|trade plan|swing trade|"
             r"entry zone|stoploss|stop[\s-]?loss|take[\s-]?profit|"
-            r"good (time|entry) to (buy|sell))\b",
+            r"good (time|entry) to (buy|sell)|entry and exit|best entry|"
+            r"ideal entry|profit potential|risk vs reward|risk-to-reward|"
+            r"risk/?reward for buying)\b",
             q,
         )
     )
@@ -142,8 +144,15 @@ def resolve_stock_response_profile(query: str, intent: str) -> str:
     ) and not trade_ask:
         return "quote"
 
+    if re.search(r"\b(what are (the )?risks|key risks|risks in)\b", q) and not trade_ask:
+        return "risks"
+
     if intent_l == "fundamentals" or (
-        re.search(r"\b(p/?e|pe ratio|valuation|eps|roe|pb|p/b|dividend yield|fundamentals?)\b", q)
+        re.search(
+            r"\b(p/?e|pe ratio|valuation|eps|roe|pb|p/b|dividend yield|"
+            r"fundamentals?|overvalued|undervalued|fair value)\b",
+            q,
+        )
         and not trade_ask
     ):
         return "fundamentals"
@@ -180,7 +189,8 @@ def resolve_stock_response_profile(query: str, intent: str) -> str:
 
     if re.search(
         r"\b(technical analysis|chart analysis|price action|"
-        r"rsi|macd|supertrend|support and resistance|moving averages?)\b",
+        r"practice levels|support and resistance|key (support|resistance|levels)|"
+        r"rsi|macd|supertrend|moving averages?)\b",
         q,
     ) and not trade_ask:
         return "technical"
@@ -1322,6 +1332,35 @@ def compose_structured_answer(
                     "",
                     f"• Tape: ₹{_fmt(price)} | trend {tech.get('trend') or 'n/a'}",
                     "_Sentiment framing for paper practice — not investment advice._",
+                ]
+            )
+            return "\n".join(parts)
+
+        if profile == "risks":
+            parts = [f"{header_base} — key risks now", ""]
+            rsi = _num(tech.get("rsi"))
+            if rsi is not None:
+                if rsi >= 70:
+                    parts.append(f"• Momentum risk: RSI {_fmt(rsi)} is stretched — chase risk is elevated.")
+                elif rsi <= 30:
+                    parts.append(f"• Tape risk: RSI {_fmt(rsi)} is washed out — volatility can stay high.")
+                else:
+                    parts.append(f"• Momentum: RSI {_fmt(rsi)} is mid-range, not an extreme.")
+            pe = fund.get("pe")
+            if pe not in (None, "", "n/a"):
+                parts.append(f"• Valuation: P/E {_fmt(pe)} — a rich multiple leaves less room for disappointment.")
+            parts.append(
+                f"• Level risk: support {_fmt(support)} / resistance {_fmt(resistance)} "
+                f"(stop idea {_fmt(stop)})"
+            )
+            _append_news_block(parts, max_heads=3)
+            if len(parts) <= 2:
+                parts.append("• No extra risk flags in the current pack — still size from a stop, not conviction.")
+            parts.extend(
+                [
+                    "",
+                    f"• Spot: ₹{_fmt(price)} | trend {tech.get('trend') or 'n/a'}",
+                    "_Risk list for paper practice — not a buy/sell call._",
                 ]
             )
             return "\n".join(parts)

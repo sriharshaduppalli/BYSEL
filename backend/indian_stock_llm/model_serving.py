@@ -114,6 +114,7 @@ class TemplateModelBackend:
                         "sentiment": "events_news",
                         "quote": "price_action",
                         "technical": "stock_analysis",
+                        "risks": "events_news",
                         "trade_plan": "price_action",
                         "prediction": "prediction",
                         "fundamentals": "fundamentals",

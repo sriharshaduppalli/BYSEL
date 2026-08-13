@@ -2206,6 +2206,8 @@ async def ai_ask_endpoint(
                         "TECHNICAL": "technical",
                         "FUNDAMENTAL": "fundamentals",
                         "NEWS": "news",
+                        "SENTIMENT": "sentiment",
+                        "QUOTE": "quote",
                     }.get(intent_name, "")
                     suggestions = _build_stock_suggestions(
                         symbol,
@@ -2263,6 +2265,7 @@ async def ai_ask_endpoint(
     stock_intents = {
         "PREDICT", "COMPARE", "BUY_SELL", "TECHNICAL", "FUNDAMENTAL",
         "SECTOR_SCREEN", "PORTFOLIO", "CALCULATION", "DERIVATIVES",
+        "NEWS", "SENTIMENT", "QUOTE",
     }
     detected_intent = intent_result.get("intent", "GENERAL")
     intent_confidence = int(intent_result.get("confidence", 0) or 0)
@@ -2593,6 +2596,21 @@ async def ai_ask_endpoint(
                     ):
                         if enriched_ctx.get(key) not in (None, {}, [], ""):
                             llm_context[key] = enriched_ctx.get(key)
+                    groq_to_ism = {
+                        "NEWS": "events_news",
+                        "SENTIMENT": "events_news",
+                        "QUOTE": "price_action",
+                        "TECHNICAL": "stock_analysis",
+                        "BUY_SELL": "price_action",
+                        "PREDICT": "prediction",
+                        "FUNDAMENTAL": "fundamentals",
+                        "COMPARE": "compare",
+                        "CALCULATION": "market_calculations",
+                    }
+                    mapped_intent = groq_to_ism.get(str(detected_intent or "").upper())
+                    if mapped_intent:
+                        llm_context["intent"] = mapped_intent
+                        llm_context["groq_intent"] = detected_intent
                 except Exception:
                     pass
                 llm_result = await asyncio.to_thread(ask_llm, ism_query, llm_context or None)

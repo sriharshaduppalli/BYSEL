@@ -429,7 +429,7 @@ class StockMarketAssistant:
             qlow,
         ):
             return "market_literacy"
-        # Stock-tied TA asks ("Technical analysis of KAYNES") are analysis, not literacy.
+        # Stock-tied follow-ups: keep news/quote/sentiment/TA off the full-analysis dump.
         named_for_ta = None
         try:
             from app.stock_enricher import extract_symbol_from_query
@@ -437,11 +437,30 @@ class StockMarketAssistant:
             named_for_ta = extract_symbol_from_query(normalized)
         except Exception:
             named_for_ta = None
-        if named_for_ta and re.search(
-            r"\b(technical analysis|chart analysis|price action)\b",
-            qlow,
-        ):
-            return "stock_analysis"
+        if named_for_ta:
+            if re.search(
+                r"\b(latest news|news on|headlines?|catalysts?|what.?s happening)\b",
+                qlow,
+            ) and not re.search(r"\b(sentiment|mood)\b", qlow):
+                return "events_news"
+            if re.search(
+                r"\b(sentiment|market mood|bullish or bearish)\b",
+                qlow,
+            ):
+                return "events_news"
+            if re.search(r"\b(what are (the )?risks|key risks|risks in)\b", qlow):
+                return "events_news"
+            if re.search(
+                r"\b(what(?:'s| is) the price|price of|current price|live price|share price|ltp)\b",
+                qlow,
+            ) or re.search(r"^[a-z0-9.&-]{2,15}\s+price\??$", qlow):
+                return "price_action"
+            if re.search(
+                r"\b(technical analysis|chart analysis|price action|"
+                r"practice levels|support and resistance)\b",
+                qlow,
+            ):
+                return "stock_analysis"
         if re.search(
             r"\b(how does the (stock|share) market work|how the (stock|share) market works|"
             r"stock market meaning|key participants|depository participant|"
@@ -469,8 +488,9 @@ class StockMarketAssistant:
         ):
             return "sector_screen"
         if re.search(
-            r"\b(should i buy|should i sell|buy|sell|swing trade|entry|"
-            r"stoploss|stop[\s-]?loss|take[\s-]?profit|target price|trade plan)\b",
+            r"\b(should i buy|should i sell|buy or sell|swing trade|"
+            r"entry zone|best entry|ideal entry|stoploss|stop[\s-]?loss|"
+            r"take[\s-]?profit|target price|trade plan)\b",
             qlow,
         ):
             # Prefer price_action over generic sector tokens in the same sentence.
@@ -595,6 +615,7 @@ class StockMarketAssistant:
                     "sentiment": "events_news",
                     "quote": "price_action",
                     "technical": "stock_analysis",
+                    "risks": "events_news",
                     "trade_plan": "price_action",
                     "prediction": "prediction",
                     "fundamentals": "fundamentals",
