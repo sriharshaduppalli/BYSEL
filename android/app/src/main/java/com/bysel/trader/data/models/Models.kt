@@ -54,6 +54,18 @@ data class Quote(
 ) {
     fun withFreshTimestampIfMissing(): Quote =
         if (timestamp > 0L) this else copy(timestamp = System.currentTimeMillis())
+
+    /** Session volume, falling back to average when the last bar is blank (after hours). */
+    fun effectiveVolume(): Long = maxOf(volume ?: 0L, avgVolume ?: 0L)
+
+    /** Live ticks often omit volume — keep the last known liquidity fields. */
+    fun withLiquidityFrom(previous: Quote?): Quote {
+        if (previous == null) return this
+        val nextVolume = if ((volume ?: 0L) > 0L) volume else previous.volume
+        val nextAvg = if ((avgVolume ?: 0L) > 0L) avgVolume else previous.avgVolume
+        if (nextVolume == volume && nextAvg == avgVolume) return this
+        return copy(volume = nextVolume, avgVolume = nextAvg)
+    }
 }
  
 
@@ -1115,8 +1127,8 @@ data class ConfidenceFactor(
 
 data class PredictionReasoning(
     val signal: String,
-    val whyConfident: String,
-    val caveats: List<String>
+    val whyConfident: String = "",
+    val caveats: List<String> = emptyList()
 )
 
 data class EventRiskAnalysis(

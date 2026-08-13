@@ -139,15 +139,22 @@ fun HeatmapScreen(
     heatmapInterval: Int = 5_000,
     isActive: Boolean = true,
 ) {
-    var marketOpen by remember { mutableStateOf(isNseMarketOpen()) }
+    val tapeLive = isNseMarketOpen() && heatmap?.marketOpen != false
+    var marketOpen by remember { mutableStateOf(tapeLive) }
     val breathHistory = remember { mutableStateListOf<BreathSample>() }
+
+    LaunchedEffect(tapeLive) {
+        marketOpen = tapeLive
+    }
 
     LaunchedEffect(Unit) {
         if (heatmap == null) onRefresh()
     }
 
     // Append live breath samples as heatmap refreshes (for the distribution graph).
-    LaunchedEffect(heatmap?.lastUpdated, heatmap?.marketBreadth?.advances, heatmap?.marketBreadth?.declines) {
+    // After hours TQI is a frozen close print — don't keep charting a moving tape.
+    LaunchedEffect(heatmap?.lastUpdated, heatmap?.marketBreadth?.advances, heatmap?.marketBreadth?.declines, tapeLive) {
+        if (!tapeLive) return@LaunchedEffect
         val breadth = heatmap?.marketBreadth ?: return@LaunchedEffect
         val total = breadth.total.toFloat().coerceAtLeast(1f)
         val advanceShare = breadth.advances / total
@@ -174,13 +181,17 @@ fun HeatmapScreen(
         }
     }
 
-    LaunchedEffect(heatmapInterval, isActive) {
+    LaunchedEffect(heatmapInterval, isActive, heatmap?.marketOpen) {
         if (!isActive) return@LaunchedEffect
         val pollMs = heatmapInterval.toLong().coerceIn(5_000L, 30_000L)
         while (true) {
             kotlinx.coroutines.delay(pollMs)
-            marketOpen = isNseMarketOpen()
-            if (marketOpen) {
+            val live = isNseMarketOpen() && heatmap?.marketOpen != false
+            val waitingForSemiconductor = heatmap?.sectors?.none {
+                it.name.equals("Semiconductor", ignoreCase = true)
+            } != false
+            marketOpen = live
+            if (live || waitingForSemiconductor) {
                 // Silent poll — spinner only on first load / pull-to-refresh.
                 onRefresh()
             }
@@ -403,6 +414,8 @@ private fun MarketBreathCard(
                 fontSize = 16.sp
             )
             val coverageLabel = when {
+                heatmap.marketOpen == false && heatmap.quotedCount > 0 ->
+                    "Last session close — TQI frozen until the next open (${heatmap.quotedCount} quoted names)."
                 heatmap.universeSize > 0 && heatmap.quotedCount > 0 ->
                     "Breath across ${heatmap.quotedCount} quoted of ${heatmap.universeSize} active NSE listings" +
                         if (heatmap.pendingQuotes > 0) " (${heatmap.pendingQuotes} still warming)." else "."

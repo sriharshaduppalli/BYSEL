@@ -433,6 +433,15 @@ INDIAN_STOCKS: Dict[str, tuple] = {
     "SOLARINDS":    ("SOLARINDS.NS",    "Solar Industries India Ltd"),
     "CELLO":        ("CELLO.NS",        "Cello World Ltd"),
     "KAYNES":       ("KAYNES.NS",       "Kaynes Technology India Ltd"),
+    "MOSCHIP":      ("MOSCHIP.NS",      "Moschip Technologies Ltd"),
+    "SYRMA":        ("SYRMA.NS",        "Syrma SGS Technology Ltd"),
+    "AVALON":       ("AVALON.NS",       "Avalon Technologies Ltd"),
+    "CYIENTDLM":    ("CYIENTDLM.NS",    "Cyient DLM Ltd"),
+    "CGPOWER":      ("CGPOWER.NS",      "CG Power and Industrial Solutions Ltd"),
+    "RIR":          ("RIR.NS",          "RIR Power Electronics Ltd"),
+    "PGEL":         ("PGEL.NS",         "PG Electroplast Ltd"),
+    "CENTUM":       ("CENTUM.NS",       "Centum Electronics Ltd"),
+    "SPELS":        ("517166.BO",       "SPEL Semiconductor Ltd"),
     "COCHINSHIP":   ("COCHINSHIP.NS",   "Cochin Shipyard Ltd"),
     "MAZAGON":      ("MAZDOCK.NS",     "Mazagon Dock Shipbuilders Ltd"),
     "IREDA":        ("IREDA.NS",        "Indian Renewable Energy Development Agency Ltd"),
@@ -1334,9 +1343,17 @@ def get_stock_catalog() -> Dict[str, tuple]:
 
 
 def _movers_slice(payload: Dict[str, object], limit: int, *, cached: bool) -> Dict[str, object]:
+    gainers = [
+        row for row in (payload.get("gainers") or [])
+        if isinstance(row, dict) and _safe_number(row.get("pctChange"), 0.0) > 0
+    ][:limit]
+    losers = [
+        row for row in (payload.get("losers") or [])
+        if isinstance(row, dict) and _safe_number(row.get("pctChange"), 0.0) < 0
+    ][:limit]
     return {
-        "gainers": list(payload.get("gainers") or [])[:limit],
-        "losers": list(payload.get("losers") or [])[:limit],
+        "gainers": gainers,
+        "losers": losers,
         "mostActive": list(payload.get("mostActive") or [])[:limit],
         "universeSize": payload.get("universeSize", 0),
         "generatedAt": payload.get("generatedAt", ""),
@@ -1381,8 +1398,15 @@ def _compute_market_movers_payload() -> Dict[str, object]:
         except Exception:
             continue
 
-    gainers = sorted(usable, key=lambda x: x["pctChange"], reverse=True)
-    losers = sorted(usable, key=lambda x: x["pctChange"])
+    gainers = sorted(
+        [row for row in usable if row["pctChange"] > 0],
+        key=lambda x: x["pctChange"],
+        reverse=True,
+    )
+    losers = sorted(
+        [row for row in usable if row["pctChange"] < 0],
+        key=lambda x: x["pctChange"],
+    )
     most_active = sorted(usable, key=lambda x: x.get("volume", 0), reverse=True)
     generated_at = datetime.utcnow().isoformat() + "Z"
     return {

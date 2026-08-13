@@ -1158,6 +1158,10 @@ def screen_stocks(criteria: Optional[Dict] = None) -> List[Dict]:
         "METAL": ["TATASTEEL", "HINDALCO", "JSWSTEEL", "VEDL", "SAIL"],
         "DEFENCE": ["HAL", "BEL", "BDL", "MAZDOCK", "COCHINSHIP", "GRSE", "DATAPATTNS"],
         "DEFENSE": ["HAL", "BEL", "BDL", "MAZDOCK", "COCHINSHIP", "GRSE", "DATAPATTNS"],
+        "SEMICONDUCTOR": [
+            "MOSCHIP", "KAYNES", "SYRMA", "DIXON", "AVALON",
+            "CYIENTDLM", "CGPOWER", "TATAELXSI",
+        ],
         "PSU": ["SBIN", "NTPC", "ONGC", "BPCL", "IOC", "COALINDIA", "BEL", "HAL"],
         "REALTY": ["DLF", "GODREJPROP", "OBEROIRLTY", "PRESTIGE", "LODHA"],
         "RAILWAY": ["IRCTC", "IRFC", "RVNL", "IRCON", "RAILTEL"],

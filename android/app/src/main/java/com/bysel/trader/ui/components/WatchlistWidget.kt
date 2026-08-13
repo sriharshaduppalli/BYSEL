@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.ui.format.formatInr
 import com.bysel.trader.ui.format.formatSignedPct
+import com.bysel.trader.ui.format.formatVolumeCompact
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.theme.TickPriceText
 
@@ -38,6 +39,7 @@ fun WatchlistWidget(
     onPinClick: () -> Unit,
     onQuoteClick: (Quote) -> Unit,
     onTradeClick: ((Quote) -> Unit)? = null,
+    trackedCount: Int = quotes.size,
 ) {
     val theme = LocalAppTheme.current
     var sort by rememberSaveable { mutableStateOf(WatchlistSortMode.MOVE.name) }
@@ -45,8 +47,9 @@ fun WatchlistWidget(
         runCatching { WatchlistSortMode.valueOf(sort) }.getOrDefault(WatchlistSortMode.MOVE)
     }
     val sortedQuotes = remember(quotes, selectedSort) {
-        quotes.sortedByWatchlistMode(selectedSort).take(6)
+        quotes.sortedByWatchlistMode(selectedSort).take(20)
     }
+    val waitingForQuotes = trackedCount > 0 && quotes.isEmpty()
 
     Column(
         modifier = Modifier
@@ -70,10 +73,14 @@ fun WatchlistWidget(
                     color = theme.text,
                 )
                 Text(
-                    text = if (quotes.isEmpty()) {
-                        "Add names from Search or Trade — full NSE catalog."
-                    } else {
-                        "${quotes.size} tracked · ${selectedSort.label.lowercase()}"
+                    text = when {
+                        trackedCount <= 0 -> "Add names from Search or Trade — full NSE catalog."
+                        waitingForQuotes -> "$trackedCount tracked · waiting for quotes"
+                        selectedSort == WatchlistSortMode.GAINERS && sortedQuotes.isEmpty() ->
+                            "$trackedCount tracked · no gainers this session"
+                        selectedSort == WatchlistSortMode.LOSERS && sortedQuotes.isEmpty() ->
+                            "$trackedCount tracked · no losers this session"
+                        else -> "${quotes.size} tracked · ${selectedSort.label.lowercase()}"
                     },
                     fontSize = 12.sp,
                     color = theme.textSecondary,
@@ -88,7 +95,7 @@ fun WatchlistWidget(
             }
         }
 
-        if (quotes.isNotEmpty()) {
+        if (trackedCount > 0) {
             LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -122,9 +129,25 @@ fun WatchlistWidget(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
-            if (sortedQuotes.isEmpty()) {
+            if (waitingForQuotes) {
+                Text(
+                    text = "Quotes for your watchlist are still loading. Pull Home to refresh.",
+                    fontSize = 14.sp,
+                    color = theme.textSecondary,
+                )
+            } else if (quotes.isEmpty()) {
                 Text(
                     text = "Your watchlist is empty. Search any listed NSE stock, tap Watch, then return here.",
+                    fontSize = 14.sp,
+                    color = theme.textSecondary,
+                )
+            } else if (sortedQuotes.isEmpty()) {
+                Text(
+                    text = when (selectedSort) {
+                        WatchlistSortMode.GAINERS -> "None of your names are up this session."
+                        WatchlistSortMode.LOSERS -> "None of your names are down this session."
+                        else -> "Nothing to show for this sort."
+                    },
                     fontSize = 14.sp,
                     color = theme.textSecondary,
                 )
@@ -132,6 +155,7 @@ fun WatchlistWidget(
                 sortedQuotes.forEachIndexed { index, quote ->
                     WatchRow(
                         quote = quote,
+                        showVolume = selectedSort == WatchlistSortMode.VOLUME,
                         onOpen = { onQuoteClick(quote) },
                         onTrade = onTradeClick?.let { handler -> { handler(quote) } },
                     )
@@ -152,6 +176,7 @@ private fun WatchRow(
     quote: Quote,
     onOpen: () -> Unit,
     onTrade: (() -> Unit)?,
+    showVolume: Boolean = false,
 ) {
     val theme = LocalAppTheme.current
     val accent by animateColorAsState(
@@ -217,6 +242,13 @@ private fun WatchRow(
                 fontWeight = FontWeight.Medium,
                 color = accent,
             )
+            if (showVolume) {
+                Text(
+                    text = "Vol ${formatVolumeCompact(quote.effectiveVolume())}",
+                    fontSize = 11.sp,
+                    color = theme.textSecondary,
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 TextButton(
                     onClick = onOpen,

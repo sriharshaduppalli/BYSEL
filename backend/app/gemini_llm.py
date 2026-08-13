@@ -101,7 +101,15 @@ def ask_gemini(
 
     except Exception as e:
         logger.error("Gemini API error: %s", e, exc_info=True)
-        return {"error": str(e)}
+        text = str(e).lower()
+        rate_limited = (
+            "429" in text
+            or "rate limit" in text
+            or "too many requests" in text
+            or "resource_exhausted" in text
+            or "quota" in text
+        )
+        return {"error": str(e), "rate_limited": rate_limited}
 
 
 def _format_gemini_context(context: Optional[Dict]) -> str:

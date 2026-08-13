@@ -19,8 +19,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.bysel.trader.data.models.SentimentBreakdown
+import com.bysel.trader.data.models.ConfidenceFactor
 import com.bysel.trader.data.models.QueryUnderstanding
+import com.bysel.trader.data.models.SentimentBreakdown
 import com.bysel.trader.ui.theme.LocalAppTheme
 
 /**
@@ -204,6 +205,7 @@ fun ProfitSignalCard(
         isNeutral -> Icons.Default.Remove
         else -> Icons.Default.TrendingDown
     }
+    val theme = LocalAppTheme.current
     val meaning = remember(signal.signal) { actionStateMeaning(signal.signal) }
     var showLegend by remember { mutableStateOf(false) }
     val riskReward = if (signal.entry != null && signal.target != null && signal.stopLoss != null && signal.entry != signal.stopLoss) {
@@ -215,8 +217,8 @@ fun ProfitSignalCard(
             .fillMaxWidth()
             .padding(vertical = 4.dp),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = accentColor.copy(alpha = 0.08f)),
-        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.3f))
+        colors = CardDefaults.cardColors(containerColor = theme.card),
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.45f))
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             // Header
@@ -260,7 +262,7 @@ fun ProfitSignalCard(
                 Text(
                     text = it,
                     fontSize = 11.sp,
-                    color = Color(0xFF555555),
+                    color = theme.textSecondary,
                     lineHeight = 14.sp
                 )
             }
@@ -287,13 +289,13 @@ fun ProfitSignalCard(
                     Text(
                         text = "Paper-practice states (not SEBI advice):",
                         fontSize = 10.sp,
-                        color = Color(0xFF777777)
+                        color = theme.textSecondary
                     )
                     ACTION_STATE_MEANINGS.forEach { (label, desc) ->
                         Text(
                             text = "$label — ${desc.removeSuffix(" (paper)")}",
                             fontSize = 10.sp,
-                            color = Color(0xFF444444),
+                            color = theme.text,
                             lineHeight = 13.sp
                         )
                     }
@@ -338,7 +340,7 @@ fun ProfitSignalCard(
                         Text(
                             text = "⏱ $it",
                             fontSize = 11.sp,
-                            color = Color(0xFF666666)
+                            color = theme.textSecondary
                         )
                     }
                     // Potential profit/loss
@@ -415,7 +417,7 @@ private fun PriceLabel(label: String, price: Double, color: Color) {
         Text(
             text = label,
             fontSize = 10.sp,
-            color = Color(0xFF888888)
+            color = LocalAppTheme.current.textSecondary
         )
         Text(
             text = "₹${String.format("%,.1f", price)}",
@@ -437,14 +439,16 @@ fun ConfidenceCard(
     factors: Map<String, Any>,
     modifier: Modifier = Modifier
 ) {
+    val theme = LocalAppTheme.current
     Card(
         modifier = modifier
             .fillMaxWidth()
             .padding(12.dp),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFF8F9FA)
-        )
+            containerColor = theme.card
+        ),
+        border = BorderStroke(1.dp, theme.cardOutline)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             // Header with confidence level badge
@@ -459,7 +463,7 @@ fun ConfidenceCard(
                     text = "Model Confidence",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF1A1A1A)
+                    color = theme.text
                 )
                 
                 ConfidenceBadge(
@@ -478,7 +482,7 @@ fun ConfidenceCard(
                 text = "Confidence Factors",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF666666),
+                color = theme.textSecondary,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
             
@@ -566,13 +570,24 @@ private fun ConfidenceGauge(confidence: Double) {
 private fun ConfidenceFactorsList(factors: Map<String, Any>) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         factors.forEach { (factorName, factorData) ->
-            if (factorData is Map<*, *>) {
-                val score = (factorData["score"] as? Number)?.toDouble() ?: 0.0
-                val weight = (factorData["weight"] as? Number)?.toDouble() ?: 0.0
-                val reasoning = factorData["reasoning"] as? String ?: ""
-                
-                ConfidenceFactorRow(factorName, score, weight, reasoning)
+            val score: Double
+            val weight: Double
+            val reasoning: String
+            when (factorData) {
+                is ConfidenceFactor -> {
+                    score = factorData.score
+                    weight = factorData.weight
+                    reasoning = factorData.reasoning
+                }
+                is Map<*, *> -> {
+                    score = (factorData["score"] as? Number)?.toDouble() ?: 0.0
+                    weight = (factorData["weight"] as? Number)?.toDouble() ?: 0.0
+                    reasoning = factorData["reasoning"] as? String ?: ""
+                }
+                else -> return@forEach
             }
+            val displayScore = if (score <= 1.0) score * 100.0 else score
+            ConfidenceFactorRow(factorName, displayScore, weight, reasoning)
         }
     }
 }
@@ -633,15 +648,22 @@ fun PredictionReasoningCard(
     caveats: List<String>,
     modifier: Modifier = Modifier
 ) {
+    val theme = LocalAppTheme.current
+    val signalColor = getSignalBackgroundColor(signal)
+    val stance = stanceLabel(signal)
+    val whyText = whyConfident.ifBlank {
+        val label = signal.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
+        "The $label view is based on the model's current mix of data quality, volatility, and historical accuracy."
+    }
     Card(
         modifier = modifier
             .fillMaxWidth()
             .padding(12.dp),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = getSignalBackgroundColor(signal).copy(alpha = 0.1f)
+            containerColor = theme.card
         ),
-        border = BorderStroke(1.dp, getSignalBackgroundColor(signal))
+        border = BorderStroke(1.dp, signalColor)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             // Signal with reasoning
@@ -653,14 +675,14 @@ fun PredictionReasoningCard(
                 Icon(
                     imageVector = getSignalIcon(signal),
                     contentDescription = signal,
-                    tint = getSignalBackgroundColor(signal),
+                    tint = signalColor,
                     modifier = Modifier.size(24.dp)
                 )
                 Text(
-                    text = signal,
+                    text = if (symbol.isNotBlank()) "$signal  $symbol" else signal,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
-                    color = getSignalBackgroundColor(signal)
+                    color = signalColor
                 )
             }
             
@@ -668,15 +690,15 @@ fun PredictionReasoningCard(
             
             // Reasoning explanation
             Text(
-                text = "Why we're ${if (signal.contains("BUY")) "bullish" else "bearish"}:",
+                text = "Why we're $stance:",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF666666)
+                color = theme.textSecondary
             )
             Text(
-                text = whyConfident,
+                text = whyText,
                 fontSize = 13.sp,
-                color = Color(0xFF333333),
+                color = theme.text,
                 modifier = Modifier.padding(vertical = 8.dp),
                 lineHeight = 18.sp
             )
@@ -688,7 +710,7 @@ fun PredictionReasoningCard(
                     text = "Important caveats:",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF666666)
+                    color = theme.textSecondary
                 )
                 
                 Column(
@@ -696,18 +718,19 @@ fun PredictionReasoningCard(
                     modifier = Modifier.padding(top = 8.dp)
                 ) {
                     caveats.forEach { caveat ->
+                        val (emoji, body) = caveatEmojiAndText(caveat)
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                text = caveat.take(2),  // Emoji
+                                text = emoji,
                                 fontSize = 12.sp
                             )
                             Text(
-                                text = caveat.drop(2),
+                                text = body,
                                 fontSize = 11.sp,
-                                color = Color(0xFF666666),
+                                color = theme.textSecondary,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -715,6 +738,26 @@ fun PredictionReasoningCard(
                 }
             }
         }
+    }
+}
+
+private fun stanceLabel(signal: String): String {
+    val key = signal.uppercase()
+    return when {
+        key.contains("BUY") || key.contains("ACCUMULATE") -> "bullish"
+        key.contains("SELL") -> "bearish"
+        else -> "cautious"
+    }
+}
+
+private fun caveatEmojiAndText(caveat: String): Pair<String, String> {
+    val trimmed = caveat.trim()
+    if (trimmed.isEmpty()) return "•" to ""
+    val firstLetter = trimmed.indexOfFirst { it.isLetter() }
+    return if (firstLetter > 0) {
+        trimmed.take(firstLetter).trim().ifBlank { "•" } to trimmed.drop(firstLetter).trim()
+    } else {
+        "•" to trimmed
     }
 }
 
@@ -849,14 +892,16 @@ fun SentimentCard(
     interpretation: String,
     modifier: Modifier = Modifier
 ) {
+    val theme = LocalAppTheme.current
     Card(
         modifier = modifier
             .fillMaxWidth()
             .padding(12.dp),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFF8F9FA)
-        )
+            containerColor = theme.card
+        ),
+        border = BorderStroke(1.dp, theme.cardOutline)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -867,7 +912,8 @@ fun SentimentCard(
                 Text(
                     text = "News Sentiment",
                     fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    color = theme.text
                 )
                 
                 SentimentBadge(overallSentiment, strength)
@@ -907,7 +953,7 @@ fun SentimentCard(
             Text(
                 text = interpretation,
                 fontSize = 11.sp,
-                color = Color(0xFF666666),
+                color = theme.textSecondary,
                 lineHeight = 16.sp
             )
         }
@@ -990,7 +1036,7 @@ private fun SentimentBreakdownItem(label: String, count: Int, color: Color) {
         Text(
             text = label,
             fontSize = 10.sp,
-            color = Color(0xFF666666)
+            color = LocalAppTheme.current.textSecondary
         )
     }
 }

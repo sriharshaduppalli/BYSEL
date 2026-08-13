@@ -6,8 +6,9 @@ from collections import deque
 from threading import Lock
 from uuid import uuid4
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import logging
 from .database.db import OrderModel, SessionLocal
 from .routes import router
@@ -170,6 +171,29 @@ app = FastAPI(
     description="Trading backend for BYSEL",
     version="1.0.0"
 )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    # Provider / proxy 429s must not surface as a dead AI chat bubble.
+    if exc.status_code == 429 and request.url.path.startswith("/ai"):
+        logger.warning("ai.rate_limited path=%s detail=%s", request.url.path, exc.detail)
+        return JSONResponse(
+            status_code=200,
+            content={
+                "answer": (
+                    "The AI provider is rate-limited right now. "
+                    "Wait a few seconds and try again — quotes, education, and rule-based answers still work."
+                ),
+                "source": "rate-limit",
+                "tier_requested": "auto",
+            },
+        )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=dict(exc.headers or {}),
+    )
 
 
 @app.middleware("http")
