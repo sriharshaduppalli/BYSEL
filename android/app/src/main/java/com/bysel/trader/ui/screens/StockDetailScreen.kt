@@ -876,7 +876,7 @@ private fun DetailTrustToolsCard(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 FilledTonalButton(onClick = { onOpenTrustCenter(null) }) {
-                    Text("Copilot", maxLines = 1)
+                    Text("Pre-trade", maxLines = 1)
                 }
                 OutlinedButton(onClick = onRefreshGuidance) {
                     Text("Refresh", maxLines = 1)

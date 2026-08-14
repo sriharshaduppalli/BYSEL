@@ -17,6 +17,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.MarketNewsHeadline
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.byselCardBorder
+import com.bysel.trader.ui.theme.byselCardColors
+import com.bysel.trader.ui.theme.byselCardElevation
 
 @Composable
 fun NewsWidget(
@@ -31,9 +34,10 @@ fun NewsWidget(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .background(LocalAppTheme.current.card)
             .padding(bottom = 16.dp),
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(

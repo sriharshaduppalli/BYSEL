@@ -37,6 +37,9 @@ import com.bysel.trader.data.models.MarketHeatmap
 import com.bysel.trader.ui.components.PullToRefreshBox
 import com.bysel.trader.ui.theme.AppTheme
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.byselCardBorder
+import com.bysel.trader.ui.theme.byselCardColors
+import com.bysel.trader.ui.theme.byselCardElevation
 import com.bysel.trader.ui.theme.contentColorForFill
 import java.util.Calendar
 import java.util.TimeZone
@@ -408,7 +411,9 @@ private fun MarketBreathCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
@@ -760,7 +765,9 @@ private fun SectorHeatmapCard(sector: HeatmapSector, onStockClick: (String) -> U
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(

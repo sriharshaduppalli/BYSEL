@@ -2362,15 +2362,12 @@ async def ai_ask_endpoint(
 
         # Extract symbols from USER TEXT ONLY — never from the Android
         # "user_query:… | context:holdings=HCLTECH:…,ICICIBANK:…" wrapper.
-        from ..stock_enricher import extract_all_symbols_from_query, extract_entities_from_query, normalize_hinglish, extract_time_window_from_query
+        from ..stock_enricher import extract_all_symbols_from_query, extract_entities_from_query, normalize_hinglish, extract_time_window_from_query, order_symbols_in_query
         all_symbols = extract_all_symbols_from_query(normalized_query)
-        # Preserve left-to-right order as written in the question.
+        # Preserve left-to-right order as written, but never let prefix tokens
+        # like TECH beat TECHM in "tech mahindra".
         if all_symbols:
-            q_up = normalized_query.upper()
-            all_symbols = sorted(
-                all_symbols,
-                key=lambda s: (q_up.find(str(s).upper()) if q_up.find(str(s).upper()) >= 0 else 10_000),
-            )
+            all_symbols = order_symbols_in_query(all_symbols, normalized_query)
 
         # Resolve primary: prefer tickers named in the user question (compare/buy),
         # then rule-engine, then context wrapper as last resort.

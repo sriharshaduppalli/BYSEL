@@ -13,7 +13,9 @@ import com.bysel.trader.data.models.Alert
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.theme.TickPriceText
 import com.bysel.trader.ui.theme.animatedChangeColor
+import com.bysel.trader.ui.theme.byselCardBorder
 import com.bysel.trader.ui.theme.byselCardColors
+import com.bysel.trader.ui.theme.byselCardElevation
 import com.bysel.trader.ui.theme.colorForChange
 
 /**
@@ -38,6 +40,8 @@ fun QuoteCard(
             .padding(8.dp),
         shape = MaterialTheme.shapes.medium,
         colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
     ) {
         Row(
             modifier = Modifier
@@ -81,6 +85,8 @@ fun HoldingCard(
             .padding(8.dp),
         shape = MaterialTheme.shapes.medium,
         colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
     ) {
         Column(
             modifier = Modifier
@@ -143,6 +149,8 @@ fun AlertCard(
             .padding(8.dp),
         shape = MaterialTheme.shapes.medium,
         colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
     ) {
         Row(
             modifier = Modifier

@@ -84,7 +84,7 @@ import com.google.android.play.core.review.ReviewManager
 import com.google.android.play.core.review.ReviewManagerFactory
 import com.bysel.trader.viewmodel.TradingViewModel
 import com.bysel.trader.viewmodel.TradingViewModelFactory
-import com.bysel.trader.ai.LlmDownloadState
+import com.bysel.trader.viewmodel.isDerivativesFormMessage
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -545,8 +545,12 @@ fun BYSELApp(
     val alerts by viewModel.alerts.collectAsStateWithLifecycle()
     val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val quotesRefreshing by viewModel.quotesRefreshing.collectAsStateWithLifecycle()
+    val holdingsRefreshing by viewModel.holdingsRefreshing.collectAsStateWithLifecycle()
     val isSearching by viewModel.isSearching.collectAsStateWithLifecycle()
-    val error by viewModel.error.collectAsStateWithLifecycle()
+    val marketError by viewModel.marketError.collectAsStateWithLifecycle()
+    val portfolioError by viewModel.portfolioError.collectAsStateWithLifecycle()
+    val tradeError by viewModel.tradeError.collectAsStateWithLifecycle()
     val productActionMessage by viewModel.productActionMessage.collectAsStateWithLifecycle()
     val lastExecutedOrder by viewModel.lastExecutedOrder.collectAsStateWithLifecycle()
     val activeAlertCount = remember(alerts) { alerts.count { it.isActive } }
@@ -555,7 +559,6 @@ fun BYSELApp(
     val chatHistory by viewModel.chatHistory.collectAsStateWithLifecycle()
     val aiLoading by viewModel.aiLoading.collectAsStateWithLifecycle()
     val aiLikelyColdStart by viewModel.aiLikelyColdStart.collectAsStateWithLifecycle()
-    val onDeviceLlmState by viewModel.onDeviceLlmState.collectAsStateWithLifecycle()
     val portfolioHealth by viewModel.portfolioHealth.collectAsStateWithLifecycle()
     val healthLoading by viewModel.healthLoading.collectAsStateWithLifecycle()
     val marketHeatmap by viewModel.marketHeatmap.collectAsStateWithLifecycle()
@@ -579,6 +582,10 @@ fun BYSELApp(
 
     LaunchedEffect(productActionMessage) {
         val message = productActionMessage?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        if (isDerivativesFormMessage(message)) {
+            viewModel.clearProductActionMessage()
+            return@LaunchedEffect
+        }
         snackbarHostState.showSnackbar(
             message = message,
             withDismissAction = true,
@@ -976,7 +983,8 @@ fun BYSELApp(
                                         holdings = holdings,
                                         quotes = quotes,
                                         isLoading = isLoading,
-                                        error = error,
+                                        isRefreshing = quotesRefreshing,
+                                        error = marketError ?: tradeError,
                                         walletBalance = walletBalance,
                                         watchlistSymbols = watchlistSymbols,
                                         onRefresh = { viewModel.refreshQuotes(force = true) },
@@ -984,7 +992,10 @@ fun BYSELApp(
                                             viewModel.fetchAndSelectQuote(symbol)
                                             openStockDetailTab()
                                         },
-                                        onErrorDismiss = { viewModel.clearError() },
+                                        onErrorDismiss = {
+                                            viewModel.clearMarketError()
+                                            viewModel.clearTradeError()
+                                        },
                                         onAiClick = { selectRootTab(1) },
                                         marketStatus = marketStatus,
                                         onQuickTradeClick = { symbol ->
@@ -1062,15 +1073,13 @@ fun BYSELApp(
                                         onAiFeedback = { query, answer, helpful ->
                                             viewModel.submitAiFeedback(query, answer, helpful)
                                         },
-                                        onDeviceLlmState = onDeviceLlmState,
-                                        onDownloadModel = { viewModel.downloadOnDeviceModel() },
                                         likelyColdStart = aiLikelyColdStart,
                                         onWarmAi = { viewModel.warmAiBackend() },
                                         isActive = pagerState.currentPage == 1,
                                     )
                                     2 -> TradingScreen(
-                                        isLoading = isLoading,
-                                        error = error,
+                                        isLoading = quotesRefreshing,
+                                        error = tradeError ?: marketError,
                                         walletBalance = walletBalance,
                                         marketStatus = marketStatus,
                                         openAddFundsRequest = pendingOpenAddFunds,
@@ -1084,7 +1093,10 @@ fun BYSELApp(
                                         },
                                         onAddFunds = { amount, _ -> viewModel.addFunds(amount) },
                                         onAddPracticeCredit = { amount -> viewModel.addFunds(amount) },
-                                        onErrorDismiss = { viewModel.clearError() },
+                                        onErrorDismiss = {
+                                            viewModel.clearTradeError()
+                                            viewModel.clearMarketError()
+                                        },
                                         onTraceSupportLookup = { traceId ->
                                             viewModel.seedTraceLookup(traceId)
                                             viewModel.lookupOrderByTrace(traceId)
@@ -1096,18 +1108,15 @@ fun BYSELApp(
                                     3 -> PortfolioScreen(
                                         holdings = holdings,
                                         quotes = quotes,
-                                        isLoading = isLoading,
-                                        error = error,
+                                        isLoading = holdingsRefreshing,
+                                        error = portfolioError,
                                         portfolioHealth = portfolioHealth,
                                         healthLoading = healthLoading,
-                                        onRefresh = {
-                                            viewModel.refreshHoldings()
-                                            viewModel.loadPortfolioHealth()
-                                        },
+                                        onRefresh = { viewModel.refreshPortfolio() },
                                         onRefreshHealth = { viewModel.loadPortfolioHealth() },
                                         onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
                                         onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") },
-                                        onErrorDismiss = { viewModel.clearError() },
+                                        onErrorDismiss = { viewModel.clearPortfolioError() },
                                         onNavigateToTrade = { selectedTab = 2 }
                                     )
                                     4 -> HeatmapScreen(
@@ -1174,7 +1183,7 @@ fun BYSELApp(
                                     quotes = quotes,
                                     heatmap = marketHeatmap,
                                     backendBuckets = signalLabBuckets,
-                                    isLoading = isLoading || heatmapLoading || signalLabBucketsLoading,
+                                    isLoading = quotesRefreshing || heatmapLoading || signalLabBucketsLoading,
                                     onRefresh = {
                                         viewModel.refreshQuotes(force = true)
                                         viewModel.loadMarketHeatmap()
@@ -1216,14 +1225,14 @@ fun BYSELApp(
                                     quotes = quotes.filter { quote ->
                                         watchlistSymbols.any { it.equals(quote.symbol, ignoreCase = true) }
                                     },
-                                    isLoading = isLoading,
-                                    error = error,
+                                    isLoading = quotesRefreshing,
+                                    error = marketError,
                                     onRefresh = { viewModel.refreshQuotes(force = true) },
                                     onQuoteClick = { quote ->
                                         viewModel.setSelectedQuote(quote)
                                         openStockDetailTab()
                                     },
-                                    onErrorDismiss = { viewModel.clearError() }
+                                    onErrorDismiss = { viewModel.clearMarketError() }
                                 )
                                 26 -> MarketCalendarScreen(onBack = { selectedTab = 5 })
                                 6 -> SearchScreen(
@@ -1247,7 +1256,7 @@ fun BYSELApp(
                                 )
                                 7 -> AlertsScreen(
                                     alerts = alerts,
-                                    isLoading = isLoading,
+                                    isLoading = false,
                                     onCreateAlert = { symbol, price, type ->
                                         viewModel.createAlert(symbol, price, type)
                                     },

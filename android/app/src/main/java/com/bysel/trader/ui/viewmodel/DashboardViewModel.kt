@@ -145,7 +145,8 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             .take(12)
         lastNewsSymbols = normalized
         viewModelScope.launch {
-            _newsLoading.value = true
+            val hasHeadlines = _marketNews.value.isNotEmpty()
+            if (!hasHeadlines) _newsLoading.value = true
             when (val response = repository.getMarketNews(symbols = normalized, limit = 10)) {
                 is Result.Success -> {
                     _marketNews.value = response.data.headlines

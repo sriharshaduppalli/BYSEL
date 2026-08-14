@@ -1,18 +1,24 @@
 package com.bysel.trader.ui.theme
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 
@@ -40,14 +46,39 @@ fun byselElevatedCardColors() = CardDefaults.cardColors(
     contentColor = LocalAppTheme.current.text,
 )
 
-/** Light themes keep a whisper of elevation; dark themes rely on [byselCardBorder]. */
+/** Light skins use a real drop shadow; dark skins keep a whisper so borders do the work. */
 @Composable
 fun byselCardElevation() = CardDefaults.cardElevation(
-    defaultElevation = if (LocalAppTheme.current.isLight) 1.dp else 0.dp,
+    defaultElevation = if (LocalAppTheme.current.isLight) 4.dp else 2.dp,
+    pressedElevation = if (LocalAppTheme.current.isLight) 2.dp else 1.dp,
+    hoveredElevation = if (LocalAppTheme.current.isLight) 6.dp else 3.dp,
+    focusedElevation = if (LocalAppTheme.current.isLight) 4.dp else 2.dp,
 )
 
 @Composable
 fun byselCardBorder(): BorderStroke = BorderStroke(1.dp, LocalAppTheme.current.cardOutline)
+
+/**
+ * Clip + fill + outline + light-theme shadow for Column/Box sections that are not [Card]s.
+ */
+@Composable
+fun Modifier.byselSectionSurface(
+    shape: Shape = RoundedCornerShape(12.dp),
+): Modifier {
+    val theme = LocalAppTheme.current
+    val elevation = if (theme.isLight) 4.dp else 2.dp
+    return this
+        .shadow(
+            elevation = elevation,
+            shape = shape,
+            clip = false,
+            ambientColor = if (theme.isLight) Color.Black.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.55f),
+            spotColor = if (theme.isLight) Color.Black.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.40f),
+        )
+        .clip(shape)
+        .background(theme.card)
+        .border(1.dp, theme.cardOutline, shape)
+}
 
 /** Green / red / muted for price & PnL deltas. */
 fun AppTheme.colorForChange(change: Double): Color = when {

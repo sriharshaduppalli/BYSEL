@@ -2877,6 +2877,8 @@ def _extract_symbols(query: str) -> List[str]:
             token_lower = token.lower()
             if token_lower in _SYMBOL_NOISE_WORDS:
                 continue
+            if token.upper() in {"TECH", "LIFE", "SUN", "HEALTHY", "DIGITAL"}:
+                continue
 
             if token in INDIAN_STOCKS:
                 _add_symbol(token)

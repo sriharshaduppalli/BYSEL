@@ -71,6 +71,13 @@ def test_extract_symbols_ignores_wait_action_label():
     assert "RELIANCE" in symbols
 
 
+def test_extract_symbols_tech_mahindra_is_techm():
+    symbols = ai_engine._extract_symbols("tech mahindra")
+    assert "TECHM" in symbols
+    assert symbols[0] == "TECHM"
+    assert "TECH" not in symbols
+
+
 def test_ai_assistant_prefers_user_query_over_context_symbol(monkeypatch):
     monkeypatch.setattr(ai_engine, "analyze_stock", _fake_analysis)
 

@@ -273,7 +273,7 @@ def _build_peers(query: str, primary: str | None, ctx: dict[str, Any]) -> list[d
     """
     peers: list[dict] = []
     try:
-        from .stock_enricher import extract_all_symbols_from_query
+        from .stock_enricher import extract_all_symbols_from_query, order_symbols_in_query
 
         from_query = list(extract_all_symbols_from_query(query) or [])
     except Exception:
@@ -281,11 +281,7 @@ def _build_peers(query: str, primary: str | None, ctx: dict[str, Any]) -> list[d
 
     # Prefer query order (left → right). Fall back to ctx only if query had none.
     if from_query:
-        q_up = (query or "").upper()
-        from_query = sorted(
-            from_query,
-            key=lambda s: (q_up.find(str(s).upper()) if q_up.find(str(s).upper()) >= 0 else 10_000),
-        )
+        from_query = order_symbols_in_query(from_query, query)
         symbols = from_query
     else:
         symbols = list(ctx.get("all_symbols") or [])
@@ -1100,17 +1096,11 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
             # Force primary from the user question so selected-quote/holdings
             # cannot become the left side of the scorecard.
             try:
-                from .stock_enricher import extract_all_symbols_from_query
+                from .stock_enricher import extract_all_symbols_from_query, order_symbols_in_query
 
                 named = list(extract_all_symbols_from_query(cleaned) or [])
                 if named:
-                    q_up = cleaned.upper()
-                    named = sorted(
-                        named,
-                        key=lambda s: (
-                            q_up.find(str(s).upper()) if q_up.find(str(s).upper()) >= 0 else 10_000
-                        ),
-                    )
+                    named = order_symbols_in_query(named, cleaned)
                     named = [_sanitize_symbol(str(s), cleaned) for s in named]
                     named = [s for s in named if s]
                     if named:

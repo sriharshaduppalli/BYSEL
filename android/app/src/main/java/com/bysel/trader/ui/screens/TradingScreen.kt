@@ -65,7 +65,9 @@ import com.bysel.trader.ui.theme.TickPriceText
 import com.bysel.trader.ui.theme.MarqueeText
 import com.bysel.trader.ui.theme.TradeActionButton
 import com.bysel.trader.ui.theme.animatedChangeColor
+import com.bysel.trader.ui.theme.byselCardBorder
 import com.bysel.trader.ui.theme.byselCardColors
+import com.bysel.trader.ui.theme.byselCardElevation
 import com.bysel.trader.ui.components.PriceHistoryChart
 import com.bysel.trader.ui.components.PullToRefreshBox
 import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
@@ -75,6 +77,7 @@ import com.bysel.trader.ui.components.resolveRejection
 import com.bysel.trader.ui.components.WatchlistSortMode
 import com.bysel.trader.ui.components.sortedByWatchlistMode
 import com.bysel.trader.viewmodel.TradingViewModel
+import com.bysel.trader.viewmodel.isDerivativesFormMessage
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
@@ -305,6 +308,8 @@ fun TradingScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             colors = byselCardColors(),
+            elevation = byselCardElevation(),
+            border = byselCardBorder(),
             shape = MaterialTheme.shapes.medium,
         ) {
             ScreenHeader(
@@ -450,6 +455,11 @@ private fun SpotTradingWorkspace(
         runCatching { WatchlistSortMode.valueOf(sortModeName) }.getOrDefault(WatchlistSortMode.MOVE)
     }
     val watchlistSymbols by viewModel.watchlist.collectAsStateWithLifecycle()
+    LaunchedEffect(error) {
+        if (error != null && isDerivativesFormMessage(error)) {
+            onErrorDismiss()
+        }
+    }
     val activeWatchlistSymbols = remember(watchlistSymbols) {
         watchlistSymbols.map { it.trim().uppercase() }.filter { it.isNotBlank() }.distinct()
     }
@@ -738,7 +748,7 @@ private fun SpotTradingWorkspace(
             }
         }
 
-        if (error != null) {
+        if (error != null && !isDerivativesFormMessage(error)) {
             TraceAwareErrorSnackbar(
                 error = error,
                 onDismiss = onErrorDismiss,
@@ -1318,6 +1328,8 @@ fun TradingQuoteCard(
             .fillMaxWidth()
             .padding(horizontal = 6.dp, vertical = 4.dp),
         colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
         shape = MaterialTheme.shapes.medium,
     ) {
         Column(
@@ -2194,7 +2206,7 @@ private fun TradeBottomSheetContent(
                 shape = RoundedCornerShape(10.dp)
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
-                    Text("Copilot Pre-Trade Check", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = LocalAppTheme.current.text)
+                    Text("Pre-trade risk check", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = LocalAppTheme.current.text)
                     Spacer(modifier = Modifier.height(6.dp))
                     if (copilotLoading) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2285,7 +2297,7 @@ private fun TradeBottomSheetContent(
             }
             Text("Estimates are indicative; final fill and charges may vary.", fontSize = 11.sp, color = LocalAppTheme.current.textSecondary, modifier = Modifier.padding(top = 6.dp, bottom = 4.dp))
             if (copilotBlocksTrade) {
-                Text("Copilot has blocked this order. Adjust inputs and retry.", fontSize = 12.sp, color = LocalAppTheme.current.negative, modifier = Modifier.padding(top = 4.dp))
+                Text("Pre-trade checks have blocked this order. Adjust inputs and retry.", fontSize = 12.sp, color = LocalAppTheme.current.negative, modifier = Modifier.padding(top = 4.dp))
             }
         }
 

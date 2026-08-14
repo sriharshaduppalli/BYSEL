@@ -65,6 +65,9 @@ import androidx.compose.ui.unit.sp
 import com.bysel.trader.BuildConfig
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.theme.ScreenHeader
+import com.bysel.trader.ui.theme.byselCardBorder
+import com.bysel.trader.ui.theme.byselCardColors
+import com.bysel.trader.ui.theme.byselCardElevation
 import com.bysel.trader.ui.theme.contentColorForFill
 
 private data class MoreMenuEntry(
@@ -144,8 +147,8 @@ fun MoreScreen(
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Psychology,
-            title = "Copilot Center",
-            subtitle = "Pre-trade and post-trade guidance",
+            title = "Pre-Trade Checks",
+            subtitle = "Rule-based order risk — not the AI chat tab",
             gradientColors = listOf(Color(0xFF6A1B9A), Color(0xFFBA68C8)),
             onClick = onCopilotCenterClick,
         ),
@@ -311,7 +314,7 @@ fun MoreScreen(
                 QuickInfoChip(label = "Journal", onClick = onTradeJournalClick)
                 QuickInfoChip(label = "Watchlist", onClick = onWatchlistClick)
                 QuickInfoChip(label = "Smart Money", onClick = onInvestorPortfoliosClick)
-                QuickInfoChip(label = "Copilot", onClick = onCopilotCenterClick)
+                QuickInfoChip(label = "Pre-trade", onClick = onCopilotCenterClick)
             }
         }
 
@@ -411,7 +414,9 @@ private fun MoreMenuItem(entry: MoreMenuEntry) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = entry.onClick),
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
         shape = RoundedCornerShape(14.dp),
     ) {
         Row(

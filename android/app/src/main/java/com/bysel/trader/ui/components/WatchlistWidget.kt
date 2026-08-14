@@ -31,6 +31,7 @@ import com.bysel.trader.ui.format.formatSignedPct
 import com.bysel.trader.ui.format.formatVolumeCompact
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.theme.TickPriceText
+import com.bysel.trader.ui.theme.byselSectionSurface
 
 @Composable
 fun WatchlistWidget(
@@ -54,8 +55,7 @@ fun WatchlistWidget(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(theme.card)
+            .byselSectionSurface(RoundedCornerShape(12.dp))
             .padding(bottom = 8.dp),
     ) {
         Row(

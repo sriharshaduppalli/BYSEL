@@ -35,12 +35,12 @@ fun AppTheme.primaryContainerColor(): Color =
 fun AppTheme.onPrimaryContainerColor(): Color =
     if (isLight) primary.toneTowardBlack(0.35f) else primary.toneTowardWhite(0.55f)
 
-/** One step above [card] for nested panels / list rows. */
+/** Nested panel one step above [card] — never the same fill as the page or the card. */
 fun AppTheme.surfaceElevatedColor(): Color =
     if (isLight) {
-        Color.White
+        Color(0xFFF3F5F8)
     } else {
-        text.copy(alpha = 0.06f).compositeOver(card)
+        text.copy(alpha = 0.08f).compositeOver(card)
     }
 
 /**

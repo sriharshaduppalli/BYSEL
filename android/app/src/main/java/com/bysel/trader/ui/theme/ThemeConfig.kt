@@ -52,8 +52,8 @@ fun isDynamicThemeId(themeName: String?): Boolean =
 object ThemeColors {
     object Default {
         val primary = Color(0xFF42A5F5)
-        val surface = Color(0xFF0D0D0D)
-        val card = Color(0xFF222222)
+        val surface = Color(0xFF0B0C0E)
+        val card = Color(0xFF2A2D33)
         val positive = Color(0xFF00E676)
         val negative = Color(0xFFFF5252)
         val text = Color(0xFFFFFFFF)
@@ -113,7 +113,7 @@ object ThemeColors {
 
     object Light {
         val primary = Color(0xFF1565C0)
-        val surface = Color(0xFFEEF1F6)
+        val surface = Color(0xFFE4E8F0)
         val card = Color(0xFFFFFFFF)
         val positive = Color(0xFF2E7D32)
         val negative = Color(0xFFC62828)
@@ -187,9 +187,13 @@ data class AppTheme(
     val onNegative: Color
         get() = if (negative.luminance() > 0.55f) Color(0xFF121212) else Color.White
 
-    /** Hairline card outline — better separation than heavy elevation on dark themes. */
+    /** Hairline card outline — tinted on dark skins so edges are not a flat white stroke. */
     val cardOutline: Color
-        get() = text.copy(alpha = if (isLight) 0.10f else 0.14f)
+        get() = if (isLight) {
+            Color.Black.copy(alpha = 0.14f)
+        } else {
+            primary.copy(alpha = 0.28f).compositeOver(Color.White.copy(alpha = 0.10f).compositeOver(card))
+        }
 
     /** Subtle chip / inactive control fill that works on light and dark surfaces. */
     val mutedSurface: Color
@@ -354,10 +358,14 @@ fun getTheme(themeName: String): AppTheme {
 /** Keep LocalAppTheme in sync with Material You when Dynamic is selected. */
 fun ColorScheme.toAppTheme(name: String = "Dynamic"): AppTheme {
     val bg = background
-    val cardColor = surface
     val body = onBackground
     val secondary = onSurfaceVariant
     val light = bg.luminance() > 0.5f
+    val cardColor = if (light) {
+        Color.White.blendToward(surface, 0.06f)
+    } else {
+        body.copy(alpha = 0.10f).compositeOver(bg)
+    }
     // Keep PnL readable, but nudge toward wallpaper primary (Material You harmonization).
     val basePositive = if (light) Color(0xFF2E7D32) else Color(0xFF00E676)
     val baseNegative = if (light) Color(0xFFC62828) else Color(0xFFFF6E6E)
@@ -404,7 +412,7 @@ fun AppTheme.toMaterialColorScheme(): ColorScheme {
             surfaceVariant = elevated,
             onSurfaceVariant = textSecondary,
             outline = outlineColor,
-            outlineVariant = text.copy(alpha = 0.12f),
+            outlineVariant = if (isLight) Color.Black.copy(alpha = 0.14f) else cardOutline,
             error = negative,
             onError = onNeg,
             errorContainer = negative.copy(alpha = 0.12f).compositeOver(card),
@@ -435,7 +443,7 @@ fun AppTheme.toMaterialColorScheme(): ColorScheme {
             surfaceVariant = elevated,
             onSurfaceVariant = textSecondary,
             outline = outlineColor,
-            outlineVariant = text.copy(alpha = 0.14f),
+            outlineVariant = cardOutline,
             error = negative,
             onError = onNeg,
             errorContainer = negative.copy(alpha = 0.16f).compositeOver(card),

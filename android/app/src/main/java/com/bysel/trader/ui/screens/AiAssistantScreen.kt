@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -28,10 +29,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -40,7 +44,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.content.Intent
 import com.bysel.trader.viewmodel.ChatMessage
-import com.bysel.trader.ai.LlmDownloadState
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.theme.PulsingDots
 import com.bysel.trader.ui.components.ConfidenceCard
@@ -69,8 +72,6 @@ fun AiAssistantScreen(
     /** Return to Stock Detail / prior screen after Trust & Tools AI actions. */
     onNavigateBack: (() -> Unit)? = null,
     backLabel: String? = null,
-    onDeviceLlmState: LlmDownloadState = LlmDownloadState.NotDownloaded,
-    onDownloadModel: () -> Unit = {},
     likelyColdStart: Boolean = false,
     onWarmAi: () -> Unit = {},
     onAiFeedback: ((query: String, answer: String, helpful: Boolean) -> Unit)? = null,
@@ -78,6 +79,7 @@ fun AiAssistantScreen(
     isActive: Boolean = true,
 ) {
     var query by remember { mutableStateOf("") }
+    var inputFocused by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val focusManager = LocalFocusManager.current
     val appTheme = LocalAppTheme.current
@@ -194,87 +196,6 @@ fun AiAssistantScreen(
             )
         }
 
-        // On-device AI model download banner
-        when (onDeviceLlmState) {
-            is LlmDownloadState.NotDownloaded -> {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(appTheme.tintedSurface(appTheme.positive))
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("On-device AI available", fontWeight = FontWeight.Medium, fontSize = 12.sp, color = appTheme.positive)
-                        Text("Download Gemma 2B (~1.4GB) for offline AI — no server needed", fontSize = 11.sp, color = appTheme.textSecondary)
-                    }
-                    TextButton(onClick = onDownloadModel) {
-                        Text("Download", fontSize = 12.sp, color = appTheme.positive)
-                    }
-                }
-            }
-            is LlmDownloadState.Downloading -> {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(appTheme.tintedSurface(appTheme.primary))
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    Text("Downloading AI model… ${onDeviceLlmState.progressPct}%", fontSize = 12.sp, color = appTheme.primary)
-                    LinearProgressIndicator(
-                        progress = { onDeviceLlmState.progressPct / 100f },
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        color = appTheme.primary,
-                        trackColor = appTheme.mutedSurface,
-                    )
-                }
-            }
-            is LlmDownloadState.Initializing -> {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(appTheme.tintedSurface(appTheme.primary))
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                        color = appTheme.primary,
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Loading AI model into memory…", fontSize = 12.sp, color = appTheme.primary)
-                }
-            }
-            is LlmDownloadState.Ready -> {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(appTheme.tintedSurface(appTheme.positive))
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = appTheme.positive, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("On-device AI active — responses are fully offline", fontSize = 11.sp, color = appTheme.positive)
-                }
-            }
-            is LlmDownloadState.Error -> {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(appTheme.tintedSurface(appTheme.negative))
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("AI model error: ${onDeviceLlmState.message.take(60)}", fontSize = 11.sp, color = appTheme.negative, modifier = Modifier.weight(1f))
-                    TextButton(onClick = onDownloadModel) { Text("Retry", fontSize = 11.sp, color = appTheme.negative) }
-                }
-            }
-        }
-
         // Chat messages
         if (chatHistory.isEmpty()) {
             // Welcome screen
@@ -319,7 +240,7 @@ fun AiAssistantScreen(
                 }
             }
 
-            if (adaptiveSuggestions.isNotEmpty()) {
+            if (adaptiveSuggestions.isNotEmpty() && !inputFocused) {
                 AdaptiveSuggestionsStrip(
                     suggestions = adaptiveSuggestions.take(8),
                     onSuggestionClick = onSuggestionClick
@@ -327,37 +248,35 @@ fun AiAssistantScreen(
             }
         }
 
-        // Input bar — imePadding keeps send field above the keyboard under edge-to-edge.
+        // Composer sits above the keyboard; inner field is tall enough that typed text is not clipped.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .imePadding()
                 .background(appTheme.card)
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.Bottom,
         ) {
-            OutlinedTextField(
+            val fieldShape = RoundedCornerShape(16.dp)
+            BasicTextField(
                 value = query,
                 onValueChange = { query = it },
-                placeholder = {
-                    Text(
-                        "Ask about any stock...",
-                        color = appTheme.textSecondary
-                    )
-                },
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(min = 48.dp, max = 120.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = appTheme.text,
-                    unfocusedTextColor = appTheme.text,
-                    focusedBorderColor = appTheme.primary,
-                    unfocusedBorderColor = appTheme.textSecondary.copy(alpha = 0.35f),
-                    cursorColor = appTheme.primary,
-                    focusedContainerColor = appTheme.card,
-                    unfocusedContainerColor = appTheme.card
+                    .heightIn(min = 56.dp, max = 140.dp)
+                    .onFocusChanged { inputFocused = it.isFocused }
+                    .clip(fieldShape)
+                    .background(appTheme.surface)
+                    .border(1.dp, if (inputFocused) appTheme.primary else appTheme.cardOutline, fieldShape)
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                textStyle = TextStyle(
+                    color = appTheme.text,
+                    fontSize = 16.sp,
+                    lineHeight = 22.sp,
                 ),
-                shape = RoundedCornerShape(24.dp),
+                cursorBrush = SolidColor(appTheme.primary),
+                maxLines = 5,
+                singleLine = false,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = {
                     if (query.isNotBlank() && !isLoading) {
@@ -366,8 +285,19 @@ fun AiAssistantScreen(
                         focusManager.clearFocus()
                     }
                 }),
-                maxLines = 3,
-                singleLine = false
+                decorationBox = { innerTextField ->
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        if (query.isEmpty()) {
+                            Text(
+                                "Ask about any stock...",
+                                color = appTheme.textSecondary,
+                                fontSize = 16.sp,
+                                lineHeight = 22.sp,
+                            )
+                        }
+                        innerTextField()
+                    }
+                },
             )
             Spacer(modifier = Modifier.width(8.dp))
             FilledIconButton(
@@ -393,9 +323,9 @@ fun AiAssistantScreen(
                     tint = appTheme.onPrimary
                 )
             }
-            }
         }
     }
+}
 
 private fun buildSymbolSuggestions(symbol: String): List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>> = listOf(
     "Should I buy $symbol?" to Icons.AutoMirrored.Filled.TrendingUp,

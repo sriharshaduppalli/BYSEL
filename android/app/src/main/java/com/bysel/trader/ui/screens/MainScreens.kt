@@ -43,6 +43,9 @@ import com.bysel.trader.ui.components.DashboardSkeletonLoader
 import com.bysel.trader.ui.components.WatchlistSortMode
 import com.bysel.trader.ui.components.sortedByWatchlistMode
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.byselCardBorder
+import com.bysel.trader.ui.theme.byselCardColors
+import com.bysel.trader.ui.theme.byselCardElevation
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.filled.Refresh
@@ -62,29 +65,8 @@ fun WatchlistScreen(
         runCatching { WatchlistSortMode.valueOf(sortModeName) }.getOrDefault(WatchlistSortMode.MOVE)
     }
     val sortedQuotes = remember(quotes, sortMode) { quotes.sortedByWatchlistMode(sortMode) }
-    // Shared ViewModel _error is used app-wide (alerts, orders, wallet…). Never treat
-    // those as a fatal watchlist load failure — that showed "Alert already exists" here.
-    val watchlistLoadError = remember(error) {
-        error?.takeIf { msg ->
-            val lower = msg.lowercase()
-            !lower.contains("alert already") &&
-                (
-                    lower.contains("quote") ||
-                        lower.contains("watchlist") ||
-                        lower.contains("network") ||
-                        lower.contains("timeout") ||
-                        lower.contains("connection") ||
-                        lower.contains("unable to resolve")
-                    )
-        }
-    }
-
-    LaunchedEffect(error) {
-        // Drop stale alert/order banners as soon as user opens More → Watchlist.
-        if (error != null && watchlistLoadError == null) {
-            onErrorDismiss()
-        }
-    }
+    // Quote-load failures only. Order/F&O validation lives on other channels.
+    val watchlistLoadError = error
 
     if (isLoading && quotes.isEmpty()) {
         DashboardSkeletonLoader(
@@ -218,7 +200,9 @@ fun UpgradedQuoteCard(quote: Quote, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp),
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(
@@ -318,7 +302,7 @@ fun PortfolioScreen(
         }
     }
 
-    val quoteBySymbol = remember(quotes) { quotes.associateBy { it.symbol } }
+    val quoteBySymbol = remember(quotes) { quotes.associateBy { it.symbol.uppercase() } }
 
     var pendingSell by remember { mutableStateOf<Holding?>(null) }
 
@@ -443,6 +427,7 @@ fun PortfolioScreen(
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(
                     onClick = onRefresh,
+                    enabled = !isLoading,
                     modifier = Modifier.height(40.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = theme.primary,
@@ -451,14 +436,22 @@ fun PortfolioScreen(
                     shape = RoundedCornerShape(8.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp),
                 ) {
-                    Icon(
-                        Icons.Filled.Refresh,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = theme.onPrimary,
-                    )
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = theme.onPrimary,
+                        )
+                    } else {
+                        Icon(
+                            Icons.Filled.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = theme.onPrimary,
+                        )
+                    }
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Refresh", fontSize = 12.sp, color = theme.onPrimary)
+                    Text(if (isLoading) "Updating" else "Refresh", fontSize = 12.sp, color = theme.onPrimary)
                 }
             }
 
@@ -537,8 +530,17 @@ fun PortfolioScreen(
                     }
 
                     items(items = holdings, key = { it.symbol }) { holding ->
+                        val quote = quoteBySymbol[holding.symbol.uppercase()]
+                        val displayHolding = if (quote != null && quote.last > 0.0) {
+                            holding.copy(
+                                last = quote.last,
+                                pnl = (quote.last - holding.avgPrice) * holding.qty,
+                            )
+                        } else {
+                            holding
+                        }
                         SwipeToDismissItem(
-                            item = holding,
+                            item = displayHolding,
                             onDismiss = { pendingSell = it },
                             enabled = true,
                             requireConfirmation = true,
@@ -546,8 +548,8 @@ fun PortfolioScreen(
                             dismissLabel = "Sell entire holding"
                         ) {
                             UpgradedPortfolioHoldingItem(
-                                holding = holding,
-                                dayPctChange = quoteBySymbol[holding.symbol]?.pctChange ?: 0.0,
+                                holding = displayHolding,
+                                dayPctChange = quote?.pctChange ?: 0.0,
                                 onBuy = { onBuy(holding.symbol, 1) },
                                 onSell = { onSell(holding.symbol, 1) }
                             )
@@ -578,7 +580,9 @@ fun UpgradedPortfolioHoldingItem(
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp),
-        colors = CardDefaults.cardColors(containerColor = theme.card),
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(
@@ -774,7 +778,9 @@ fun PortfolioHealthCard(
             .fillMaxWidth()
             .padding(8.dp),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
     ) {
         if (isLoading && health == null) {
             Box(

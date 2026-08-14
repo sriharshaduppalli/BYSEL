@@ -75,11 +75,26 @@ private fun LoadingOrEmpty(title: String, subtitle: String, loading: Boolean) {
 @Composable
 private fun ActionBanner(viewModel: TradingViewModel) {
     val msg by viewModel.productActionMessage.collectAsStateWithLifecycle()
-    if (!msg.isNullOrBlank()) {
+    val derivativesError by viewModel.derivativesError.collectAsStateWithLifecycle()
+    val display = derivativesError?.takeIf { it.isNotBlank() } ?: msg?.takeIf { it.isNotBlank() }
+    if (!display.isNullOrBlank()) {
         Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.primary.copy(alpha = 0.12f))) {
-            Text(msg.orEmpty(), color = LocalAppTheme.current.text, modifier = Modifier.padding(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(display, color = LocalAppTheme.current.text, modifier = Modifier.weight(1f))
+                if (!derivativesError.isNullOrBlank()) {
+                    TextButton(onClick = { viewModel.clearDerivativesError() }) {
+                        Text("Dismiss")
+                    }
+                }
+            }
         }
-        LaunchedEffect(msg) { viewModel.clearProductActionMessage() }
+        if (derivativesError.isNullOrBlank()) {
+            LaunchedEffect(msg) { viewModel.clearProductActionMessage() }
+        }
     }
 }
 
@@ -2323,7 +2338,7 @@ fun CopilotCenterScreen(viewModel: TradingViewModel) {
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Copilot Center", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold, fontSize = 24.sp)
+                Text("Pre-Trade Checks", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold, fontSize = 24.sp)
                 Text(
                     "Rule-based risk checks on live prices, wallet, and orders — not a generative LLM research desk.",
                     color = LocalAppTheme.current.textSecondary,

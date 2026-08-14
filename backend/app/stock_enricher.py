@@ -353,6 +353,7 @@ _NAME_TO_SYMBOL: dict[str, str] = {
     "nestle": "NESTLEIND",
     "ltimindtree": "LTIM", "lti": "LTIM",
     "tech mahindra": "TECHM",
+    "tech m": "TECHM",
     "m&m": "M&M",
     "m & m": "M&M",
     "mahindra": "M&M",
@@ -858,20 +859,142 @@ def normalize_hinglish(query: str) -> str:
     return q
 
 
+# English words that are also BSE/NSE ETF or MF scheme tickers.
+# Example: TECH = Aditya Birla Sun Life Mutual Fund, which stole "tech mahindra".
+_ENGLISH_MF_TICKER_COLLISIONS = {
+    "TECH", "LIFE", "SUN", "HEALTHY", "HEALTH", "DIGITAL", "SILVER", "GOLD",
+    "BANK", "VALUE", "GROWTH", "QUALITY", "NIFTY", "SENSEX", "INDEX", "FUND",
+}
+
+
+def _strip_prompt_wrapper(query: str) -> str:
+    raw = (query or "").strip()
+    if raw.lower().startswith("user_query:"):
+        raw = raw.split(":", 1)[1].strip()
+    if " | context:" in raw:
+        raw = raw.split(" | context:", 1)[0].strip()
+    return raw
+
+
+def _phrase_is_whole(text: str, start: int, end: int) -> bool:
+    if start > 0 and text[start - 1].isalnum():
+        return False
+    if end < len(text) and text[end].isalnum():
+        return False
+    return True
+
+
+def _is_mutual_fund_or_etf_name(name: str) -> bool:
+    n = (name or "").lower()
+    return (
+        "mutual fund" in n
+        or " etf" in n
+        or n.endswith("etf")
+        or n.endswith(" etf")
+    )
+
+
+def _is_standalone_ticker_ask(query: str, token: str) -> bool:
+    q = re.sub(r"[^A-Za-z0-9&-]+", "", query or "").upper()
+    tok = (token or "").upper()
+    return bool(tok) and (q == tok or q == f"{tok}ETF")
+
+
+def _company_name_matches(query: str) -> list[tuple[str, int, int]]:
+    """Longest-first company-name hits; nested aliases (mahindra inside tech mahindra) are dropped."""
+    q = (query or "").lower()
+    matches: list[tuple[str, int, int]] = []
+    spans: list[tuple[int, int]] = []
+    seen: set[str] = set()
+    for name, sym in sorted(_NAME_TO_SYMBOL.items(), key=lambda x: -len(x[0])):
+        if not name or name not in q:
+            continue
+        start = 0
+        while True:
+            idx = q.find(name, start)
+            if idx < 0:
+                break
+            end = idx + len(name)
+            if _phrase_is_whole(q, idx, end) and not any(
+                idx >= span_s and end <= span_e for span_s, span_e in spans
+            ):
+                resolved = _resolve_listed_symbol(sym)
+                if resolved not in seen:
+                    matches.append((resolved, idx, end))
+                    seen.add(resolved)
+                spans.append((idx, end))
+                break
+            start = idx + 1
+    return matches
+
+
+def _catalog_entry_name(symbol: str, catalog: dict | None) -> str:
+    if not catalog:
+        return ""
+    rec = catalog.get(symbol)
+    if isinstance(rec, (tuple, list)) and len(rec) > 1:
+        return str(rec[1] or "")
+    return ""
+
+
+def _should_skip_catalog_token(
+    token: str,
+    query: str,
+    name_spans: list[tuple[int, int]],
+    catalog: dict | None = None,
+) -> bool:
+    """Drop ETF/MF English-word tickers unless the user typed that ticker alone."""
+    tok = (token or "").upper()
+    if not tok:
+        return True
+    q_up = (query or "").upper()
+    match = re.search(r"\b" + re.escape(tok) + r"\b", q_up)
+    if match and any(match.start() >= start and match.end() <= end for start, end in name_spans):
+        return True
+    if _is_standalone_ticker_ask(query, tok):
+        return False
+    if tok in _ENGLISH_MF_TICKER_COLLISIONS:
+        return True
+    return _is_mutual_fund_or_etf_name(_catalog_entry_name(tok, catalog))
+
+
+def order_symbols_in_query(symbols: list[str], query: str) -> list[str]:
+    """Left-to-right order without promoting prefix tokens (TECH vs TECHM)."""
+    q_up = (query or "").upper()
+    uniq: list[str] = []
+    seen: set[str] = set()
+    for raw in symbols or []:
+        symbol = str(raw or "").upper()
+        if symbol and symbol not in seen:
+            seen.add(symbol)
+            uniq.append(symbol)
+    if not uniq:
+        return []
+
+    def rank(sym: str) -> tuple:
+        if any(other != sym and other.startswith(sym) for other in uniq):
+            return (2, 10_000, -len(sym))
+        whole = re.search(r"\b" + re.escape(sym) + r"\b", q_up)
+        if whole:
+            return (0, whole.start(), -len(sym))
+        pos = q_up.find(sym)
+        if pos >= 0:
+            return (1, pos, -len(sym))
+        return (1, 10_000, -len(sym))
+
+    return sorted(uniq, key=rank)
+
+
 def extract_all_symbols_from_query(query: str) -> list[str]:
     """
     Extract ALL symbols/stock names from query (not just first one).
     Returns list of symbols, empty list if none found.
     Used for multi-stock comparisons: "RELIANCE vs TCS vs INFY" → ["RELIANCE", "TCS", "INFY"]
     """
-    q_lower = query.lower()
-    symbols = []
-
-    # Step 1: Extract via name lookups (most reliable — runs on longest matches first)
-    for name, sym in sorted(_NAME_TO_SYMBOL.items(), key=lambda x: -len(x[0])):
-        resolved = _resolve_listed_symbol(sym)
-        if name in q_lower and resolved not in symbols:
-            symbols.append(resolved)
+    query = _strip_prompt_wrapper(query)
+    name_hits = _company_name_matches(query)
+    symbols = [sym for sym, _, _ in name_hits]
+    name_spans = [(start, end) for _, start, end in name_hits]
 
     # Step 2: Extract via regex (uppercase tokens not in skip list)
     _SKIP = {
@@ -916,10 +1039,13 @@ def extract_all_symbols_from_query(query: str) -> list[str]:
         "LOOK", "LOOKS", "KEEP", "KEPT", "HELP", "HELD", "MOVE", "MOVES",
     }
     known = None
+    catalog = None
     try:
         from app.market_data import INDIAN_STOCKS, get_stock_catalog
 
-        known = set(INDIAN_STOCKS) | set(get_stock_catalog())
+        catalog = dict(get_stock_catalog())
+        catalog.update(INDIAN_STOCKS)
+        known = set(catalog)
     except Exception:
         known = None
 
@@ -931,6 +1057,8 @@ def extract_all_symbols_from_query(query: str) -> list[str]:
         resolved = _resolve_listed_symbol(tok)
         if known is not None and resolved not in known:
             continue
+        if _should_skip_catalog_token(resolved, query, name_spans, catalog):
+            continue
         if resolved not in symbols:
             symbols.append(resolved)
 
@@ -940,6 +1068,8 @@ def extract_all_symbols_from_query(query: str) -> list[str]:
             resolved = _resolve_listed_symbol(tok)
             # Reject English leftovers that are not real listed equities.
             if known is not None and resolved not in known:
+                continue
+            if _should_skip_catalog_token(resolved, query, name_spans, catalog):
                 continue
             if resolved not in symbols:
                 symbols.append(resolved)
@@ -1271,9 +1401,9 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
         return None
 
     # Step 2: name-based lookup — most reliable for natural language
-    for name, sym in sorted(_NAME_TO_SYMBOL.items(), key=lambda x: -len(x[0])):
-        if name in q_lower:
-            return _resolve_listed_symbol(sym)
+    name_hits = _company_name_matches(query)
+    if name_hits:
+        return name_hits[0][0]
 
     # Step 2b: BSE scrip codes / explicit exchange prefixes
     bse_pref = re.search(r"\bBSE:([A-Za-z0-9]{2,15})\b", query, flags=re.IGNORECASE)
@@ -1383,11 +1513,21 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
     amp = re.search(r"\b([A-Z]{1,6}&[A-Z]{1,6})\b", q_upper)
     if amp and amp.group(1) not in _SKIP:
         return _resolve_listed_symbol(amp.group(1))
+    catalog = None
+    try:
+        from app.market_data import INDIAN_STOCKS, get_stock_catalog
+
+        catalog = dict(get_stock_catalog())
+        catalog.update(INDIAN_STOCKS)
+    except Exception:
+        catalog = None
     tokens = re.findall(r'\b[A-Z][A-Z0-9\-]{1,9}\b', q_upper)
     for tok in tokens:
         if tok in _SKIP or len(tok) < 3:
             continue
         resolved = _resolve_listed_symbol(tok)
+        if _should_skip_catalog_token(resolved, query, [], catalog):
+            continue
         if _is_catalog_symbol(resolved):
             return resolved
 

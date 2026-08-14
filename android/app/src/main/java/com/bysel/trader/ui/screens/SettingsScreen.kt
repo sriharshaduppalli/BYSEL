@@ -37,6 +37,9 @@ import com.bysel.trader.ui.theme.getTheme
 import com.bysel.trader.ui.theme.isDynamicThemeId
 import com.bysel.trader.ui.theme.isLightThemeId
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.byselCardBorder
+import com.bysel.trader.ui.theme.byselCardColors
+import com.bysel.trader.ui.theme.byselCardElevation
 import com.bysel.trader.ui.theme.normalizeThemeId
 import com.bysel.trader.alerts.AlertsManager
 import kotlinx.coroutines.launch
@@ -1113,7 +1116,9 @@ fun SettingItem(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp),
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
         shape = RoundedCornerShape(10.dp)
     ) {
         Row(
@@ -1183,7 +1188,9 @@ fun SettingClickItem(
             .fillMaxWidth()
             .padding(vertical = 8.dp)
             .clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
         shape = RoundedCornerShape(10.dp)
     ) {
         Row(

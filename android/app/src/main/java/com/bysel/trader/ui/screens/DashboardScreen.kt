@@ -87,6 +87,10 @@ import com.bysel.trader.ui.format.formatInrCompact
 import com.bysel.trader.ui.format.formatSignedPct
 import com.bysel.trader.ui.format.formatVolumeCompact
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.byselCardBorder
+import com.bysel.trader.ui.theme.byselCardColors
+import com.bysel.trader.ui.theme.byselCardElevation
+import com.bysel.trader.ui.theme.byselSectionSurface
 import com.bysel.trader.ui.viewmodel.DashboardViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -185,8 +189,9 @@ private fun HomeGuideDialog(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = theme.card),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+            colors = byselCardColors(),
+            elevation = byselCardElevation(),
+            border = byselCardBorder(),
         ) {
             Column(
                 modifier = Modifier
@@ -305,6 +310,7 @@ fun DashboardScreen(
     holdings: List<Holding>,
     quotes: List<Quote>,
     isLoading: Boolean,
+    isRefreshing: Boolean = false,
     error: String?,
     onRefresh: () -> Unit,
     onTradeClick: (String) -> Unit,
@@ -426,7 +432,7 @@ fun DashboardScreen(
                 showHomeGuide = false
                 homeGuideStep = 0
             },
-            isRefreshing = isLoading || newsLoading,
+            isRefreshing = isRefreshing,
             portfolioPinned = portfolioPinned,
             newsPinned = newsPinned,
             watchlistPinned = watchlistPinned,
@@ -721,8 +727,8 @@ fun DashboardContent(
             ),
             onAiClick?.let {
                 HomeAction(
-                    title = "AI Quick Brief",
-                    subtitle = "Ask Copilot now",
+                    title = "Ask AI",
+                    subtitle = "Chat about the tape",
                     colors = listOf(theme.primary.copy(alpha = 0.2f), theme.surface),
                     onClick = it,
                 )
@@ -797,65 +803,6 @@ fun DashboardContent(
         }
 
         item {
-            val tipsPayload = intradayTips ?: buildLocalIntradayTips(marketStatus)
-            IntradayTipsSection(
-                phaseLabel = tipsPayload.phaseLabel,
-                tips = tipsPayload.tips,
-                disclaimer = tipsPayload.disclaimer.ifBlank {
-                    "Educational session habits — not stock tips."
-                },
-                loading = intradayTipsLoading && tipsPayload.tips.isEmpty(),
-                mood = tipsPayload.mood,
-            )
-        }
-
-        item {
-            InvestorTipsCard(
-                topicLabel = investorTips.topicLabel,
-                tips = investorTips.tips.ifEmpty { localInvestorTips(investorTipTopic).tips },
-                disclaimer = investorTips.disclaimer.ifBlank {
-                    "Educational investor habits — not stock, fund, or IPO recommendations."
-                },
-                loading = investorTipsLoading && investorTips.tips.isEmpty(),
-                topics = investorTips.topics.ifEmpty { localInvestorTips("long_term").topics },
-                selectedTopic = investorTipTopic,
-                onTopicSelected = { dashboardViewModel.selectInvestorTipTopic(it) },
-            )
-        }
-
-        item {
-            TodaysPracticeStrip(
-                habit = practiceHabit,
-                progress = practiceProgress,
-                onReviewClick = onOpenPracticeReview,
-            )
-        }
-
-        item {
-            PaperWalletHomeStrip(
-                balance = walletBalance,
-                onAddFunds = onAddPracticeFunds,
-            )
-        }
-
-        item {
-            PracticeIdeasSection(
-                ideas = practiceIdeas.ifEmpty {
-                    buildLocalPracticeIdeas(topGainers + topLosers)
-                },
-                loading = practiceIdeasLoading && practiceIdeas.isEmpty(),
-                disclaimer = practiceIdeasDisclaimer.ifBlank {
-                    "Educational paper drills only — not investment advice."
-                },
-                onOpenSymbol = onTradeClick,
-                onPaperBuy = onPaperBuy,
-                onPracticeAlert = onPracticeAlert,
-                needsPracticeCredit = walletBalance <= 0.0,
-                onAddPracticeFunds = onAddPracticeFunds,
-            )
-        }
-
-        item {
             IdeasRail(
                 topMover = focusQuotes.firstOrNull(),
                 signalTitle = signalBuckets.firstOrNull()?.title,
@@ -864,14 +811,6 @@ fun DashboardContent(
                 onSignalLab = onSignalLabClick,
                 onSmartMoney = onSmartMoneyClick,
                 onOpenMover = focusQuotes.firstOrNull()?.let { q -> { onTradeClick(q.symbol) } },
-            )
-        }
-
-        item {
-            HomeVariantSwitcher(
-                selectedVariant = selectedVariant,
-                onVariantSelected = { layoutVariant = it.name },
-                modifier = Modifier.bringIntoViewRequester(layoutRequester),
             )
         }
 
@@ -1020,7 +959,7 @@ fun DashboardContent(
         item {
             SectionHeader(
                 title = "Your Space",
-                subtitle = "Pin the modules you want above the fold and reorder them around your session workflow.",
+                subtitle = "Watchlist and news — pin and reorder what you want on the tape.",
                 modifier = Modifier.bringIntoViewRequester(yourSpaceRequester),
             )
         }
@@ -1029,17 +968,15 @@ fun DashboardContent(
                 when (widget) {
                     "portfolio" -> if (portfolioPinned) {
                         item {
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp)
-                                    .bringIntoViewRequester(portfolioWidgetRequester),
-                                colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
-                                elevation = CardDefaults.cardElevation(
-                                    defaultElevation = if (LocalAppTheme.current.isLight) 2.dp else 0.dp
-                                ),
-                                shape = RoundedCornerShape(16.dp),
-                                border = BorderStroke(2.dp, LocalAppTheme.current.primary)
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+                    .bringIntoViewRequester(portfolioWidgetRequester),
+                colors = byselCardColors(),
+                elevation = byselCardElevation(),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(2.dp, LocalAppTheme.current.primary)
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
                                     Row(
@@ -1100,10 +1037,10 @@ fun DashboardContent(
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp)
                                 .bringIntoViewRequester(newsRequester),
-                            colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
-                            elevation = CardDefaults.cardElevation(8.dp),
+                            colors = byselCardColors(),
+                            elevation = byselCardElevation(),
                             shape = RoundedCornerShape(16.dp),
-                            border = if (idx == 0) BorderStroke(2.dp, LocalAppTheme.current.primary) else null
+                            border = if (idx == 0) BorderStroke(2.dp, LocalAppTheme.current.primary) else byselCardBorder()
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
                                 NewsWidget(
@@ -1134,10 +1071,10 @@ fun DashboardContent(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp),
-                            colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
-                            elevation = CardDefaults.cardElevation(8.dp),
+                            colors = byselCardColors(),
+                            elevation = byselCardElevation(),
                             shape = RoundedCornerShape(16.dp),
-                            border = if (idx == 0) BorderStroke(2.dp, LocalAppTheme.current.primary) else null
+                            border = if (idx == 0) BorderStroke(2.dp, LocalAppTheme.current.primary) else byselCardBorder()
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
                                 WatchlistWidget(
@@ -1273,7 +1210,75 @@ fun DashboardContent(
                 )
             }
         }
-        
+
+        item {
+            HomeVariantSwitcher(
+                selectedVariant = selectedVariant,
+                onVariantSelected = { layoutVariant = it.name },
+                modifier = Modifier.bringIntoViewRequester(layoutRequester),
+            )
+        }
+
+        item {
+            PaperWalletHomeStrip(
+                balance = walletBalance,
+                onAddFunds = onAddPracticeFunds,
+            )
+        }
+
+        item {
+            TodaysPracticeStrip(
+                habit = practiceHabit,
+                progress = practiceProgress,
+                onReviewClick = onOpenPracticeReview,
+            )
+        }
+
+        item {
+            PracticeIdeasSection(
+                ideas = practiceIdeas.ifEmpty {
+                    buildLocalPracticeIdeas(topGainers + topLosers)
+                },
+                loading = practiceIdeasLoading && practiceIdeas.isEmpty(),
+                disclaimer = practiceIdeasDisclaimer.ifBlank {
+                    "Educational paper drills only — not investment advice."
+                },
+                onOpenSymbol = onTradeClick,
+                onPaperBuy = onPaperBuy,
+                onPracticeAlert = onPracticeAlert,
+                needsPracticeCredit = walletBalance <= 0.0,
+                onAddPracticeFunds = onAddPracticeFunds,
+            )
+        }
+
+        item {
+            val tipsPayload = intradayTips ?: buildLocalIntradayTips(marketStatus)
+            IntradayTipsSection(
+                phaseLabel = tipsPayload.phaseLabel,
+                tips = tipsPayload.tips,
+                disclaimer = tipsPayload.disclaimer.ifBlank {
+                    "Educational session habits — not stock tips."
+                },
+                loading = intradayTipsLoading && tipsPayload.tips.isEmpty(),
+                mood = tipsPayload.mood,
+            )
+        }
+
+        item {
+            InvestorTipsCard(
+                title = "Investor habits",
+                topicLabel = investorTips.topicLabel,
+                tips = investorTips.tips.ifEmpty { localInvestorTips(investorTipTopic).tips },
+                disclaimer = investorTips.disclaimer.ifBlank {
+                    "Educational investor habits — not stock, fund, or IPO recommendations."
+                },
+                loading = investorTipsLoading && investorTips.tips.isEmpty(),
+                topics = investorTips.topics.ifEmpty { localInvestorTips("long_term").topics },
+                selectedTopic = investorTipTopic,
+                onTopicSelected = { dashboardViewModel.selectInvestorTipTopic(it) },
+            )
+        }
+
         item {
             Spacer(modifier = Modifier.height(100.dp))
         }
@@ -1381,12 +1386,13 @@ private fun DashboardHeroCard(
 ) {
     val theme = LocalAppTheme.current
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        shape = RoundedCornerShape(24.dp),
-    ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                elevation = byselCardElevation(),
+                border = byselCardBorder(),
+                shape = RoundedCornerShape(24.dp),
+            ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1552,7 +1558,9 @@ private fun DashboardMetricsRow(metrics: List<DashboardMetric>) {
         items(metrics, key = { it.title }) { metric ->
             Card(
                 modifier = Modifier.width(180.dp),
-                colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+                colors = byselCardColors(),
+                elevation = byselCardElevation(),
+                border = byselCardBorder(),
                 shape = RoundedCornerShape(18.dp),
             ) {
                 Column(
@@ -1639,7 +1647,9 @@ private fun HomeVariantSwitcher(
         modifier = modifier
             .fillMaxWidth()
             .padding(top = 10.dp),
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
         shape = RoundedCornerShape(14.dp),
     ) {
         Column(
@@ -1706,7 +1716,9 @@ private fun HomeQuoteBoardCard(
             .width(220.dp)
             .padding(vertical = 4.dp)
             .clickable { onOpen() },
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
         shape = RoundedCornerShape(18.dp),
     ) {
         Column(
@@ -1769,7 +1781,9 @@ private fun HomeSignalCard(
             .width(240.dp)
             .padding(vertical = 4.dp)
             .clickable(enabled = leadQuote != null, onClick = onOpen),
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
         shape = RoundedCornerShape(18.dp),
     ) {
         Column(
@@ -2000,8 +2014,7 @@ private fun IntradayTipsSection(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(theme.card)
+            .byselSectionSurface(RoundedCornerShape(14.dp))
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -2012,7 +2025,7 @@ private fun IntradayTipsSection(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Intraday Tips",
+                    text = "Session habits",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = theme.text,
@@ -2187,8 +2200,7 @@ private fun TodaysPracticeStrip(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 8.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(theme.card)
+            .byselSectionSurface(RoundedCornerShape(14.dp))
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -2626,8 +2638,7 @@ private fun PracticeIdeaCard(
     Column(
         modifier = Modifier
             .width(268.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(theme.card)
+            .byselSectionSurface(RoundedCornerShape(16.dp))
             .clickable(onClick = onOpen)
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -2782,7 +2793,7 @@ private fun IdeasRail(
         onAiBrief?.let {
             IdeaChip(
                 title = "AI Brief",
-                subtitle = if (newsCount > 0) "$newsCount stories in play" else "Ask Copilot now",
+                subtitle = if (newsCount > 0) "$newsCount stories in play" else "Ask the AI tab",
                 icon = Icons.Filled.Psychology,
                 onClick = it,
             )
@@ -2901,7 +2912,9 @@ fun PortfolioSummaryCard(holdings: List<Holding>, quotes: List<Quote> = emptyLis
             .fillMaxWidth()
             .background(LocalAppTheme.current.card)
             .padding(bottom = 16.dp),
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(
@@ -2984,7 +2997,9 @@ fun GainerLosersCard(
             .fillMaxWidth()
             .padding(bottom = 8.dp)
             .clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
         shape = RoundedCornerShape(10.dp)
     ) {
         Row(
@@ -3086,8 +3101,9 @@ fun AiDailyBriefCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp),
-        colors = CardDefaults.cardColors(containerColor = theme.card),
-        elevation = CardDefaults.cardElevation(6.dp),
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
         shape = RoundedCornerShape(16.dp),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {

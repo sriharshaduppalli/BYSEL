@@ -3,7 +3,6 @@ package com.bysel.trader.viewmodel
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
-import com.bysel.trader.ai.LlmDownloadState
 import com.bysel.trader.ai.OnDeviceLlmManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -113,11 +112,30 @@ class TradingViewModel(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    /** True while a quote network refresh is in flight — even if cached prices are already on screen. */
+    private val _quotesRefreshing = MutableStateFlow(false)
+    val quotesRefreshing: StateFlow<Boolean> = _quotesRefreshing.asStateFlow()
+
+    /** True while holdings are fetching from the server (cache may already be visible). */
+    private val _holdingsRefreshing = MutableStateFlow(false)
+    val holdingsRefreshing: StateFlow<Boolean> = _holdingsRefreshing.asStateFlow()
+
     private val _isSearching = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
 
-    private val _error = MutableStateFlow<String?>(null)
-    val error: StateFlow<String?> = _error.asStateFlow()
+    private val _marketError = MutableStateFlow<String?>(null)
+    val marketError: StateFlow<String?> = _marketError.asStateFlow()
+
+    private val _portfolioError = MutableStateFlow<String?>(null)
+    val portfolioError: StateFlow<String?> = _portfolioError.asStateFlow()
+
+    /** Orders, F&O tickets, alerts, wallet — not holdings/health. */
+    private val _tradeError = MutableStateFlow<String?>(null)
+    val tradeError: StateFlow<String?> = _tradeError.asStateFlow()
+
+    /** Alias of [tradeError] for Trade-tab internals. */
+    private val _error = _tradeError
+    val error: StateFlow<String?> = _tradeError.asStateFlow()
 
     private val _lastOrderTraceId = MutableStateFlow<String?>(null)
     val lastOrderTraceId: StateFlow<String?> = _lastOrderTraceId.asStateFlow()
@@ -208,7 +226,6 @@ class TradingViewModel(
         }
     }
 
-    val onDeviceLlmState: StateFlow<LlmDownloadState> = OnDeviceLlmManager.state
 
     // portfolio/health/heatmap
     private val _portfolioHealth = MutableStateFlow<PortfolioHealthScore?>(null)
@@ -253,6 +270,12 @@ class TradingViewModel(
 
     private val _productActionMessage = MutableStateFlow<String?>(null)
     val productActionMessage: StateFlow<String?> = _productActionMessage.asStateFlow()
+
+    /** Options / Futures form notices — never shown on Spot My list or the app-wide snackbar. */
+    private val _derivativesError = MutableStateFlow<String?>(null)
+    val derivativesError: StateFlow<String?> = _derivativesError.asStateFlow()
+
+    fun clearDerivativesError() { _derivativesError.value = null }
 
     /** One-shot Trade workspace deep-link: 0 Spot, 1 Advanced, 2 Options, 3 Futures. */
     private val _pendingTradeWorkspace = MutableStateFlow<Int?>(null)
@@ -380,6 +403,7 @@ class TradingViewModel(
     private var walletMutationsInFlight = 0
     private var activeHistoryRequestKey: String? = null
     private var quotesRefreshJob: Job? = null
+    private var holdingsRefreshJob: Job? = null
     private var heatmapJob: Job? = null
     private var keepaliveJob: Job? = null
     private val defaultSymbols = listOf(
@@ -393,10 +417,27 @@ class TradingViewModel(
     private val indexSymbols = listOf("NIFTY50", "SENSEX", "BANKNIFTY")
 
     private fun trackedSymbols(additional: List<String> = emptyList()): List<String> {
-        return (indexSymbols + defaultSymbols + _watchlist.value + additional)
+        return (indexSymbols + defaultSymbols + _watchlist.value + _holdings.value.map { it.symbol } + additional)
             .map { it.trim().uppercase() }
             .filter { it.isNotBlank() }
             .distinct()
+    }
+
+    private fun overlayHoldingsFromQuotes(quotes: List<Quote>) {
+        if (_holdings.value.isEmpty() || quotes.isEmpty()) return
+        val bySymbol = quotes.associateBy { it.symbol.uppercase() }
+        var changed = false
+        val updated = _holdings.value.map { holding ->
+            val quote = bySymbol[holding.symbol.uppercase()] ?: return@map holding
+            if (quote.last <= 0.0) return@map holding
+            val pnl = (quote.last - holding.avgPrice) * holding.qty
+            if (holding.last == quote.last && holding.pnl == pnl) holding
+            else {
+                changed = true
+                holding.copy(last = quote.last, pnl = pnl)
+            }
+        }
+        if (changed) _holdings.value = updated
     }
 
     private fun normalizeWatchlistSymbol(raw: String): String {
@@ -696,45 +737,53 @@ class TradingViewModel(
 
         quotesRefreshJob?.cancel()
         quotesRefreshJob = viewModelScope.launch {
+            _quotesRefreshing.value = true
             try {
-                val cached = repository.getCachedQuotes(symbols).firstOrNull().orEmpty()
-                if (cached.isNotEmpty()) {
-                    _quotes.value = mergeQuotesWithExisting(cached)
-                    syncSelectedQuoteFrom(_quotes.value)
-                }
-            } catch (_: Exception) {
-                // Cached quote read failures should not block live refresh.
-            }
-
-            _isLoading.value = _quotes.value.isEmpty()
-            repository.getQuotes(symbols).collectLatest { result ->
-                when (result) {
-                    is Result.Loading -> _isLoading.value = _quotes.value.isEmpty()
-                    is Result.Success -> {
-                        _quotes.value = mergeQuotesWithExisting(result.data)
-                        _isLoading.value = false
-                        markQuoteUpdate()
+                try {
+                    val cached = repository.getCachedQuotes(symbols).firstOrNull().orEmpty()
+                    if (cached.isNotEmpty()) {
+                        _quotes.value = mergeQuotesWithExisting(cached)
+                        overlayHoldingsFromQuotes(cached)
                         syncSelectedQuoteFrom(_quotes.value)
-                        maybeAutoEvaluateTriggers(_quotes.value.map { it.symbol })
-                        // Reset paging after success
-                        _pagedQuotes.value = emptyList()
-                        currentPage = 0
-                        loadNextQuotesPage()
                     }
-                    is Result.Error -> {
-                        // Keep showing cached quotes; only surface a hard error when Home
-                        // has nothing to render (otherwise "timeout" sits on Home Layout).
-                        if (_quotes.value.isEmpty()) {
-                            _error.value = result.message
-                        } else {
-                            android.util.Log.w(
-                                "TradingViewModel",
-                                "Quote refresh soft-failed with cache present: ${result.message}"
-                            )
+                } catch (_: Exception) {
+                    // Cached quote read failures should not block live refresh.
+                }
+
+                _isLoading.value = _quotes.value.isEmpty()
+                repository.getQuotes(symbols).collect { result ->
+                    when (result) {
+                        is Result.Loading -> _isLoading.value = _quotes.value.isEmpty()
+                        is Result.Success -> {
+                            _quotes.value = mergeQuotesWithExisting(result.data)
+                            overlayHoldingsFromQuotes(result.data)
+                            _isLoading.value = false
+                            markQuoteUpdate()
+                            syncSelectedQuoteFrom(_quotes.value)
+                            maybeAutoEvaluateTriggers(_quotes.value.map { it.symbol })
+                            // Reset paging after success
+                            _pagedQuotes.value = emptyList()
+                            currentPage = 0
+                            loadNextQuotesPage()
                         }
-                        _isLoading.value = false
+                        is Result.Error -> {
+                            // Keep showing cached quotes; only surface a hard error when Home
+                            // has nothing to render (otherwise "timeout" sits on Home Layout).
+                            if (_quotes.value.isEmpty()) {
+                                _marketError.value = result.message
+                            } else {
+                                android.util.Log.w(
+                                    "TradingViewModel",
+                                    "Quote refresh soft-failed with cache present: ${result.message}"
+                                )
+                            }
+                            _isLoading.value = false
+                        }
                     }
                 }
+            } finally {
+                _quotesRefreshing.value = false
+                _isLoading.value = false
             }
         }
     }
@@ -781,22 +830,39 @@ class TradingViewModel(
     }
 
     fun refreshHoldings() {
-        viewModelScope.launch {
-            repository.getHoldings().collectLatest { result ->
-                when (result) {
-                    is Result.Success -> {
-                        _holdings.value = result.data
-                        lastHoldingsRefreshAt = System.currentTimeMillis()
-                    }
-                    is Result.Error -> {
-                        if (_holdings.value.isEmpty()) {
-                            _error.value = result.message
+        holdingsRefreshJob?.cancel()
+        holdingsRefreshJob = viewModelScope.launch {
+            _holdingsRefreshing.value = true
+            try {
+                repository.getHoldings().collect { result ->
+                    when (result) {
+                        is Result.Success -> {
+                            _holdings.value = result.data
+                            overlayHoldingsFromQuotes(_quotes.value)
+                            lastHoldingsRefreshAt = System.currentTimeMillis()
                         }
+                        is Result.Error -> {
+                            if (_holdings.value.isEmpty()) {
+                                _portfolioError.value = result.message
+                            }
+                        }
+                        else -> {}
                     }
-                    else -> {}
                 }
+            } finally {
+                _holdingsRefreshing.value = false
             }
         }
+    }
+
+    fun refreshPortfolio() {
+        val holdingSymbols = _holdings.value.map { it.symbol }
+        refreshHoldings()
+        refreshQuotes(
+            force = true,
+            symbolsOverride = if (holdingSymbols.isEmpty()) null else holdingSymbols + indexSymbols,
+        )
+        loadPortfolioHealth()
     }
 
     fun loadInvestorPortfolios() {
@@ -806,7 +872,7 @@ class TradingViewModel(
             _investorPortfoliosLoading.value = true
             when (val result = repository.getInvestorPortfolios()) {
                 is Result.Success -> _investorPortfolios.value = result.data
-                is Result.Error -> _error.value = result.message
+                is Result.Error -> { /* Smart Money screen keeps last snapshot / empty state */ }
                 else -> {}
             }
             _investorPortfoliosLoading.value = false
@@ -831,9 +897,8 @@ class TradingViewModel(
                     _investorPortfolioChanges.value = result.data.portfolioChanges
                     _smartMoneyIdeas.value = result.data.ideas
                     _smartMoneyQuarterLabel.value = result.data.quarterLabel
-                    _error.value = null
                 }
-                is Result.Error -> _error.value = result.message
+                is Result.Error -> { /* keep last insights; do not leak onto Home/Portfolio */ }
                 else -> {}
             }
             _investorInsightsLoading.value = false
@@ -1250,12 +1315,13 @@ class TradingViewModel(
                             }
                             lastStreamEmitAt = now
                             _quotes.value = mergeQuotesWithExisting(result.data)
+                            overlayHoldingsFromQuotes(result.data)
                             markQuoteUpdate(now)
                             syncSelectedQuoteFrom(result.data)
                             evaluateAlerts(result.data)
                             maybeAutoEvaluateTriggers(result.data.map { it.symbol })
                         }
-                        is Result.Error -> _error.value = result.message
+                        is Result.Error -> _marketError.value = result.message
                         else -> {}
                     }
                 }
@@ -1782,7 +1848,7 @@ class TradingViewModel(
 
     fun loadOptionChain(symbol: String, expiry: String) {
         if (symbol.isBlank() || expiry.isBlank()) {
-            _error.value = "Symbol and expiry are required"
+            _derivativesError.value = "Symbol and expiry are required"
             return
         }
         viewModelScope.launch {
@@ -1790,9 +1856,9 @@ class TradingViewModel(
             when (val response = repository.getOptionChain(symbol.trim().uppercase(), expiry.trim())) {
                 is Result.Success -> {
                     _optionChain.value = response.data
-                    _error.value = null
+                    _derivativesError.value = null
                 }
-                is Result.Error -> _error.value = response.message
+                is Result.Error -> _derivativesError.value = response.message
                 else -> {}
             }
             _derivativesLoading.value = false
@@ -1801,15 +1867,15 @@ class TradingViewModel(
 
     fun previewStrategy(symbol: String, spot: Double, legs: List<StrategyLeg>) {
         if (symbol.isBlank()) {
-            _error.value = "Symbol is required"
+            _derivativesError.value = "Symbol is required"
             return
         }
         if (spot <= 0.0) {
-            _error.value = "Spot must be greater than 0"
+            _derivativesError.value = "Spot must be greater than 0"
             return
         }
         if (legs.isEmpty()) {
-            _error.value = "Add at least one strategy leg"
+            _derivativesError.value = "Add at least one strategy leg"
             return
         }
 
@@ -1818,9 +1884,9 @@ class TradingViewModel(
             when (val response = repository.previewStrategy(StrategyPreviewRequest(symbol = symbol.trim().uppercase(), spot = spot, legs = legs))) {
                 is Result.Success -> {
                     _strategyPreview.value = response.data
-                    _error.value = null
+                    _derivativesError.value = null
                 }
-                is Result.Error -> _error.value = response.message
+                is Result.Error -> _derivativesError.value = response.message
                 else -> {}
             }
             _derivativesLoading.value = false
@@ -1829,7 +1895,7 @@ class TradingViewModel(
 
     fun loadFuturesContracts(symbol: String) {
         if (symbol.isBlank()) {
-            _error.value = "Underlying symbol is required"
+            _derivativesError.value = "Underlying symbol is required"
             return
         }
 
@@ -1839,9 +1905,9 @@ class TradingViewModel(
                 is Result.Success -> {
                     _futuresContracts.value = response.data
                     _futuresTicketPreview.value = null
-                    _error.value = null
+                    _derivativesError.value = null
                 }
-                is Result.Error -> _error.value = response.message
+                is Result.Error -> _derivativesError.value = response.message
                 else -> {}
             }
             _derivativesLoading.value = false
@@ -1857,11 +1923,11 @@ class TradingViewModel(
         limitPrice: Double? = null,
     ) {
         if (symbol.isBlank() || expiry.isBlank()) {
-            _error.value = "Symbol and expiry are required"
+            _derivativesError.value = "Symbol and expiry are required"
             return
         }
         if (lots <= 0) {
-            _error.value = "Lots must be greater than 0"
+            _derivativesError.value = "Lots must be greater than 0"
             return
         }
 
@@ -1879,9 +1945,9 @@ class TradingViewModel(
             when (val response = repository.previewFuturesTicket(request)) {
                 is Result.Success -> {
                     _futuresTicketPreview.value = response.data
-                    _error.value = null
+                    _derivativesError.value = null
                 }
-                is Result.Error -> _error.value = response.message
+                is Result.Error -> _derivativesError.value = response.message
                 else -> {}
             }
             _derivativesLoading.value = false
@@ -1909,7 +1975,7 @@ class TradingViewModel(
     fun placeFuturesTicketFromPreview() {
         val preview = _futuresTicketPreview.value
         if (preview == null) {
-            _error.value = "Preview a futures ticket first"
+            _derivativesError.value = "Preview a futures ticket first"
             return
         }
         placeAdvancedOrder(
@@ -2362,7 +2428,18 @@ class TradingViewModel(
         }
     }
 
-    fun clearError() { _error.value = null }
+    fun clearError() {
+        _marketError.value = null
+        _portfolioError.value = null
+        _tradeError.value = null
+        _derivativesError.value = null
+    }
+
+    fun clearMarketError() { _marketError.value = null }
+
+    fun clearPortfolioError() { _portfolioError.value = null }
+
+    fun clearTradeError() { _tradeError.value = null }
 
     private fun isTransientMarketBusyMessage(message: String): Boolean {
         val lower = message.lowercase()
@@ -2704,12 +2781,6 @@ class TradingViewModel(
 
     fun clearChatHistory() { _chatHistory.value = emptyList(); _aiResponse.value = null }
 
-    fun downloadOnDeviceModel() {
-        viewModelScope.launch {
-            OnDeviceLlmManager.downloadModel(getApplication())
-        }
-    }
-
     fun optimizePortfolio() {
         val holdings = _holdings.value
         if (holdings.isEmpty()) {
@@ -2735,7 +2806,6 @@ class TradingViewModel(
     // --- Analysis / predictions ---
     fun analyzeStock(symbol: String) {
         viewModelScope.launch {
-            _healthLoading.value = true
             // Build contextual analyze prompt including holdings and wallet
             val holdingsSummary = _holdings.value.joinToString(separator = ";") { h ->
                 "${h.symbol}:${h.qty}@${h.last}"
@@ -2788,7 +2858,6 @@ class TradingViewModel(
                 is Result.Error -> _error.value = r.message
                 else -> {}
             }
-            _healthLoading.value = false
         }
     }
 
@@ -2801,28 +2870,28 @@ class TradingViewModel(
 
     fun predictStock(symbol: String) {
         viewModelScope.launch {
-            _healthLoading.value = true
             when (val r = repository.aiPredict(symbol)) {
                 is Result.Success -> _stockPrediction.value = r.data
                 is Result.Error -> _error.value = r.message
                 else -> {}
             }
-            _healthLoading.value = false
         }
     }
 
     fun loadPortfolioHealth() {
         viewModelScope.launch {
-            _healthLoading.value = true
+            val showSpinner = _portfolioHealth.value == null
+            if (showSpinner) _healthLoading.value = true
             when (val r = repository.getPortfolioHealth()) {
                 is Result.Success -> {
                     _portfolioHealth.value = r.data
-                    _error.value = _error.value?.takeUnless { isTransientMarketBusyMessage(it) }
+                    _portfolioError.value =
+                        _portfolioError.value?.takeUnless { isTransientMarketBusyMessage(it) }
                 }
                 is Result.Error -> {
                     // Keep the last score. Never flash raw HTTP 429 on Portfolio.
                     if (_portfolioHealth.value == null && !isTransientMarketBusyMessage(r.message)) {
-                        _error.value = r.message
+                        _portfolioError.value = r.message
                     }
                 }
                 else -> {}
@@ -2871,13 +2940,9 @@ class TradingViewModel(
                             _marketHeatmap.value = incoming
                         }
                         lastHeatmapRefreshAt = System.currentTimeMillis()
-                        _error.value = null
                     }
                     is Result.Error -> {
-                        // Keep last good heatmap if we have one; surface a clear wake-up hint.
-                        if (_marketHeatmap.value == null) {
-                            _error.value = r.message
-                        }
+                        // Keep last good heatmap if we have one. Do not leak onto Portfolio/Home.
                     }
                     else -> {}
                 }
@@ -2917,7 +2982,7 @@ class TradingViewModel(
                     _signalLabBuckets.value = r.data.buckets
                     lastSignalLabRefreshAt = System.currentTimeMillis()
                 }
-                is Result.Error -> _error.value = r.message
+                is Result.Error -> { /* Signal Lab has its own empty state */ }
                 else -> {}
             }
             _signalLabBucketsLoading.value = false
@@ -3336,6 +3401,18 @@ class TradingViewModel(
         }
     }
 
+}
+
+/** F&O ticket validation — must not appear on Spot My list or the app-wide snackbar. */
+fun isDerivativesFormMessage(message: String): Boolean {
+    val lower = message.lowercase()
+    return lower.contains("spot must") ||
+        lower.contains("strategy leg") ||
+        lower.contains("symbol and expiry") ||
+        lower.contains("underlying symbol") ||
+        lower.contains("lots must") ||
+        lower.contains("preview a futures") ||
+        lower.contains("add at least one strategy")
 }
 
 // Chat message for AI Assistant

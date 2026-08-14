@@ -51,3 +51,30 @@ def test_resolve_analysis_symbol_maps_dual_listed_bse_code():
     assert resolve_analysis_symbol("500325") == "RELIANCE"
     assert resolve_analysis_symbol("BSE:500325") == "RELIANCE"
     assert "BSE:500325" in format_symbol_display("500325")
+
+
+def test_tech_mahindra_resolves_to_techm_not_absl_mf():
+    from app.stock_enricher import extract_all_symbols_from_query, order_symbols_in_query
+
+    assert extract_symbol_from_query("tech mahindra") == "TECHM"
+    assert extract_symbol_from_query("Tech Mahindra") == "TECHM"
+    assert extract_symbol_from_query("should I buy tech mahindra") == "TECHM"
+
+    symbols = extract_all_symbols_from_query("tech mahindra")
+    assert symbols[0] == "TECHM"
+    assert "TECH" not in symbols
+    assert "M&M" not in symbols
+
+    # Even if the BSE ETF ticker sneaks in, ranking must keep TECHM first.
+    ordered = order_symbols_in_query(["TECH", "TECHM"], "tech mahindra")
+    assert ordered[0] == "TECHM"
+    assert "TECH" not in ordered[:1]
+
+
+def test_compare_left_to_right_order_still_works():
+    from app.stock_enricher import extract_all_symbols_from_query, order_symbols_in_query
+
+    named = extract_all_symbols_from_query("compare TCS and INFY")
+    ordered = order_symbols_in_query(named, "compare TCS and INFY")
+    assert ordered[0] == "TCS"
+    assert "INFY" in ordered

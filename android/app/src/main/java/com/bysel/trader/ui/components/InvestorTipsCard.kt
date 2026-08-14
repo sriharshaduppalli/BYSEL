@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.InvestorTip
 import com.bysel.trader.data.models.InvestorTopicInfo
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.byselSectionSurface
 
 @Composable
 fun InvestorTipsCard(
@@ -40,8 +41,7 @@ fun InvestorTipsCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(theme.card)
+            .byselSectionSurface(RoundedCornerShape(14.dp))
             .padding(if (compact) 10.dp else 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
