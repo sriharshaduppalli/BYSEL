@@ -27,6 +27,19 @@ def test_quote_cache_evicts_oldest_when_capacity_exceeded(monkeypatch):
     assert cache.size() == 2
 
 
+def test_quote_cache_keeps_stale_print_when_storage_outlives_freshness(monkeypatch):
+    clock = {"now": 4000.0}
+    monkeypatch.setattr(market_data.time, "time", lambda: clock["now"])
+
+    cache = market_data.QuoteCache(ttl_seconds=5, max_entries=10, storage_seconds=300)
+    cache.put("AAA", {"symbol": "AAA", "last": 10.0})
+    clock["now"] += 20
+
+    assert cache.get("AAA", max_age_seconds=5) is None
+    assert cache.get_allow_stale("AAA", 300)["last"] == 10.0
+    assert cache.size() == 1
+
+
 def test_quote_cache_evicts_expired_entries(monkeypatch):
     clock = {"now": 2000.0}
     monkeypatch.setattr(market_data.time, "time", lambda: clock["now"])

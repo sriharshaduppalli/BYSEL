@@ -70,6 +70,7 @@ import com.bysel.trader.ui.theme.byselCardColors
 import com.bysel.trader.ui.theme.byselCardElevation
 import com.bysel.trader.ui.components.PriceHistoryChart
 import com.bysel.trader.ui.components.PullToRefreshBox
+import com.bysel.trader.ui.components.exclusiveHorizontalScroll
 import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
 import com.bysel.trader.ui.components.OrderRejectionBanner
 import com.bysel.trader.ui.components.RejectionCategory
@@ -358,7 +359,9 @@ fun TradingScreen(
 
         ScrollableTabRow(
             selectedTabIndex = selectedWorkspaceIndex,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .exclusiveHorizontalScroll(),
             edgePadding = 12.dp,
             containerColor = LocalAppTheme.current.surface,
             contentColor = LocalAppTheme.current.text,
@@ -1132,7 +1135,8 @@ private fun FuturesRadarScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
+                            .horizontalScroll(rememberScrollState())
+                            .exclusiveHorizontalScroll(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Button(onClick = { viewModel.loadFuturesContracts(underlyingInput) }) {
@@ -1235,7 +1239,8 @@ private fun FuturesRadarScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
+                                .horizontalScroll(rememberScrollState())
+                            .exclusiveHorizontalScroll(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Button(
@@ -1299,7 +1304,8 @@ private fun FuturesRadarScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
+                                .horizontalScroll(rememberScrollState())
+                            .exclusiveHorizontalScroll(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Button(onClick = { viewModel.placeFuturesTicketFromPreview() }) {

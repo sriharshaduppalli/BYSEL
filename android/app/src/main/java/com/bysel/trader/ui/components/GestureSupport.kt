@@ -21,7 +21,42 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+
+/**
+ * Keep leftover horizontal drag on chip rails / LazyRows so the root
+ * [HorizontalPager] does not steal the gesture and switch tabs.
+ */
+fun Modifier.exclusiveHorizontalScroll(): Modifier =
+    this.nestedScroll(ExclusiveHorizontalNestedScroll)
+
+private object ExclusiveHorizontalNestedScroll : NestedScrollConnection {
+    override fun onPostScroll(
+        consumed: Offset,
+        available: Offset,
+        source: NestedScrollSource,
+    ): Offset {
+        val childTookHorizontal = kotlin.math.abs(consumed.x) > 0.5f
+        val leftoverIsHorizontal = kotlin.math.abs(available.x) > kotlin.math.abs(available.y)
+        return if (childTookHorizontal || leftoverIsHorizontal) {
+            Offset(x = available.x, y = 0f)
+        } else {
+            Offset.Zero
+        }
+    }
+
+    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+        return if (kotlin.math.abs(available.x) > kotlin.math.abs(available.y)) {
+            Velocity(x = available.x, y = 0f)
+        } else {
+            Velocity.Zero
+        }
+    }
+}
 
 /**
  * Material3 Pull-to-Refresh indicator using custom implementation
@@ -177,7 +212,7 @@ fun <T> SwipeToDismissItem(
 
     SwipeToDismissBox(
         state = dismissState,
-        modifier = modifier,
+        modifier = modifier.exclusiveHorizontalScroll(),
         enableDismissFromStartToEnd = enabled && allowStartToEnd,
         enableDismissFromEndToStart = enabled && allowEndToStart,
         backgroundContent = {

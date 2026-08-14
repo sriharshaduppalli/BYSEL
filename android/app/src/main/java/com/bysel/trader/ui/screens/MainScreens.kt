@@ -36,6 +36,7 @@ import com.bysel.trader.data.models.PortfolioHealthScore
 import com.bysel.trader.ui.components.QuoteCard
 import com.bysel.trader.ui.components.LoadingScreen
 import com.bysel.trader.ui.components.PullToRefreshBox
+import com.bysel.trader.ui.components.exclusiveHorizontalScroll
 import com.bysel.trader.ui.components.SwipeToDismissItem
 import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
 import com.bysel.trader.ui.components.PortfolioSkeletonLoader
@@ -116,7 +117,8 @@ fun WatchlistScreen(
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp),
+                        .padding(horizontal = 12.dp)
+                        .exclusiveHorizontalScroll(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(WatchlistSortMode.entries, key = { it.name }) { mode ->
@@ -143,7 +145,10 @@ fun WatchlistScreen(
             PullToRefreshBox(
                 isRefreshing = isLoading,
                 onRefresh = onRefresh,
-                enabled = true
+                enabled = true,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
             ) {
                 if (sortedQuotes.isEmpty()) {
                     Column(
@@ -468,11 +473,16 @@ fun PortfolioScreen(
             if (holdings.isEmpty() && isLoading) {
                 // Without this the first load flashes "No holdings yet" at users who do
                 // in fact hold stock, because holdings are empty until the call returns.
-                PortfolioSkeletonLoader(modifier = Modifier.fillMaxSize())
+                PortfolioSkeletonLoader(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                )
             } else if (holdings.isEmpty()) {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
+                        .weight(1f)
+                        .fillMaxWidth()
                         .padding(16.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -511,7 +521,10 @@ fun PortfolioScreen(
                 PullToRefreshBox(
                     isRefreshing = isLoading,
                     onRefresh = onRefresh,
-                    enabled = true
+                    enabled = true,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
                 ) {
                     LazyColumn(
                         modifier = Modifier

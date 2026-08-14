@@ -78,6 +78,7 @@ import com.bysel.trader.ui.components.InfoChip
 import com.bysel.trader.ui.components.InvestorTipsCard
 import com.bysel.trader.ui.components.NewsWidget
 import com.bysel.trader.ui.components.PullToRefreshBox
+import com.bysel.trader.ui.components.exclusiveHorizontalScroll
 import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
 import com.bysel.trader.ui.components.WatchlistWidget
 import com.bysel.trader.ui.components.localInvestorTips
@@ -858,7 +859,7 @@ fun DashboardContent(
                                 )
                             }
                             item {
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                LazyRow(modifier = Modifier.exclusiveHorizontalScroll(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     items(focusQuotes.take(4), key = { it.symbol }) { quote ->
                                         HomeQuoteBoardCard(
                                             quote = quote,
@@ -879,7 +880,7 @@ fun DashboardContent(
                                 )
                             }
                             item {
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                LazyRow(modifier = Modifier.exclusiveHorizontalScroll(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     items(signalBuckets, key = { it.title }) { bucket ->
                                         HomeSignalCard(
                                             bucket = bucket,
@@ -922,7 +923,7 @@ fun DashboardContent(
                                 )
                             }
                             item {
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                LazyRow(modifier = Modifier.exclusiveHorizontalScroll(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     items(signalBuckets, key = { it.title }) { bucket ->
                                         HomeSignalCard(
                                             bucket = bucket,
@@ -941,7 +942,7 @@ fun DashboardContent(
                                 )
                             }
                             item {
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                LazyRow(modifier = Modifier.exclusiveHorizontalScroll(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     items(focusQuotes.take(4), key = { it.symbol }) { quote ->
                                         HomeQuoteBoardCard(
                                             quote = quote,
@@ -1552,7 +1553,9 @@ private fun DashboardHeroCard(
 @Composable
 private fun DashboardMetricsRow(metrics: List<DashboardMetric>) {
     LazyRow(
-        modifier = Modifier.padding(top = 16.dp),
+        modifier = Modifier
+            .padding(top = 16.dp)
+            .exclusiveHorizontalScroll(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(metrics, key = { it.title }) { metric ->
@@ -1599,7 +1602,9 @@ private fun DashboardMetricsRow(metrics: List<DashboardMetric>) {
 @Composable
 private fun HomeActionRail(actions: List<HomeAction>) {
     LazyRow(
-        modifier = Modifier.padding(top = 12.dp),
+        modifier = Modifier
+            .padding(top = 12.dp)
+            .exclusiveHorizontalScroll(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(actions, key = { it.title }) { action ->
@@ -1662,7 +1667,7 @@ private fun HomeVariantSwitcher(
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 13.sp,
             )
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyRow(modifier = Modifier.exclusiveHorizontalScroll(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(HomeLayoutVariant.entries, key = { it.name }) { variant ->
                     AssistChip(
                         onClick = { onVariantSelected(variant) },
@@ -2597,7 +2602,7 @@ private fun PracticeIdeasSection(
                 )
             }
             else -> {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                LazyRow(modifier = Modifier.exclusiveHorizontalScroll(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(ideas, key = { it.symbol + it.stance }) { idea ->
                         PracticeIdeaCard(
                             idea = idea,
@@ -2837,7 +2842,7 @@ private fun IdeasRail(
             fontWeight = FontWeight.SemiBold,
             color = theme.text,
         )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyRow(modifier = Modifier.exclusiveHorizontalScroll(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             items(ideas, key = { it.title }) { idea ->
                 Row(
                     modifier = Modifier

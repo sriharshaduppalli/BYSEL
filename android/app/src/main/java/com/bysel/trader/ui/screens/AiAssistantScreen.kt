@@ -52,6 +52,7 @@ import com.bysel.trader.ui.components.EventRiskCard
 import com.bysel.trader.ui.components.SentimentCard
 import com.bysel.trader.ui.components.QueryUnderstandingCard
 import com.bysel.trader.ui.components.AiChatStyledText
+import com.bysel.trader.ui.components.exclusiveHorizontalScroll
 import com.bysel.trader.ui.components.ProfitSignal
 import com.bysel.trader.ui.components.ProfitSignalCard
 import com.bysel.trader.ui.components.ProfitSignalExtractor
@@ -817,6 +818,7 @@ private fun AdaptiveSuggestionsStrip(
         )
 
         LazyRow(
+            modifier = Modifier.exclusiveHorizontalScroll(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(bottom = 8.dp)
         ) {
@@ -1331,6 +1333,7 @@ private fun ChatBubble(
         if (!message.isUser && message.suggestions.isNotEmpty()) {
             Spacer(modifier = Modifier.height(8.dp))
             LazyRow(
+                modifier = Modifier.exclusiveHorizontalScroll(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(message.suggestions) { suggestion ->

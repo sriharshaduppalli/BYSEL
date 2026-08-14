@@ -55,11 +55,14 @@ fun AlertsScreen(
         }
 
         if (isLoading) {
-            LoadingScreen()
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                LoadingScreen()
+            }
         } else if (alerts.isEmpty()) {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .weight(1f)
+                    .fillMaxWidth()
                     .padding(16.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -82,7 +85,8 @@ fun AlertsScreen(
         } else {
             LazyColumn(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .weight(1f)
+                    .fillMaxWidth()
                     .padding(horizontal = 8.dp)
             ) {
                 items(items = alerts, key = { it.id }) { alert ->

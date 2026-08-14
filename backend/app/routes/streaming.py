@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from ..market_data import fetch_quotes, get_default_symbols
+from ..market_data import fetch_quotes, get_default_symbols, quote_max_age_seconds
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -296,7 +296,14 @@ async def stream_quotes(websocket: WebSocket):
                 )
 
             # Keep Yahoo I/O off the asyncio event loop so REST resume calls stay responsive.
-            quote_rows = await asyncio.to_thread(fetch_quotes, symbols)
+            # Keep Yahoo I/O off the asyncio event loop so REST resume calls stay responsive.
+            def _stream_fetch(batch: list[str]) -> list:
+                try:
+                    return fetch_quotes(batch, max_age_seconds=quote_max_age_seconds())
+                except TypeError:
+                    return fetch_quotes(batch)
+
+            quote_rows = await asyncio.to_thread(_stream_fetch, symbols)
             sequence = _next_stream_sequence()
             payload = {
                 "type": "quotes",

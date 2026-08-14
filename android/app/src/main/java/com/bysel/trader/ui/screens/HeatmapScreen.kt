@@ -189,7 +189,7 @@ fun HeatmapScreen(
 
     LaunchedEffect(heatmapInterval, isActive, heatmap?.marketOpen) {
         if (!isActive) return@LaunchedEffect
-        val pollMs = heatmapInterval.toLong().coerceIn(5_000L, 30_000L)
+        val pollMs = heatmapInterval.toLong().coerceIn(2_000L, 10_000L)
         while (true) {
             kotlinx.coroutines.delay(pollMs)
             val live = isNseMarketOpen() && heatmap?.marketOpen != false
@@ -218,7 +218,9 @@ fun HeatmapScreen(
 
         if (isLoading && heatmap == null) {
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -237,7 +239,10 @@ fun HeatmapScreen(
             PullToRefreshBox(
                 isRefreshing = isLoading,
                 onRefresh = onForceRefresh,
-                enabled = true
+                enabled = true,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
             ) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -259,7 +264,8 @@ fun HeatmapScreen(
         } else {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .weight(1f)
+                    .fillMaxWidth()
                     .padding(24.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -291,7 +297,7 @@ private fun MarketStatusBanner(marketOpen: Boolean, staleReason: String? = null)
 
     val theme = LocalAppTheme.current
     val (bgColor, icon, message) = when {
-        marketOpen -> Triple(Color(0xFF1B5E20), Icons.Filled.TrendingUp, "Market open  •  Quotes refresh in the background (up to ~90s stale)")
+        marketOpen -> Triple(Color(0xFF1B5E20), Icons.Filled.TrendingUp, "Market open")
         isWeekend -> Triple(
             theme.card,
             Icons.Filled.Weekend,

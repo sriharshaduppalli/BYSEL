@@ -81,7 +81,8 @@ fun InvestorTipsCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
+                    .horizontalScroll(rememberScrollState())
+                    .exclusiveHorizontalScroll(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 topics.forEach { topic ->

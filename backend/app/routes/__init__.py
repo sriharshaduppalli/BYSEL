@@ -2342,16 +2342,8 @@ async def ai_ask_endpoint(
             or extract_symbol_from_query(body.query)
         )
         rule_result = {"symbol": light_symbol, "answer": "", "data": {}}
-        if light_symbol:
-            try:
-                from ..market_data import fetch_quote
-
-                q = await asyncio.to_thread(fetch_quote, str(light_symbol).upper())
-                if isinstance(q, dict) and q:
-                    rule_result["current_price"] = q.get("last") or q.get("last_price")
-                    rule_result["pct_change"] = q.get("pctChange") or q.get("pct_change") or 0
-            except Exception as exc:
-                logger.debug("ai.ask.light_quote_failed symbol=%s reason=%s", light_symbol, exc)
+        # Price comes from enrich() on the LLM path — a second Yahoo fetch_quote
+        # (ticker.info) used to add 5–15s before the model even started.
 
     enriched_ctx_cache: Optional[dict] = None
 
@@ -2393,9 +2385,17 @@ async def ai_ask_endpoint(
         user_sentiment = detect_sentiment_from_query(body.query)
 
         # Extract user's current portfolio for personalized advice (symbols only —
-        # skip live quote refresh so chat latency stays low).
+        # skip live quote refresh so chat latency stays low). Skip the DB round-trip
+        # unless the question is about holdings.
         portfolio_context = {"total_holdings": 0, "symbols": [], "concentrations": {}}
-        if auth_user_id is not None:
+        wants_portfolio = detected_intent == "PORTFOLIO" or bool(
+            re.search(
+                r"\b(portfolio|holdings?|my stocks?|my shares)\b",
+                normalized_query,
+                flags=re.IGNORECASE,
+            )
+        )
+        if auth_user_id is not None and wants_portfolio:
             try:
                 holdings = await asyncio.to_thread(_holdings_in_thread, auth_user_id)
                 if holdings:
@@ -2426,7 +2426,14 @@ async def ai_ask_endpoint(
         # live news headlines / news sentiment from Indian Stock LLM answers.
         if symbol:
             try:
-                live = await enrich(symbol)
+                live = await enrich(
+                    symbol,
+                    deadline_seconds=(
+                        6.0
+                        if requested_tier in ("auto", "fast", "indian-stock-llm", "groq")
+                        else None
+                    ),
+                )
                 if live:
                     # Price
                     if not ctx["current_price"]:

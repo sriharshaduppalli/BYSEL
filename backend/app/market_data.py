@@ -30,7 +30,13 @@ def _env_int(name: str, default: int, minimum: int = 1) -> int:
     return max(minimum, parsed)
 
 
-QUOTE_CACHE_TTL_SECONDS = _env_int("QUOTE_CACHE_TTL_SECONDS", 180, minimum=5)
+# Freshness vs storage: keep last prints in memory so UI can paint while Yahoo
+# refreshes. Default get() freshness is session-aware (see quote_max_age_seconds).
+QUOTE_CACHE_TTL_OPEN = _env_int("QUOTE_CACHE_TTL_OPEN", 5, minimum=3)
+QUOTE_CACHE_TTL_CLOSED = _env_int("QUOTE_CACHE_TTL_CLOSED", 180, minimum=30)
+QUOTE_CACHE_STORAGE_SECONDS = _env_int("QUOTE_CACHE_STORAGE_SECONDS", 300, minimum=60)
+# Backward-compatible alias: default freshness when market is open.
+QUOTE_CACHE_TTL_SECONDS = _env_int("QUOTE_CACHE_TTL_SECONDS", QUOTE_CACHE_TTL_OPEN, minimum=3)
 QUOTE_CACHE_MAX_ENTRIES = _env_int("QUOTE_CACHE_MAX_ENTRIES", 3000, minimum=50)
 QUOTE_BATCH_SIZE = _env_int("QUOTE_BATCH_SIZE", 40, minimum=1)
 
@@ -635,13 +641,36 @@ DEFAULT_SYMBOLS = [
 ]
 
 
+def quote_max_age_seconds() -> float:
+    """How old a cached last-price may be before we hit Yahoo again.
+
+    Market open: ~5s so Home / stream / heatmap track the tape.
+    After hours: ~3m — the close print does not move.
+    """
+    try:
+        from .market_session import is_within_equity_session
+
+        if is_within_equity_session():
+            return float(QUOTE_CACHE_TTL_OPEN)
+    except Exception:
+        pass
+    return float(QUOTE_CACHE_TTL_CLOSED)
+
+
 class QuoteCache:
     """In-memory cache for stock quotes with TTL."""
 
-    def __init__(self, ttl_seconds: int = 60, max_entries: int = 350):
+    def __init__(
+        self,
+        ttl_seconds: int = 60,
+        max_entries: int = 350,
+        storage_seconds: Optional[int] = None,
+    ):
         self._cache: Dict[str, dict] = {}
         self._timestamps: Dict[str, float] = {}
         self._ttl = max(1, int(ttl_seconds))
+        # Keep stale prints around for paint-while-refresh unless a test sets a short TTL.
+        self._storage_ttl = max(self._ttl, int(storage_seconds)) if storage_seconds else self._ttl
         self._max_entries = max(1, int(max_entries))
         self._lock = Lock()
 
@@ -649,7 +678,7 @@ class QuoteCache:
         expired = [
             symbol
             for symbol, timestamp in self._timestamps.items()
-            if (now - timestamp) >= self._ttl
+            if (now - timestamp) >= self._storage_ttl
         ]
         for symbol in expired:
             self._cache.pop(symbol, None)
@@ -710,10 +739,11 @@ class QuoteCache:
             return len(self._cache)
 
 
-# Global cache: quotes refresh every 60 seconds and stay memory bounded.
+# Keep last prints up to STORAGE so heatmap/stream can show stale-while-revalidate.
 _quote_cache = QuoteCache(
     ttl_seconds=QUOTE_CACHE_TTL_SECONDS,
     max_entries=QUOTE_CACHE_MAX_ENTRIES,
+    storage_seconds=QUOTE_CACHE_STORAGE_SECONDS,
 )
 
 
@@ -938,9 +968,10 @@ def fetch_quote(symbol: str) -> dict:
     Returns dict with: symbol, last, pctChange, open, high, low,
     volume, marketCap, previousClose, fiftyTwoWeekHigh, fiftyTwoWeekLow, pe, dividendYield
     """
-    cached = _quote_cache.get(symbol)
+    cached = _quote_cache.get(symbol, max_age_seconds=quote_max_age_seconds())
     if cached:
         return cached
+    stale = _quote_cache.get_allow_stale(symbol, float(QUOTE_CACHE_STORAGE_SECONDS))
 
     try:
         ticker = yf.Ticker(_yf_ticker(symbol))
@@ -948,6 +979,8 @@ def fetch_quote(symbol: str) -> dict:
         hist = ticker.history(period="2d")
 
         if hist.empty:
+            if stale:
+                return stale
             logger.warning(f"No history data for {symbol}")
             return _empty_quote(symbol)
 
@@ -957,6 +990,22 @@ def fetch_quote(symbol: str) -> dict:
         )
 
         pct_change = round(((last_price - prev_close) / prev_close) * 100, 2) if prev_close > 0 else 0.0
+
+        # Reuse PE/mcap from the last full fetch — ticker.info is too slow for live ticks.
+        if stale:
+            quote = dict(stale)
+            quote["last"] = round(last_price, 2)
+            quote["pctChange"] = pct_change
+            quote["open"] = round(_safe_number(hist["Open"].iloc[-1], last_price), 2)
+            quote["high"] = round(_safe_number(hist["High"].iloc[-1], last_price), 2)
+            quote["low"] = round(_safe_number(hist["Low"].iloc[-1], last_price), 2)
+            quote["previousClose"] = round(prev_close, 2)
+            quote["prevClose"] = round(prev_close, 2)
+            quote["volume"] = int(_safe_number(hist["Volume"].iloc[-1], 0.0))
+            quote["timestamp"] = int(datetime.utcnow().timestamp() * 1000)
+            _quote_cache.put(symbol, quote)
+            logger.info(f"Fetched live quote: {symbol} = ₹{last_price:.2f} ({pct_change:+.2f}%)")
+            return quote
 
         # Get extended info (may fail for some stocks)
         try:
@@ -1073,7 +1122,8 @@ def fetch_quotes(
     - Falls back to individual fetches on batch errors
 
     max_age_seconds: if set, treat cache entries older than this as misses
-    (used by live heatmap to refresh every 1–2s while market is open).
+    (heatmap / stream pass a short age while the market is open).
+    If omitted, uses quote_max_age_seconds() (~8s open, ~3m closed).
     batch_size / yf_threads: heatmap uses a larger Yahoo batch with threads
     so curated leaders paint in one or two downloads instead of many sequential ones.
     individual_fallback: per-symbol Yahoo calls for batch misses (disable on heatmap).
@@ -1085,10 +1135,11 @@ def fetch_quotes(
     uncached = []
     symbol_map = {}  # Track position for results ordering
     size = max(1, int(batch_size or QUOTE_BATCH_SIZE))
+    age_limit = quote_max_age_seconds() if max_age_seconds is None else max_age_seconds
 
     # Separate cached from uncached, preserving order
     for idx, s in enumerate(symbols):
-        cached = _quote_cache.get(s, max_age_seconds=max_age_seconds)
+        cached = _quote_cache.get(s, max_age_seconds=age_limit)
         if cached:
             results.append((idx, cached))
         else:
@@ -1238,7 +1289,9 @@ _INDEX_SYMBOLS = {
     "NIFTY50", "SENSEX", "BANKNIFTY", "NIFTYIT", "NIFTYBANK",
 }
 _MOVERS_CACHE: Dict[str, object] = {"fetched_at": 0.0, "payload": None, "refreshing": False}
-_MOVERS_CACHE_TTL_SECONDS = 60
+_MOVERS_CACHE_TTL_OPEN = 20
+_MOVERS_CACHE_TTL_CLOSED = 60
+_MOVERS_CACHE_TTL_SECONDS = _MOVERS_CACHE_TTL_CLOSED
 _MOVERS_STALE_TTL_SECONDS = 15 * 60
 _MOVERS_CACHE_LOCK = Lock()
 _MOVERS_REFRESH_LOCK = Lock()
@@ -1459,7 +1512,8 @@ def fetch_market_movers(limit: int = 10) -> Dict[str, object]:
         age = now - fetched_at if fetched_at else 1e9
         refreshing = bool(_MOVERS_CACHE.get("refreshing"))
 
-    if cached and age < _MOVERS_CACHE_TTL_SECONDS:
+    ttl = _MOVERS_CACHE_TTL_OPEN if quote_max_age_seconds() <= float(QUOTE_CACHE_TTL_OPEN) else _MOVERS_CACHE_TTL_CLOSED
+    if cached and age < ttl:
         return _movers_slice(cached, limit, cached=True)
 
     if cached and age < _MOVERS_STALE_TTL_SECONDS:

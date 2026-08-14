@@ -1177,8 +1177,22 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
 
         # Full quantitative pack (P0+B/C) + buy/sell trade plan.
         # Skip heavy pack for pure quote asks — composer only needs last/levels.
+        # Also skip for short "company name" chats (e.g. "tech mahindra") — enrich
+        # already has price/RSI; a second Yahoo history pull doubles latency.
         p0_pack = None
-        need_p0 = symbol_hint and response_profile not in {"quote"}
+        qlow_early = (cleaned or "").lower()
+        word_count = len((cleaned or "").split())
+        bare_name_ask = bool(symbol_hint) and word_count <= 5 and not re.search(
+            r"\b(buy|sell|hold|rsi|macd|pe|p/e|pb|analyze|analyse|technical|"
+            r"fundamental|predict|forecast|target|stop|support|resistance|"
+            r"should i|compare|vs|versus|intraday|swing)\b",
+            qlow_early,
+        )
+        need_p0 = (
+            symbol_hint
+            and response_profile not in {"quote"}
+            and not bare_name_ask
+        )
         if need_p0:
             try:
                 from indian_stock_llm.analysis_math import build_p0_analysis_pack

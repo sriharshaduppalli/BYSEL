@@ -99,7 +99,8 @@ fun WatchlistWidget(
             LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
+                    .exclusiveHorizontalScroll(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(WatchlistSortMode.entries, key = { it.name }) { option ->

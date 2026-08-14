@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────
 # HEATMAP CACHE
 # Open market: 2s TTL + stale-while-revalidate so clients polling
-# every 1–2s always get a fast response while quotes refresh.
+# every 2–5s always get a fast response while quotes refresh (~5s).
 # Closed market: long TTL (snapshot does not change).
 # ──────────────────────────────────────────────────────────────
 _HEATMAP_CACHE = {"data": None, "timestamp": 0}
@@ -33,7 +33,7 @@ _HEATMAP_CACHE_TTL_OPEN = float(os.getenv("HEATMAP_CACHE_TTL_OPEN", "2"))
 _HEATMAP_CACHE_TTL_CLOSED = float(os.getenv("HEATMAP_CACHE_TTL_CLOSED", "21600"))
 # Full-universe quotes cannot refresh every 1–2s (Yahoo rate limits).
 # Heatmap payload still caches ~2s; underlying quotes refresh on this TTL.
-_HEATMAP_QUOTE_MAX_AGE_OPEN = float(os.getenv("HEATMAP_QUOTE_MAX_AGE_OPEN", "45"))
+_HEATMAP_QUOTE_MAX_AGE_OPEN = float(os.getenv("HEATMAP_QUOTE_MAX_AGE_OPEN", "5"))
 _HEATMAP_QUOTE_STALE_ACCEPT = float(os.getenv("HEATMAP_QUOTE_STALE_ACCEPT", "300"))
 _HEATMAP_QUOTE_REFRESH_BUDGET = int(os.getenv("HEATMAP_QUOTE_REFRESH_BUDGET", "120"))
 _HEATMAP_TILES_PER_SECTOR = int(os.getenv("HEATMAP_TILES_PER_SECTOR", "16"))
@@ -459,12 +459,16 @@ def _build_heatmap_from_quotes(*, market_open: bool, leaders_only: bool = False)
     missing: List[str] = []
     for sym in all_symbols:
         quote = _quote_cache.get(sym, max_age_seconds=fresh_age)
-        if quote is None:
-            quote = _quote_cache.get_allow_stale(sym, _HEATMAP_QUOTE_STALE_ACCEPT)
         if quote:
             quotes_dict[sym] = quote
-        else:
-            missing.append(sym)
+            continue
+        # Paint last print immediately, but always enqueue a Yahoo refresh
+        # when the cache is older than the live TTL (was skipping refresh
+        # whenever a 5-minute-old quote still existed).
+        stale = _quote_cache.get_allow_stale(sym, _HEATMAP_QUOTE_STALE_ACCEPT)
+        if stale:
+            quotes_dict[sym] = stale
+        missing.append(sym)
 
     if missing:
         missing_set = set(missing)

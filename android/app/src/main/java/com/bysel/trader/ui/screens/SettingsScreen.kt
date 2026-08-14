@@ -646,7 +646,7 @@ fun SettingsScreen(
             SettingClickItem(
                 icon = Icons.Filled.Tune,
                 title = "Heatmap Refresh Interval",
-                subtitle = "${localHeatmapInterval / 1000}s",
+                subtitle = "${localHeatmapInterval / 1000}s while market is open",
                 onClick = { showIntervalDialog = true }
             )
         }
@@ -795,7 +795,7 @@ fun ManageSessionsDialog(
 
 @Composable
 fun IntervalSelectionDialog(selectedInterval: Int, onIntervalSelected: (Int) -> Unit, onDismiss: () -> Unit) {
-    val intervals = listOf(5_000, 10_000, 15_000, 30_000)
+    val intervals = listOf(2_000, 5_000, 10_000)
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = LocalAppTheme.current.card,

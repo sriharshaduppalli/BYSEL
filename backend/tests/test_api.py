@@ -2549,6 +2549,34 @@ def test_open_market_heatmap_does_not_block_on_yahoo(monkeypatch, tmp_path):
     assert result["marketBreadth"]["total"] == 0
 
 
+def test_open_heatmap_refetches_stale_cached_leaders(monkeypatch, tmp_path):
+    fetched = []
+    clock = {"now": 50_000.0}
+
+    def _fake_fetch_quotes(symbols, max_age_seconds=None, **_kwargs):
+        fetched.append(list(symbols))
+        return [
+            {"symbol": symbol, "last": 120.0, "pctChange": 0.5, "change": 0.6}
+            for symbol in symbols
+        ]
+
+    monkeypatch.setattr("app.market_data.time.time", lambda: clock["now"])
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_SNAPSHOT_PATH", tmp_path / "snap.json")
+    monkeypatch.setattr(market_heatmap_module, "_HEATMAP_CACHE", {"data": None, "timestamp": 0})
+    monkeypatch.setattr(market_heatmap_module, "fetch_quotes", _fake_fetch_quotes)
+    from app.market_data import _quote_cache
+
+    _quote_cache.clear()
+    _quote_cache.put("HDFCBANK", {"symbol": "HDFCBANK", "last": 90.0, "pctChange": 0.1})
+    clock["now"] += 20
+
+    result = market_heatmap_module._build_heatmap_from_quotes(market_open=True, leaders_only=True)
+    assert fetched, "stale cached leaders must be refreshed while the market is open"
+    assert "HDFCBANK" in fetched[0]
+    banking = next(s for s in result["sectors"] if s["name"] == "Banking")
+    assert any(stock["symbol"] == "HDFCBANK" for stock in banking["stocks"])
+
+
 def test_investor_portfolio_insights_endpoint_returns_changes_and_ideas(monkeypatch):
     def _fake_fetch_quotes(symbols):
         return [

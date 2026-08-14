@@ -516,12 +516,12 @@ fun BYSELApp(
     var pendingOpenAddFunds by remember { mutableStateOf(false) }
     var showHomeAddFundsDialog by remember { mutableStateOf(false) }
     var lastBackPressAt by remember { mutableLongStateOf(0L) }
-    // Default 5s heatmap poll — 1–2s caused overlapping Yahoo/Render storms.
+    // Default 5s heatmap poll — 2s is the live floor; 1s caused overlapping Yahoo storms.
     var heatmapInterval by remember {
         val saved = prefs.getInt("heatmapInterval", 5_000)
         val migrated = when {
-            saved in 1_000..2_000 -> 5_000
-            saved in 5_000..10_000 -> saved
+            saved < 2_000 -> 2_000
+            saved in 2_000..10_000 -> saved
             else -> 5_000
         }
         if (migrated != saved) {
@@ -975,8 +975,8 @@ fun BYSELApp(
                             HorizontalPager(
                                 state = pagerState,
                                 modifier = Modifier.fillMaxSize(),
-                                // Don't precompose adjacent tabs (AI/Trade) during Home cold start.
-                                beyondBoundsPageCount = 0
+                                beyondBoundsPageCount = 1,
+                                userScrollEnabled = true,
                             ) { page ->
                                 when (page) {
                                     0 -> DashboardScreen(
@@ -1277,7 +1277,7 @@ fun BYSELApp(
                                     },
                                     heatmapInterval = heatmapInterval,
                                     onHeatmapIntervalChange = { interval ->
-                                        val clamped = interval.coerceIn(1_000, 10_000)
+                                        val clamped = interval.coerceIn(2_000, 10_000)
                                         heatmapInterval = clamped
                                         prefs.edit().putInt("heatmapInterval", clamped).apply()
                                     },

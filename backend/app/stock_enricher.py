@@ -55,6 +55,17 @@ def _listings_stale(loaded: bool, loaded_at: float) -> bool:
     return (time() - loaded_at) >= _LISTING_TTL_SECONDS
 
 
+def _schedule_listing_refresh(loader, label: str) -> None:
+    """Refresh NSE/BSE masters off the chat request path."""
+    def _run() -> None:
+        try:
+            loader(force=True)
+        except Exception as exc:
+            logger.debug("%s listing refresh failed: %s", label, exc)
+
+    threading.Thread(target=_run, daemon=True, name=f"{label}-listing-refresh").start()
+
+
 def _invalidate_search_catalog() -> None:
     """Mark catalog dirty without taking its lock (avoids deadlock during merge)."""
     try:
@@ -65,48 +76,75 @@ def _invalidate_search_catalog() -> None:
         pass
 
 
+_LISTING_WARMUP_STARTED = False
+
+
+def _kick_listing_warmup() -> None:
+    """Download NSE/BSE masters in the background so later chats stay fast."""
+    global _LISTING_WARMUP_STARTED
+    if _LISTING_WARMUP_STARTED:
+        return
+    if _NSE_EQUITY_MAP and _BSE_BY_CODE:
+        return
+    _LISTING_WARMUP_STARTED = True
+    if not _NSE_EQUITY_MAP:
+        _schedule_listing_refresh(_load_nse_equity_map, "nse")
+    if not _BSE_BY_CODE:
+        _schedule_listing_refresh(_load_bse_equity_map, "bse")
+
+
 def _load_nse_equity_map(*, force: bool = False) -> None:
     """
     Downloads NSE EQUITY_L.csv and builds symbol→company name map.
     Refreshes about every 12 hours so new listings appear without restart.
     """
     global _NSE_EQUITY_MAP, _NSE_EQUITY_LOADED, _NSE_EQUITY_LOADED_AT
+    refresh_later = False
     with _NSE_EQUITY_LOCK:
-        if not force and _NSE_EQUITY_LOADED and not _listings_stale(
+        if not force and _NSE_EQUITY_MAP:
+            # Keep serving the in-memory map; never block chat on a 12h CSV refresh.
+            refresh_later = _listings_stale(_NSE_EQUITY_LOADED, _NSE_EQUITY_LOADED_AT)
+        elif not force and _NSE_EQUITY_LOADED and not _listings_stale(
             _NSE_EQUITY_LOADED, _NSE_EQUITY_LOADED_AT
         ):
             return
-        try:
-            import requests
-            resp = requests.get(
-                "https://archives.nseindia.com/content/equities/EQUITY_L.csv",
-                headers={
-                    "User-Agent": "Mozilla/5.0",
-                    "Referer": "https://www.nseindia.com/",
-                },
-                timeout=15,
-            )
-            if resp.status_code == 200:
-                fresh: dict[str, str] = {}
-                reader = csv.DictReader(io.StringIO(resp.text))
-                for row in reader:
-                    sym = row.get("SYMBOL", "").strip().upper()
-                    name = row.get("NAME OF COMPANY", "").strip()
-                    if sym and name:
-                        fresh[sym] = name
-                if fresh:
-                    _NSE_EQUITY_MAP = fresh
-                    _NSE_EQUITY_LOADED_AT = time()
-                    _invalidate_search_catalog()
-                    logger.info("NSE equity list loaded: %d symbols", len(_NSE_EQUITY_MAP))
+        else:
+            refresh_later = False
+            # Fall through to download while holding the lock.
+            try:
+                import requests
+                resp = requests.get(
+                    "https://archives.nseindia.com/content/equities/EQUITY_L.csv",
+                    headers={
+                        "User-Agent": "Mozilla/5.0",
+                        "Referer": "https://www.nseindia.com/",
+                    },
+                    timeout=15,
+                )
+                if resp.status_code == 200:
+                    fresh: dict[str, str] = {}
+                    reader = csv.DictReader(io.StringIO(resp.text))
+                    for row in reader:
+                        sym = row.get("SYMBOL", "").strip().upper()
+                        name = row.get("NAME OF COMPANY", "").strip()
+                        if sym and name:
+                            fresh[sym] = name
+                    if fresh:
+                        _NSE_EQUITY_MAP = fresh
+                        _NSE_EQUITY_LOADED_AT = time()
+                        _invalidate_search_catalog()
+                        logger.info("NSE equity list loaded: %d symbols", len(_NSE_EQUITY_MAP))
+                    else:
+                        logger.warning("NSE equity CSV empty — keeping prior map (%d)", len(_NSE_EQUITY_MAP))
                 else:
-                    logger.warning("NSE equity CSV empty — keeping prior map (%d)", len(_NSE_EQUITY_MAP))
-            else:
-                logger.warning("NSE equity CSV returned %s", resp.status_code)
-        except Exception as e:
-            logger.warning("NSE equity list load failed: %s", e)
-        finally:
-            _NSE_EQUITY_LOADED = True
+                    logger.warning("NSE equity CSV returned %s", resp.status_code)
+            except Exception as e:
+                logger.warning("NSE equity list load failed: %s", e)
+            finally:
+                _NSE_EQUITY_LOADED = True
+            return
+    if refresh_later:
+        _schedule_listing_refresh(_load_nse_equity_map, "nse")
 
 
 def get_nse_equity_map() -> dict[str, str]:
@@ -121,103 +159,106 @@ def _load_bse_equity_map(*, force: bool = False) -> None:
     Indexes by scrip_id (e.g. RELIANCE), 6-digit code (500325), and ISIN.
     """
     global _BSE_BY_ID, _BSE_BY_CODE, _BSE_BY_ISIN, _BSE_EQUITY_LOADED, _BSE_EQUITY_LOADED_AT
+    refresh_later = False
     with _BSE_EQUITY_LOCK:
-        if not force and _BSE_EQUITY_LOADED and not _listings_stale(
+        if not force and _BSE_BY_CODE:
+            refresh_later = _listings_stale(_BSE_EQUITY_LOADED, _BSE_EQUITY_LOADED_AT)
+        elif not force and _BSE_EQUITY_LOADED and not _listings_stale(
             _BSE_EQUITY_LOADED, _BSE_EQUITY_LOADED_AT
         ):
             return
-        try:
-            import requests
+        else:
+            try:
+                import requests
 
-            url = (
-                "https://api.bseindia.com/BseIndiaAPI/api/ListofScripData/w"
-                "?Group=&Scripcode=&industry=&segment=Equity&status=Active"
-            )
-            resp = requests.get(
-                url,
-                headers={
-                    "User-Agent": (
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/120.0.0.0 Safari/537.36"
-                    ),
-                    "Referer": "https://www.bseindia.com/",
-                    "Origin": "https://www.bseindia.com",
-                    "Accept": "application/json, text/plain, */*",
-                },
-                timeout=30,
-            )
-            if resp.status_code != 200:
-                logger.warning("BSE equity API returned %s", resp.status_code)
-                return
-            rows = resp.json()
-            if not isinstance(rows, list) or not rows:
-                logger.warning("BSE equity API empty payload")
-                return
-
-            by_id: dict[str, dict[str, Any]] = {}
-            by_code: dict[str, dict[str, Any]] = {}
-            by_isin: dict[str, dict[str, Any]] = {}
-            nse_syms = set(_NSE_EQUITY_MAP.keys()) if _NSE_EQUITY_MAP else set()
-            if not nse_syms:
-                # Best-effort: may still be empty if NSE load failed.
-                nse_syms = set()
-
-            for row in rows:
-                if not isinstance(row, dict):
-                    continue
-                status = str(row.get("Status") or "").strip().lower()
-                segment = str(row.get("Segment") or "").strip().lower()
-                if status and status != "active":
-                    continue
-                if segment and segment != "equity":
-                    continue
-                code = str(row.get("SCRIP_CD") or "").strip()
-                if not (len(code) == 6 and code.isdigit()):
-                    continue
-                sid = str(row.get("scrip_id") or "").strip().upper()
-                name = (
-                    str(row.get("Issuer_Name") or "").strip()
-                    or str(row.get("Scrip_Name") or "").strip()
-                    or sid
-                    or code
+                url = (
+                    "https://api.bseindia.com/BseIndiaAPI/api/ListofScripData/w"
+                    "?Group=&Scripcode=&industry=&segment=Equity&status=Active"
                 )
-                isin = str(row.get("ISIN_NUMBER") or "").strip().upper()
-                group = str(row.get("GROUP") or "").strip().upper()
-                rec = {
-                    "code": code,
-                    "scrip_id": sid,
-                    "name": name,
-                    "isin": isin,
-                    "group": group,
-                    "yahoo": f"{code}.BO",
-                    "dual_listed": bool(sid and sid in nse_syms),
-                }
-                by_code[code] = rec
-                if sid and re.fullmatch(r"[A-Z][A-Z0-9-]{0,14}", sid):
-                    # Prefer first / dual-aware record; keep richer name if empty.
-                    prev = by_id.get(sid)
-                    if prev is None or (not prev.get("name") and name):
-                        by_id[sid] = rec
-                if isin.startswith("IN"):
-                    by_isin[isin] = rec
-
-            if by_code:
-                _BSE_BY_ID = by_id
-                _BSE_BY_CODE = by_code
-                _BSE_BY_ISIN = by_isin
-                _BSE_EQUITY_LOADED_AT = time()
-                _invalidate_search_catalog()
-                logger.info(
-                    "BSE equity list loaded: %d codes, %d scrip_ids (%d dual-ish vs NSE cache)",
-                    len(by_code),
-                    len(by_id),
-                    sum(1 for r in by_id.values() if r.get("dual_listed")),
+                resp = requests.get(
+                    url,
+                    headers={
+                        "User-Agent": (
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/120.0.0.0 Safari/537.36"
+                        ),
+                        "Referer": "https://www.bseindia.com/",
+                        "Origin": "https://www.bseindia.com",
+                        "Accept": "application/json, text/plain, */*",
+                    },
+                    timeout=30,
                 )
-        except Exception as e:
-            logger.warning("BSE equity list load failed: %s", e)
-        finally:
-            _BSE_EQUITY_LOADED = True
+                if resp.status_code != 200:
+                    logger.warning("BSE equity API returned %s", resp.status_code)
+                    return
+                rows = resp.json()
+                if not isinstance(rows, list) or not rows:
+                    logger.warning("BSE equity API empty payload")
+                    return
+
+                by_id: dict[str, dict[str, Any]] = {}
+                by_code: dict[str, dict[str, Any]] = {}
+                by_isin: dict[str, dict[str, Any]] = {}
+                nse_syms = set(_NSE_EQUITY_MAP.keys()) if _NSE_EQUITY_MAP else set()
+
+                for row in rows:
+                    if not isinstance(row, dict):
+                        continue
+                    status = str(row.get("Status") or "").strip().lower()
+                    segment = str(row.get("Segment") or "").strip().lower()
+                    if status and status != "active":
+                        continue
+                    if segment and segment != "equity":
+                        continue
+                    code = str(row.get("SCRIP_CD") or "").strip()
+                    if not (len(code) == 6 and code.isdigit()):
+                        continue
+                    sid = str(row.get("scrip_id") or "").strip().upper()
+                    name = (
+                        str(row.get("Issuer_Name") or "").strip()
+                        or str(row.get("Scrip_Name") or "").strip()
+                        or sid
+                        or code
+                    )
+                    isin = str(row.get("ISIN_NUMBER") or "").strip().upper()
+                    group = str(row.get("GROUP") or "").strip().upper()
+                    rec = {
+                        "code": code,
+                        "scrip_id": sid,
+                        "name": name,
+                        "isin": isin,
+                        "group": group,
+                        "yahoo": f"{code}.BO",
+                        "dual_listed": bool(sid and sid in nse_syms),
+                    }
+                    by_code[code] = rec
+                    if sid and re.fullmatch(r"[A-Z][A-Z0-9-]{0,14}", sid):
+                        prev = by_id.get(sid)
+                        if prev is None or (not prev.get("name") and name):
+                            by_id[sid] = rec
+                    if isin.startswith("IN"):
+                        by_isin[isin] = rec
+
+                if by_code:
+                    _BSE_BY_ID = by_id
+                    _BSE_BY_CODE = by_code
+                    _BSE_BY_ISIN = by_isin
+                    _BSE_EQUITY_LOADED_AT = time()
+                    _invalidate_search_catalog()
+                    logger.info(
+                        "BSE equity list loaded: %d codes, %d scrip_ids (%d dual-ish vs NSE cache)",
+                        len(by_code),
+                        len(by_id),
+                        sum(1 for r in by_id.values() if r.get("dual_listed")),
+                    )
+            except Exception as e:
+                logger.warning("BSE equity list load failed: %s", e)
+            finally:
+                _BSE_EQUITY_LOADED = True
+            return
+    if refresh_later:
+        _schedule_listing_refresh(_load_bse_equity_map, "bse")
 
 
 def get_bse_equity_records() -> list[dict[str, Any]]:
@@ -242,9 +283,13 @@ def get_bse_equity_map() -> dict[str, str]:
     return out
 
 
-def lookup_bse_listing(symbol: str) -> Optional[dict[str, Any]]:
-    """Resolve a symbol/code/ISIN to a BSE equity record."""
-    _load_bse_equity_map()
+def lookup_bse_listing(symbol: str, *, fetch: bool = True) -> Optional[dict[str, Any]]:
+    """Resolve a symbol/code/ISIN to a BSE equity record.
+
+    fetch=False uses in-memory maps only (chat path — never download CSV/API).
+    """
+    if fetch or _BSE_BY_CODE or _BSE_EQUITY_LOADED:
+        _load_bse_equity_map()
     raw = (symbol or "").strip().upper()
     if not raw:
         return None
@@ -263,8 +308,9 @@ def lookup_bse_listing(symbol: str) -> Optional[dict[str, Any]]:
 
 def is_bse_only_symbol(symbol: str) -> bool:
     """True when listed on BSE but not present in the NSE equity master."""
-    _load_nse_equity_map()
-    rec = lookup_bse_listing(symbol)
+    if _NSE_EQUITY_MAP or _NSE_EQUITY_LOADED:
+        _load_nse_equity_map()
+    rec = lookup_bse_listing(symbol, fetch=bool(_BSE_BY_CODE or _BSE_EQUITY_LOADED))
     if not rec:
         return False
     sid = str(rec.get("scrip_id") or "").upper()
@@ -285,10 +331,11 @@ def resolve_analysis_symbol(symbol: str) -> str:
         raw = raw.rsplit(".", 1)[0]
     if raw.startswith("BSE:") or raw.startswith("NSE:"):
         raw = raw.split(":", 1)[1].strip()
-    _load_nse_equity_map()
+    if _NSE_EQUITY_MAP or _NSE_EQUITY_LOADED:
+        _load_nse_equity_map()
     if raw in _NSE_EQUITY_MAP:
         return raw
-    rec = lookup_bse_listing(raw)
+    rec = lookup_bse_listing(raw, fetch=bool(_BSE_BY_CODE or _BSE_EQUITY_LOADED))
     if not rec:
         return raw
     sid = str(rec.get("scrip_id") or "").upper()
@@ -1040,12 +1087,11 @@ def extract_all_symbols_from_query(query: str) -> list[str]:
     }
     known = None
     catalog = None
+    pending: list[str] = []
     try:
-        from app.market_data import INDIAN_STOCKS, get_stock_catalog
+        from app.market_data import INDIAN_STOCKS
 
-        catalog = dict(get_stock_catalog())
-        catalog.update(INDIAN_STOCKS)
-        known = set(catalog)
+        known = set(INDIAN_STOCKS)
     except Exception:
         known = None
 
@@ -1055,19 +1101,38 @@ def extract_all_symbols_from_query(query: str) -> list[str]:
         if tok in _SKIP:
             continue
         resolved = _resolve_listed_symbol(tok)
-        if known is not None and resolved not in known:
-            continue
         if _should_skip_catalog_token(resolved, query, name_spans, catalog):
             continue
-        if resolved not in symbols:
-            symbols.append(resolved)
+        if known is not None and resolved in known:
+            if resolved not in symbols:
+                symbols.append(resolved)
+        else:
+            pending.append(resolved)
 
     tokens = re.findall(r'\b[A-Z][A-Z0-9\-]{1,9}\b', query.upper())
     for tok in tokens:
         if tok not in _SKIP and len(tok) >= 3:
             resolved = _resolve_listed_symbol(tok)
-            # Reject English leftovers that are not real listed equities.
-            if known is not None and resolved not in known:
+            if _should_skip_catalog_token(resolved, query, name_spans, catalog):
+                continue
+            if known is not None and resolved in known:
+                if resolved not in symbols:
+                    symbols.append(resolved)
+            elif resolved not in pending:
+                pending.append(resolved)
+
+    # Full NSE/BSE catalog is expensive (CSV/API). Never block chat on it —
+    # use in-memory listings if warm, otherwise keep leftover ticker tokens.
+    if pending:
+        known_all = set(known or ())
+        known_all.update(_NSE_EQUITY_MAP.keys())
+        known_all.update(_BSE_BY_ID.keys())
+        known_all.update(_BSE_BY_CODE.keys())
+        maps_warm = bool(_NSE_EQUITY_MAP or _BSE_BY_CODE)
+        for resolved in pending:
+            if not maps_warm:
+                continue
+            if resolved not in known_all:
                 continue
             if _should_skip_catalog_token(resolved, query, name_spans, catalog):
                 continue
@@ -1514,13 +1579,6 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
     if amp and amp.group(1) not in _SKIP:
         return _resolve_listed_symbol(amp.group(1))
     catalog = None
-    try:
-        from app.market_data import INDIAN_STOCKS, get_stock_catalog
-
-        catalog = dict(get_stock_catalog())
-        catalog.update(INDIAN_STOCKS)
-    except Exception:
-        catalog = None
     tokens = re.findall(r'\b[A-Z][A-Z0-9\-]{1,9}\b', q_upper)
     for tok in tokens:
         if tok in _SKIP or len(tok) < 3:
@@ -1707,19 +1765,26 @@ _YF_HEADERS = {
 
 
 def _is_catalog_symbol(symbol: str) -> bool:
-    """True when the token is a real NSE/BSE listing, not an English filler."""
+    """True when the token is a real NSE/BSE listing, not an English filler.
+
+    Never calls get_stock_catalog() — that can download NSE CSV + BSE API on
+    a cold process and stall AI chat.
+    """
     resolved = _resolve_listed_symbol(symbol)
     if not resolved or resolved.isdigit():
         return bool(resolved)
     try:
-        from app.market_data import INDIAN_STOCKS, get_stock_catalog
+        from app.market_data import INDIAN_STOCKS
 
         if resolved in INDIAN_STOCKS:
             return True
-        catalog = get_stock_catalog()
-        return resolved in catalog
     except Exception:
-        return False
+        pass
+    return (
+        resolved in _NSE_EQUITY_MAP
+        or resolved in _BSE_BY_ID
+        or resolved in _BSE_BY_CODE
+    )
 
 
 def _resolve_listed_symbol(symbol: str) -> str:
@@ -1734,13 +1799,14 @@ def _resolve_listed_symbol(symbol: str) -> str:
         return aliases.get(sym, sym)
 
 
-def _fetch_yahoo_fundamentals(symbol: str) -> dict:
+def _fetch_yahoo_fundamentals(symbol: str, timeout: float = 6) -> dict:
     """
     Direct Yahoo Finance quoteSummary API call using requests (not yfinance lib).
     More reliable on cloud/Docker than ticker.info because we control the session.
     Returns P/E, dividend yield, sector, company name.
     """
     try:
+        timeout = max(1.5, float(timeout or 6))
         import requests
         from app.market_data import _yf_ticker
 
@@ -1750,11 +1816,11 @@ def _fetch_yahoo_fundamentals(symbol: str) -> dict:
             "https://query1.finance.yahoo.com/v10/finance/quoteSummary/"
             f"{yf_sym}?modules=summaryDetail,summaryProfile,defaultKeyStatistics"
         )
-        resp = requests.get(url, headers=_YF_HEADERS, timeout=6)
+        resp = requests.get(url, headers=_YF_HEADERS, timeout=timeout)
         if resp.status_code != 200:
             # try query2 mirror
             url2 = url.replace("query1", "query2")
-            resp = requests.get(url2, headers=_YF_HEADERS, timeout=6)
+            resp = requests.get(url2, headers=_YF_HEADERS, timeout=timeout)
         if resp.status_code != 200:
             logger.warning("Yahoo Finance direct API %s for %s", resp.status_code, symbol)
             return {}
@@ -1821,23 +1887,30 @@ def _fetch_google_news_headlines(symbol: str, company_name: str = "") -> list[st
 # ---------------------------------------------------------------------------
 # Main enricher: merges all four sources
 # ---------------------------------------------------------------------------
-def _fetch_yfinance(symbol: str) -> dict:
+def _fetch_yfinance(symbol: str, deadline_seconds: float | None = None) -> dict:
     try:
         import yfinance as yf
         from app.market_data import _yf_ticker
 
-        deadline = time() + float(os.getenv("ENRICH_DEADLINE_SECONDS", "12"))
+        deadline = time() + float(
+            deadline_seconds if deadline_seconds is not None else os.getenv("ENRICH_DEADLINE_SECONDS", "12")
+        )
 
         def _time_left() -> float:
             return deadline - time()
 
         symbol = _resolve_listed_symbol(symbol)
+        _kick_listing_warmup()
 
-        # Ensure NSE + BSE equity lists are loaded (current listings).
-        _load_nse_equity_map()
-        _load_bse_equity_map()
+        # Don't stall chat on listing CSV/API downloads. Use maps only if already warm.
+        fast_chat = deadline_seconds is not None and float(deadline_seconds) <= 8
+        if not fast_chat:
+            if _NSE_EQUITY_MAP or _NSE_EQUITY_LOADED:
+                _load_nse_equity_map()
+            if _BSE_BY_CODE or _BSE_EQUITY_LOADED:
+                _load_bse_equity_map()
 
-        bse_rec = lookup_bse_listing(symbol)
+        bse_rec = lookup_bse_listing(symbol, fetch=False)
         # Dual-listed BSE codes → NSE twin for Yahoo OHLCV ( .BO history is flaky ).
         analysis_symbol = resolve_analysis_symbol(symbol)
         yf_sym = _yf_ticker(analysis_symbol)
@@ -1859,9 +1932,9 @@ def _fetch_yfinance(symbol: str) -> dict:
             "BSE→NSE" if asked_bse and use_nse_api else ("BSE" if str(yf_sym).endswith(".BO") else "NSE")
         )
 
-        # --- Source 1: NSE India API (when an NSE listing exists) ---
+        # --- Source 1: NSE India API (skip on fast chat — cookie dance can eat 8–12s) ---
         nse: dict = {}
-        if use_nse_api and _time_left() > 3:
+        if use_nse_api and not fast_chat and _time_left() > 5:
             nse = _fetch_nse_fundamentals(nse_api_symbol)
         company_name: str = nse.get("company_name") or ""
         sector: str = nse.get("sector") or ""
@@ -1873,8 +1946,9 @@ def _fetch_yfinance(symbol: str) -> dict:
 
         # --- Source 1b: Yahoo Finance direct API (fills gaps when NSE is blocked) ---
         yf_fund: dict = {}
-        if _time_left() > 3:
-            yf_fund = _fetch_yahoo_fundamentals(analysis_symbol or symbol)
+        if _time_left() > 2:
+            yf_timeout = 3.0 if fast_chat else min(6.0, max(2.0, _time_left() - 1.0))
+            yf_fund = _fetch_yahoo_fundamentals(analysis_symbol or symbol, timeout=yf_timeout)
         if not pe:
             pe = yf_fund.get("pe")
         div_yield = yf_fund.get("div_yield")
@@ -1919,7 +1993,7 @@ def _fetch_yfinance(symbol: str) -> dict:
         pb = None
         roe = None
         eps = None
-        if _time_left() > 3:
+        if not fast_chat and _time_left() > 3:
             try:
                 info = ticker.info or {}
                 if not div_yield:
@@ -1969,7 +2043,7 @@ def _fetch_yfinance(symbol: str) -> dict:
 
         # --- Source 4: yf.download() for OHLCV (technicals) ---
         closes, highs, lows = [], [], []
-        if _time_left() > 4:
+        if _time_left() > (2 if fast_chat else 4):
             try:
                 hist = yf.download(yf_sym, period="1y", progress=False, auto_adjust=True)
                 if not hist.empty:
@@ -2161,16 +2235,22 @@ def _fetch_yfinance(symbol: str) -> dict:
         raise
 
 
-async def enrich(symbol: str) -> dict:
+async def enrich(symbol: str, deadline_seconds: float | None = None) -> dict:
     now = time()
     cached = _cache.get(symbol)
     if cached and (now - cached[0]) < _CACHE_TTL:
         return cached[1]
+    _kick_listing_warmup()
     loop = asyncio.get_event_loop()
-    budget = float(os.getenv("ENRICH_DEADLINE_SECONDS", "12")) + 2.0
+    src = (
+        float(deadline_seconds)
+        if deadline_seconds is not None
+        else float(os.getenv("ENRICH_DEADLINE_SECONDS", "12"))
+    )
+    budget = src + 2.0
     try:
         data = await asyncio.wait_for(
-            loop.run_in_executor(None, _fetch_yfinance, symbol),
+            loop.run_in_executor(None, _fetch_yfinance, symbol, deadline_seconds),
             timeout=budget,
         )
     except asyncio.TimeoutError:
