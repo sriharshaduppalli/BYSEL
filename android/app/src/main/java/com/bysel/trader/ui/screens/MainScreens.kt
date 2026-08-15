@@ -519,6 +519,7 @@ fun PortfolioScreen(
                         .fillMaxWidth(),
                 )
             } else if (holdings.isEmpty()) {
+                val loadFailed = !error.isNullOrBlank()
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -536,13 +537,21 @@ fun PortfolioScreen(
                             modifier = Modifier.size(64.dp)
                         )
                         Text(
-                            text = "No holdings yet",
+                            text = if (loadFailed) {
+                                "Couldn't load portfolio"
+                            } else {
+                                "No holdings yet"
+                            },
                             fontSize = 16.sp,
                             color = LocalAppTheme.current.textSecondary,
                             modifier = Modifier.padding(top = 16.dp)
                         )
                         Text(
-                            text = "Start trading to build your portfolio",
+                            text = if (loadFailed) {
+                                error ?: "Tap Refresh to retry."
+                            } else {
+                                "Start trading to build your portfolio"
+                            },
                             fontSize = 12.sp,
                             color = LocalAppTheme.current.textSecondary,
                             modifier = Modifier.padding(top = 8.dp)

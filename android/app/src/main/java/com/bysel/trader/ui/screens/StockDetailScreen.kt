@@ -75,6 +75,7 @@ import com.bysel.trader.ui.components.StockLiteracyCatalog
 import com.bysel.trader.ui.components.PriceHistoryChart
 import com.bysel.trader.ui.components.InfoChip
 import com.bysel.trader.ui.components.StockNotesIcon
+import com.bysel.trader.ui.components.StockNotesPreviewText
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.viewmodel.TradingViewModel
 import java.text.SimpleDateFormat
@@ -382,6 +383,13 @@ fun StockDetailScreen(
                             tint = theme.text,
                         )
                     }
+                    StockNotesIcon(
+                        symbol = quote.symbol,
+                        showPreview = true,
+                        iconSize = 22.dp,
+                        buttonSize = 36.dp,
+                        modifier = Modifier.weight(1f),
+                    )
                     FilledTonalButton(onClick = refreshDetailContext) {
                         Text("Refresh context")
                     }
@@ -586,9 +594,19 @@ private fun StockDetailHeroCard(
                             fontSize = 32.sp,
                             fontWeight = FontWeight.Bold,
                             color = theme.text,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
-                        StockNotesIcon(symbol = quote.symbol)
+                        StockNotesIcon(
+                            symbol = quote.symbol,
+                            iconSize = 20.dp,
+                            buttonSize = 36.dp,
+                        )
                     }
+                    StockNotesPreviewText(
+                        symbol = quote.symbol,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
                     Text(
                         text = if (quote.pctChange >= 0.0) "Leadership candidate" else "Pressure candidate",
                         fontSize = 13.sp,

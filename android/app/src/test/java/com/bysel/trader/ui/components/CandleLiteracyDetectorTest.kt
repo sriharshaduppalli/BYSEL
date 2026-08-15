@@ -64,9 +64,11 @@ class CandleLiteracyDetectorTest {
         assertTrue(blob.contains("PEG", ignoreCase = true))
         assertTrue(blob.contains("Thursday", ignoreCase = true))
         assertTrue(blob.contains("promoter pledging", ignoreCase = true))
-        assertTrue(cards.any { it.title.equals("Bottom line", ignoreCase = true) })
+        assertTrue(blob.contains("Max Pain", ignoreCase = true))
+        assertTrue(cards.any { it.title.contains("Long-term", ignoreCase = true) })
+        assertTrue(cards.any { it.title.contains("Swing", ignoreCase = true) })
+        assertTrue(cards.any { it.title.contains("F&O", ignoreCase = true) })
         assertTrue(cards.any { it.title.equals("Best practice", ignoreCase = true) })
-        assertTrue(cards.any { it.title.equals("Other checks", ignoreCase = true) })
     }
 
     private fun candle(o: Number, h: Number, l: Number, c: Number) = HistoryCandle(

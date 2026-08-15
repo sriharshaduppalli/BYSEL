@@ -174,15 +174,9 @@ object StockLiteracyCatalog {
                 summary = "ROE = profit vs equity (>15% often healthy, >20% strong). " +
                     "ROCE = profit vs all capital (>15% preferred). " +
                     "D/E = debt vs equity (<1 typical for non-banks). " +
-                    "Interest coverage = EBIT / interest (>3× often comfortable). Quality and leverage — not a signal.",
+                    "Interest coverage = EBIT / interest (>3× often comfortable). " +
+                    "FCF should back profit; high promoter pledging is a stress flag.",
                 learnQuery = "What are ROE, ROCE, debt to equity and interest coverage?",
-            ),
-            LiteracyCard(
-                title = "Other checks",
-                tag = "Fundamental",
-                summary = "Free cash flow should back reported profit. High promoter pledging is a stress flag. " +
-                    "FII/DII flows move indices. Prefer quarterly profit consistency over one good quarter.",
-                learnQuery = "What are free cash flow, promoter pledging and FII DII in Indian stocks?",
             ),
             LiteracyCard(
                 title = "DMA, RSI, MACD, volume",
@@ -194,11 +188,25 @@ object StockLiteracyCatalog {
                 learnQuery = "How do 50 DMA 200 DMA RSI 14 MACD volume and VWAP work in NSE stocks?",
             ),
             LiteracyCard(
-                title = "India market clock",
-                tag = "India",
-                summary = "Index weekly options expire Thursday — expect extra volatility that day. " +
-                    "FII/DII buying or selling can set the tape. Money rotates across sectors; a strong stock in a weak sector still fights the tide.",
-                learnQuery = "What is Thursday weekly expiry and FII DII sector rotation in India?",
+                title = "Long-term (3+ years)",
+                tag = "How to use",
+                summary = "Quality + valuation + patience. Often cited: ROCE 15–18%, ROE 15–20%, low debt, PEG <1.5, " +
+                    "avoid high pledging. Think 5–10 years. Not a buy order.",
+                learnQuery = "How should beginners do long-term investing in Indian stocks?",
+            ),
+            LiteracyCard(
+                title = "Swing (3–20 days)",
+                tag = "How to use",
+                summary = "Trend + momentum + timing. Trade with 50/200 DMA, pullback RSI 40–55, volume/delivery, " +
+                    "1–2% risk and a defined stop. Paper practice first.",
+                learnQuery = "How does swing trading work on NSE with DMA and RSI?",
+            ),
+            LiteracyCard(
+                title = "F&O — paper gym",
+                tag = "How to use",
+                summary = "Volatility + OI + bias. Learn OI, PCR, Max Pain, Thursday expiry, VIX, and Greeks here — " +
+                    "education and paper only, not live brokerage. No guaranteed returns.",
+                learnQuery = "What are OI, PCR, Max Pain, VIX and option Greeks for NSE F&O beginners?",
             ),
             LiteracyCard(
                 title = "Best practice",
@@ -206,13 +214,6 @@ object StockLiteracyCatalog {
                 summary = "Filter quality on fundamentals → check valuation → use technicals only for timing → " +
                     "size with a stop-loss. Paper-practice the steps. No method guarantees returns.",
                 learnQuery = "What is a beginner stock analysis checklist for Indian markets?",
-            ),
-            LiteracyCard(
-                title = "Bottom line",
-                tag = "How to use",
-                summary = "Long-term = fundamentals (quality + valuation). " +
-                    "Swing and F&O = technicals + volume + flows. Combine both. Education and paper first — not orders.",
-                learnQuery = "Should I use fundamentals or technicals for long-term vs swing vs F&O in India?",
             ),
         )
     }

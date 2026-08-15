@@ -1,5 +1,6 @@
 package com.bysel.trader.ui.components
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,6 +30,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -43,37 +46,94 @@ fun StockNotesIcon(
     symbol: String,
     modifier: Modifier = Modifier,
     displaySymbol: String = symbol,
+    showPreview: Boolean = false,
+    iconSize: Dp = 16.dp,
+    buttonSize: Dp = 28.dp,
 ) {
     if (symbol.isBlank()) return
     val notesViewModel: StockNotesViewModel = viewModel()
     val notes by notesViewModel.notes.collectAsStateWithLifecycle()
-    val hasNote = remember(notes, symbol) { notesViewModel.hasNote(symbol, notes) }
+    val noteText = remember(notes, symbol) { notesViewModel.noteText(symbol, notes) }
+    val hasNote = noteText.isNotBlank()
     var showSheet by remember(symbol) { mutableStateOf(false) }
     val theme = LocalAppTheme.current
+    val preview = remember(noteText) { noteText.replace('\n', ' ').trim().take(80) }
 
-    IconButton(
-        onClick = { showSheet = true },
-        modifier = modifier.size(28.dp),
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        BadgedBox(
-            badge = {
-                if (hasNote) {
-                    Badge(containerColor = theme.primary)
-                }
-            },
+        IconButton(
+            onClick = { showSheet = true },
+            modifier = Modifier.size(buttonSize),
         ) {
-            Icon(
-                imageVector = if (hasNote) Icons.Filled.StickyNote2 else Icons.Outlined.StickyNote2,
-                contentDescription = if (hasNote) {
-                    "Edit notes for $displaySymbol"
-                } else {
-                    "Add notes for $displaySymbol"
+            BadgedBox(
+                badge = {
+                    if (hasNote) {
+                        Badge(containerColor = theme.primary)
+                    }
                 },
-                tint = if (hasNote) theme.primary else theme.textSecondary,
-                modifier = Modifier.size(16.dp),
+            ) {
+                Icon(
+                    imageVector = if (hasNote) Icons.Filled.StickyNote2 else Icons.Outlined.StickyNote2,
+                    contentDescription = if (hasNote) {
+                        "Edit notes for $displaySymbol"
+                    } else {
+                        "Add notes for $displaySymbol"
+                    },
+                    tint = if (hasNote) theme.primary else theme.textSecondary,
+                    modifier = Modifier.size(iconSize),
+                )
+            }
+        }
+        if (showPreview && hasNote && preview.isNotBlank()) {
+            Text(
+                text = preview,
+                fontSize = 12.sp,
+                color = theme.textSecondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .clickable { showSheet = true },
             )
         }
     }
+
+    if (showSheet) {
+        StockNotesSheet(
+            symbol = symbol,
+            displaySymbol = displaySymbol,
+            onDismiss = { showSheet = false },
+            viewModel = notesViewModel,
+        )
+    }
+}
+
+@Composable
+fun StockNotesPreviewText(
+    symbol: String,
+    modifier: Modifier = Modifier,
+    displaySymbol: String = symbol,
+) {
+    if (symbol.isBlank()) return
+    val notesViewModel: StockNotesViewModel = viewModel()
+    val notes by notesViewModel.notes.collectAsStateWithLifecycle()
+    val noteText = remember(notes, symbol) { notesViewModel.noteText(symbol, notes) }
+    if (noteText.isBlank()) return
+    var showSheet by remember(symbol) { mutableStateOf(false) }
+    val theme = LocalAppTheme.current
+    val preview = remember(noteText) { noteText.replace('\n', ' ').trim().take(120) }
+
+    Text(
+        text = preview,
+        fontSize = 13.sp,
+        color = theme.textSecondary,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier.clickable { showSheet = true },
+    )
 
     if (showSheet) {
         StockNotesSheet(

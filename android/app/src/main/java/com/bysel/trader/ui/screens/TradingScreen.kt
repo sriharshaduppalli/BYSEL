@@ -77,6 +77,7 @@ import com.bysel.trader.ui.components.OrderRejectionBanner
 import com.bysel.trader.ui.components.RejectionCategory
 import com.bysel.trader.ui.components.resolveRejection
 import com.bysel.trader.ui.components.StockNotesIcon
+import com.bysel.trader.ui.components.StockNotesPreviewText
 import com.bysel.trader.ui.components.WatchlistSortMode
 import com.bysel.trader.ui.components.sortedByWatchlistMode
 import com.bysel.trader.viewmodel.TradingViewModel
@@ -1958,7 +1959,7 @@ private fun TradeBottomSheetContent(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = quote.symbol,
@@ -1968,6 +1969,7 @@ private fun TradeBottomSheetContent(
                     )
                     StockNotesIcon(symbol = quote.symbol)
                 }
+                StockNotesPreviewText(symbol = quote.symbol)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),

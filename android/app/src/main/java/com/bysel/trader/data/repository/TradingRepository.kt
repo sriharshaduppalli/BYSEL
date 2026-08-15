@@ -50,13 +50,7 @@ open class TradingRepository(private val database: BYSELDatabase) {
     private val liveMarketDataClient = LiveMarketDataClient(apiService)
 
     // ==================== QUOTES ====================
-    private fun isRateLimited(e: Exception): Boolean {
-        if (e is HttpException && e.code() == 429) return true
-        val raw = e.message.orEmpty()
-        return raw.contains("429") ||
-            raw.contains("too many requests", ignoreCase = true) ||
-            raw.contains("rate limit", ignoreCase = true)
-    }
+    private fun isRateLimited(e: Exception): Boolean = NetworkErrorMessages.isRateLimited(e)
 
     private fun retryAfterMs(e: Exception): Long {
         val header = (e as? HttpException)?.response()?.headers()?.get("Retry-After")
@@ -74,25 +68,8 @@ open class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
-    private fun toNetworkErrorMessage(e: Exception, fallback: String): String {
-        val raw = e.message.orEmpty()
-        return when {
-            isRateLimited(e) ->
-                "Market data is busy right now. Last prices stay on screen — try again in a few seconds."
-            e is java.net.SocketTimeoutException ||
-                raw.contains("timeout", ignoreCase = true) ||
-                raw.contains("timed out", ignoreCase = true) ->
-                "Market data is taking longer than usual. Pull to refresh — cached prices stay visible."
-            e is java.net.UnknownHostException ||
-                (e is java.io.IOException && raw.contains("Unable to resolve host", ignoreCase = true)) ->
-                "No internet connection. Showing last saved data when available."
-            raw.contains("503") || raw.contains("502") || raw.contains("504") ->
-                "Market server is temporarily unavailable. Retry in a moment."
-            raw.startsWith("HTTP ", ignoreCase = true) -> fallback
-            raw.isNotBlank() && raw.length < 120 -> "$fallback ($raw)"
-            else -> fallback
-        }
-    }
+    private fun toNetworkErrorMessage(e: Exception, fallback: String): String =
+        NetworkErrorMessages.forMarket(e, fallback)
 
     open fun getQuotes(symbols: List<String>): Flow<Result<List<Quote>>> = flow {
         try {
@@ -243,7 +220,7 @@ open class TradingRepository(private val database: BYSELDatabase) {
             emit(Result.Success(holdings))
         } catch (e: Exception) {
             if (!servedCache) {
-                emit(Result.Error(toNetworkErrorMessage(e, "Couldn't refresh holdings")))
+                emit(Result.Error(NetworkErrorMessages.forHoldings(e)))
             }
         }
     }
@@ -520,8 +497,7 @@ open class TradingRepository(private val database: BYSELDatabase) {
                 raw.contains("timeout", ignoreCase = true) ||
                 raw.contains("timed out", ignoreCase = true) ->
                 "AI is taking too long. Please try again in a few seconds."
-            e is java.net.UnknownHostException ||
-                (e is java.io.IOException && raw.contains("Unable to resolve host", ignoreCase = true)) ->
+            NetworkErrorMessages.isExplicitOffline(e) ->
                 "No internet connection. Check your network and retry."
             raw.contains("503") || raw.contains("502") || raw.contains("504") ->
                 "AI server is temporarily unavailable. Please retry shortly."
@@ -663,7 +639,7 @@ open class TradingRepository(private val database: BYSELDatabase) {
             val health = callWithRateLimitRetry { apiService.getPortfolioHealth() }
             Result.Success(health)
         } catch (e: Exception) {
-            Result.Error(toNetworkErrorMessage(e, "Couldn't refresh portfolio health"))
+            Result.Error(NetworkErrorMessages.forHoldings(e))
         }
     }
 
