@@ -207,12 +207,15 @@ private fun WatchRow(
                 .background(accent.copy(alpha = 0.85f)),
         )
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = quote.symbol,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = theme.text,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = quote.symbol,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = theme.text,
+                )
+                StockNotesIcon(symbol = quote.symbol)
+            }
             TickPriceText(
                 price = quote.last,
                 text = formatInr(quote.last, decimals = 2),

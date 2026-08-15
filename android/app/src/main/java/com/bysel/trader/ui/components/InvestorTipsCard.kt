@@ -36,6 +36,8 @@ fun InvestorTipsCard(
     selectedTopic: String? = null,
     onTopicSelected: ((String) -> Unit)? = null,
     compact: Boolean = false,
+    paperNote: String = "",
+    sampleSize: Int = 0,
 ) {
     val theme = LocalAppTheme.current
     Column(
@@ -61,12 +63,14 @@ fun InvestorTipsCard(
                     text = topicLabel.ifBlank { "Education" },
                     fontSize = 11.sp,
                     color = theme.textSecondary,
-                    maxLines = 1,
+                    lineHeight = 14.sp,
+                    maxLines = 2,
+                    softWrap = true,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
             Text(
-                text = "Learn",
+                text = if (tips.any { it.source.equals("paper", true) }) "Paper book" else "Learn",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
                 color = theme.primary,
@@ -117,20 +121,52 @@ fun InvestorTipsCard(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = theme.text,
-                        maxLines = 1,
+                        lineHeight = 16.sp,
+                        maxLines = 2,
+                        softWrap = true,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = tip.body,
                         fontSize = 11.sp,
                         color = theme.textSecondary,
-                        maxLines = if (compact) 2 else 3,
+                        lineHeight = 15.sp,
+                        maxLines = if (compact) 2 else 4,
+                        softWrap = true,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    val meta = buildString {
+                        if (tip.source.equals("paper", true)) append("From your paper book")
+                        else append("Topic cue")
+                        if (!tip.evidence.isNullOrBlank()) append(" · ${tip.evidence}")
+                    }
+                    Text(
+                        text = meta,
+                        fontSize = 10.sp,
+                        color = theme.primary.copy(alpha = 0.85f),
+                        lineHeight = 13.sp,
+                        maxLines = 2,
+                        softWrap = true,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
         }
 
+        val note = when {
+            paperNote.isNotBlank() -> paperNote
+            sampleSize > 0 -> "Based on $sampleSize paper fills. Educational — not live demat."
+            else -> ""
+        }
+        if (note.isNotBlank()) {
+            Text(
+                text = note,
+                fontSize = 10.sp,
+                color = theme.textSecondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         Text(
             text = disclaimer,
             fontSize = 10.sp,

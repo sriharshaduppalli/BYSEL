@@ -1103,6 +1103,8 @@ def fetch_quote(symbol: str) -> dict:
 
     except Exception as e:
         logger.error(f"Error fetching quote for {symbol}: {e}")
+        if stale:
+            return stale
         return _empty_quote(symbol)
 
 
@@ -1123,7 +1125,7 @@ def fetch_quotes(
 
     max_age_seconds: if set, treat cache entries older than this as misses
     (heatmap / stream pass a short age while the market is open).
-    If omitted, uses quote_max_age_seconds() (~8s open, ~3m closed).
+    If omitted, uses quote_max_age_seconds() (~5s open, ~3m closed).
     batch_size / yf_threads: heatmap uses a larger Yahoo batch with threads
     so curated leaders paint in one or two downloads instead of many sequential ones.
     individual_fallback: per-symbol Yahoo calls for batch misses (disable on heatmap).
@@ -1155,8 +1157,13 @@ def fetch_quotes(
                 quote = fetched.get(symbol)
                 if quote is None and individual_fallback:
                     quote = fetch_quote(symbol)
-                if quote:
+                last_px = _safe_number((quote or {}).get("last"), 0.0) if quote else 0.0
+                if quote and last_px > 0:
                     results.append((symbol_map[symbol], quote))
+                else:
+                    stale = _quote_cache.get_allow_stale(symbol, float(QUOTE_CACHE_STORAGE_SECONDS))
+                    if stale and _safe_number(stale.get("last"), 0.0) > 0:
+                        results.append((symbol_map[symbol], stale))
 
     # Sort by original order and extract quotes
     results.sort(key=lambda x: x[0])

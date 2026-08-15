@@ -178,6 +178,19 @@ interface BYSELApiService {
     @DELETE("/alert/{id}")
     suspend fun deleteAlert(@Path("id") alertId: Int): AlertResponse
 
+    // ==================== STOCK NOTES ====================
+    @GET("/stock-notes")
+    suspend fun getStockNotes(): StockNotesListResponse
+
+    @GET("/stock-notes/{symbol}")
+    suspend fun getStockNote(@Path("symbol") symbol: String): StockNoteDto
+
+    @PUT("/stock-notes")
+    suspend fun upsertStockNote(@Body body: StockNoteUpsertRequest): StockNoteDto
+
+    @DELETE("/stock-notes/{symbol}")
+    suspend fun deleteStockNote(@Path("symbol") symbol: String): StockNoteDeleteResponse
+
     // ==================== MUTUAL FUNDS & SIP ====================
     @GET("/mutual-funds")
     suspend fun getMutualFunds(

@@ -34,6 +34,7 @@ import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.Holding
 import com.bysel.trader.data.models.PortfolioHealthScore
 import com.bysel.trader.ui.components.QuoteCard
+import com.bysel.trader.ui.components.StockNotesIcon
 import com.bysel.trader.ui.components.LoadingScreen
 import com.bysel.trader.ui.components.PullToRefreshBox
 import com.bysel.trader.ui.components.exclusiveHorizontalScroll
@@ -222,12 +223,15 @@ fun UpgradedQuoteCard(quote: Quote, onClick: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = quote.symbol,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = LocalAppTheme.current.text
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = quote.symbol,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = LocalAppTheme.current.text
+                        )
+                        StockNotesIcon(symbol = quote.symbol)
+                    }
                     Text(
                         text = "₹${String.format("%.2f", quote.last)}",
                         fontSize = 16.sp,
@@ -609,12 +613,15 @@ fun UpgradedPortfolioHoldingItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = holding.symbol,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = theme.text
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = holding.symbol,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = theme.text
+                        )
+                        StockNotesIcon(symbol = holding.symbol)
+                    }
                     Text(
                         text = "₹${String.format("%.2f", holding.last)}",
                         fontSize = 14.sp,

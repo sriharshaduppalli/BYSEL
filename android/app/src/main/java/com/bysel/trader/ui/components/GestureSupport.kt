@@ -80,7 +80,7 @@ fun PullToRefreshBox(
         modifier = modifier
             .fillMaxSize()
             .then(
-                if (enabled && !isRefreshing) {
+                if (enabled) {
                     Modifier.pullRefresh(pullRefreshState)
                 } else {
                     Modifier

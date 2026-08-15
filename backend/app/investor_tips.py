@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
+from .habits import merge_habit_tips
 from .market_session import IST
 
 DISCLAIMER = (
@@ -350,6 +351,7 @@ def build_investor_tips(
     *,
     limit: int = 3,
     now: Optional[datetime] = None,
+    activity: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     now_ist = now.astimezone(IST) if now is not None else datetime.now(IST)
     key = normalize_topic(topic)
@@ -357,7 +359,18 @@ def build_investor_tips(
     seed = now_ist.year * 10_000 + now_ist.timetuple().tm_yday * 10 + (TOPICS.index(key) + 1)
     # Mild hourly rotation so Home feels fresh across the day.
     seed += now_ist.hour
-    tips = _rotate(bank, seed, limit)
+    educational = [dict(tip, source="topic", evidence=None) for tip in _rotate(bank, seed, max(limit, 3))]
+
+    personalized = list((activity or {}).get("habits") or [])
+    has_enough = bool((activity or {}).get("hasEnoughData"))
+    sample_size = int((activity or {}).get("sampleSize") or 0)
+    paper_note = str((activity or {}).get("paperNote") or "")
+    tips = merge_habit_tips(
+        personalized,
+        educational,
+        limit=limit,
+        has_enough_data=has_enough,
+    )
     return {
         "topic": key,
         "topicLabel": _TOPIC_LABELS.get(key, key),
@@ -365,6 +378,9 @@ def build_investor_tips(
         "topics": [{"id": t, "label": _TOPIC_LABELS[t]} for t in TOPICS],
         "disclaimer": DISCLAIMER,
         "generatedAt": now_ist.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "sampleSize": sample_size,
+        "hasEnoughData": has_enough,
+        "paperNote": paper_note,
     }
 
 

@@ -37,3 +37,12 @@ def test_timeline_mentions_cas():
     assert tl["regime"] == "cas_v1"
     assert tl["closingAuctionEnd"] == "15:35 IST"
     assert tl["foDerivativesClose"] == "15:40 IST"
+
+
+def test_heatmap_open_flag_follows_equity_session(monkeypatch):
+    from app import market_heatmap
+
+    monkeypatch.setattr("app.market_session.is_within_equity_session", lambda now=None: True)
+    assert market_heatmap._is_nse_market_open() is True
+    monkeypatch.setattr("app.market_session.is_within_equity_session", lambda now=None: False)
+    assert market_heatmap._is_nse_market_open() is False

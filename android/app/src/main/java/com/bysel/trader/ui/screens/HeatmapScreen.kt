@@ -41,24 +41,11 @@ import com.bysel.trader.ui.theme.byselCardBorder
 import com.bysel.trader.ui.theme.byselCardColors
 import com.bysel.trader.ui.theme.byselCardElevation
 import com.bysel.trader.ui.theme.contentColorForFill
+import com.bysel.trader.utils.MarketSession
 import java.util.Calendar
 import java.util.TimeZone
 import kotlin.math.max
 import kotlin.math.roundToInt
-
-private fun isNseMarketOpen(): Boolean {
-    val ist = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata"))
-    val dow = ist.get(Calendar.DAY_OF_WEEK)
-    if (dow == Calendar.SATURDAY || dow == Calendar.SUNDAY) return false
-    val timeInMin = ist.get(Calendar.HOUR_OF_DAY) * 60 + ist.get(Calendar.MINUTE)
-    // From 3 Aug 2026: keep live until latest equity close (F&O derivatives 15:40 IST).
-    val casGoLive = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata")).apply {
-        set(2026, Calendar.AUGUST, 3, 0, 0, 0)
-        set(Calendar.MILLISECOND, 0)
-    }
-    val closeMin = if (!ist.before(casGoLive)) (15 * 60 + 40) else (15 * 60 + 30)
-    return timeInMin in (9 * 60 + 15)..closeMin
-}
 
 /** Snapshot of advance/decline/unchanged share for the live breath graph. */
 private data class BreathSample(
@@ -145,7 +132,7 @@ fun HeatmapScreen(
     heatmapInterval: Int = 5_000,
     isActive: Boolean = true,
 ) {
-    val tapeLive = isNseMarketOpen() && heatmap?.marketOpen != false
+    val tapeLive = MarketSession.isOpen()
     var marketOpen by remember { mutableStateOf(tapeLive) }
     val breathHistory = remember { mutableStateListOf<BreathSample>() }
 
@@ -187,12 +174,12 @@ fun HeatmapScreen(
         }
     }
 
-    LaunchedEffect(heatmapInterval, isActive, heatmap?.marketOpen) {
+    LaunchedEffect(heatmapInterval, isActive) {
         if (!isActive) return@LaunchedEffect
         val pollMs = heatmapInterval.toLong().coerceIn(2_000L, 10_000L)
         while (true) {
             kotlinx.coroutines.delay(pollMs)
-            val live = isNseMarketOpen() && heatmap?.marketOpen != false
+            val live = MarketSession.isOpen()
             val waitingForSemiconductor = heatmap?.sectors?.none {
                 it.name.equals("Semiconductor", ignoreCase = true)
             } != false
@@ -282,7 +269,7 @@ fun HeatmapScreen(
                         fontSize = 14.sp,
                     )
                     Spacer(modifier = Modifier.height(12.dp))
-                    Button(onClick = onRefresh) { Text("Retry heatmap") }
+                    Button(onClick = onForceRefresh) { Text("Retry heatmap") }
                 }
             }
         }

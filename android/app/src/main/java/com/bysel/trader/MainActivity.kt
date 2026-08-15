@@ -529,6 +529,9 @@ fun BYSELApp(
         }
         mutableStateOf(migrated)
     }
+    LaunchedEffect(heatmapInterval) {
+        viewModel.setRefreshIntervalMs(heatmapInterval.toLong())
+    }
     val density = LocalDensity.current
     val windowLayout = rememberWindowLayoutInfo()
     val contentHorizontalPadding = if (windowLayout.isWide) 24.dp else 0.dp
@@ -987,7 +990,7 @@ fun BYSELApp(
                                         error = marketError ?: tradeError,
                                         walletBalance = walletBalance,
                                         watchlistSymbols = watchlistSymbols,
-                                        onRefresh = { viewModel.refreshQuotes(force = true) },
+                                        onRefresh = { viewModel.refreshQuotes(force = true, showSpinner = true) },
                                         onTradeClick = { symbol ->
                                             viewModel.fetchAndSelectQuote(symbol)
                                             openStockDetailTab()
@@ -1087,7 +1090,7 @@ fun BYSELApp(
                                         onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
                                         onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") },
                                         onRefresh = {
-                                            viewModel.refreshQuotes(force = true)
+                                            viewModel.refreshQuotes(force = true, showSpinner = true)
                                             viewModel.refreshWallet()
                                             viewModel.refreshMarketStatus()
                                         },
@@ -1185,7 +1188,7 @@ fun BYSELApp(
                                     backendBuckets = signalLabBuckets,
                                     isLoading = quotesRefreshing || heatmapLoading || signalLabBucketsLoading,
                                     onRefresh = {
-                                        viewModel.refreshQuotes(force = true)
+                                        viewModel.refreshQuotes(force = true, showSpinner = true)
                                         viewModel.loadMarketHeatmap()
                                         viewModel.loadSignalLabBuckets(force = true)
                                     },
@@ -1227,7 +1230,7 @@ fun BYSELApp(
                                     },
                                     isLoading = quotesRefreshing,
                                     error = marketError,
-                                    onRefresh = { viewModel.refreshQuotes(force = true) },
+                                    onRefresh = { viewModel.refreshQuotes(force = true, showSpinner = true) },
                                     onQuoteClick = { quote ->
                                         viewModel.setSelectedQuote(quote)
                                         openStockDetailTab()
@@ -1280,6 +1283,7 @@ fun BYSELApp(
                                         val clamped = interval.coerceIn(2_000, 10_000)
                                         heatmapInterval = clamped
                                         prefs.edit().putInt("heatmapInterval", clamped).apply()
+                                        viewModel.setRefreshIntervalMs(clamped.toLong())
                                     },
                                     liveQuotesEnabled = liveQuotesEnabled,
                                     onLiveQuotesChange = { enabled ->

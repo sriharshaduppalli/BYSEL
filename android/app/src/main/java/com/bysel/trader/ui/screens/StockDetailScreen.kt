@@ -74,6 +74,7 @@ import com.bysel.trader.ui.components.appOutlinedTextFieldColors
 import com.bysel.trader.ui.components.CandleLiteracyDetector
 import com.bysel.trader.ui.components.PriceHistoryChart
 import com.bysel.trader.ui.components.InfoChip
+import com.bysel.trader.ui.components.StockNotesIcon
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.viewmodel.TradingViewModel
 import java.text.SimpleDateFormat
@@ -249,9 +250,8 @@ fun StockDetailScreen(
         )
     }
 
-    DisposableEffect(quote.symbol, viewModel) {
+    LaunchedEffect(quote.symbol, viewModel) {
         viewModel.startFastRefresh(symbols = listOf(quote.symbol))
-        onDispose { viewModel.stopFastRefresh() }
     }
 
     // Fetch sentiment score for this stock
@@ -529,12 +529,15 @@ private fun StockDetailHeroCard(
                 verticalAlignment = Alignment.Top,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = quote.symbol,
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = theme.text,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = quote.symbol,
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = theme.text,
+                        )
+                        StockNotesIcon(symbol = quote.symbol)
+                    }
                     Text(
                         text = if (quote.pctChange >= 0.0) "Leadership candidate" else "Pressure candidate",
                         fontSize = 13.sp,

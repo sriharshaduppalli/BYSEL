@@ -335,6 +335,8 @@ data class IntradayTip(
     val title: String = "",
     val body: String = "",
     val category: String = "process",
+    val source: String = "session",
+    val evidence: String? = null,
 )
 
 data class IntradayTipsResponse(
@@ -345,6 +347,9 @@ data class IntradayTipsResponse(
     val tips: List<IntradayTip> = emptyList(),
     val disclaimer: String = "",
     val generatedAt: String = "",
+    val sampleSize: Int = 0,
+    val hasEnoughData: Boolean = false,
+    val paperNote: String = "",
 )
 
 data class InvestorTip(
@@ -352,6 +357,8 @@ data class InvestorTip(
     val title: String = "",
     val body: String = "",
     val category: String = "process",
+    val source: String = "topic",
+    val evidence: String? = null,
 )
 
 data class InvestorTopicInfo(
@@ -366,6 +373,9 @@ data class InvestorTipsResponse(
     val topics: List<InvestorTopicInfo> = emptyList(),
     val disclaimer: String = "",
     val generatedAt: String = "",
+    val sampleSize: Int = 0,
+    val hasEnoughData: Boolean = false,
+    val paperNote: String = "",
 )
 
 data class HistoryCandle(

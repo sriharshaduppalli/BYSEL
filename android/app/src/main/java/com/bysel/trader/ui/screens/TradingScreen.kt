@@ -75,6 +75,7 @@ import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
 import com.bysel.trader.ui.components.OrderRejectionBanner
 import com.bysel.trader.ui.components.RejectionCategory
 import com.bysel.trader.ui.components.resolveRejection
+import com.bysel.trader.ui.components.StockNotesIcon
 import com.bysel.trader.ui.components.WatchlistSortMode
 import com.bysel.trader.ui.components.sortedByWatchlistMode
 import com.bysel.trader.viewmodel.TradingViewModel
@@ -202,13 +203,11 @@ fun TradingScreen(
 ) {
     // Only warm the full quote universe while Trade is the active pager page
     // (adjacent pages stay composed via beyondBoundsPageCount).
-    DisposableEffect(viewModel, isActive) {
+    LaunchedEffect(viewModel, isActive) {
         if (isActive) {
+            // Do not stop the app-wide stream on leave — Home/Watchlist keep using it.
             viewModel.startFastRefresh()
             viewModel.loadAllQuotes()
-        }
-        onDispose {
-            if (isActive) viewModel.stopFastRefresh()
         }
     }
     // Prefetch browse catalog as soon as Trade is visible (not only when + Add opens).
@@ -1349,11 +1348,14 @@ fun TradingQuoteCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = quote.symbol,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = theme.text,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = quote.symbol,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = theme.text,
+                        )
+                        StockNotesIcon(symbol = quote.symbol)
+                    }
                     TickPriceText(
                         price = quote.last,
                         text = "₹${String.format("%.2f", quote.last)}",
@@ -1435,11 +1437,14 @@ private fun WatchlistInsightRow(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = insight.quote.symbol,
-                    fontWeight = FontWeight.Bold,
-                    color = LocalAppTheme.current.text
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = insight.quote.symbol,
+                        fontWeight = FontWeight.Bold,
+                        color = LocalAppTheme.current.text
+                    )
+                    StockNotesIcon(symbol = insight.quote.symbol)
+                }
                 Text(
                     text = "Conf ${insight.confidence}",
                     fontSize = 11.sp,
@@ -1908,12 +1913,15 @@ private fun TradeBottomSheetContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
-                Text(
-                    text = quote.symbol,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = LocalAppTheme.current.text
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = quote.symbol,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = LocalAppTheme.current.text
+                    )
+                    StockNotesIcon(symbol = quote.symbol)
+                }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),

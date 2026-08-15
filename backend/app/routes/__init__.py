@@ -1794,6 +1794,39 @@ async def market_status_endpoint():
     return is_market_open()
 
 
+def _habit_activity_for_user(
+    db: Session,
+    user,
+    *,
+    topic: str = "long_term",
+    kind: str = "session",
+) -> dict:
+    """Score paper-trade habits when a Bearer user is present. Never breaks anonymous tips."""
+    if user is None:
+        return {}
+    try:
+        from ..habits import activity_from_db, score_investor_habits, score_session_habits
+
+        raw = activity_from_db(db, int(user.id))
+        if kind == "investor":
+            return score_investor_habits(
+                raw.get("orders") or [],
+                holdings=raw.get("holdings") or [],
+                goals=raw.get("goals") or [],
+                alert_count=int(raw.get("alert_count") or 0),
+                wallet_balance=raw.get("wallet_balance"),
+                topic=topic,
+            )
+        return score_session_habits(
+            raw.get("orders") or [],
+            trigger_count=int(raw.get("trigger_count") or 0),
+            journal_entries=raw.get("journal") or [],
+        )
+    except Exception as exc:
+        logger.warning("habit_activity_failed user_id=%s reason=%s", getattr(user, "id", None), exc)
+        return {}
+
+
 @router.get("/market/intraday-tips", response_model=IntradayTipsResponse)
 async def market_intraday_tips_endpoint(
     limit: int = Query(3, ge=1, le=6),
@@ -1803,19 +1836,23 @@ async def market_intraday_tips_endpoint(
         le=1.0,
         description="Optional advances/(advances+declines) for mood-aware tip",
     ),
+    db: Session = Depends(get_db),
+    user=Depends(get_optional_current_user),
 ):
-    """Session-phase intraday habit tips (educational — not stock recommendations)."""
+    """Session-phase habit tips, personalized from paper trades when logged in."""
     from ..intraday_tips import build_intraday_tips
     from ..market_session import IST
     from .trading import NSE_HOLIDAYS_2026
 
     now_ist = datetime.now(IST)
     is_holiday = now_ist.strftime("%Y-%m-%d") in NSE_HOLIDAYS_2026
+    scored = _habit_activity_for_user(db, user, kind="session")
     payload = build_intraday_tips(
         limit=limit,
         advance_share=advanceShare,
         is_holiday=is_holiday,
         now=now_ist,
+        activity=scored or None,
     )
     return IntradayTipsResponse(
         phase=payload["phase"],
@@ -1825,6 +1862,9 @@ async def market_intraday_tips_endpoint(
         tips=[IntradayTip(**tip) for tip in payload.get("tips") or []],
         disclaimer=payload.get("disclaimer") or "",
         generatedAt=payload.get("generatedAt") or "",
+        sampleSize=int(payload.get("sampleSize") or 0),
+        hasEnoughData=bool(payload.get("hasEnoughData")),
+        paperNote=payload.get("paperNote") or "",
     )
 
 
@@ -1832,14 +1872,21 @@ async def market_intraday_tips_endpoint(
 async def market_investor_tips_endpoint(
     topic: str = Query(
         "long_term",
-        description="long_term | mutual_funds | ipo | fno",
+        description="long_term | mutual_funds | ipo | fno | sgb",
     ),
     limit: int = Query(3, ge=1, le=8),
+    db: Session = Depends(get_db),
+    user=Depends(get_optional_current_user),
 ):
-    """Long-horizon educational tips by topic (not product recommendations)."""
+    """Long-horizon educational tips, plus paper-book habits when logged in."""
     from ..investor_tips import build_investor_tips
 
-    payload = build_investor_tips(topic=topic, limit=limit)
+    scored = _habit_activity_for_user(db, user, topic=topic, kind="investor")
+    payload = build_investor_tips(
+        topic=topic,
+        limit=limit,
+        activity=scored or None,
+    )
     return InvestorTipsResponse(
         topic=payload["topic"],
         topicLabel=payload["topicLabel"],
@@ -1847,6 +1894,9 @@ async def market_investor_tips_endpoint(
         topics=[InvestorTopicInfo(**t) for t in payload.get("topics") or []],
         disclaimer=payload.get("disclaimer") or "",
         generatedAt=payload.get("generatedAt") or "",
+        sampleSize=int(payload.get("sampleSize") or 0),
+        hasEnoughData=bool(payload.get("hasEnoughData")),
+        paperNote=payload.get("paperNote") or "",
     )
 
 

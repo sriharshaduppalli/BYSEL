@@ -52,6 +52,43 @@ def test_quote_cache_evicts_expired_entries(monkeypatch):
     assert cache.size() == 0
 
 
+def test_fetch_quote_returns_stale_print_when_yahoo_fails(monkeypatch):
+    clock = {"now": 8000.0}
+    monkeypatch.setattr(market_data.time, "time", lambda: clock["now"])
+    monkeypatch.setattr(market_data, "quote_max_age_seconds", lambda: 5.0)
+
+    market_data._quote_cache.clear()
+    market_data._quote_cache.put("INFY", {"symbol": "INFY", "last": 1500.0, "pctChange": 1.2})
+    clock["now"] += 20
+
+    def _boom(_symbol):
+        raise RuntimeError("yahoo down")
+
+    monkeypatch.setattr(market_data.yf, "Ticker", _boom)
+    quote = market_data.fetch_quote("INFY")
+    assert quote["last"] == 1500.0
+    assert quote["symbol"] == "INFY"
+
+
+def test_fetch_quotes_skips_zero_last_and_keeps_stale(monkeypatch):
+    clock = {"now": 9000.0}
+    monkeypatch.setattr(market_data.time, "time", lambda: clock["now"])
+    monkeypatch.setattr(market_data, "quote_max_age_seconds", lambda: 5.0)
+
+    market_data._quote_cache.clear()
+    market_data._quote_cache.put("TCS", {"symbol": "TCS", "last": 3500.0, "pctChange": 0.4})
+    clock["now"] += 20
+
+    monkeypatch.setattr(market_data, "_fetch_batch_quotes", lambda *_args, **_kwargs: {
+        "TCS": {"symbol": "TCS", "last": 0.0, "pctChange": 0.0},
+    })
+    monkeypatch.setattr(market_data, "fetch_quote", lambda _symbol: {"symbol": "TCS", "last": 0.0})
+
+    quotes = market_data.fetch_quotes(["TCS"], max_age_seconds=5)
+    assert len(quotes) == 1
+    assert quotes[0]["last"] == 3500.0
+
+
 def test_news_cache_pruning_removes_expired_and_caps_size(monkeypatch):
     now = datetime(2026, 3, 16, 0, 0, 0)
     monkeypatch.setattr(ai_engine, "_NEWS_CACHE_MAX_SYMBOLS", 2)

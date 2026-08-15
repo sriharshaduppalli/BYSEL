@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, create_engine, text, inspect as sa_inspect
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, UniqueConstraint, create_engine, text, inspect as sa_inspect
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -74,6 +74,17 @@ class AlertModel(Base):
     alert_type = Column(String)  # ABOVE or BELOW
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class StockNoteModel(Base):
+    """Per-user private notes keyed by normalized symbol (e.g. RELIANCE.NS)."""
+    __tablename__ = "stock_notes"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    symbol = Column(String, nullable=False, index=True)
+    text = Column(String, nullable=False, default="")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True)
+    __table_args__ = (UniqueConstraint("user_id", "symbol", name="uq_stock_notes_user_symbol"),)
 
 
 class TradeJournalModel(Base):

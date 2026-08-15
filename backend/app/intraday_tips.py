@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, time
 from typing import Any, Optional
 
+from .habits import merge_habit_tips
 from .market_session import (
     CASH_OPEN,
     PRE_OPEN_START,
@@ -292,6 +293,7 @@ def build_intraday_tips(
     advance_share: Optional[float] = None,
     is_holiday: bool = False,
     now: datetime | None = None,
+    activity: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     now_ist = now.astimezone(IST) if now is not None else datetime.now(IST)
     phase_info = session_phase(now_ist, is_holiday=is_holiday)
@@ -299,7 +301,7 @@ def build_intraday_tips(
     bank = list(_TIP_BANKS.get(phase) or _TIP_BANKS["after_hours"])
 
     seed = now_ist.year * 10_000 + now_ist.timetuple().tm_yday * 100 + now_ist.hour
-    tips = _rotate(bank, seed, limit)
+    educational = [dict(tip, source="session", evidence=None) for tip in _rotate(bank, seed, max(limit, 3))]
 
     mood = None
     if advance_share is not None and phase_info.get("isOpen"):
@@ -309,10 +311,21 @@ def build_intraday_tips(
             mood = "bearish"
         else:
             mood = "mixed"
-        mood_tip = _MOOD_TIPS[mood]
-        # Prefer mood tip in first slot when session is live
-        tips = [mood_tip] + [t for t in tips if t["id"] != mood_tip["id"]]
-        tips = tips[:limit]
+        mood_tip = dict(_MOOD_TIPS[mood])
+        mood_tip.setdefault("source", "session")
+        mood_tip.setdefault("evidence", "Live advance/decline share this session")
+        educational = [mood_tip] + [t for t in educational if t["id"] != mood_tip["id"]]
+
+    personalized = list((activity or {}).get("habits") or [])
+    has_enough = bool((activity or {}).get("hasEnoughData"))
+    sample_size = int((activity or {}).get("sampleSize") or 0)
+    paper_note = str((activity or {}).get("paperNote") or "")
+    tips = merge_habit_tips(
+        personalized,
+        educational,
+        limit=limit,
+        has_enough_data=has_enough,
+    )
 
     return {
         "phase": phase,
@@ -322,4 +335,7 @@ def build_intraday_tips(
         "tips": tips,
         "disclaimer": DISCLAIMER,
         "generatedAt": now_ist.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "sampleSize": sample_size,
+        "hasEnoughData": has_enough,
+        "paperNote": paper_note,
     }

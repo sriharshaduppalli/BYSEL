@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 TRACE_HEADER = "X-Trace-Id"
 
 STREAM_PUSH_INTERVAL_MS = int(os.getenv("STREAM_PUSH_INTERVAL_MS", "1200"))
-STREAM_MAX_SYMBOLS = int(os.getenv("STREAM_MAX_SYMBOLS", "30"))
+STREAM_MAX_SYMBOLS = int(os.getenv("STREAM_MAX_SYMBOLS", "50"))
 STREAM_RESUME_BUFFER_SIZE = int(os.getenv("STREAM_RESUME_BUFFER_SIZE", "180"))
 
 _stream_lock = Lock()

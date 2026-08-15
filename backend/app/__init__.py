@@ -16,6 +16,7 @@ from .routes.auth import router as auth_router
 from .routes.streaming import get_stream_metrics_snapshot, router as streaming_router
 from .routes.ai_v2 import router as ai_v2_router
 from .routes.trade_journal import journal_router
+from .routes.stock_notes import router as stock_notes_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -247,6 +248,7 @@ app.include_router(auth_router, prefix="/auth")
 app.include_router(streaming_router)
 app.include_router(ai_v2_router)  # Enhanced AI analysis endpoints
 app.include_router(journal_router)  # AI Trade Journal
+app.include_router(stock_notes_router)
 
 # Public legal pages for Play Console / in-app "About" links.
 # Files live in backend/static/legal/{privacy,terms,licenses}.html

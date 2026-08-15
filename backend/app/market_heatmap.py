@@ -609,19 +609,21 @@ def _empty_heatmap_payload(mood_desc: str = "No heatmap data available.") -> Dic
 
 
 def _is_nse_market_open() -> bool:
-    ist = datetime.now().astimezone()
     try:
-        from zoneinfo import ZoneInfo
-        ist = datetime.now(ZoneInfo("Asia/Kolkata"))
+        from .market_session import is_within_equity_session
+
+        return is_within_equity_session()
     except Exception:
-        pass
-
-    if ist.weekday() >= 5:
-        return False
-
-    current_minutes = ist.hour * 60 + ist.minute
-    # Match Android / CAS: live window through F&O close 15:40 IST.
-    return (9 * 60 + 15) <= current_minutes <= (15 * 60 + 40)
+        ist = datetime.now().astimezone()
+        try:
+            from zoneinfo import ZoneInfo
+            ist = datetime.now(ZoneInfo("Asia/Kolkata"))
+        except Exception:
+            pass
+        if ist.weekday() >= 5:
+            return False
+        current_minutes = ist.hour * 60 + ist.minute
+        return (9 * 60 + 15) <= current_minutes <= (15 * 60 + 40)
 
 
 def _is_valid_heatmap_snapshot(payload: Optional[Dict]) -> bool:

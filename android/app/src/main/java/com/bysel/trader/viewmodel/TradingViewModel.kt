@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.firstOrNull
+import com.bysel.trader.utils.MarketSession
 import com.bysel.trader.utils.PromptBuilder
 import android.content.Intent
 import android.content.IntentFilter
@@ -371,7 +372,6 @@ class TradingViewModel(
     private var investorPortfoliosJob: Job? = null
     private var investorInsightsJob: Job? = null
 
-    private val AUTO_REFRESH_INTERVAL = 15_000L
     private val FAST_REFRESH_INTERVAL = 1_000L
     private val FOREGROUND_WARMUP_DEBOUNCE = 3_000L
     private val INITIAL_STATUS_WARMUP_DELAY = 150L
@@ -380,6 +380,7 @@ class TradingViewModel(
     private val HOLDINGS_STALE_THRESHOLD = 45_000L
     private val WALLET_STALE_THRESHOLD = 30_000L
     private val QUOTE_REFRESH_DEBOUNCE = 1_250L
+    private val QUOTE_SPINNER_TIMEOUT_MS = 12_000L
     private val ALL_QUOTES_WARMUP_INTERVAL = 10 * 60_000L
     private val SIGNAL_LAB_REFRESH_DEBOUNCE = 15_000L
     private val HEATMAP_REFRESH_DEBOUNCE = 1_200L
@@ -406,6 +407,9 @@ class TradingViewModel(
     private var holdingsRefreshJob: Job? = null
     private var heatmapJob: Job? = null
     private var keepaliveJob: Job? = null
+    private var quoteWatchdogJob: Job? = null
+    private var liveRefreshIntervalMs = 5_000L
+    private var liveRefreshSymbols: List<String> = emptyList()
     private val defaultSymbols = listOf(
         "RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN",
         "ICICIBANK", "ITC", "LT", "KOTAKBANK", "HINDUNILVR",
@@ -724,12 +728,19 @@ class TradingViewModel(
         val merged = _quotes.value.associateBy { it.symbol.uppercase() }.toMutableMap()
         incoming.forEach { quote ->
             val key = quote.symbol.uppercase()
-            merged[key] = quote.withLiquidityFrom(merged[key])
+            val existing = merged[key]
+            // Yahoo/empty shells must not wipe a last good print.
+            if (quote.last <= 0.0 && existing != null && existing.last > 0.0) return@forEach
+            merged[key] = quote.withLiquidityFrom(existing)
         }
         return merged.values.sortedBy { it.symbol }
     }
 
-    fun refreshQuotes(force: Boolean = false, symbolsOverride: List<String>? = null) {
+    fun refreshQuotes(
+        force: Boolean = false,
+        symbolsOverride: List<String>? = null,
+        showSpinner: Boolean = false,
+    ) {
         val symbols = symbolsOverride?.takeIf { it.isNotEmpty() } ?: trackedSymbols()
         val now = System.currentTimeMillis()
         if (!force && now - lastQuotesRefreshRequestAt < QUOTE_REFRESH_DEBOUNCE) return
@@ -737,7 +748,15 @@ class TradingViewModel(
 
         quotesRefreshJob?.cancel()
         quotesRefreshJob = viewModelScope.launch {
-            _quotesRefreshing.value = true
+            val spinnerTimeout = if (showSpinner) {
+                _quotesRefreshing.value = true
+                launch {
+                    kotlinx.coroutines.delay(QUOTE_SPINNER_TIMEOUT_MS)
+                    _quotesRefreshing.value = false
+                }
+            } else {
+                null
+            }
             try {
                 try {
                     val cached = repository.getCachedQuotes(symbols).firstOrNull().orEmpty()
@@ -760,6 +779,7 @@ class TradingViewModel(
                             _isLoading.value = false
                             markQuoteUpdate()
                             syncSelectedQuoteFrom(_quotes.value)
+                            evaluateAlerts(result.data)
                             maybeAutoEvaluateTriggers(_quotes.value.map { it.symbol })
                             // Reset paging after success
                             _pagedQuotes.value = emptyList()
@@ -782,6 +802,7 @@ class TradingViewModel(
                     }
                 }
             } finally {
+                spinnerTimeout?.cancel()
                 _quotesRefreshing.value = false
                 _isLoading.value = false
             }
@@ -861,6 +882,7 @@ class TradingViewModel(
         refreshQuotes(
             force = true,
             symbolsOverride = if (holdingSymbols.isEmpty()) null else holdingSymbols + indexSymbols,
+            showSpinner = true,
         )
         loadPortfolioHealth()
     }
@@ -1279,16 +1301,23 @@ class TradingViewModel(
      * the market appears open (`marketStatus.isOpen == true`).
      */
     fun startFastRefresh(intervalMs: Long = FAST_REFRESH_INTERVAL, symbols: List<String>? = null) {
-        val effectiveIntervalMs = intervalMs.coerceAtLeast(250L)
-        val symbolsToTrack = symbols?.map { it.trim().uppercase() }?.filter { it.isNotBlank() }?.distinct()
-            ?: trackedSymbols()
-        // avoid starting multiple jobs
-        if (autoRefreshJob?.isActive == true) return
-        // respect global enabled flag
+        if (intervalMs >= 2_000L) {
+            liveRefreshIntervalMs = intervalMs.coerceIn(2_000L, 10_000L)
+        }
+        val extra = symbols?.map { it.trim().uppercase() }?.filter { it.isNotBlank() } ?: emptyList()
+        val symbolsToTrack = trackedSymbols(extra)
+        if (symbolsToTrack.isEmpty()) return
         if (!_fastRefreshEnabled.value) return
+
+        val sameJob = autoRefreshJob?.isActive == true &&
+            liveRefreshSymbols.size == symbolsToTrack.size &&
+            liveRefreshSymbols.containsAll(symbolsToTrack)
+        if (sameJob) return
+
+        liveRefreshSymbols = symbolsToTrack
+        autoRefreshJob?.cancel()
         _streamHealth.value = StreamHealth.RECONNECTING
         autoRefreshJob = viewModelScope.launch {
-            // Stale watchdog: if no update in 8 s while job is running, flag as RECONNECTING
             launch {
                 while (isActive) {
                     kotlinx.coroutines.delay(8_000L)
@@ -1298,25 +1327,22 @@ class TradingViewModel(
                     }
                 }
             }
-            var lastStreamEmitAt = 0L
             try {
-                repository.streamLiveQuotes(symbolsToTrack).collectLatest { result ->
-                    if (!_fastRefreshPlaying.value) return@collectLatest
-                    if (_requireCharging.value && !isDeviceCharging()) return@collectLatest
-                    if (_requireUnmetered.value && !isOnUnmeteredNetwork()) return@collectLatest
-                    val isMarketOpen = _marketStatus.value?.isOpen ?: true
-                    if (!isMarketOpen) return@collectLatest
+                repository.streamLiveQuotes(symbolsToTrack).collect { result ->
+                    if (!_fastRefreshPlaying.value) return@collect
+                    if (_requireCharging.value && !isDeviceCharging()) return@collect
+                    if (_requireUnmetered.value && !isOnUnmeteredNetwork()) return@collect
+                    val serverOpen = _marketStatus.value?.isOpen
+                    val localOpen = MarketSession.isOpen()
+                    // Apply ticks while the IST session is open even if /market/status
+                    // is stale-closed. After hours, skip no-op reprints.
+                    if (!localOpen && serverOpen != true) return@collect
 
                     when (result) {
                         is Result.Success -> {
-                            val now = System.currentTimeMillis()
-                            if (now - lastStreamEmitAt < effectiveIntervalMs) {
-                                return@collectLatest
-                            }
-                            lastStreamEmitAt = now
                             _quotes.value = mergeQuotesWithExisting(result.data)
                             overlayHoldingsFromQuotes(result.data)
-                            markQuoteUpdate(now)
+                            markQuoteUpdate()
                             syncSelectedQuoteFrom(result.data)
                             evaluateAlerts(result.data)
                             maybeAutoEvaluateTriggers(result.data.map { it.symbol })
@@ -1327,6 +1353,27 @@ class TradingViewModel(
                 }
             } catch (_: Exception) {
                 // ignore transient stream interruptions
+            }
+        }
+    }
+
+    fun setRefreshIntervalMs(intervalMs: Long) {
+        liveRefreshIntervalMs = intervalMs.coerceIn(2_000L, 10_000L)
+    }
+
+    private fun startQuoteWatchdog() {
+        if (quoteWatchdogJob?.isActive == true) return
+        quoteWatchdogJob = viewModelScope.launch {
+            while (isActive) {
+                kotlinx.coroutines.delay(liveRefreshIntervalMs.coerceIn(2_000L, 10_000L))
+                if (!MarketSession.isOpen()) continue
+                val staleFor = maxOf(QUOTE_STALE_THRESHOLD, liveRefreshIntervalMs)
+                if (System.currentTimeMillis() - lastQuotesRefreshAt > staleFor) {
+                    refreshQuotes(force = true, showSpinner = false)
+                }
+                if (_fastRefreshEnabled.value && autoRefreshJob?.isActive != true) {
+                    startFastRefresh(symbols = trackedSymbols())
+                }
             }
         }
     }
@@ -1396,12 +1443,15 @@ class TradingViewModel(
             if (_fastRefreshEnabled.value) {
                 startFastRefresh(symbols = trackedSymbols())
             }
+            startQuoteWatchdog()
             startKeepaliveLoop()
         }
     }
 
     fun onAppBackgroundPause() {
         stopFastRefresh()
+        quoteWatchdogJob?.cancel()
+        quoteWatchdogJob = null
         keepaliveJob?.cancel()
         keepaliveJob = null
         // Drop in-flight heatmap poll work so return-to-app is not stuck behind it.
@@ -2909,7 +2959,9 @@ class TradingViewModel(
         val hasSemiconductor = current?.sectors?.any {
             it.name.equals("Semiconductor", ignoreCase = true)
         } == true
-        val sessionClosed = !isNseMarketOpen() || current?.marketOpen == false
+        // Freeze only when the local IST session is closed. A leftover
+        // marketOpen=false snapshot must not block the next open session.
+        val sessionClosed = !MarketSession.isOpen()
         if (!force && sessionClosed && hasRealSnapshot && hasSemiconductor) return
 
         val now = System.currentTimeMillis()
@@ -2950,20 +3002,6 @@ class TradingViewModel(
                 _heatmapLoading.value = false
             }
         }
-    }
-
-    private fun isNseMarketOpen(): Boolean {
-        val ist = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Kolkata"))
-        val dow = ist.get(java.util.Calendar.DAY_OF_WEEK)
-        if (dow == java.util.Calendar.SATURDAY || dow == java.util.Calendar.SUNDAY) return false
-        val timeInMin = ist.get(java.util.Calendar.HOUR_OF_DAY) * 60 + ist.get(java.util.Calendar.MINUTE)
-        // From 3 Aug 2026: live window through F&O derivatives close 15:40 IST (CAS regime).
-        val casGoLive = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Kolkata")).apply {
-            set(2026, java.util.Calendar.AUGUST, 3, 0, 0, 0)
-            set(java.util.Calendar.MILLISECOND, 0)
-        }
-        val closeMin = if (!ist.before(casGoLive)) (15 * 60 + 40) else (15 * 60 + 30)
-        return timeInMin in (9 * 60 + 15)..closeMin
     }
 
     fun loadSignalLabBuckets(force: Boolean = false, limitPerBucket: Int = 8) {

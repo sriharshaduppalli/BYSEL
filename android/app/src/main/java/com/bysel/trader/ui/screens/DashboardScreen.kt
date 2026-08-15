@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.bysel.trader.data.LocalHabitInsights
 import com.bysel.trader.data.PracticeHabitStore
 import com.bysel.trader.data.models.Holding
 import com.bysel.trader.data.models.IntradayTip
@@ -93,10 +94,9 @@ import com.bysel.trader.ui.theme.byselCardColors
 import com.bysel.trader.ui.theme.byselCardElevation
 import com.bysel.trader.ui.theme.byselSectionSurface
 import com.bysel.trader.ui.viewmodel.DashboardViewModel
+import com.bysel.trader.utils.MarketSession
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.util.Calendar
-import java.util.TimeZone
 private data class DashboardMetric(
     val title: String,
     val value: String,
@@ -366,6 +366,15 @@ fun DashboardScreen(
 
     LaunchedEffect(personalNewsSymbols) {
         dashboardViewModel.refreshMarketNews(personalNewsSymbols)
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(20_000)
+            if (MarketSession.isOpen()) {
+                dashboardViewModel.refreshMarketMovers(showSpinner = false)
+            }
+        }
     }
 
     LaunchedEffect(practiceIdeas) {
@@ -1253,7 +1262,17 @@ fun DashboardContent(
         }
 
         item {
-            val tipsPayload = intradayTips ?: buildLocalIntradayTips(marketStatus)
+            val localSession = LocalHabitInsights.sessionHabits(
+                habit = practiceHabit,
+                progress = practiceProgress,
+                holdings = holdings,
+                watchlistSize = watchlistSymbols.size,
+            )
+            val tipsPayload = LocalHabitInsights.mergeSession(
+                remote = intradayTips,
+                local = localSession,
+                fallback = buildLocalIntradayTips(marketStatus),
+            )
             IntradayTipsSection(
                 phaseLabel = tipsPayload.phaseLabel,
                 tips = tipsPayload.tips,
@@ -1262,21 +1281,40 @@ fun DashboardContent(
                 },
                 loading = intradayTipsLoading && tipsPayload.tips.isEmpty(),
                 mood = tipsPayload.mood,
+                paperNote = tipsPayload.paperNote,
+                sampleSize = tipsPayload.sampleSize,
             )
         }
 
         item {
+            val remoteInvestor = if (investorTips.tips.isEmpty()) {
+                localInvestorTips(investorTipTopic)
+            } else {
+                investorTips
+            }
+            val mergedInvestor = LocalHabitInsights.mergeInvestor(
+                remote = remoteInvestor,
+                local = LocalHabitInsights.investorHabits(
+                    habit = practiceHabit,
+                    progress = practiceProgress,
+                    holdings = holdings,
+                    watchlistSize = watchlistSymbols.size,
+                    topic = investorTipTopic,
+                ),
+            )
             InvestorTipsCard(
                 title = "Investor habits",
-                topicLabel = investorTips.topicLabel,
-                tips = investorTips.tips.ifEmpty { localInvestorTips(investorTipTopic).tips },
-                disclaimer = investorTips.disclaimer.ifBlank {
+                topicLabel = mergedInvestor.topicLabel,
+                tips = mergedInvestor.tips,
+                disclaimer = mergedInvestor.disclaimer.ifBlank {
                     "Educational investor habits — not stock, fund, or IPO recommendations."
                 },
-                loading = investorTipsLoading && investorTips.tips.isEmpty(),
-                topics = investorTips.topics.ifEmpty { localInvestorTips("long_term").topics },
+                loading = investorTipsLoading && mergedInvestor.tips.isEmpty(),
+                topics = mergedInvestor.topics.ifEmpty { localInvestorTips("long_term").topics },
                 selectedTopic = investorTipTopic,
                 onTopicSelected = { dashboardViewModel.selectInvestorTipTopic(it) },
+                paperNote = mergedInvestor.paperNote,
+                sampleSize = mergedInvestor.sampleSize,
             )
         }
 
@@ -1430,11 +1468,17 @@ private fun DashboardHeroCard(
                         text = marketMoodTitle,
                         style = MaterialTheme.typography.titleMedium,
                         color = theme.text,
+                        maxLines = 2,
+                        softWrap = true,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = marketMoodDetail,
                         style = MaterialTheme.typography.bodySmall,
                         color = theme.textSecondary,
+                        maxLines = 3,
+                        softWrap = true,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 FilterChip(
@@ -1519,12 +1563,20 @@ private fun DashboardHeroCard(
                 }
                 if (leadQuote != null) {
                     Button(onClick = onOpenLead) {
-                        Text("Open ${leadQuote.symbol}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            text = "Open ${leadQuote.symbol}",
+                            maxLines = 2,
+                            softWrap = true,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 InfoChip(label = { Text("$headlineCount headlines") })
                 InfoChip(label = { Text("$positiveCount up / $negativeCount down") })
                 if (leadQuote != null) {
@@ -1533,7 +1585,8 @@ private fun DashboardHeroCard(
                         label = {
                             Text(
                                 text = "${leadQuote.symbol} ${formatSignedPercent(leadQuote.pctChange)}",
-                                maxLines = 1,
+                                maxLines = 2,
+                                softWrap = true,
                                 overflow = TextOverflow.Ellipsis,
                             )
                         },
@@ -1560,7 +1613,9 @@ private fun DashboardMetricsRow(metrics: List<DashboardMetric>) {
     ) {
         items(metrics, key = { it.title }) { metric ->
             Card(
-                modifier = Modifier.width(180.dp),
+                modifier = Modifier
+                    .width(200.dp)
+                    .heightIn(min = 112.dp),
                 colors = byselCardColors(),
                 elevation = byselCardElevation(),
                 border = byselCardBorder(),
@@ -1574,15 +1629,19 @@ private fun DashboardMetricsRow(metrics: List<DashboardMetric>) {
                         metric.title,
                         color = LocalAppTheme.current.textSecondary,
                         fontSize = 12.sp,
-                        maxLines = 1,
+                        lineHeight = 16.sp,
+                        maxLines = 2,
+                        softWrap = true,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         metric.value,
                         color = metric.accent,
-                        fontSize = 18.sp,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 1,
+                        lineHeight = 22.sp,
+                        maxLines = 2,
+                        softWrap = true,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
@@ -1591,6 +1650,7 @@ private fun DashboardMetricsRow(metrics: List<DashboardMetric>) {
                         fontSize = 12.sp,
                         lineHeight = 17.sp,
                         maxLines = 3,
+                        softWrap = true,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
@@ -1628,12 +1688,18 @@ private fun HomeActionRail(actions: List<HomeAction>) {
                         color = LocalAppTheme.current.text,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp,
+                        lineHeight = 18.sp,
+                        maxLines = 2,
+                        softWrap = true,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = action.subtitle,
                         color = LocalAppTheme.current.textSecondary,
                         fontSize = 12.sp,
+                        lineHeight = 16.sp,
                         maxLines = 2,
+                        softWrap = true,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
@@ -1673,11 +1739,14 @@ private fun HomeVariantSwitcher(
                         onClick = { onVariantSelected(variant) },
                         label = {
                             Text(
-                                if (selectedVariant == variant) {
+                                text = if (selectedVariant == variant) {
                                     "● ${variant.title}: ${variant.subtitle}"
                                 } else {
                                     "${variant.title}: ${variant.subtitle}"
-                                }
+                                },
+                                maxLines = 2,
+                                softWrap = true,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         },
                     )
@@ -1736,11 +1805,22 @@ private fun HomeQuoteBoardCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(quote.symbol, color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = quote.symbol,
+                        color = LocalAppTheme.current.text,
+                        fontWeight = FontWeight.Bold,
+                        lineHeight = 20.sp,
+                        maxLines = 2,
+                        softWrap = true,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                     Text(
                         text = "₹${String.format("%.2f", quote.last)}",
                         color = LocalAppTheme.current.textSecondary,
                         fontSize = 12.sp,
+                        maxLines = 2,
+                        softWrap = true,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 IconButton(onClick = onPinClick) {
@@ -1799,6 +1879,10 @@ private fun HomeSignalCard(
                 text = bucket.title,
                 color = LocalAppTheme.current.text,
                 fontWeight = FontWeight.Bold,
+                lineHeight = 20.sp,
+                maxLines = 2,
+                softWrap = true,
+                overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = "${bucket.quotes.size} live setup${if (bucket.quotes.size == 1) "" else "s"}",
@@ -1811,13 +1895,16 @@ private fun HomeSignalCard(
                 fontSize = 12.sp,
                 lineHeight = 18.sp,
                 maxLines = 3,
+                softWrap = true,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = bucket.quotes.take(3).joinToString(" • ") { it.symbol },
                 color = LocalAppTheme.current.textSecondary,
                 fontSize = 12.sp,
-                maxLines = 1,
+                lineHeight = 16.sp,
+                maxLines = 2,
+                softWrap = true,
                 overflow = TextOverflow.Ellipsis,
             )
             TextButton(
@@ -1845,15 +1932,7 @@ private fun MarketPulseHero(
             quotes.firstOrNull { it.symbol.equals(symbol, ignoreCase = true) }
         }
     }
-    val sessionOpen = marketStatus?.isOpen ?: run {
-        val ist = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata"))
-        val dow = ist.get(Calendar.DAY_OF_WEEK)
-        if (dow == Calendar.SATURDAY || dow == Calendar.SUNDAY) false
-        else {
-            val mins = ist.get(Calendar.HOUR_OF_DAY) * 60 + ist.get(Calendar.MINUTE)
-            mins in (9 * 60 + 15)..(15 * 60 + 30)
-        }
-    }
+    val sessionOpen = marketStatus?.isOpen ?: MarketSession.isOpen()
     val sessionLabel = marketStatus?.message
         ?: if (sessionOpen) "NSE session live" else "Market closed · last session levels"
     val breadthTotal = (positiveCount + negativeCount).coerceAtLeast(1)
@@ -1895,7 +1974,11 @@ private fun MarketPulseHero(
                     Text(
                         text = moodTitle,
                         fontSize = 12.sp,
+                        lineHeight = 16.sp,
                         color = theme.textSecondary,
+                        maxLines = 2,
+                        softWrap = true,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 Row(
@@ -1927,22 +2010,29 @@ private fun MarketPulseHero(
             Text(
                 text = sessionLabel,
                 fontSize = 11.sp,
+                lineHeight = 15.sp,
                 color = theme.textSecondary,
+                maxLines = 2,
+                softWrap = true,
+                overflow = TextOverflow.Ellipsis,
             )
 
             if (indices.isNotEmpty()) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Top,
                 ) {
                     indices.take(3).forEach { quote ->
                         val accent = if (quote.pctChange >= 0) theme.positive else theme.negative
                         Column(
                             modifier = Modifier
                                 .weight(1f)
+                                .heightIn(min = 78.dp)
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(theme.surface.copy(alpha = 0.55f))
-                                .padding(10.dp),
+                                .padding(horizontal = 8.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
                         ) {
                             Text(
                                 text = when (quote.symbol.uppercase()) {
@@ -1950,25 +2040,31 @@ private fun MarketPulseHero(
                                     "BANKNIFTY" -> "BANK NIFTY"
                                     else -> quote.symbol.uppercase()
                                 },
-                                fontSize = 10.sp,
+                                fontSize = 11.sp,
+                                lineHeight = 14.sp,
                                 color = theme.textSecondary,
                                 fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
+                                maxLines = 2,
+                                softWrap = true,
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
                                 text = formatInr(quote.last, decimals = 2),
-                                fontSize = 13.sp,
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = theme.text,
-                                maxLines = 1,
+                                maxLines = 2,
+                                softWrap = true,
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
                                 text = formatSignedPercent(quote.pctChange),
                                 fontSize = 11.sp,
+                                lineHeight = 14.sp,
                                 color = accent,
                                 fontWeight = FontWeight.Medium,
+                                maxLines = 1,
                             )
                         }
                     }
@@ -1978,14 +2074,26 @@ private fun MarketPulseHero(
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Top,
                 ) {
-                    Text("Session breadth", fontSize = 11.sp, color = theme.textSecondary)
+                    Text(
+                        text = "Session breadth",
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                        color = theme.textSecondary,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 2,
+                        softWrap = true,
+                    )
                     Text(
                         text = "$positiveCount up · $negativeCount down",
                         fontSize = 11.sp,
+                        lineHeight = 14.sp,
                         fontWeight = FontWeight.Medium,
                         color = theme.text,
+                        maxLines = 2,
+                        softWrap = true,
                     )
                 }
                 Box(
@@ -2014,6 +2122,8 @@ private fun IntradayTipsSection(
     disclaimer: String,
     loading: Boolean,
     mood: String? = null,
+    paperNote: String = "",
+    sampleSize: Int = 0,
 ) {
     val theme = LocalAppTheme.current
     Column(
@@ -2042,12 +2152,14 @@ private fun IntradayTipsSection(
                     },
                     fontSize = 11.sp,
                     color = theme.textSecondary,
-                    maxLines = 1,
+                    lineHeight = 14.sp,
+                    maxLines = 2,
+                    softWrap = true,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
             Text(
-                text = "Habits",
+                text = if (tips.any { it.source.equals("paper", true) }) "Paper book" else "Habits",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
                 color = theme.primary,
@@ -2077,18 +2189,50 @@ private fun IntradayTipsSection(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = theme.text,
-                        maxLines = 1,
+                        lineHeight = 16.sp,
+                        maxLines = 2,
+                        softWrap = true,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = tip.body,
                         fontSize = 11.sp,
                         color = theme.textSecondary,
-                        maxLines = 3,
+                        lineHeight = 15.sp,
+                        maxLines = 4,
+                        softWrap = true,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    val meta = buildString {
+                        if (tip.source.equals("paper", true)) append("From your paper trades")
+                        else append("Session cue")
+                        if (!tip.evidence.isNullOrBlank()) append(" · ${tip.evidence}")
+                    }
+                    Text(
+                        text = meta,
+                        fontSize = 10.sp,
+                        color = theme.primary.copy(alpha = 0.85f),
+                        lineHeight = 13.sp,
+                        maxLines = 2,
+                        softWrap = true,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
+        }
+        val note = when {
+            paperNote.isNotBlank() -> paperNote
+            sampleSize > 0 -> "Based on $sampleSize paper fills (IST windows)."
+            else -> ""
+        }
+        if (note.isNotBlank()) {
+            Text(
+                text = note,
+                fontSize = 10.sp,
+                color = theme.textSecondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         Text(
             text = disclaimer,
@@ -2101,96 +2245,61 @@ private fun IntradayTipsSection(
 }
 
 private fun buildLocalIntradayTips(marketStatus: MarketStatus?): IntradayTipsResponse {
-    val ist = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata"))
-    val mins = ist.get(Calendar.HOUR_OF_DAY) * 60 + ist.get(Calendar.MINUTE)
-    val dow = ist.get(Calendar.DAY_OF_WEEK)
-    val closed = marketStatus?.isOpen == false
-    val (phase, label, tips) = when {
-        dow == Calendar.SATURDAY || dow == Calendar.SUNDAY -> Triple(
-            "weekend",
-            "Weekend",
-            listOf(
-                IntradayTip("wk_journal", "Weekend review", "Tag last week's paper trades and pick one process fix for Monday.", "process"),
-                IntradayTip("wk_calendar", "Scan the week ahead", "Note RBI/Fed/earnings dates — busy event days favour smaller size.", "risk"),
-                IntradayTip("wk_watchlist", "Trim the watchlist", "Keep 5–8 liquid names with a clear level to avoid FOMO entries.", "process"),
-            ),
+    val isHoliday = marketStatus?.message?.contains("holiday", ignoreCase = true) == true
+    val phase = MarketSession.phase(isHoliday = isHoliday)
+    val tips = when (phase.id) {
+        "weekend" -> listOf(
+            IntradayTip("wk_journal", "Weekend review", "Tag last week's paper trades: plan followed? size too large? one process fix for Monday.", "process", "session"),
+            IntradayTip("wk_calendar", "Scan the week ahead", "Note RBI/Fed/earnings dates — busy event days favour smaller size or sitting out.", "risk", "session"),
+            IntradayTip("wk_watchlist", "Trim the watchlist", "Keep 5–8 liquid names with a clear level to avoid FOMO entries.", "process", "session"),
         )
-        mins < 9 * 60 -> Triple(
-            "pre_market",
-            "Pre-market",
-            listOf(
-                IntradayTip("pm_levels", "Mark key levels", "Note prior day high/low and invalidation before 9:15.", "process"),
-                IntradayTip("pm_news", "Headline check", "If you can't name the risk, skip the trade.", "risk"),
-                IntradayTip("pm_size", "Pre-commit size", "Decide max loss in ₹ before the open.", "risk"),
-            ),
+        "holiday" -> listOf(
+            IntradayTip("hol_gap", "Holiday gap risk", "Overnight news can gap the reopen. Prefer smaller size on the next cash session.", "risk", "session"),
+            IntradayTip("hol_plan", "Prep, don't chase", "Write entry/stop/target while the tape is shut — decide before the open auction.", "process", "session"),
         )
-        mins < 9 * 60 + 15 -> Triple(
-            "pre_open",
-            "Pre-open auction",
-            listOf(
-                IntradayTip("po_auction", "Pre-open is noisy", "Wait for continuous session before chasing auction prints.", "session"),
-                IntradayTip("po_orders", "Order discipline", "Prefer limits near your level — market orders into the open pay spreads.", "process"),
-            ),
+        "pre_market" -> listOf(
+            IntradayTip("pm_levels", "Mark key levels", "Note prior day high/low and invalidation before 9:15 IST.", "process", "session"),
+            IntradayTip("pm_news", "Headline check", "If you can't name the risk, skip the paper trade.", "risk", "session"),
+            IntradayTip("pm_size", "Pre-commit size", "Decide max loss in ₹ before the open. Intraday size should survive a bad first hour.", "risk", "session"),
         )
-        mins <= 15 * 60 + 40 && !closed -> when {
-            mins < 10 * 60 + 15 -> Triple(
-                "first_hour",
-                "First hour",
-                listOf(
-                    IntradayTip("fh_patience", "First-hour volatility", "Let an opening range form before chasing breakouts.", "session"),
-                    IntradayTip("fh_stop", "Stop first, entry second", "No stop where the thesis dies = no trade.", "process"),
-                    IntradayTip("fh_fomo", "Skip the gap chase", "Late FOMO into already-extended opens often has poor R:R.", "psychology"),
-                ),
-            )
-            mins < 12 * 60 -> Triple(
-                "mid_morning",
-                "Mid-morning",
-                listOf(
-                    IntradayTip("mm_trend", "Trade with breadth", "Strong advances → pullback longs; heavy declines → tighten risk.", "session"),
-                    IntradayTip("mm_scale", "Scale, don't all-in", "Don't average losers mid-morning.", "risk"),
-                ),
-            )
-            mins < 13 * 60 + 30 -> Triple(
-                "lunch_lull",
-                "Midday lull",
-                listOf(
-                    IntradayTip("ll_chop", "Midday chop zone", "Smaller size or wait — fake breaks are common in thin volume.", "session"),
-                    IntradayTip("ll_revenge", "No revenge trades", "After a stop-out, step away 10 minutes.", "psychology"),
-                ),
-            )
-            mins < 14 * 60 + 45 -> Triple(
-                "afternoon",
-                "Afternoon",
-                listOf(
-                    IntradayTip("af_size_down", "Cut size into the close", "New positions after 2:30 need a stronger reason.", "risk"),
-                    IntradayTip("af_time_stop", "Time stops matter", "If it hasn't worked by mid-afternoon, reassess.", "process"),
-                ),
-            )
-            else -> Triple(
-                "closing_window",
-                "Closing window",
-                listOf(
-                    IntradayTip("cw_cas", "Know the CAS clock", "F&O cash continuous ~3:15, CAS ~3:35, derivatives ~3:40 — broker MIS may square earlier.", "session"),
-                    IntradayTip("cw_flat", "Intraday → flat", "Square MIS with a time buffer; last minutes are chaotic.", "risk"),
-                    IntradayTip("cw_no_lottery", "No closing lottery", "Don't double size in the last 20 minutes to 'make the day back'.", "psychology"),
-                ),
-            )
-        }
-        else -> Triple(
-            "after_hours",
-            "After hours",
-            listOf(
-                IntradayTip("ah_review", "After-hours debrief", "Grade process, not P&L.", "process"),
-                IntradayTip("ah_rest", "Protect attention", "Stop refreshing after close — fresh decisions need a clear head at 9:15.", "psychology"),
-            ),
+        "pre_open" -> listOf(
+            IntradayTip("po_auction", "Pre-open is noisy", "9:00–9:15 discovery can fake breakouts. Wait for the continuous session.", "session", "session"),
+            IntradayTip("po_orders", "Order discipline", "Prefer limits near your level — market orders into the open pay spreads.", "process", "session"),
+        )
+        "first_hour" -> listOf(
+            IntradayTip("fh_patience", "First-hour volatility", "Let an opening range form (15–30 min) before chasing breakouts.", "session", "session"),
+            IntradayTip("fh_stop", "Stop first, entry second", "If you can't place a stop where the thesis dies, you don't have a trade.", "process", "session"),
+            IntradayTip("fh_fomo", "Skip the gap chase", "Late FOMO into already-extended opens often has poor R:R.", "psychology", "session"),
+        )
+        "mid_morning" -> listOf(
+            IntradayTip("mm_trend", "Trade with breadth", "Strong advances → pullback longs; heavy declines → tighten risk.", "session", "session"),
+            IntradayTip("mm_scale", "Scale, don't all-in", "Don't average losers mid-morning — that is how a practice day blows up.", "risk", "session"),
+        )
+        "lunch_lull" -> listOf(
+            IntradayTip("ll_chop", "Midday chop zone", "12:00–13:30 IST often ranges. Smaller size or wait — fake breaks are common.", "session", "session"),
+            IntradayTip("ll_revenge", "No revenge trades", "After a stop-out, step away 10 minutes. The next impulse ticket is rarely the best idea.", "psychology", "session"),
+        )
+        "afternoon" -> listOf(
+            IntradayTip("af_size_down", "Cut size into the close", "New paper positions after 14:30 IST need a stronger reason — less time for the thesis.", "risk", "session"),
+            IntradayTip("af_time_stop", "Time stops matter", "If it hasn't worked by mid-afternoon, reassess. Dead capital needs a decision.", "process", "session"),
+        )
+        "closing_window" -> listOf(
+            IntradayTip("cw_cas", "Know the CAS clock", "From 3 Aug 2026: F&O cash continuous ~15:15, CAS ~15:35, derivatives ~15:40 IST — broker MIS may square earlier.", "session", "session"),
+            IntradayTip("cw_flat", "Intraday → flat", "Don't leave MIS hopes overnight. Square off with a time buffer — last minutes are chaotic.", "risk", "session"),
+            IntradayTip("cw_no_lottery", "No closing lottery", "Don't double size in the last 20 minutes to 'make the day back'. That is variance, not skill.", "psychology", "session"),
+        )
+        else -> listOf(
+            IntradayTip("ah_review", "After-hours debrief", "Grade process, not P&L. A green day with broken rules is still a bad practice day.", "process", "session"),
+            IntradayTip("ah_rest", "Protect attention", "Stop refreshing after close — fresh decisions need a clear head at 9:15 IST.", "psychology", "session"),
         )
     }
     return IntradayTipsResponse(
-        phase = phase,
-        phaseLabel = label,
-        isOpen = marketStatus?.isOpen == true,
+        phase = phase.id,
+        phaseLabel = phase.label,
+        isOpen = phase.isOpen && marketStatus?.isOpen != false,
         tips = tips,
         disclaimer = "Educational session habits — not stock tips or investment advice.",
+        paperNote = "IST session cues until enough paper fills are logged.",
     )
 }
 
@@ -2846,6 +2955,7 @@ private fun IdeasRail(
             items(ideas, key = { it.title }) { idea ->
                 Row(
                     modifier = Modifier
+                        .widthIn(min = 148.dp, max = 200.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .background(theme.card)
                         .clickable(onClick = idea.onClick)
@@ -2859,18 +2969,24 @@ private fun IdeasRail(
                         tint = theme.primary,
                         modifier = Modifier.size(18.dp),
                     )
-                    Column {
+                    Column(modifier = Modifier.weight(1f, fill = false)) {
                         Text(
                             text = idea.title,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = theme.text,
+                            lineHeight = 16.sp,
+                            maxLines = 2,
+                            softWrap = true,
+                            overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             text = idea.subtitle,
                             fontSize = 10.sp,
                             color = theme.textSecondary,
-                            maxLines = 1,
+                            lineHeight = 13.sp,
+                            maxLines = 2,
+                            softWrap = true,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }

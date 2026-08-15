@@ -51,11 +51,14 @@ fun QuoteCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column {
-                Text(
-                    text = quote.symbol,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = theme.text,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = quote.symbol,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = theme.text,
+                    )
+                    StockNotesIcon(symbol = quote.symbol)
+                }
                 TickPriceText(
                     price = quote.last,
                     text = "₹${quote.last}",
@@ -98,11 +101,14 @@ fun HoldingCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Column {
-                    Text(
-                        text = holding.symbol,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = theme.text,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = holding.symbol,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = theme.text,
+                        )
+                        StockNotesIcon(symbol = holding.symbol)
+                    }
                     Text(
                         text = "Qty: ${holding.qty}",
                         style = MaterialTheme.typography.bodySmall,

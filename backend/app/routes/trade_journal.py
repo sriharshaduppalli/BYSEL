@@ -76,32 +76,39 @@ async def log_trade(
 
         context: Dict[str, Any] = {}
         try:
+            from ..habits import wilder_rsi
+
             ticker = yf.Ticker(symbol if symbol.endswith(".NS") else symbol + ".NS")
             info = ticker.info or {}
-            hist = ticker.history(period="5d")
+            hist = ticker.history(period="1mo")
             if hist is not None and not hist.empty:
-                closes = hist["Close"].values
-                rsi = _quick_rsi(closes)
+                closes = [float(v) for v in hist["Close"].values]
+                rsi = wilder_rsi(closes)
                 vol_ratio = (
                     (hist["Volume"].iloc[-1] / hist["Volume"].mean())
                     if hist["Volume"].mean() > 0
                     else 1.0
                 )
-                near_52w_high = price >= (info.get("fiftyTwoWeekHigh", price) * 0.97)
+                high_52 = info.get("fiftyTwoWeekHigh")
+                near_52w_high = bool(
+                    high_52 and price > 0 and price >= (float(high_52) * 0.97)
+                )
                 context = {
-                    "rsiAtTrade": round(rsi, 1),
                     "volumeRatio": round(float(vol_ratio), 2),
                     "near52wHigh": near_52w_high,
                     "trailingPE": info.get("trailingPE"),
                     "marketCap": info.get("marketCap"),
                 }
+                if rsi is not None:
+                    context["rsiAtTrade"] = rsi
         except Exception:
             pass
 
         notes: List[str] = []
-        if context.get("rsiAtTrade", 50) >= 70:
+        rsi_at = context.get("rsiAtTrade")
+        if rsi_at is not None and rsi_at >= 70:
             notes.append("Bought at overbought RSI (>70) — high risk entry")
-        elif context.get("rsiAtTrade", 50) <= 30:
+        elif rsi_at is not None and rsi_at <= 30:
             notes.append("Bought at oversold RSI (<30) — potential value entry")
         if context.get("near52wHigh") and side == "BUY":
             notes.append("Entry near 52-week high — buying at resistance")
@@ -174,7 +181,10 @@ async def get_journal_insights(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    """Weekly behavioral insights from the authenticated user's trade history."""
+    """Behavioral insights from the authenticated user's paper journal + fills."""
+    from ..database.db import OrderModel
+    from ..habits import MIN_PATTERN_TRADES, score_session_habits
+
     rows = (
         db.query(TradeJournalModel)
         .filter(TradeJournalModel.user_id == user.id)
@@ -183,84 +193,82 @@ async def get_journal_insights(
         .all()
     )
     recent = [_entry_to_dict(r) for r in rows]
-    if len(recent) < 3:
+    orders = (
+        db.query(OrderModel)
+        .filter(OrderModel.user_id == user.id)
+        .order_by(OrderModel.created_at.desc())
+        .limit(80)
+        .all()
+    )
+    scored = score_session_habits(orders, journal_entries=rows)
+    sample = int(scored.get("sampleSize") or 0)
+    if sample < 3 and len(recent) < 3:
         return {
             "hasEnoughData": False,
-            "message": "Need at least 3 trades to generate insights.",
+            "message": (
+                f"Need at least {MIN_PATTERN_TRADES} paper fills (or 3 journaled trades) "
+                "before these insights describe your habits. Keep using Today's Practice."
+            ),
             "insights": [],
+            "totalTrades": sample,
+            "buys": 0,
+            "sells": 0,
+            "topSymbols": [],
+            "paperNote": scored.get("paperNote") or "",
         }
 
-    total = len(recent)
     buys = [e for e in recent if e.get("side") == "BUY"]
     sells = [e for e in recent if e.get("side") == "SELL"]
-
-    overbought_entries = [e for e in buys if e.get("context", {}).get("rsiAtTrade", 50) >= 70]
-    near_high_entries = [e for e in buys if e.get("context", {}).get("near52wHigh", False)]
-    high_volume_entries = [e for e in recent if e.get("context", {}).get("volumeRatio", 1.0) > 2.0]
-
     insights: List[Dict[str, Any]] = []
-
-    if len(overbought_entries) / max(len(buys), 1) > 0.3:
+    for habit in scored.get("habits") or []:
+        category = habit.get("category") or "process"
+        insight_type = "warning" if category in {"risk", "psychology"} else "info"
+        detail = habit.get("body") or ""
+        evidence = habit.get("evidence")
+        if evidence:
+            detail = f"{detail} ({evidence}.)"
         insights.append({
-            "type": "warning",
-            "title": "Chasing Overbought Stocks",
-            "detail": (
-                f"{len(overbought_entries)} of your last {len(buys)} buys were at RSI>70. "
-                "Consider waiting for pullbacks."
-            ),
+            "type": insight_type,
+            "title": habit.get("title") or "Habit",
+            "detail": detail,
         })
 
-    if len(near_high_entries) / max(len(buys), 1) > 0.4:
-        insights.append({
-            "type": "warning",
-            "title": "Buying Near 52-Week Highs",
-            "detail": (
-                f"{len(near_high_entries)} buys near 52W high. "
-                "Risk/reward may be unfavorable at resistance."
-            ),
-        })
-
+    high_volume_entries = [
+        e
+        for e in recent
+        if _safe_float((e.get("context") or {}).get("volumeRatio")) is not None
+        and _safe_float((e.get("context") or {}).get("volumeRatio")) > 2.0
+    ]
     if len(high_volume_entries) > 2:
         insights.append({
             "type": "info",
-            "title": "Active on High-Volume Days",
+            "title": "Active on high-volume days",
             "detail": (
-                f"You traded {len(high_volume_entries)} times on unusual volume days — "
-                "good awareness of market activity."
-            ),
-        })
-
-    symbols_traded = list({e["symbol"] for e in recent})
-    if len(symbols_traded) > 10:
-        insights.append({
-            "type": "info",
-            "title": "Diversified Activity",
-            "detail": (
-                f"You traded {len(symbols_traded)} different stocks recently. "
-                "Ensure each has a clear thesis."
+                f"{len(high_volume_entries)} journaled paper fills landed on days with "
+                ">2× average volume — useful context, not a reason to size up."
             ),
         })
 
     return {
-        "hasEnoughData": True,
-        "totalTrades": total,
-        "buys": len(buys),
-        "sells": len(sells),
+        "hasEnoughData": bool(scored.get("hasEnoughData")) or len(recent) >= 3,
+        "totalTrades": sample or len(recent),
+        "buys": len(buys) if recent else int((scored.get("stats") or {}).get("buys") or 0),
+        "sells": len(sells) if recent else int((scored.get("stats") or {}).get("sells") or 0),
         "insights": insights,
-        "topSymbols": _top_symbols(recent),
+        "topSymbols": _top_symbols(recent) or _top_symbols(
+            [{"symbol": o.symbol, "trades": 1} for o in orders if getattr(o, "symbol", None)]
+        ),
+        "paperNote": scored.get("paperNote") or "",
     }
 
 
-def _quick_rsi(prices, period: int = 14) -> float:
-    if len(prices) < period + 1:
-        return 50.0
-    deltas = [prices[i] - prices[i - 1] for i in range(1, len(prices))]
-    gains = [d for d in deltas if d > 0]
-    losses = [-d for d in deltas if d < 0]
-    avg_gain = sum(gains[-period:]) / period if gains else 0
-    avg_loss = sum(losses[-period:]) / period if losses else 1e-9
-    rs = avg_gain / avg_loss
-    return 100 - (100 / (1 + rs))
+def _safe_float(value: Any) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _top_symbols(entries: List[Dict]) -> List[Dict]:

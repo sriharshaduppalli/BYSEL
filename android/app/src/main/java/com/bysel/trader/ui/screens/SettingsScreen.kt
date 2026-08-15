@@ -645,8 +645,8 @@ fun SettingsScreen(
         item {
             SettingClickItem(
                 icon = Icons.Filled.Tune,
-                title = "Heatmap Refresh Interval",
-                subtitle = "${localHeatmapInterval / 1000}s while market is open",
+                title = "Market refresh interval",
+                subtitle = "${localHeatmapInterval / 1000}s for heatmap + live quote fallback while open",
                 onClick = { showIntervalDialog = true }
             )
         }
@@ -655,9 +655,9 @@ fun SettingsScreen(
                 icon = Icons.Filled.ShowChart,
                 title = "Live quote stream",
                 subtitle = if (liveQuotesEnabled) {
-                    "WebSocket ticks while Trade or Detail is open"
+                    "WebSocket ticks while the app is in the foreground"
                 } else {
-                    "Off — REST snapshots only (prices can lag ~20s)"
+                    "Off — REST snapshots on the refresh interval while the market is open"
                 },
                 value = liveQuotesEnabled,
                 onValueChange = onLiveQuotesChange,
@@ -800,7 +800,7 @@ fun IntervalSelectionDialog(selectedInterval: Int, onIntervalSelected: (Int) -> 
         onDismissRequest = onDismiss,
         containerColor = LocalAppTheme.current.card,
         title = {
-            Text("Select Heatmap Refresh Interval", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = LocalAppTheme.current.text)
+            Text("Select market refresh interval", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = LocalAppTheme.current.text)
         },
         text = {
             Column {

@@ -1101,7 +1101,9 @@ def test_password_reset_request_falls_back_to_support_when_delivery_unavailable(
     payload = response.json()
     assert payload["status"] == "ok"
     assert payload["delivery"] == "support"
-    assert "support" in payload["message"].lower()
+    assert "unavailable" in payload["message"].lower()
+    assert "contact" in payload["message"].lower()
+    assert "bysel.trader@gmail.com" in payload["message"].lower()
 
 
 def test_password_reset_uses_resend_when_api_key_configured(monkeypatch):
@@ -2009,6 +2011,8 @@ def test_intraday_tips_endpoint_returns_phase_tips():
     assert payload["tips"][0]["title"]
     assert payload["tips"][0]["body"]
     assert "Educational" in payload["disclaimer"] or "educational" in payload["disclaimer"].lower()
+    assert payload["sampleSize"] == 0
+    assert payload["hasEnoughData"] is False
 
 
 def test_single_quote_endpoint_includes_snapshot_fields(monkeypatch):
@@ -2067,6 +2071,50 @@ def test_investor_tips_endpoint_supports_topics():
             "fno",
             "sgb",
         }
+        assert "sampleSize" in payload
+        assert "hasEnoughData" in payload
+
+
+def test_intraday_tips_personalizes_from_paper_trades():
+    from datetime import datetime, timedelta, timezone
+
+    user_id, headers = _register_trading_user("habits")
+    db = SessionLocal()
+    try:
+        # 04:20 UTC = 09:50 IST first hour. Walk back weekdays only.
+        cursor = datetime.now(timezone.utc)
+        seeded = 0
+        while seeded < 6:
+            cursor -= timedelta(days=1)
+            if cursor.weekday() >= 5:
+                continue
+            when = cursor.replace(hour=4, minute=20, second=0, microsecond=0)
+            db.add(
+                OrderModel(
+                    user_id=user_id,
+                    symbol="RELIANCE",
+                    quantity=1,
+                    side="BUY",
+                    order_type="MARKET",
+                    price=1400.0,
+                    total=1400.0,
+                    status="COMPLETED",
+                    created_at=when.replace(tzinfo=None),
+                )
+            )
+            seeded += 1
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get("/market/intraday-tips?limit=3", headers=headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["sampleSize"] == 6
+    assert payload["hasEnoughData"] is True
+    assert payload["tips"][0]["source"] == "paper"
+    assert payload["tips"][0]["id"] in {"open_cluster", "single_name", "no_stop", "one_way_book"}
+    assert "paper" in (payload.get("paperNote") or "").lower()
 
 
 def test_futures_contracts_endpoint_returns_contract_set(monkeypatch):

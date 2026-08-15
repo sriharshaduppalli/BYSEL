@@ -180,6 +180,8 @@ class IntradayTip(BaseModel):
     title: str
     body: str
     category: str = "process"
+    source: str = "session"
+    evidence: Optional[str] = None
 
 
 class IntradayTipsResponse(BaseModel):
@@ -190,6 +192,9 @@ class IntradayTipsResponse(BaseModel):
     tips: List[IntradayTip] = []
     disclaimer: str = ""
     generatedAt: str = ""
+    sampleSize: int = 0
+    hasEnoughData: bool = False
+    paperNote: str = ""
 
 
 class InvestorTip(BaseModel):
@@ -197,6 +202,8 @@ class InvestorTip(BaseModel):
     title: str
     body: str
     category: str = "process"
+    source: str = "topic"
+    evidence: Optional[str] = None
 
 
 class InvestorTopicInfo(BaseModel):
@@ -211,6 +218,9 @@ class InvestorTipsResponse(BaseModel):
     topics: List[InvestorTopicInfo] = []
     disclaimer: str = ""
     generatedAt: str = ""
+    sampleSize: int = 0
+    hasEnoughData: bool = False
+    paperNote: str = ""
 
 
 class MarketNewsHeadline(BaseModel):

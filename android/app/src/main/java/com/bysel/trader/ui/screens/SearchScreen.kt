@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.SignalLabBucketFeed
 import com.bysel.trader.data.models.StockSearchResult
+import com.bysel.trader.ui.components.StockNotesIcon
 import com.bysel.trader.ui.components.appOutlinedTextFieldColors
 import com.bysel.trader.ui.format.formatInr
 import com.bysel.trader.ui.format.formatSignedPct
@@ -527,12 +528,15 @@ private fun SearchResultCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = result.symbol,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = LocalAppTheme.current.text,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = result.symbol,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = LocalAppTheme.current.text,
+                    )
+                    StockNotesIcon(symbol = result.symbol)
+                }
                 MarqueeText(
                     text = result.name,
                     style = MaterialTheme.typography.bodySmall,
