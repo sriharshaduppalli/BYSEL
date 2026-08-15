@@ -40,12 +40,19 @@ fun AlertsScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Price Alerts",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = LocalAppTheme.current.text
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Price Alerts",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = LocalAppTheme.current.text
+                )
+                Text(
+                    text = "Checked about every 15 minutes in the background; faster while the app is open.",
+                    fontSize = 12.sp,
+                    color = LocalAppTheme.current.textSecondary
+                )
+            }
             Button(
                 onClick = { showDialog = true },
                 colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary)

@@ -17,6 +17,14 @@ data class CandleLesson(
     val barIndex: Int,
 )
 
+data class LiteracyCard(
+    val title: String,
+    val tag: String,
+    val summary: String,
+    val learnQuery: String,
+    val seenOnChart: Boolean = false,
+)
+
 object CandleLiteracyDetector {
 
     fun detectRecent(history: List<HistoryCandle>, lookback: Int = 8): List<CandleLesson> {
@@ -29,7 +37,6 @@ object CandleLiteracyDetector {
             val curr = history[i]
             val prev = history[i - 1]
             classifyPair(prev, curr, i)?.let { lesson ->
-                // Keep the most recent occurrence of each pattern name.
                 found[lesson.name] = lesson
             }
             classifySingle(curr, history, i)?.let { lesson ->
@@ -50,7 +57,6 @@ object CandleLiteracyDetector {
         val body = abs(c.close - c.open)
         val upper = c.high - max(c.open, c.close)
         val lower = min(c.open, c.close) - c.low
-        val bullish = c.close >= c.open
         val priorTrend = priorTrend(history, index)
 
         // Doji: tiny body vs range
@@ -64,55 +70,13 @@ object CandleLiteracyDetector {
             )
         }
 
-        // Hammer / hanging man: long lower wick, small body near high
-        if (lower >= body * 2.0 && upper <= body * 0.6 && body / range <= 0.45) {
-            return if (priorTrend < 0) {
-                CandleLesson(
-                    name = "Hammer",
-                    bias = "Bullish",
-                    summary = "Long lower wick after a dip — buyers recovered. Confirm next candle/volume.",
-                    learnQuery = "What is a hammer candlestick?",
-                    barIndex = index,
-                )
-            } else if (priorTrend > 0) {
-                CandleLesson(
-                    name = "Hanging man",
-                    bias = "Bearish",
-                    summary = "Same shape after a rally — warning, not a sell by itself. Wait for confirmation.",
-                    learnQuery = "What is a hanging man candlestick?",
-                    barIndex = index,
-                )
-            } else null
-        }
-
-        // Shooting star / inverted hammer: long upper wick, small body near low
-        if (upper >= body * 2.0 && lower <= body * 0.6 && body / range <= 0.45) {
-            return if (priorTrend > 0) {
-                CandleLesson(
-                    name = "Shooting star",
-                    bias = "Bearish",
-                    summary = "Long upper wick after a rally — sellers rejected highs. Confirm before fading.",
-                    learnQuery = "What is a shooting star candlestick?",
-                    barIndex = index,
-                )
-            } else if (priorTrend < 0) {
-                CandleLesson(
-                    name = "Inverted hammer",
-                    bias = "Bullish",
-                    summary = "Long upper wick after a decline — possible reversal cue with confirmation.",
-                    learnQuery = "What is an inverted hammer candlestick?",
-                    barIndex = index,
-                )
-            } else null
-        }
-
-        // Marubozu: dominant body, tiny wicks
-        if (body / range >= 0.78 && upper / range <= 0.12 && lower / range <= 0.12) {
+        // Hammer only after a dip — skip the same shape after a rally (awkward names).
+        if (lower >= body * 2.0 && upper <= body * 0.6 && body / range <= 0.45 && priorTrend < 0) {
             return CandleLesson(
-                name = if (bullish) "Bullish marubozu" else "Bearish marubozu",
-                bias = if (bullish) "Bullish" else "Bearish",
-                summary = "Strong body with little wick — conviction candle. Still respect nearby S/R.",
-                learnQuery = "What is a marubozu candlestick?",
+                name = "Hammer",
+                bias = "Bullish",
+                summary = "Long lower wick after a dip — buyers recovered. Confirm next candle/volume.",
+                learnQuery = "What is a hammer candlestick?",
                 barIndex = index,
             )
         }
@@ -135,7 +99,6 @@ object CandleLiteracyDetector {
         val prevBull = prev.close >= prev.open
         val currBull = curr.close >= curr.open
 
-        // Engulfing
         if (currBot <= prevBot && currTop >= prevTop && currBody > prevBody * 1.05) {
             if (!prevBull && currBull) {
                 return CandleLesson(
@@ -157,17 +120,6 @@ object CandleLiteracyDetector {
             }
         }
 
-        // Harami: small body inside prior large body
-        if (currTop < prevTop && currBot > prevBot && currBody < prevBody * 0.55 && prevBody > currBody * 1.4) {
-            return CandleLesson(
-                name = "Harami",
-                bias = "Neutral",
-                summary = "Small body inside prior large body — pause. Wait for a break of the large candle’s range.",
-                learnQuery = "What is a harami candlestick?",
-                barIndex = index,
-            )
-        }
-
         return null
     }
 
@@ -182,5 +134,86 @@ object CandleLiteracyDetector {
             change >= 0.015 -> 1
             else -> 0
         }
+    }
+}
+
+/**
+ * Beginner Indian-market cards for stock detail.
+ * Packed from the Indian Stock Analysis Techniques essay — education only, never a trade call.
+ */
+object StockLiteracyCatalog {
+
+    fun cardsFor(history: List<HistoryCandle>): List<LiteracyCard> {
+        val detected = CandleLiteracyDetector.detectRecent(history)
+        val seenNames = detected.map { it.name.lowercase() }
+        val seenCandle = seenNames.any { name ->
+            name.contains("engulfing") || name == "doji" || name == "hammer"
+        }
+        val seenHint = detected.firstOrNull()?.let { " Recent bars show ${it.name.lowercase()}." }.orEmpty()
+
+        return listOf(
+            LiteracyCard(
+                title = "Engulfing, doji, hammer",
+                tag = "Candle",
+                summary = "Engulfing = one body covers the prior. Doji = open ≈ close (pause). " +
+                    "Hammer = long lower wick after a dip. Confirm with volume — not a trade by itself.$seenHint",
+                learnQuery = "What are engulfing, doji and hammer candlesticks?",
+                seenOnChart = seenCandle,
+            ),
+            LiteracyCard(
+                title = "P/E, P/B, PEG",
+                tag = "Fundamental",
+                summary = "P/E = price vs earnings (India large-caps often cited 15–25; always vs sector). " +
+                    "P/B = price vs book (<3 often cited; banks judged with ROE). " +
+                    "PEG = P/E vs growth (~1 roughly fair if growth is real). Compare, don’t treat as a buy button.",
+                learnQuery = "What are P/E, P/B and PEG ratios for Indian stocks?",
+            ),
+            LiteracyCard(
+                title = "ROE, ROCE, D/E, coverage",
+                tag = "Fundamental",
+                summary = "ROE = profit vs equity (>15% often healthy, >20% strong). " +
+                    "ROCE = profit vs all capital (>15% preferred). " +
+                    "D/E = debt vs equity (<1 typical for non-banks). " +
+                    "Interest coverage = EBIT / interest (>3× often comfortable). Quality and leverage — not a signal.",
+                learnQuery = "What are ROE, ROCE, debt to equity and interest coverage?",
+            ),
+            LiteracyCard(
+                title = "Other checks",
+                tag = "Fundamental",
+                summary = "Free cash flow should back reported profit. High promoter pledging is a stress flag. " +
+                    "FII/DII flows move indices. Prefer quarterly profit consistency over one good quarter.",
+                learnQuery = "What are free cash flow, promoter pledging and FII DII in Indian stocks?",
+            ),
+            LiteracyCard(
+                title = "DMA, RSI, MACD, volume",
+                tag = "Technical",
+                summary = "50/200 DMA: 50 above 200 = golden cross, opposite = death cross (lagging trend). " +
+                    "RSI 14 near 70/30 is stretched, not auto sell/buy. MACD = momentum turn. " +
+                    "Volume + delivery % show if a move is real. SuperTrend/VWAP for trend/intraday context. " +
+                    "S/R are zones where price paused.",
+                learnQuery = "How do 50 DMA 200 DMA RSI 14 MACD volume and VWAP work in NSE stocks?",
+            ),
+            LiteracyCard(
+                title = "India market clock",
+                tag = "India",
+                summary = "Index weekly options expire Thursday — expect extra volatility that day. " +
+                    "FII/DII buying or selling can set the tape. Money rotates across sectors; a strong stock in a weak sector still fights the tide.",
+                learnQuery = "What is Thursday weekly expiry and FII DII sector rotation in India?",
+            ),
+            LiteracyCard(
+                title = "Best practice",
+                tag = "How to use",
+                summary = "Filter quality on fundamentals → check valuation → use technicals only for timing → " +
+                    "size with a stop-loss. Paper-practice the steps. No method guarantees returns.",
+                learnQuery = "What is a beginner stock analysis checklist for Indian markets?",
+            ),
+            LiteracyCard(
+                title = "Bottom line",
+                tag = "How to use",
+                summary = "Long-term = fundamentals (quality + valuation). " +
+                    "Swing and F&O = technicals + volume + flows. Combine both. Education and paper first — not orders.",
+                learnQuery = "Should I use fundamentals or technicals for long-term vs swing vs F&O in India?",
+            ),
+        )
     }
 }

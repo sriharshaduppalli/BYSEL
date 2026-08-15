@@ -21,7 +21,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
         ),
         OnboardingPage(
             title = "Live Market Data",
-            description = "Track real-time prices, heatmaps, and analytics."
+            description = "Track live prices, heatmaps, and analytics while the app is open."
         ),
         OnboardingPage(
             title = "AI Assistant",

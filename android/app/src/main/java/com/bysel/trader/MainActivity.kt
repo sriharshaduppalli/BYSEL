@@ -58,6 +58,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bysel.trader.alerts.FcmTokenRegistrar
 import com.bysel.trader.data.auth.AuthSessionManager
 import com.bysel.trader.data.local.BYSELDatabase
 import com.bysel.trader.data.repository.AuthRepository
@@ -195,6 +196,9 @@ class MainActivity : FragmentActivity() {
                     biometricUnlocked = !biometricAuthManager.isBiometricEnabled()
                 }
                 wasLoggedIn = isLoggedIn
+                if (isLoggedIn) {
+                    FcmTokenRegistrar.registerCurrentToken()
+                }
             }
 
             LaunchedEffect(showLockScreen) {

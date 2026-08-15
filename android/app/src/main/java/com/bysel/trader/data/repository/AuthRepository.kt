@@ -1,5 +1,6 @@
 package com.bysel.trader.data.repository
 
+import com.bysel.trader.alerts.FcmTokenRegistrar
 import com.bysel.trader.data.api.BYSELApiService
 import com.bysel.trader.data.api.RetrofitClient
 import com.bysel.trader.data.auth.AuthSessionManager
@@ -114,6 +115,7 @@ class AuthRepository(
                 userId = response.user_id,
             )
             refreshCachedProfile()
+            FcmTokenRegistrar.registerCurrentToken()
             Result.Success(response)
         } catch (e: Exception) {
             Result.Error(toAuthErrorMessage(e, "Registration failed"))
@@ -153,6 +155,7 @@ class AuthRepository(
                 )
             }
             refreshCachedProfile()
+            FcmTokenRegistrar.registerCurrentToken()
             Result.Success(response)
         } catch (e: Exception) {
             Result.Error(toAuthErrorMessage(e, "Login failed"))
@@ -245,6 +248,7 @@ class AuthRepository(
                 userId = response.user_id,
                 accessTokenTtlSeconds = response.accessTtlSeconds(),
             )
+            FcmTokenRegistrar.registerCurrentToken()
             Result.Success(response)
         } catch (e: Exception) {
             val message = toAuthErrorMessage(e, "Password update failed")
@@ -302,6 +306,7 @@ class AuthRepository(
      * Also clears Credential Manager provider session state so the next sign-in shows all options.
      */
     private suspend fun clearLocalIdentity() {
+        FcmTokenRegistrar.unregisterCurrentToken()
         AuthSessionManager.clearSession()
         try {
             FirebaseAuth.getInstance().signOut()
@@ -358,6 +363,7 @@ class AuthRepository(
                 mobileNumber = normalizedMobile,
             )
             refreshCachedProfile()
+            FcmTokenRegistrar.registerCurrentToken()
             Result.Success(response)
         } catch (e: Exception) {
             Result.Error(toAuthErrorMessage(e, "OTP verification failed"))
@@ -379,6 +385,7 @@ class AuthRepository(
                 accessTokenTtlSeconds = response.accessTtlSeconds(),
             )
             refreshCachedProfile()
+            FcmTokenRegistrar.registerCurrentToken()
             Result.Success(response)
         } catch (e: Exception) {
             Result.Error(toAuthErrorMessage(e, "Phone authentication failed"))

@@ -10,6 +10,7 @@ import os
 import re
 import time
 import difflib
+import urllib.parse
 import urllib.request
 import json as _json
 from datetime import datetime
@@ -39,6 +40,8 @@ QUOTE_CACHE_STORAGE_SECONDS = _env_int("QUOTE_CACHE_STORAGE_SECONDS", 300, minim
 QUOTE_CACHE_TTL_SECONDS = _env_int("QUOTE_CACHE_TTL_SECONDS", QUOTE_CACHE_TTL_OPEN, minimum=3)
 QUOTE_CACHE_MAX_ENTRIES = _env_int("QUOTE_CACHE_MAX_ENTRIES", 3000, minimum=50)
 QUOTE_BATCH_SIZE = _env_int("QUOTE_BATCH_SIZE", 40, minimum=1)
+# PE / EPS / yield / avg volume / target change slowly — keep them off the 5s last-price path.
+FUNDAMENTALS_CACHE_TTL_SECONDS = _env_int("FUNDAMENTALS_CACHE_TTL_SECONDS", 4 * 3600, minimum=300)
 
 HISTORY_ALLOWED_PERIODS = {
     "1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"
@@ -729,6 +732,24 @@ class QuoteCache:
             self._timestamps[symbol] = now
             self._evict_oversized_locked()
 
+    def patch(self, symbol: str, updates: dict) -> Optional[dict]:
+        """Merge snapshot fields into a cached quote without resetting last-price freshness."""
+        if not updates:
+            return self._cache.get(symbol)
+        with self._lock:
+            payload = self._cache.get(symbol)
+            if payload is None:
+                return None
+            merged = dict(payload)
+            for key, incoming in updates.items():
+                if incoming in (None, 0, 0.0):
+                    continue
+                existing = merged.get(key)
+                if existing in (None, 0, 0.0):
+                    merged[key] = incoming
+            self._cache[symbol] = merged
+            return merged
+
     def clear(self):
         with self._lock:
             self._cache.clear()
@@ -962,6 +983,408 @@ def _normalize_dividend_yield_pct(
     return None
 
 
+def _yahoo_raw_number(value: object) -> Optional[float]:
+    """Unwrap Yahoo `{raw: x}` wrappers or parse a scalar."""
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        if "raw" in value:
+            return _yahoo_raw_number(value.get("raw"))
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number:  # NaN
+        return None
+    return number
+
+
+def _first_yahoo_number(raw: dict, *keys: str) -> Optional[float]:
+    for key in keys:
+        number = _yahoo_raw_number(raw.get(key))
+        if number is not None:
+            return number
+    return None
+
+
+def _flatten_yahoo_quote(raw: dict) -> dict:
+    """Merge quoteSummary modules / v7 quote / ticker.info into one keyspace."""
+    if not isinstance(raw, dict):
+        return {}
+    flat: dict = {}
+    # quoteSummary envelope
+    summary = raw.get("quoteSummary")
+    if isinstance(summary, dict):
+        results = summary.get("result") or []
+        if results and isinstance(results[0], dict):
+            raw = results[0]
+    for module in ("summaryDetail", "defaultKeyStatistics", "financialData", "price"):
+        nested = raw.get(module)
+        if isinstance(nested, dict):
+            for key, value in nested.items():
+                flat.setdefault(key, value)
+    for key, value in raw.items():
+        if key in {"summaryDetail", "defaultKeyStatistics", "financialData", "price", "quoteSummary"}:
+            continue
+        flat.setdefault(key, value)
+    return flat
+
+
+_FUNDAMENTAL_QUOTE_KEYS = (
+    "pe",
+    "trailingPE",
+    "eps",
+    "dividendYield",
+    "bid",
+    "ask",
+    "avgVolume",
+    "marketCap",
+    "targetMeanPrice",
+    "fiftyTwoWeekHigh",
+    "fiftyTwoWeekLow",
+    "fiftyDayAverage",
+    "twoHundredDayAverage",
+)
+# avgVolume / 52w can arrive from fast_info; valuation still needs a Yahoo crumb call.
+_VALUATION_QUOTE_KEYS = (
+    "trailingPE",
+    "pe",
+    "eps",
+    "dividendYield",
+    "targetMeanPrice",
+)
+
+
+def fundamentals_from_yahoo_quote(raw: dict, last_price: float = 0.0) -> dict:
+    """Map a Yahoo v7 quote, quoteSummary, or ticker.info payload to API snapshot fields."""
+    flat = _flatten_yahoo_quote(raw)
+    if not flat:
+        return {}
+
+    last = last_price or _first_yahoo_number(flat, "regularMarketPrice", "currentPrice", "last") or 0.0
+    pe = _first_yahoo_number(flat, "trailingPE", "pe")
+    if pe is None or pe <= 0:
+        pe = _first_yahoo_number(flat, "forwardPE")
+    eps = _first_yahoo_number(
+        flat,
+        "epsTrailingTwelveMonths",
+        "trailingEps",
+        "epsCurrentYear",
+        "eps",
+    )
+    bid = _first_yahoo_number(flat, "bid")
+    ask = _first_yahoo_number(flat, "ask")
+    avg_volume = _first_yahoo_number(
+        flat,
+        "averageDailyVolume3Month",
+        "averageVolume",
+        "averageDailyVolume10Day",
+        "averageVolume10days",
+        "avgVolume",
+    )
+    volume = _first_yahoo_number(flat, "regularMarketVolume", "volume")
+    market_cap = _first_yahoo_number(flat, "marketCap")
+    target = _first_yahoo_number(flat, "targetMeanPrice")
+    week52_high = _first_yahoo_number(flat, "fiftyTwoWeekHigh")
+    week52_low = _first_yahoo_number(flat, "fiftyTwoWeekLow")
+    fifty_day = _first_yahoo_number(flat, "fiftyDayAverage")
+    two_hundred = _first_yahoo_number(flat, "twoHundredDayAverage")
+    dividend = _normalize_dividend_yield_pct(
+        raw_yield=_first_yahoo_number(flat, "dividendYield", "trailingAnnualDividendYield"),
+        dividend_rate=_first_yahoo_number(flat, "dividendRate", "trailingAnnualDividendRate"),
+        last_price=last,
+    )
+
+    out: dict = {}
+    if pe is not None and pe > 0:
+        pe_out = round(float(pe), 2)
+        out["pe"] = pe_out
+        out["trailingPE"] = pe_out
+    if eps is not None:
+        out["eps"] = round(float(eps), 2)
+    if dividend is not None:
+        out["dividendYield"] = dividend
+    if bid is not None and bid > 0:
+        out["bid"] = round(float(bid), 2)
+    if ask is not None and ask > 0:
+        out["ask"] = round(float(ask), 2)
+    if avg_volume is not None and avg_volume > 0:
+        out["avgVolume"] = int(avg_volume)
+    if volume is not None and volume > 0:
+        out["volume"] = int(volume)
+    if market_cap is not None and market_cap > 0:
+        out["marketCap"] = int(market_cap)
+    if target is not None and target > 0:
+        out["targetMeanPrice"] = round(float(target), 2)
+    if week52_high is not None and week52_high > 0:
+        out["fiftyTwoWeekHigh"] = round(float(week52_high), 2)
+    if week52_low is not None and week52_low > 0:
+        out["fiftyTwoWeekLow"] = round(float(week52_low), 2)
+    if fifty_day is not None and fifty_day > 0:
+        out["fiftyDayAverage"] = round(float(fifty_day), 2)
+    if two_hundred is not None and two_hundred > 0:
+        out["twoHundredDayAverage"] = round(float(two_hundred), 2)
+    return out
+
+
+def _overlay_fundamentals(quote: dict, fund: Optional[dict]) -> dict:
+    if not quote or not fund:
+        return quote
+    out = dict(quote)
+    for key in _FUNDAMENTAL_QUOTE_KEYS:
+        incoming = fund.get(key)
+        if incoming in (None, 0, 0.0):
+            continue
+        if out.get(key) in (None, 0, 0.0):
+            out[key] = incoming
+    return out
+
+
+def _merge_fundamentals(*parts: Optional[dict]) -> dict:
+    """Combine Yahoo v7 / quoteSummary / fast_info / cache without wiping filled keys."""
+    out: dict = {}
+    for part in parts:
+        if not part:
+            continue
+        cleaned = {key: value for key, value in part.items() if value not in (None, 0, 0.0)}
+        if not cleaned:
+            continue
+        out = _overlay_fundamentals(out, cleaned) if out else dict(cleaned)
+    return out
+
+
+def _needs_fundamentals(quote: Optional[dict]) -> bool:
+    if not quote:
+        return True
+    return not any(
+        quote.get(key) not in (None, 0, 0.0)
+        for key in _VALUATION_QUOTE_KEYS
+    )
+
+
+def fundamentals_from_fast_info(info: object, last_price: float = 0.0) -> dict:
+    """Map yfinance fast_info (volume / 52w / mcap) — no PE/EPS/yield on this object."""
+    if info is None:
+        return {}
+
+    def _attr(name: str):
+        try:
+            if hasattr(info, "get"):
+                return info.get(name)
+            return getattr(info, name, None)
+        except Exception:
+            return None
+
+    raw = {
+        "regularMarketPrice": last_price or _attr("last_price"),
+        "marketCap": _attr("market_cap"),
+        "averageDailyVolume3Month": _attr("three_month_average_volume"),
+        "regularMarketVolume": _attr("last_volume"),
+        "fiftyTwoWeekHigh": _attr("year_high"),
+        "fiftyTwoWeekLow": _attr("year_low"),
+        "fiftyDayAverage": _attr("fifty_day_average"),
+        "twoHundredDayAverage": _attr("two_hundred_day_average"),
+    }
+    return fundamentals_from_yahoo_quote(raw, last_price=last_price)
+
+
+_fundamentals_cache: Dict[str, tuple] = {}
+_fundamentals_lock = Lock()
+_fundamentals_inflight: set = set()
+
+
+def _get_cached_fundamentals(symbol: str) -> Optional[dict]:
+    key = (symbol or "").strip().upper()
+    if not key:
+        return None
+    now = time.time()
+    with _fundamentals_lock:
+        cached = _fundamentals_cache.get(key)
+        if not cached:
+            return None
+        stamp, payload = cached
+        if (now - stamp) >= float(FUNDAMENTALS_CACHE_TTL_SECONDS):
+            return None
+        return dict(payload) if payload else None
+
+
+def _put_fundamentals(symbol: str, fund: dict) -> None:
+    key = (symbol or "").strip().upper()
+    if not key or not fund:
+        return
+    with _fundamentals_lock:
+        _fundamentals_cache[key] = (time.time(), dict(fund))
+
+
+def clear_fundamentals_cache() -> None:
+    with _fundamentals_lock:
+        _fundamentals_cache.clear()
+        _fundamentals_inflight.clear()
+
+
+def _yahoo_authed_json(url: str, timeout: float = 6.0) -> dict:
+    """Yahoo quote/quoteSummary JSON via yfinance crumb+cookie (bare urllib gets 401)."""
+    try:
+        from yfinance.data import YfData
+
+        payload = YfData(session=None).get_raw_json(url, timeout=max(1.5, float(timeout)))
+        return payload if isinstance(payload, dict) else {}
+    except Exception as exc:
+        logger.debug("yahoo authed json failed: %s", exc)
+        return {}
+
+
+def _parse_yahoo_v7_rows(data: Optional[dict]) -> Dict[str, dict]:
+    rows = ((data or {}).get("quoteResponse") or {}).get("result") or []
+    out: Dict[str, dict] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        yf_sym = str(row.get("symbol") or "").strip()
+        if yf_sym:
+            out[yf_sym] = row
+    return out
+
+
+def _fetch_yahoo_v7_quotes(yf_symbols: List[str], timeout: float = 4.0) -> Dict[str, dict]:
+    """Yahoo v7 quote endpoint — last price plus PE/EPS/yield/bid/ask/avg volume."""
+    uniq: List[str] = []
+    seen: set = set()
+    for symbol in yf_symbols:
+        token = (symbol or "").strip()
+        if token and token not in seen:
+            seen.add(token)
+            uniq.append(token)
+    if not uniq:
+        return {}
+
+    encoded = urllib.parse.quote(",".join(uniq), safe=",.")
+    for host in ("query1", "query2"):
+        url = f"https://{host}.finance.yahoo.com/v7/finance/quote?symbols={encoded}"
+        out = _parse_yahoo_v7_rows(_yahoo_authed_json(url, timeout=timeout))
+        if out:
+            return out
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json",
+    }
+    for host in ("query1", "query2"):
+        url = f"https://{host}.finance.yahoo.com/v7/finance/quote?symbols={encoded}"
+        try:
+            req = urllib.request.Request(url, headers=headers, method="GET")
+            with urllib.request.urlopen(req, timeout=max(1.5, float(timeout))) as resp:
+                data = _json.loads(resp.read().decode("utf-8"))
+            out = _parse_yahoo_v7_rows(data)
+            if out:
+                return out
+        except Exception as exc:
+            logger.debug("yahoo v7 quote failed via %s: %s", host, exc)
+    return {}
+
+
+def _fetch_yahoo_quote_summary(yf_symbol: str, timeout: float = 4.0) -> dict:
+    """quoteSummary for analyst target (and PE/EPS/yield if v7 omitted them)."""
+    token = (yf_symbol or "").strip()
+    if not token:
+        return {}
+    encoded = urllib.parse.quote(token, safe=".")
+    for host in ("query1", "query2"):
+        url = (
+            f"https://{host}.finance.yahoo.com/v10/finance/quoteSummary/{encoded}"
+            "?modules=summaryDetail,defaultKeyStatistics,financialData"
+        )
+        data = _yahoo_authed_json(url, timeout=timeout)
+        if data.get("quoteSummary"):
+            mapped = fundamentals_from_yahoo_quote(data)
+            if mapped:
+                return mapped
+    return {}
+
+
+def _fundamentals_from_yfinance_info(symbol: str, last_price: float = 0.0) -> dict:
+    try:
+        ticker = yf.Ticker(_yf_ticker(symbol))
+        info = ticker.info or {}
+        return fundamentals_from_yahoo_quote(info, last_price=last_price)
+    except Exception as exc:
+        logger.debug("yfinance info fundamentals failed for %s: %s", symbol, exc)
+        return {}
+
+
+def _fill_fundamentals_batch(symbols: List[str]) -> None:
+    try:
+        yf_map = {symbol: _yf_ticker(symbol) for symbol in symbols if symbol}
+        reverse: Dict[str, List[str]] = {}
+        for symbol, yf_sym in yf_map.items():
+            if yf_sym:
+                reverse.setdefault(yf_sym, []).append(symbol)
+        rows = _fetch_yahoo_v7_quotes(list(reverse.keys()), timeout=6.0)
+        for yf_sym, raw in rows.items():
+            last = _safe_number(raw.get("regularMarketPrice") or raw.get("regularMarketPreviousClose"))
+            fund = fundamentals_from_yahoo_quote(raw, last_price=last)
+            if not fund.get("targetMeanPrice"):
+                extra = _fetch_yahoo_quote_summary(yf_sym, timeout=4.0)
+                fund = _merge_fundamentals(fund, extra)
+            if not fund:
+                continue
+            for symbol in reverse.get(yf_sym, []):
+                _put_fundamentals(symbol, fund)
+                _quote_cache.patch(symbol, fund)
+        leftover = [
+            symbol
+            for symbol in symbols
+            if _needs_fundamentals(_get_cached_fundamentals(symbol))
+        ]
+        for symbol in leftover:
+            yf_sym = yf_map.get(symbol)
+            extra = _merge_fundamentals(
+                _fetch_yahoo_quote_summary(yf_sym, timeout=4.0) if yf_sym else {},
+                _fundamentals_from_yfinance_info(symbol),
+            )
+            if not extra:
+                continue
+            _put_fundamentals(symbol, extra)
+            _quote_cache.patch(symbol, extra)
+    except Exception as exc:
+        logger.debug("fundamentals fill failed: %s", exc)
+    finally:
+        with _fundamentals_lock:
+            for symbol in symbols:
+                _fundamentals_inflight.discard(symbol)
+
+
+def _schedule_fundamentals_fill(symbols: List[str]) -> None:
+    """Refresh PE/EPS/yield/avg volume in the background — never blocks last-price."""
+    pending: List[str] = []
+    now = time.time()
+    with _fundamentals_lock:
+        for raw_symbol in symbols:
+            key = (raw_symbol or "").strip().upper()
+            if not key or key in _fundamentals_inflight:
+                continue
+            cached = _fundamentals_cache.get(key)
+            if cached:
+                stamp, payload = cached
+                if (now - stamp) < float(FUNDAMENTALS_CACHE_TTL_SECONDS) and not _needs_fundamentals(payload):
+                    continue
+            _fundamentals_inflight.add(key)
+            pending.append(key)
+    if not pending:
+        return
+    Thread(
+        target=_fill_fundamentals_batch,
+        args=(pending,),
+        daemon=True,
+        name="quote-fundamentals-fill",
+    ).start()
+
+
 def fetch_quote(symbol: str) -> dict:
     """
     Fetch a single real-time quote for an NSE stock.
@@ -970,7 +1393,12 @@ def fetch_quote(symbol: str) -> dict:
     """
     cached = _quote_cache.get(symbol, max_age_seconds=quote_max_age_seconds())
     if cached:
-        return cached
+        filled = _overlay_fundamentals(cached, _get_cached_fundamentals(symbol))
+        if filled is not cached and filled != cached:
+            _quote_cache.patch(symbol, filled)
+        if _needs_fundamentals(filled):
+            _schedule_fundamentals_fill([symbol])
+        return filled
     stale = _quote_cache.get_allow_stale(symbol, float(QUOTE_CACHE_STORAGE_SECONDS))
 
     try:
@@ -979,6 +1407,34 @@ def fetch_quote(symbol: str) -> dict:
         hist = ticker.history(period="2d")
 
         if hist.empty:
+            yf_sym = _yf_ticker(symbol)
+            v7 = (_fetch_yahoo_v7_quotes([yf_sym], timeout=3.5) or {}).get(yf_sym) or {}
+            v7_last = _safe_number(v7.get("regularMarketPrice") or v7.get("regularMarketPreviousClose"))
+            if v7_last > 0:
+                fund = fundamentals_from_yahoo_quote(v7, last_price=v7_last)
+                if fund:
+                    _put_fundamentals(symbol, fund)
+                prev_close = _safe_number(v7.get("regularMarketPreviousClose"), v7_last)
+                pct_change = (
+                    round(((v7_last - prev_close) / prev_close) * 100, 2) if prev_close > 0 else 0.0
+                )
+                quote = {
+                    "symbol": symbol,
+                    "last": round(v7_last, 2),
+                    "pctChange": pct_change,
+                    "open": round(_safe_number(v7.get("regularMarketOpen"), v7_last), 2),
+                    "high": round(_safe_number(v7.get("regularMarketDayHigh"), v7_last), 2),
+                    "low": round(_safe_number(v7.get("regularMarketDayLow"), v7_last), 2),
+                    "previousClose": round(prev_close, 2),
+                    "prevClose": round(prev_close, 2),
+                    "volume": int(_safe_number(v7.get("regularMarketVolume"), 0.0)),
+                    "timestamp": int(datetime.utcnow().timestamp() * 1000),
+                }
+                quote = _overlay_fundamentals(quote, fund or _get_cached_fundamentals(symbol))
+                _quote_cache.put(symbol, quote)
+                if _needs_fundamentals(quote):
+                    _schedule_fundamentals_fill([symbol])
+                return quote
             if stale:
                 return stale
             logger.warning(f"No history data for {symbol}")
@@ -1003,101 +1459,69 @@ def fetch_quote(symbol: str) -> dict:
             quote["prevClose"] = round(prev_close, 2)
             quote["volume"] = int(_safe_number(hist["Volume"].iloc[-1], 0.0))
             quote["timestamp"] = int(datetime.utcnow().timestamp() * 1000)
+            quote = _overlay_fundamentals(quote, _get_cached_fundamentals(symbol))
             _quote_cache.put(symbol, quote)
+            if _needs_fundamentals(quote):
+                _schedule_fundamentals_fill([symbol])
             logger.info(f"Fetched live quote: {symbol} = ₹{last_price:.2f} ({pct_change:+.2f}%)")
             return quote
 
-        # Get extended info (may fail for some stocks)
-        try:
-            full_info = ticker.info or {}
-            market_cap = full_info.get("marketCap") or 0
-            pe_ratio = full_info.get("trailingPE") or full_info.get("forwardPE") or 0
-            eps_value = (
-                full_info.get("trailingEps")
-                or full_info.get("epsTrailingTwelveMonths")
-                or full_info.get("epsCurrentYear")
-                or 0
-            )
-            dividend_rate = full_info.get("dividendRate") or 0
-            raw_div_yield = full_info.get("dividendYield") or full_info.get("trailingAnnualDividendYield") or 0
-            fifty_two_high = full_info.get("fiftyTwoWeekHigh") or (last_price * 1.15)
-            fifty_two_low = full_info.get("fiftyTwoWeekLow") or (last_price * 0.85)
-            day_high = full_info.get("dayHigh") or float(hist["High"].iloc[-1])
-            day_low = full_info.get("dayLow") or float(hist["Low"].iloc[-1])
-            open_price = full_info.get("open") or float(hist["Open"].iloc[-1])
-            volume = full_info.get("volume") or int(hist["Volume"].iloc[-1])
-            avg_volume = full_info.get("averageVolume") or full_info.get("averageVolume10days") or 0
-            target_mean = full_info.get("targetMeanPrice")
-            fifty_day_avg = full_info.get("fiftyDayAverage")
-            two_hundred_day_avg = full_info.get("twoHundredDayAverage")
-            bid = full_info.get("bid") or 0
-            ask = full_info.get("ask") or 0
-        except Exception:
-            day_high = float(hist["High"].iloc[-1])
-            day_low = float(hist["Low"].iloc[-1])
-            open_price = float(hist["Open"].iloc[-1])
-            volume = int(hist["Volume"].iloc[-1])
-            avg_volume = 0
-            market_cap = 0
-            pe_ratio = 0
-            eps_value = 0
-            dividend_rate = 0
-            raw_div_yield = 0
-            fifty_two_high = last_price * 1.15
-            fifty_two_low = last_price * 0.85
-            target_mean = None
-            fifty_day_avg = None
-            two_hundred_day_avg = None
-            bid = 0
-            ask = 0
-
-        # Yahoo .NS dividendYield is often already in percent (e.g. 0.45 → 0.45%);
-        # US tickers often return a 0–1 fraction. Prefer dividendRate / price when present.
-        dividend_yield_pct = _normalize_dividend_yield_pct(
-            raw_yield=raw_div_yield,
-            dividend_rate=dividend_rate,
-            last_price=last_price,
+        # First paint: crumb-authed v7 for PE/EPS/yield. ticker.info stays off this path.
+        yf_sym = _yf_ticker(symbol)
+        fund = _merge_fundamentals(
+            _get_cached_fundamentals(symbol),
+            fundamentals_from_fast_info(info, last_price=last_price),
         )
+        v7: dict = {}
+        if _needs_fundamentals(fund):
+            v7_rows = _fetch_yahoo_v7_quotes([yf_sym], timeout=3.5)
+            v7 = v7_rows.get(yf_sym) or {}
+            fund = _merge_fundamentals(fund, fundamentals_from_yahoo_quote(v7, last_price=last_price))
+        if not fund.get("targetMeanPrice"):
+            fund = _merge_fundamentals(fund, _fetch_yahoo_quote_summary(yf_sym, timeout=3.5))
+        if fund:
+            _put_fundamentals(symbol, fund)
 
-        # NSE often returns bid/ask as 0 — synthesize a tight indicative spread for UI.
-        bid_f = float(bid or 0)
-        ask_f = float(ask or 0)
-        if (bid_f <= 0 or ask_f <= 0) and last_price > 0:
-            tick = max(0.05, round(last_price * 0.0002, 2))
-            bid_f = round(last_price - tick, 2)
-            ask_f = round(last_price + tick, 2)
-
-        pe_out = round(float(pe_ratio), 2) if pe_ratio else None
-        eps_out = round(float(eps_value), 2) if eps_value else None
-        mcap_out = int(market_cap) if market_cap else None
+        day_high = _first_yahoo_number(v7, "regularMarketDayHigh") or float(hist["High"].iloc[-1])
+        day_low = _first_yahoo_number(v7, "regularMarketDayLow") or float(hist["Low"].iloc[-1])
+        open_price = _first_yahoo_number(v7, "regularMarketOpen") or float(hist["Open"].iloc[-1])
+        volume = int(
+            _first_yahoo_number(v7, "regularMarketVolume")
+            or _safe_number(hist["Volume"].iloc[-1], 0.0)
+        )
+        fifty_two_high = fund.get("fiftyTwoWeekHigh") or (last_price * 1.15)
+        fifty_two_low = fund.get("fiftyTwoWeekLow") or (last_price * 0.85)
 
         quote = {
             "symbol": symbol,
             "last": round(last_price, 2),
             "pctChange": pct_change,
-            "open": round(open_price, 2),
-            "high": round(day_high, 2),
-            "low": round(day_low, 2),
+            "open": round(float(open_price), 2),
+            "high": round(float(day_high), 2),
+            "low": round(float(day_low), 2),
             "previousClose": round(prev_close, 2),
             "prevClose": round(prev_close, 2),
             "volume": int(volume or 0),
-            "avgVolume": int(avg_volume or 0) if avg_volume else None,
-            "marketCap": mcap_out,
-            "pe": pe_out,
-            "trailingPE": pe_out,
-            "eps": eps_out,
-            "dividendYield": dividend_yield_pct,
+            "avgVolume": fund.get("avgVolume"),
+            "marketCap": fund.get("marketCap"),
+            "pe": fund.get("pe"),
+            "trailingPE": fund.get("trailingPE") or fund.get("pe"),
+            "eps": fund.get("eps"),
+            "dividendYield": fund.get("dividendYield"),
             "fiftyTwoWeekHigh": round(float(fifty_two_high), 2),
             "fiftyTwoWeekLow": round(float(fifty_two_low), 2),
-            "targetMeanPrice": round(target_mean, 2) if target_mean else None,
-            "fiftyDayAverage": round(fifty_day_avg, 2) if fifty_day_avg else None,
-            "twoHundredDayAverage": round(two_hundred_day_avg, 2) if two_hundred_day_avg else None,
-            "bid": bid_f,
-            "ask": ask_f,
+            "targetMeanPrice": fund.get("targetMeanPrice"),
+            "fiftyDayAverage": fund.get("fiftyDayAverage"),
+            "twoHundredDayAverage": fund.get("twoHundredDayAverage"),
+            "bid": fund.get("bid"),
+            "ask": fund.get("ask"),
             "timestamp": int(datetime.utcnow().timestamp() * 1000),
         }
+        quote = _overlay_fundamentals(quote, fund)
 
         _quote_cache.put(symbol, quote)
+        if _needs_fundamentals(quote):
+            _schedule_fundamentals_fill([symbol])
         logger.info(f"Fetched live quote: {symbol} = ₹{last_price:.2f} ({pct_change:+.2f}%)")
         return quote
 
@@ -1212,17 +1636,22 @@ def _fetch_batch_quotes(batch_symbols: List[str], *, yf_threads: bool = False) -
                         "low": round(_safe_number(ticker_data['Low'].iloc[-1], last_price), 2),
                         "previousClose": round(prev_close, 2),
                         "volume": int(_safe_number(ticker_data['Volume'].iloc[-1], 0.0)),
-                        "avgVolume": 0,
-                        "marketCap": 0,
-                        "pe": 0,
-                        "dividendYield": 0,
+                        "avgVolume": None,
+                        "marketCap": None,
+                        "pe": None,
+                        "trailingPE": None,
+                        "eps": None,
+                        "dividendYield": None,
                         "fiftyTwoWeekHigh": round(last_price * 1.15, 2),
                         "fiftyTwoWeekLow": round(last_price * 0.85, 2),
                         "targetMeanPrice": None,
                         "fiftyDayAverage": None,
                         "twoHundredDayAverage": None,
+                        "bid": None,
+                        "ask": None,
                         "timestamp": int(datetime.utcnow().timestamp() * 1000),
                     }
+                    quote = _overlay_fundamentals(quote, _get_cached_fundamentals(symbol))
                     _quote_cache.put(symbol, quote)
                     results[symbol] = quote
             except Exception as e:
@@ -1231,7 +1660,10 @@ def _fetch_batch_quotes(batch_symbols: List[str], *, yf_threads: bool = False) -
         del data
     except Exception as e:
         logger.error(f"Batch download failed for {len(batch_symbols)} symbols: {e}")
-    
+
+    missing = [symbol for symbol, quote in results.items() if _needs_fundamentals(quote)]
+    if missing:
+        _schedule_fundamentals_fill(missing)
     return results
 
 

@@ -171,13 +171,13 @@ fun SignalLabScreen(
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            text = "No live setups in this filter",
+                            text = "No paper setups in this filter",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = theme.text,
                         )
                         Text(
-                            text = "Try switching sector or timeframe. Signal Lab only shows buckets with active candidates.",
+                            text = "Signal Lab is an educational scanner for practice ideas — not live brokerage signals or advice. Try another sector or timeframe, or refresh after the IST session opens (9:15).",
                             fontSize = 12.sp,
                             color = theme.textSecondary,
                             lineHeight = 18.sp,
@@ -472,20 +472,26 @@ private fun SignalLabHeroCard(
             color = theme.text,
         )
         Text(
+            text = "Paper practice · not investment advice",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = theme.primary,
+        )
+        Text(
             text = selectedTimeframe.summary,
             fontSize = 12.sp,
             color = theme.textSecondary,
             lineHeight = 18.sp,
         )
         Text(
-            text = "Swipe each playbook sideways for setups. Refresh for the latest tape.",
+            text = "Educational buckets from the tape (IST session). Swipe each playbook sideways. Not live brokerage signals.",
             fontSize = 11.sp,
             color = theme.textSecondary,
             lineHeight = 16.sp,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             InfoChip(label = { Text("$quoteCount scoped quotes") })
-            InfoChip(label = { Text("$bucketCount live buckets") })
+            InfoChip(label = { Text("$bucketCount paper buckets") })
             InfoChip(label = { Text(selectedSector) })
         }
         FilledTonalButton(onClick = onRefresh) {

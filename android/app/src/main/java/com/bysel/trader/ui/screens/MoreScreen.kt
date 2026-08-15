@@ -173,9 +173,9 @@ fun MoreScreen(
             icon = Icons.Filled.Notifications,
             title = "Price Alerts",
             subtitle = if (activeAlertCount > 0) {
-                "$activeAlertCount active · real-time trigger notifications"
+                "$activeAlertCount active · checked about every 15 minutes in the background; faster while the app is open"
             } else {
-                "Real-time trigger notifications"
+                "Checked about every 15 minutes in the background; faster while the app is open"
             },
             gradientColors = listOf(Color(0xFFE65100), Color(0xFFFFB300)),
             onClick = onAlertsClick,
@@ -215,7 +215,7 @@ fun MoreScreen(
         MoreMenuEntry(
             icon = Icons.Filled.BusinessCenter,
             title = "IPO Listings",
-            subtitle = "Educational IPO browser",
+            subtitle = "Paper practice apply — not live ASBA",
             gradientColors = listOf(Color(0xFF6A1B9A), Color(0xFFAB47BC)),
             onClick = onIpoClick,
         ),
@@ -243,7 +243,7 @@ fun MoreScreen(
         MoreMenuEntry(
             icon = Icons.AutoMirrored.Filled.Assignment,
             title = "My IPO Applications",
-            subtitle = "Simulated application status",
+            subtitle = "Paper applications — not exchange allotment",
             gradientColors = listOf(Color(0xFF455A64), Color(0xFF90A4AE)),
             onClick = onMyIpoApplicationsClick,
         ),

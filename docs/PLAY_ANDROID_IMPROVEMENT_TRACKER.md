@@ -3,7 +3,7 @@
 Living backlog from Google Play Console, Play Academy, and Android Developers docs shared in chat.  
 **Update rule:** append new items when more docs are reviewed; mark status as we ship.
 
-Last updated: 2026-08-08 (Notifications design guide)
+Last updated: 2026-08-15 (Edge-to-edge theme, FCM token, Data safety, CI tests)
 
 ---
 
@@ -44,7 +44,7 @@ Last updated: 2026-08-08 (Notifications design guide)
 | Compose UI testing guide | Test infra | `ui-test-junit4` + `ui-test-manifest` already in Gradle; one instrumented test exists |
 | About notifications | Basic alerts path | Channel + POST_NOTIFICATIONS + small icon already used in `AlertsManager` |
 | Simple data sharing | Send text via Sharesheet | Portfolio share already uses `ACTION_SEND` + chooser |
-| Edge-to-edge setup | enableEdgeToEdge + insets | `enableEdgeToEdge()` + `safeDrawingPadding()` already used; targetSdk 36 enforces e2e |
+| Edge-to-edge setup | enableEdgeToEdge + insets | `enableEdgeToEdge()` + `WindowInsets.safeDrawing` kept; `Theme.Material3.DayNight.NoActionBar` + transparent system bars (no enforcement opt-out) |
 | Display cutouts | Avoid notch overlap | `safeDrawingPadding()` covers cutout insets — correct Compose approach |
 | Predictive back | Platform opt-in | `android:enableOnBackInvokedCallback="true"` already set; custom `BackHandler` used for tabs/exit |
 | App shortcuts | Static launcher shortcuts | `@xml/shortcuts` + MainActivity `shortcut_action` routing; wrong conversation categories removed |
@@ -78,7 +78,7 @@ Last updated: 2026-08-08 (Notifications design guide)
 | ID | Item | Source | Status | Notes |
 |----|------|--------|--------|-------|
 | P0-1 | Android vitals: crash & ANR after new AABs | Technical quality | Watching | Filter versionCodes 209–211; fix only if over bad-behavior thresholds |
-| P0-2 | Data safety form matches privacy (AI + third-party AI) | Policy clarification Jul 2026 | Next | Manual Play Console check |
+| P0-2 | Data safety form matches privacy (AI + third-party AI) | Policy clarification Jul 2026 | Next (manual Console paste) | Checklist below matches current app + privacy pages (15 Aug 2026) |
 | P0-3 | Content rating questionnaire complete | Content ratings clarification | Next | Confirm not “unrated” |
 
 ### P1 — Product / UX quality
@@ -338,6 +338,49 @@ Last updated: 2026-08-08 (Notifications design guide)
 | 2026-08-08 | Authentication & Onboarding (updated May 19, 2026) | Already: min fields, Forgot password, CM/autofill/biometrics, contextual notifs. Done: form max-width, password requirements, assistive OTP copy (P2-100–101). Skip: forced walkthrough / bulk perms. Later: optional feature-discovery tooltips |
 | 2026-08-08 | Live update notifications (updated Mar 2, 2026) | **Skip** Live Updates/ProgressStyle for BYSEL. Price alerts are event banners (already critical-only on threshold). Rideshare/delivery templates N/A. Confirmed P2-107 Done |
 | 2026-08-08 | Notifications (design guide, updated Mar 2, 2026) | Already: channels, contextual permission, BigText, deep-link. Done: grouping summary (P2-16), category/color/visibility (P2-108), concise titles (P2-109). Skip: wrong templates, promo notifs, duplicate actions |
+| 2026-08-15 | Android 15 edge-to-edge + FCM token + Data safety + CI tests | Material3 transparent system bars (no e2e opt-out); FCM token POST + honest 15-min alert copy; privacy pages aligned; `testDebugUnitTest` no longer `continue-on-error` |
+
+---
+
+## Play Console Data safety checklist (paste into Console)
+
+Matches in-app / website / backend privacy as of **15 August 2026**. Do not invent extra trackers. Fill Play Console manually.
+
+**Does your app collect or share any of the required user data types?** Yes
+
+**Advertising ID:** No. Manifest removes `AD_ID`; `google_analytics_adid_collection_enabled=false`.
+
+| Data type | Collected? | Shared? | Required? | Purpose | Notes |
+|-----------|------------|---------|-----------|---------|-------|
+| Name | Optional | No (app functionality only) | No | App functionality | Optional display name |
+| Email address | Yes | No | Yes for password accounts | Account management | Also used for password reset |
+| Phone number | Yes | Yes — Firebase Auth / SMS OTP | No (OTP path) | Account management | Firebase phone OTP |
+| User IDs | Yes | No | Yes | Account management | BYSEL account id / session |
+| Other financial info | Yes | No | Yes for paper trading | App functionality | Simulated wallet, holdings, paper trades — **not** live brokerage or bank credentials |
+| Photos / video / audio / files / calendar / contacts / location | No | — | — | — | Not used |
+| App interactions | Yes | Yes — Firebase Analytics (Google) | No | Analytics | SDK present; AD_ID collection off; no ad SDK |
+| Other user-generated content | Yes | Yes — AI providers when you use AI | No | App functionality | Stock notes (server + device); AI chat prompts/answers |
+| Crash logs | No | — | — | — | No Crashlytics. Play vitals are collected by Google Play, not by BYSEL code |
+| Device or other IDs | Yes | Yes — Firebase Cloud Messaging | No | App functionality | FCM token for price-alert push. No Advertising ID |
+| Approximate / precise location | No | — | — | — | No location permission |
+
+**Third-party sharing (ephemeral / service providers, not sold):**
+
+- Firebase Authentication + SMS OTP — phone number
+- Firebase Cloud Messaging — device token for alerts
+- Firebase Analytics — basic usage events (not ads)
+- Groq / Gemini / Indian Stock LLM — AI prompts you send
+- Cloud host (API) — account + simulation data
+- Market data sources — public quotes only (not personal account data)
+
+**Data handling answers:**
+
+- Encrypted in transit: Yes (HTTPS)
+- Encrypted at rest: Yes for auth session on device (EncryptedSharedPreferences); server uses standard cloud storage
+- Users can request deletion: Yes (in-app delete account + support email)
+- Data used to track users across apps/sites for ads: **No**
+- Data used for advertising / remarketing: **No**
+- Kids: App is 18+; not designed for children
 
 ---
 

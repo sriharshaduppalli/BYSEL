@@ -34,7 +34,7 @@ private val LOCAL_BANKS: Map<String, List<InvestorTip>> = mapOf(
         InvestorTip("ipo_valuation", "Anchor vs listed peers", "Compare growth and margins to peers — listing gains are uncertain.", "risk", "topic"),
         InvestorTip("ipo_hype", "GMP isn't a guarantee", "Grey market premium is informal and can vanish overnight.", "risk", "topic"),
         InvestorTip("ipo_allotment", "Allotment is a lottery", "Retail quotas are often oversubscribed. Don't lever up hoping for a full allotment.", "psychology", "topic"),
-        InvestorTip("ipo_asba", "ASBA cash is blocked", "Application money is blocked until allotment/refund. Don't apply amounts you need this week.", "process", "topic"),
+        InvestorTip("ipo_asba", "Practice apply only", "BYSEL IPO apply is paper practice — no real ASBA block, UPI debit, or exchange allotment.", "process", "topic"),
     ),
     "fno" to listOf(
         InvestorTip("fo_margin", "Margin ≠ capital at risk", "Size from max loss, not how many lots the margin allows.", "risk", "topic"),

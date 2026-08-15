@@ -24,19 +24,19 @@ data class Quote(
     val dayLow: Double? = null,
     @SerializedName("volume")
     val volume: Long? = null,
-    @SerializedName("avgVolume")
+    @SerializedName(value = "avgVolume", alternate = ["averageVolume", "averageDailyVolume3Month"])
     val avgVolume: Long? = null,
     @SerializedName("marketCap")
     val marketCap: Long? = null,
     @SerializedName(value = "trailingPE", alternate = ["pe"])
     val trailingPE: Double? = null,
-    @SerializedName("eps")
+    @SerializedName(value = "eps", alternate = ["epsTrailingTwelveMonths", "trailingEps"])
     val eps: Double? = null,
     @SerializedName("fiftyTwoWeekHigh")
     val fiftyTwoWeekHigh: Double? = null,
     @SerializedName("fiftyTwoWeekLow")
     val fiftyTwoWeekLow: Double? = null,
-    @SerializedName("targetMeanPrice")
+    @SerializedName(value = "targetMeanPrice", alternate = ["targetPrice"])
     val targetMeanPrice: Double? = null,
     @SerializedName("bid")
     val bid: Double? = null,
@@ -59,12 +59,30 @@ data class Quote(
     fun effectiveVolume(): Long = maxOf(volume ?: 0L, avgVolume ?: 0L)
 
     /** Live ticks often omit volume — keep the last known liquidity fields. */
-    fun withLiquidityFrom(previous: Quote?): Quote {
+    fun withLiquidityFrom(previous: Quote?): Quote = withSnapshotFrom(previous)
+
+    /** Last-price refresh must not wipe PE/EPS/yield/bid/ask/target from a fuller snapshot. */
+    fun withSnapshotFrom(previous: Quote?): Quote {
         if (previous == null) return this
-        val nextVolume = if ((volume ?: 0L) > 0L) volume else previous.volume
-        val nextAvg = if ((avgVolume ?: 0L) > 0L) avgVolume else previous.avgVolume
-        if (nextVolume == volume && nextAvg == avgVolume) return this
-        return copy(volume = nextVolume, avgVolume = nextAvg)
+        return copy(
+            volume = if ((volume ?: 0L) > 0L) volume else previous.volume,
+            avgVolume = if ((avgVolume ?: 0L) > 0L) avgVolume else previous.avgVolume,
+            marketCap = if ((marketCap ?: 0L) > 0L) marketCap else previous.marketCap,
+            trailingPE = trailingPE ?: previous.trailingPE,
+            eps = eps ?: previous.eps,
+            bid = bid ?: previous.bid,
+            ask = ask ?: previous.ask,
+            dividendYield = dividendYield ?: previous.dividendYield,
+            targetMeanPrice = targetMeanPrice ?: previous.targetMeanPrice,
+            fiftyTwoWeekHigh = fiftyTwoWeekHigh ?: previous.fiftyTwoWeekHigh,
+            fiftyTwoWeekLow = fiftyTwoWeekLow ?: previous.fiftyTwoWeekLow,
+            fiftyDayAverage = fiftyDayAverage ?: previous.fiftyDayAverage,
+            twoHundredDayAverage = twoHundredDayAverage ?: previous.twoHundredDayAverage,
+            dayHigh = dayHigh ?: previous.dayHigh,
+            dayLow = dayLow ?: previous.dayLow,
+            open = open ?: previous.open,
+            prevClose = prevClose ?: previous.prevClose,
+        )
     }
 }
  
@@ -408,6 +426,7 @@ data class PortfolioHealthScore(
     val riskLevel: String = "",
     val suggestions: List<String> = emptyList(),
     val summary: String = "",
+    val snapshotNote: String = "",
     val totalValue: Double = 0.0,
     val totalInvested: Double = 0.0,
     val totalPnl: Double = 0.0,
@@ -930,6 +949,11 @@ data class ChangePasswordRequest(
 
 data class LogoutRequest(
     val refreshToken: String
+)
+
+data class FcmTokenRequest(
+    val token: String,
+    val platform: String = "android",
 )
 
 data class SendOTPRequest(

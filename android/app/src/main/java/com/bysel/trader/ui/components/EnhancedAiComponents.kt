@@ -222,6 +222,14 @@ fun ProfitSignalCard(
         border = BorderStroke(1.dp, accentColor.copy(alpha = 0.45f))
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
+            Text(
+                text = "Paper practice · not investment advice",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = theme.primary,
+                maxLines = 2,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
             // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -375,7 +383,7 @@ fun ProfitSignalCard(
                             contentPadding = PaddingValues(0.dp)
                         ) {
                             Text(
-                                "Buy ${signal.symbol}",
+                                "Practice buy",
                                 fontSize = 12.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -665,6 +673,14 @@ fun PredictionReasoningCard(
         border = BorderStroke(1.dp, signalColor)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Paper practice · not investment advice",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = theme.primary,
+                maxLines = 2,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
             // Signal with reasoning
             Row(
                 modifier = Modifier.fillMaxWidth(),

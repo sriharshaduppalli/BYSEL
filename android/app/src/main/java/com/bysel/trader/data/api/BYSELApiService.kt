@@ -50,6 +50,12 @@ interface BYSELApiService {
     @POST("/auth/delete-account")
     suspend fun deleteAccount(@Body request: DeleteAccountRequest): Map<String, String>
 
+    @POST("/auth/register-fcm-token")
+    suspend fun registerFcmToken(@Body request: FcmTokenRequest): Map<String, String>
+
+    @POST("/auth/unregister-fcm-token")
+    suspend fun unregisterFcmToken(@Body request: FcmTokenRequest): Map<String, String>
+
     // Production serves GET/PATCH under /auth/me (legacy /auth/profile may 404).
     @GET("/auth/me")
     suspend fun getProfile(): UserProfile

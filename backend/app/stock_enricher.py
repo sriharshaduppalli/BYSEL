@@ -1814,7 +1814,7 @@ def _fetch_yahoo_fundamentals(symbol: str, timeout: float = 6) -> dict:
         yf_sym = _yf_ticker(symbol)
         url = (
             "https://query1.finance.yahoo.com/v10/finance/quoteSummary/"
-            f"{yf_sym}?modules=summaryDetail,summaryProfile,defaultKeyStatistics"
+            f"{yf_sym}?modules=summaryDetail,summaryProfile,defaultKeyStatistics,financialData"
         )
         resp = requests.get(url, headers=_YF_HEADERS, timeout=timeout)
         if resp.status_code != 200:
@@ -1835,15 +1835,32 @@ def _fetch_yahoo_fundamentals(symbol: str, timeout: float = 6) -> dict:
         summary = result.get("summaryDetail", {})
         profile = result.get("summaryProfile", {})
         stats = result.get("defaultKeyStatistics", {})
+        financial = result.get("financialData", {})
 
-        pe = _raw(summary, "trailingPE") or _raw(stats, "forwardPE")
+        pe = (
+            _raw(summary, "trailingPE")
+            or _raw(stats, "trailingPE")
+            or _raw(stats, "forwardPE")
+        )
+        eps = (
+            _raw(stats, "trailingEps")
+            or _raw(stats, "epsTrailingTwelveMonths")
+            or _raw(financial, "epsTrailingTwelveMonths")
+        )
         div = _raw(summary, "dividendYield") or _raw(summary, "trailingAnnualDividendYield")
+        bid = _raw(summary, "bid")
+        ask = _raw(summary, "ask")
+        target = _raw(financial, "targetMeanPrice")
         sector = profile.get("sector") or profile.get("industry")
         company_name = profile.get("longName") or profile.get("shortName")
 
         return {
             "pe": float(pe) if pe else None,
+            "eps": float(eps) if eps else None,
             "div_yield": float(div) if div else None,
+            "bid": float(bid) if bid else None,
+            "ask": float(ask) if ask else None,
+            "target": float(target) if target else None,
             "sector": sector,
             "company_name": company_name,
         }
@@ -1952,6 +1969,7 @@ def _fetch_yfinance(symbol: str, deadline_seconds: float | None = None) -> dict:
         if not pe:
             pe = yf_fund.get("pe")
         div_yield = yf_fund.get("div_yield")
+        eps = yf_fund.get("eps")
         if not sector:
             sector = yf_fund.get("sector") or ""
         if not company_name:
@@ -1992,7 +2010,6 @@ def _fetch_yfinance(symbol: str, deadline_seconds: float | None = None) -> dict:
         # yfinance ticker.info: last-resort fill for anything still missing
         pb = None
         roe = None
-        eps = None
         if not fast_chat and _time_left() > 3:
             try:
                 info = ticker.info or {}
@@ -2009,7 +2026,8 @@ def _fetch_yfinance(symbol: str, deadline_seconds: float | None = None) -> dict:
                         roe = roe_f * 100.0 if abs(roe_f) <= 1.5 else roe_f
                     except (TypeError, ValueError):
                         roe = None
-                eps = info.get("trailingEps") or info.get("epsTrailingTwelveMonths")
+                if not eps:
+                    eps = info.get("trailingEps") or info.get("epsTrailingTwelveMonths")
                 if not sector or sector == "N/A":
                     sector = info.get("sector") or info.get("industry") or _SYMBOL_SECTOR.get(symbol, "N/A")
                 if not company_name or company_name == symbol:

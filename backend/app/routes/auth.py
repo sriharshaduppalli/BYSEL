@@ -5,7 +5,7 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 from email.message import EmailMessage
 from ..config import DEBUG
-from ..database.db import SessionLocal, UserModel, WalletModel, RefreshTokenModel, PasswordResetTokenModel, OTPModel
+from ..database.db import SessionLocal, UserModel, WalletModel, RefreshTokenModel, PasswordResetTokenModel, OTPModel, DeviceTokenModel
 from datetime import datetime, timedelta
 from typing import List
 from collections import defaultdict, deque
@@ -244,6 +244,16 @@ class OTPResponse(BaseModel):
 
 class FirebasePhoneAuthRequest(BaseModel):
     firebase_id_token: str
+
+
+class FcmTokenRequest(BaseModel):
+    token: str
+    platform: str | None = "android"
+
+
+class FcmTokenResponse(BaseModel):
+    status: str
+    message: str
 
 
 
@@ -1843,6 +1853,7 @@ def logout_all_devices(authorization: str | None = Header(default=None, alias="A
             RefreshTokenModel.user_id == user_id,
             RefreshTokenModel.revoked_at.is_(None)
         ).update({"revoked_at": now}, synchronize_session=False)
+        db.query(DeviceTokenModel).filter(DeviceTokenModel.user_id == user_id).delete()
         db.commit()
         _metric_inc("logout.success_all_devices")
         logger.info("auth.logout.success user_id=%s scope=all_devices", user_id)
@@ -1850,6 +1861,61 @@ def logout_all_devices(authorization: str | None = Header(default=None, alias="A
         db.close()
 
     return LogoutResponse(status="ok", message="Logged out from all devices")
+
+
+@router.post("/register-fcm-token", response_model=FcmTokenResponse)
+@router.post("/devices", response_model=FcmTokenResponse)
+def register_fcm_token(
+    body: FcmTokenRequest,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+):
+    """Store the signed-in device's FCM token for price-alert pushes."""
+    user_id = _get_user_id_from_authorization(authorization)
+    token = (body.token or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="FCM token is required")
+    platform = (body.platform or "android").strip()[:32] or "android"
+    db: Session = SessionLocal()
+    try:
+        existing = db.query(DeviceTokenModel).filter(DeviceTokenModel.token == token).first()
+        if existing:
+            existing.user_id = user_id
+            existing.platform = platform
+            existing.updated_at = datetime.utcnow()
+        else:
+            db.add(
+                DeviceTokenModel(
+                    user_id=user_id,
+                    token=token,
+                    platform=platform,
+                )
+            )
+        db.commit()
+        return FcmTokenResponse(status="ok", message="Device token registered")
+    finally:
+        db.close()
+
+
+@router.post("/unregister-fcm-token", response_model=FcmTokenResponse)
+def unregister_fcm_token(
+    body: FcmTokenRequest,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+):
+    """Drop this device token so it no longer receives account pushes."""
+    user_id = _get_user_id_from_authorization(authorization)
+    token = (body.token or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="FCM token is required")
+    db: Session = SessionLocal()
+    try:
+        db.query(DeviceTokenModel).filter(
+            DeviceTokenModel.user_id == user_id,
+            DeviceTokenModel.token == token,
+        ).delete()
+        db.commit()
+        return FcmTokenResponse(status="ok", message="Device token removed")
+    finally:
+        db.close()
 
 
 @router.get("/debug/rate-limits")
@@ -2373,6 +2439,7 @@ async def delete_account(
 
         # Delete all associated data
         db.query(RefreshTokenModel).filter(RefreshTokenModel.user_id == user_id).delete()
+        db.query(DeviceTokenModel).filter(DeviceTokenModel.user_id == user_id).delete()
         db.query(WalletModel).filter(WalletModel.user_id == user_id).delete()
         db.query(OTPModel).filter(OTPModel.mobile_number == (user.mobile_number or "")).delete()
         db.query(PasswordResetTokenModel).filter(PasswordResetTokenModel.user_id == user_id).delete()

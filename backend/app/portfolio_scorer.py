@@ -1,13 +1,16 @@
 """
 BYSEL Portfolio Health Score Engine
 
-Calculates a comprehensive 0-100 health score for user's portfolio based on:
-  1. Diversification Score (25 pts) — number of stocks, sector spread
-  2. Risk Score (25 pts)            — volatility, beta, drawdown risk
-  3. Quality Score (25 pts)         — stock quality, fundamentals
-  4. Balance Score (25 pts)         — concentration, allocation balance
+Snapshot heuristic (0-100) of current paper-book *quality*, not a return forecast.
+It does not predict future P&L, volatility, beta, or drawdown.
 
-Returns actionable suggestions to improve portfolio health.
+  1. Diversification (25) — name count + mapped sector spread
+  2. Risk (25)            — concentration, marked losers, volatile-sector weight
+  3. Quality (25)         — static large-cap / blue-chip lists
+  4. Balance (25)         — deviation from equal weight + sector cap
+
+Cash/wallet is not in the book (equity holdings only). Missing quotes must not
+be treated as flat/healthy P&L.
 """
 
 import yfinance as yf
@@ -110,32 +113,51 @@ SECTOR_MAP = {
 }
 
 
+def _resolve_mark(holding: Dict, live_price: Optional[float]) -> Tuple[float, str]:
+    """Pick a mark for weights. Never invent a 0% P&L from cost alone."""
+    avg_price = float(holding.get("avgPrice") or holding.get("avg_price") or 0)
+    stored_last = float(holding.get("lastPrice") or holding.get("last_price") or 0)
+    if live_price is not None and live_price > 0:
+        return float(live_price), "live"
+    if stored_last > 0:
+        return stored_last, "stale"
+    return avg_price, "cost"
+
+
 def calculate_portfolio_health(holdings: List[Dict]) -> Dict:
     """
-    Calculate comprehensive portfolio health score.
+    Snapshot book-quality score for the current paper holdings.
 
     Args:
-        holdings: List of dicts with 'symbol', 'quantity', 'avgPrice'
+        holdings: dicts with symbol, quantity/qty, avgPrice, optional lastPrice
 
     Returns:
-        Dict with overall score (0-100), breakdown, grade, and suggestions
+        Dict with overall score (0-100), breakdown, grade, and suggestions.
+        Does not forecast returns.
     """
+    empty = {
+        "overallScore": 0,
+        "grade": "N/A",
+        "breakdown": {},
+        "suggestions": ["Start by buying some stocks to build your portfolio!"],
+        "summary": "Your portfolio is empty. Start investing to see your health score.",
+        "sectorAllocation": {},
+        "riskLevel": "none",
+        "scoreType": "snapshot",
+        "snapshotNote": "This is a current book-quality score, not a forecast of future returns.",
+        "quoteCoverage": 0.0,
+        "quotedCount": 0,
+        "unquotedCount": 0,
+        "pnlReliable": False,
+    }
     if not holdings:
-        return {
-            "overallScore": 0,
-            "grade": "N/A",
-            "breakdown": {},
-            "suggestions": ["Start by buying some stocks to build your portfolio!"],
-            "summary": "Your portfolio is empty. Start investing to see your health score.",
-            "sectorAllocation": {},
-            "riskLevel": "none",
-        }
+        return empty
 
     # Fetch current prices in one batch (never N serial Yahoo calls — that 429s refresh).
     symbols = [
         str(h.get("symbol") or "").upper()
         for h in holdings
-        if (h.get("quantity", 0) or 0) > 0 and h.get("symbol")
+        if (h.get("quantity", 0) or h.get("qty", 0) or 0) > 0 and h.get("symbol")
     ]
     live_by_symbol: Dict[str, float] = {}
     try:
@@ -143,6 +165,8 @@ def calculate_portfolio_health(holdings: List[Dict]) -> Dict:
         for quote in fetch_quotes(symbols) or []:
             sym = str(quote.get("symbol") or "").upper()
             last = _safe_number(quote.get("last"), 0.0)
+            if last <= 0:
+                last = _safe_number(quote.get("ltp") or quote.get("price"), 0.0)
             if sym and last > 0:
                 live_by_symbol[sym] = last
     except Exception as exc:
@@ -154,17 +178,18 @@ def calculate_portfolio_health(holdings: List[Dict]) -> Dict:
 
     for h in holdings:
         sym = str(h.get("symbol") or "").upper()
-        qty = h.get("quantity", 0)
+        qty = h.get("quantity", 0) or h.get("qty", 0)
         avg_price = h.get("avgPrice", 0) or h.get("avg_price", 0)
 
         if qty <= 0:
             continue
 
-        current_price = live_by_symbol.get(sym) or avg_price
+        current_price, price_source = _resolve_mark(h, live_by_symbol.get(sym))
         value = current_price * qty
         invested = avg_price * qty
-        pnl = value - invested
-        pnl_pct = ((current_price - avg_price) / avg_price * 100) if avg_price > 0 else 0
+        has_mark = price_source != "cost"
+        pnl = (value - invested) if has_mark else 0
+        pnl_pct = ((current_price - avg_price) / avg_price * 100) if has_mark and avg_price > 0 else 0
 
         sector = SECTOR_MAP.get(sym, "Other")
 
@@ -179,9 +204,13 @@ def calculate_portfolio_health(holdings: List[Dict]) -> Dict:
             "pnlPercent": pnl_pct,
             "sector": sector,
             "weight": 0,  # calculated below
+            "priceSource": price_source,
         })
         total_value += value
         total_invested += invested
+
+    if not portfolio_data:
+        return empty
 
     # Calculate weights
     for item in portfolio_data:
@@ -239,13 +268,32 @@ def calculate_portfolio_health(holdings: List[Dict]) -> Dict:
         quality_score, balance_score, total_value, total_invested
     )
 
-    # Summary
-    overall_pnl = total_value - total_invested
-    overall_pnl_pct = ((total_value - total_invested) / total_invested * 100) if total_invested > 0 else 0
+    marked = [item for item in portfolio_data if item.get("priceSource") != "cost"]
+    quoted_live = [item for item in portfolio_data if item.get("priceSource") == "live"]
+    unquoted_count = len(portfolio_data) - len(quoted_live)
+    quote_coverage = (len(quoted_live) / len(portfolio_data)) if portfolio_data else 0.0
+    pnl_reliable = bool(marked)
+
+    if marked:
+        marked_value = sum(item["value"] for item in marked)
+        marked_invested = sum(item["invested"] for item in marked)
+        overall_pnl = marked_value - marked_invested
+        overall_pnl_pct = (overall_pnl / marked_invested * 100) if marked_invested > 0 else 0
+    else:
+        overall_pnl = 0
+        overall_pnl_pct = 0
+
+    snapshot_note = "This is a current book-quality score, not a forecast of future returns."
+    if unquoted_count:
+        snapshot_note += (
+            f" Live quotes missing for {unquoted_count} name(s); "
+            "P&L is not treated as flat/healthy."
+        )
 
     summary = _generate_health_summary(
         overall, grade, len(portfolio_data), len(sector_allocation),
-        total_value, overall_pnl, overall_pnl_pct, risk_level
+        total_value, overall_pnl, overall_pnl_pct, risk_level,
+        pnl_reliable=pnl_reliable, unquoted_count=unquoted_count,
     )
 
     return {
@@ -268,6 +316,12 @@ def calculate_portfolio_health(holdings: List[Dict]) -> Dict:
         "stockCount": len(portfolio_data),
         "sectorCount": len(sector_allocation),
         "lastUpdated": datetime.utcnow().isoformat(),
+        "scoreType": "snapshot",
+        "snapshotNote": snapshot_note,
+        "quoteCoverage": round(quote_coverage, 4),
+        "quotedCount": len(quoted_live),
+        "unquotedCount": unquoted_count,
+        "pnlReliable": pnl_reliable,
     }
 
 
@@ -310,7 +364,11 @@ def _diversification_score(portfolio: List[Dict]) -> Tuple[int, str]:
 
 
 def _risk_score(portfolio: List[Dict]) -> Tuple[int, str]:
-    """Score based on portfolio risk metrics. Max 25. Higher = lower risk."""
+    """Score based on book structure. Max 25. Higher = lower structural risk.
+
+    Not realized vol, beta, or drawdown. P&L penalties only use marked names
+    so a missing quote cannot look like a healthy 0% book.
+    """
     score = 15  # base
 
     # Check for over-concentration
@@ -324,15 +382,17 @@ def _risk_score(portfolio: List[Dict]) -> Tuple[int, str]:
     else:
         score += 3
 
-    # Check for loss positions (many losses = riskier)
-    losers = [item for item in portfolio if item["pnlPercent"] < -10]
-    loser_ratio = len(losers) / len(portfolio) if portfolio else 0
-    if loser_ratio > 0.5:
-        score -= 5
-    elif loser_ratio > 0.3:
-        score -= 3
-    elif loser_ratio < 0.1:
-        score += 3
+    marked = [item for item in portfolio if item.get("priceSource") in ("live", "stale")]
+    losers = [item for item in marked if item["pnlPercent"] < -10]
+    if marked:
+        loser_ratio = len(losers) / len(marked)
+        if loser_ratio > 0.5:
+            score -= 5
+        elif loser_ratio > 0.3:
+            score -= 3
+        elif loser_ratio < 0.1 and len(marked) == len(portfolio):
+            score += 3
+    # else: no marks — do not award a "few losers" bonus
 
     # Volatility proxy: sector concentration in volatile sectors
     volatile_sectors = {"Metals", "Mining", "Real Estate", "Defence", "Chemicals"}
@@ -346,7 +406,14 @@ def _risk_score(portfolio: List[Dict]) -> Tuple[int, str]:
     elif volatile_weight < 10:
         score += 2
 
-    details = f"Max single stock weight: {max_weight:.1f}%, {len(losers)} positions in loss > 10%"
+    unmarked = len(portfolio) - len(marked)
+    coverage = ""
+    if unmarked:
+        coverage = f"; P&L not scored for {unmarked} name(s) without a mark"
+    details = (
+        f"Max single stock weight: {max_weight:.1f}%, "
+        f"{len(losers)} marked positions in loss > 10%{coverage}"
+    )
     return min(max(score, 0), 25), details
 
 
@@ -359,7 +426,7 @@ def _quality_score(portfolio: List[Dict]) -> Tuple[int, str]:
         "SUNPHARMA", "NTPC", "TATASTEEL", "WIPRO", "NESTLEIND",
         "TMPV", "BAJAJ-AUTO", "POWERGRID", "ONGC",
         "ADANIPORTS", "ULTRACEMCO", "DRREDDY", "CIPLA",
-        "DIVISLAB", "BRITANIA", "EICHERMOT", "HAL",
+        "DIVISLAB", "BRITANNIA", "EICHERMOT", "HAL",
     }
 
     large_caps = blue_chips | {
@@ -471,8 +538,11 @@ def _generate_suggestions(
             "for stability."
         )
 
-    # Big losers
-    big_losers = [item for item in portfolio if item["pnlPercent"] < -20]
+    # Big losers (only marked names — cost-basis 0% is not a real P&L)
+    big_losers = [
+        item for item in portfolio
+        if item.get("priceSource") in ("live", "stale") and item["pnlPercent"] < -20
+    ]
     for loser in big_losers[:2]:
         suggestions.append(
             f"📉 {loser['symbol']} is down {abs(loser['pnlPercent']):.1f}%. "
@@ -480,7 +550,12 @@ def _generate_suggestions(
         )
 
     # Big winners — book partial profits
-    big_winners = [item for item in portfolio if item["pnlPercent"] > 50 and item["weight"] > 15]
+    big_winners = [
+        item for item in portfolio
+        if item.get("priceSource") in ("live", "stale")
+        and item["pnlPercent"] > 50
+        and item["weight"] > 15
+    ]
     for winner in big_winners[:2]:
         suggestions.append(
             f"🎯 {winner['symbol']} is up {winner['pnlPercent']:.1f}%. "
@@ -495,35 +570,51 @@ def _generate_suggestions(
 
 
 def _generate_health_summary(
-    score, grade, n_stocks, n_sectors, total_value, pnl, pnl_pct, risk_level
+    score, grade, n_stocks, n_sectors, total_value, pnl, pnl_pct, risk_level,
+    pnl_reliable=True, unquoted_count=0,
 ) -> str:
     """Generate a human-readable portfolio health summary."""
     parts = []
 
     if score >= 75:
-        parts.append(f"🏆 Excellent! Your portfolio scored {score}/100 (Grade {grade}).")
+        parts.append(f"🏆 Strong book quality: {score}/100 (Grade {grade}).")
     elif score >= 55:
-        parts.append(f"👍 Good portfolio health: {score}/100 (Grade {grade}).")
+        parts.append(f"👍 Decent book quality: {score}/100 (Grade {grade}).")
     elif score >= 35:
-        parts.append(f"⚡ Your portfolio needs attention: {score}/100 (Grade {grade}).")
+        parts.append(f"⚡ Book quality needs attention: {score}/100 (Grade {grade}).")
     else:
-        parts.append(f"⚠️ Portfolio health is concerning: {score}/100 (Grade {grade}).")
+        parts.append(f"⚠️ Book quality is weak: {score}/100 (Grade {grade}).")
+
+    parts.append("This is a snapshot of current holdings, not a return forecast.")
 
     parts.append(
         f"You hold {n_stocks} stocks across {n_sectors} sectors "
         f"worth ₹{total_value:,.2f}."
     )
 
-    if pnl >= 0:
+    if not pnl_reliable:
+        parts.append("Mark-to-market P&L unavailable — quotes missing.")
+    elif unquoted_count:
+        if pnl >= 0:
+            parts.append(
+                f"Marked P&L: +₹{pnl:,.2f} ({pnl_pct:+.2f}%) 🟢 "
+                f"({unquoted_count} name(s) still on cost)."
+            )
+        else:
+            parts.append(
+                f"Marked P&L: -₹{abs(pnl):,.2f} ({pnl_pct:.2f}%) 🔴 "
+                f"({unquoted_count} name(s) still on cost)."
+            )
+    elif pnl >= 0:
         parts.append(f"Overall P&L: +₹{pnl:,.2f} ({pnl_pct:+.2f}%) 🟢")
     else:
         parts.append(f"Overall P&L: -₹{abs(pnl):,.2f} ({pnl_pct:.2f}%) 🔴")
 
     risk_text = {
-        "low": "Risk level is LOW — well-managed!",
-        "moderate": "Risk level is MODERATE — acceptable for most investors.",
-        "high": "Risk level is HIGH — consider rebalancing.",
-        "very_high": "Risk level is VERY HIGH — immediate rebalancing recommended!",
+        "low": "Structural risk is LOW.",
+        "moderate": "Structural risk is MODERATE.",
+        "high": "Structural risk is HIGH — consider rebalancing.",
+        "very_high": "Structural risk is VERY HIGH — rebalancing recommended.",
     }
     parts.append(risk_text.get(risk_level, ""))
 

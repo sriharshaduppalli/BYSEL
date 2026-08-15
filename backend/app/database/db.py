@@ -76,6 +76,17 @@ class AlertModel(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class DeviceTokenModel(Base):
+    """FCM registration tokens used to push price-alert notifications."""
+    __tablename__ = "device_tokens"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    token = Column(String, unique=True, index=True, nullable=False)
+    platform = Column(String, nullable=True, default="android")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class StockNoteModel(Base):
     """Per-user private notes keyed by normalized symbol (e.g. RELIANCE.NS)."""
     __tablename__ = "stock_notes"

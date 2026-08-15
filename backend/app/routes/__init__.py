@@ -1313,7 +1313,18 @@ def _optional_int(value: object) -> Optional[int]:
 
 def _quote_from_raw(raw: dict, now_ms: Optional[int] = None) -> Quote:
     """Map market_data quote dict → API Quote (keeps snapshot fundamentals)."""
-    from ..market_data import _safe_number
+    from ..market_data import _safe_number, fundamentals_from_yahoo_quote
+
+    raw = dict(raw or {})
+    last_hint = _safe_number(raw.get("last") or raw.get("regularMarketPrice"), 0.0)
+    mapped = fundamentals_from_yahoo_quote(raw, last_price=last_hint)
+    for key, incoming in mapped.items():
+        if incoming in (None, 0, 0.0):
+            continue
+        if raw.get(key) in (None, 0, 0.0):
+            raw[key] = incoming
+    if raw.get("last") in (None, 0, 0.0) and last_hint > 0:
+        raw["last"] = last_hint
 
     stamp = now_ms if now_ms is not None else int(time.time() * 1000)
     ts_raw = raw.get("timestamp")
@@ -1333,8 +1344,18 @@ def _quote_from_raw(raw: dict, now_ms: Optional[int] = None) -> Quote:
     if market_cap is not None and market_cap <= 0:
         market_cap = None
 
-    volume = _optional_int(raw.get("volume"))
-    avg_volume = _optional_int(raw.get("avgVolume"))
+    volume = _optional_int(
+        raw.get("volume") if raw.get("volume") is not None else raw.get("regularMarketVolume")
+    )
+    avg_volume = _optional_int(
+        raw.get("avgVolume")
+        if raw.get("avgVolume") is not None
+        else (
+            raw.get("averageDailyVolume3Month")
+            or raw.get("averageVolume")
+            or raw.get("averageDailyVolume10Day")
+        )
+    )
     if avg_volume is not None and avg_volume <= 0:
         avg_volume = None
 
@@ -1348,6 +1369,17 @@ def _quote_from_raw(raw: dict, now_ms: Optional[int] = None) -> Quote:
         bid = None
     if ask is not None and ask <= 0:
         ask = None
+
+    eps = _optional_float(
+        raw.get("eps")
+        if raw.get("eps") is not None
+        else raw.get("epsTrailingTwelveMonths") or raw.get("trailingEps")
+    )
+    target = _optional_float(
+        raw.get("targetMeanPrice")
+        if raw.get("targetMeanPrice") is not None
+        else raw.get("targetPrice")
+    )
 
     return Quote(
         symbol=str(raw.get("symbol") or "").upper(),
@@ -1364,10 +1396,10 @@ def _quote_from_raw(raw: dict, now_ms: Optional[int] = None) -> Quote:
         marketCap=market_cap,
         trailingPE=pe,
         pe=pe,
-        eps=_optional_float(raw.get("eps")),
+        eps=eps,
         fiftyTwoWeekHigh=_optional_float(raw.get("fiftyTwoWeekHigh")),
         fiftyTwoWeekLow=_optional_float(raw.get("fiftyTwoWeekLow")),
-        targetMeanPrice=_optional_float(raw.get("targetMeanPrice")),
+        targetMeanPrice=target,
         bid=bid,
         ask=ask,
         dividendYield=dividend,
@@ -1407,6 +1439,21 @@ async def get_quotes_endpoint(
         await asyncio.to_thread(_run_triggers)
     except Exception as exc:
         logger.warning("trigger_evaluation_failed reason=%s", str(exc))
+
+    try:
+        from ..alert_push import evaluate_price_alerts
+        from ..database.db import SessionLocal as AlertSessionLocal
+
+        def _run_alerts():
+            session = AlertSessionLocal()
+            try:
+                return evaluate_price_alerts(db=session, quotes=raw_quotes, symbols=sym_list)
+            finally:
+                session.close()
+
+        await asyncio.to_thread(_run_alerts)
+    except Exception as exc:
+        logger.warning("alert_push_evaluation_failed reason=%s", str(exc))
 
     now_ms = int(time.time() * 1000)
     safe = []
@@ -2094,6 +2141,11 @@ def _kick_background_warmup(force: bool = False) -> bool:
             llm_available()
         except Exception as exc:
             logger.warning("warmup.llm_failed reason=%s", exc)
+        try:
+            from ..alert_push import evaluate_active_alert_symbols
+            evaluate_active_alert_symbols()
+        except Exception as exc:
+            logger.warning("warmup.alerts_failed reason=%s", exc)
 
     threading.Thread(target=_warm, name="bysel-warmup", daemon=True).start()
     return True
@@ -3050,6 +3102,7 @@ async def portfolio_health_endpoint(
             "symbol": h.symbol,
             "quantity": h.quantity,
             "avgPrice": h.avg_price,
+            "lastPrice": h.last_price,
         })
     try:
         result = await asyncio.to_thread(calculate_portfolio_health, holdings_list)

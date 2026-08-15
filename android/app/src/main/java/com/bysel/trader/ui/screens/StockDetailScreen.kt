@@ -71,7 +71,7 @@ import com.bysel.trader.data.models.MarketNewsHeadline
 import com.bysel.trader.data.models.PreTradeEstimateResponse
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.ui.components.appOutlinedTextFieldColors
-import com.bysel.trader.ui.components.CandleLiteracyDetector
+import com.bysel.trader.ui.components.StockLiteracyCatalog
 import com.bysel.trader.ui.components.PriceHistoryChart
 import com.bysel.trader.ui.components.InfoChip
 import com.bysel.trader.ui.components.StockNotesIcon
@@ -173,15 +173,27 @@ fun StockDetailScreen(
     }
     val volumeRatio = remember(quote.volume, quote.avgVolume) {
         val avgVolume = quote.avgVolume ?: 0L
-        if (avgVolume <= 0L) null else (quote.volume?.toDouble() ?: 0.0) / avgVolume.toDouble()
+        val sessionVolume = quote.volume ?: 0L
+        if (avgVolume <= 0L || sessionVolume <= 0L) null else sessionVolume.toDouble() / avgVolume.toDouble()
+    }
+    val volumePulseLabel = remember(volumeRatio) {
+        when {
+            volumeRatio == null -> null
+            volumeRatio >= 1.5 -> "High"
+            volumeRatio >= 0.7 -> "Normal"
+            else -> "Low"
+        }
     }
     val yearPositionPct = remember(quote.fiftyTwoWeekHigh, quote.fiftyTwoWeekLow, quote.last) {
         val high = quote.fiftyTwoWeekHigh
         val low = quote.fiftyTwoWeekLow
         if (high == null || low == null || high <= low) null else ((quote.last - low) / (high - low)) * 100.0
     }
-    val targetGapPct = remember(quote.targetMeanPrice, quote.last) {
-        val target = quote.targetMeanPrice ?: return@remember null
+    val targetPrice = quote.targetMeanPrice
+    val targetIsAnalyst = targetPrice != null && targetPrice > 0.0
+    val targetFallback = if (targetIsAnalyst) targetPrice else quote.fiftyTwoWeekHigh
+    val targetGapPct = remember(targetFallback, quote.last) {
+        val target = targetFallback ?: return@remember null
         if (quote.last <= 0.0) null else ((target - quote.last) / quote.last) * 100.0
     }
     val spreadPct = remember(quote.bid, quote.ask, quote.last) {
@@ -189,7 +201,42 @@ fun StockDetailScreen(
         val ask = quote.ask ?: return@remember null
         if (quote.last <= 0.0) null else ((ask - bid) / quote.last) * 100.0
     }
-    val metrics = remember(quote, intradayRangePct, volumeRatio, yearPositionPct, targetGapPct, spreadPct) {
+    val metrics = remember(
+        quote,
+        intradayRangePct,
+        volumeRatio,
+        volumePulseLabel,
+        yearPositionPct,
+        targetGapPct,
+        targetIsAnalyst,
+        spreadPct,
+    ) {
+        val volumeValue = when {
+            volumeRatio != null && volumePulseLabel != null ->
+                "${String.format("%.2f", volumeRatio)}x · $volumePulseLabel"
+            (quote.volume ?: 0L) > 0L -> formatVolumeCompact(quote.volume)
+            else -> "—"
+        }
+        val volumeCaption = when {
+            volumeRatio != null -> "Session volume vs 3-month average"
+            (quote.volume ?: 0L) > 0L -> "Session volume (average not published)"
+            else -> "No session volume yet"
+        }
+        val targetValue = targetGapPct?.let { formatSignedPercent(it) } ?: "No target yet"
+        val targetCaption = when {
+            targetIsAnalyst -> "Distance to consensus analyst target"
+            targetGapPct != null -> "Distance to 52-week high (no analyst target)"
+            else -> "No analyst target or 52-week high yet"
+        }
+        val bookValue = when {
+            quote.bid != null && quote.ask != null && spreadPct != null ->
+                "${formatCurrency(quote.bid)} / ${formatCurrency(quote.ask)}"
+            else -> "—"
+        }
+        val bookCaption = when {
+            spreadPct != null -> "Spread ${formatSignedPercent(spreadPct)} vs last"
+            else -> "No live book — common after hours on NSE"
+        }
         listOf(
             DetailMetric(
                 title = "Intraday Range",
@@ -199,9 +246,13 @@ fun StockDetailScreen(
             ),
             DetailMetric(
                 title = "Volume Pulse",
-                value = volumeRatio?.let { "${String.format("%.2f", it)}x" } ?: "N/A",
-                caption = "Current volume versus average participation",
-                accent = if ((volumeRatio ?: 0.0) >= 1.0) theme.positive else theme.textSecondary,
+                value = volumeValue,
+                caption = volumeCaption,
+                accent = if ((volumeRatio ?: 0.0) >= 1.0 || (quote.volume ?: 0L) > 0L) {
+                    theme.positive
+                } else {
+                    theme.textSecondary
+                },
             ),
             DetailMetric(
                 title = "52W Position",
@@ -211,8 +262,8 @@ fun StockDetailScreen(
             ),
             DetailMetric(
                 title = "Target Gap",
-                value = targetGapPct?.let { formatSignedPercent(it) } ?: "N/A",
-                caption = "Distance to the consensus target mean price",
+                value = targetValue,
+                caption = targetCaption,
                 accent = when {
                     targetGapPct == null -> theme.textSecondary
                     targetGapPct >= 0.0 -> theme.positive
@@ -221,8 +272,8 @@ fun StockDetailScreen(
             ),
             DetailMetric(
                 title = "Bid / Ask",
-                value = spreadPct?.let { formatSignedPercent(it) } ?: "N/A",
-                caption = "Indicative spread relative to the last traded price",
+                value = bookValue,
+                caption = bookCaption,
                 accent = theme.textSecondary,
             ),
         )
@@ -903,7 +954,7 @@ private fun PriceStoryCard(
     onAiQuery: ((String) -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
-    val candleLessons = remember(history) { CandleLiteracyDetector.detectRecent(history) }
+    val literacyCards = remember(history) { StockLiteracyCatalog.cardsFor(history) }
     Card(
         colors = CardDefaults.cardColors(containerColor = theme.card),
         shape = RoundedCornerShape(20.dp),
@@ -979,43 +1030,56 @@ private fun PriceStoryCard(
                 }
             }
 
-            if (candleLessons.isNotEmpty()) {
-                Text(
-                    text = "Candle literacy (recent bars)",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = theme.text,
-                )
-                Text(
-                    text = "Paper-practice shapes from this chart — not buy/sell advice.",
-                    fontSize = 11.sp,
-                    color = theme.textSecondary,
-                )
-                candleLessons.forEach { lesson ->
-                    val accent = when (lesson.bias.lowercase()) {
-                        "bullish" -> theme.positive
-                        "bearish" -> theme.negative
-                        else -> theme.primary
-                    }
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = "Market literacy",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = theme.text,
+            )
+            Text(
+                text = "Candles, ratios, and NSE tools — learning only, not buy/sell advice.",
+                fontSize = 11.sp,
+                color = theme.textSecondary,
+            )
+            literacyCards.forEach { card ->
+                val accent = when (card.tag.lowercase()) {
+                    "candle" -> if (card.seenOnChart) theme.primary else theme.text
+                    "fundamental" -> theme.text
+                    else -> theme.text
+                }
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = theme.surface,
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
                         Text(
-                            text = "• ${lesson.name} · ${lesson.bias}",
+                            text = buildString {
+                                append(card.title)
+                                append(" · ")
+                                append(card.tag)
+                                if (card.seenOnChart) append(" · on this chart")
+                            },
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = accent,
                         )
                         Text(
-                            text = lesson.summary,
+                            text = card.summary,
                             fontSize = 11.sp,
                             color = theme.textSecondary,
+                            lineHeight = 15.sp,
                         )
                         if (onAiQuery != null) {
                             TextButton(
-                                onClick = { onAiQuery(lesson.learnQuery) },
+                                onClick = { onAiQuery(card.learnQuery) },
                                 contentPadding = PaddingValues(0.dp),
                             ) {
                                 Text(
-                                    text = "Learn: ${lesson.name}",
+                                    text = "Learn: ${card.title}",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = theme.primary,
@@ -1317,7 +1381,11 @@ private fun DetailSnapshotCard(quote: Quote) {
             )
             DetailLineItem(
                 label = "Bid / Ask",
-                value = "${quote.bid?.let { formatCurrency(it) } ?: "N/A"} / ${quote.ask?.let { formatCurrency(it) } ?: "N/A"}",
+                value = when {
+                    quote.bid != null || quote.ask != null ->
+                        "${quote.bid?.let { formatCurrency(it) } ?: "—"} / ${quote.ask?.let { formatCurrency(it) } ?: "—"}"
+                    else -> "— / —  (no live book)"
+                },
             )
             DetailLineItem(
                 label = "52W High / Low",

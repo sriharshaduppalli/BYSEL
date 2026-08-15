@@ -18,12 +18,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField as M3OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -53,10 +55,18 @@ import com.bysel.trader.data.models.*
 import com.bysel.trader.ui.components.InvestorTipsCard
 import com.bysel.trader.ui.components.localInvestorTips
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.byselCardBorder
+import com.bysel.trader.ui.theme.byselCardColors
+import com.bysel.trader.ui.theme.byselCardElevation
 import com.bysel.trader.viewmodel.TradingViewModel
 
 @Composable
-private fun LoadingOrEmpty(title: String, subtitle: String, loading: Boolean) {
+private fun LoadingOrEmpty(
+    title: String,
+    subtitle: String,
+    loading: Boolean,
+    body: String? = null,
+) {
     Box(
         modifier = Modifier.fillMaxSize().background(LocalAppTheme.current.surface).padding(24.dp),
         contentAlignment = Alignment.Center
@@ -67,8 +77,29 @@ private fun LoadingOrEmpty(title: String, subtitle: String, loading: Boolean) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(title, color = LocalAppTheme.current.text, fontSize = 26.sp, fontWeight = FontWeight.Bold)
                 Text(subtitle, color = LocalAppTheme.current.textSecondary, fontSize = 14.sp)
+                if (!body.isNullOrBlank()) {
+                    Text(body, color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun ProductPaperBanner(text: String) {
+    Card(
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Text(
+            text = text,
+            color = LocalAppTheme.current.primary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(12.dp),
+        )
     }
 }
 
@@ -109,7 +140,7 @@ private fun MutualFundLearnCard(onAskAi: () -> Unit) {
         ) {
             Text("Learn: What are Mutual Funds?", color = theme.text, fontWeight = FontWeight.SemiBold)
             Text(
-                "Pooled investing via an AMC — units priced at NAV. Educational overview for beginners.",
+                "Pooled investing via an AMC — units priced at NAV. Educational overview. SIP here is paper practice; returns are not guaranteed.",
                 color = theme.textSecondary,
                 fontSize = 12.sp,
             )
@@ -446,7 +477,12 @@ fun MutualFundsScreen(viewModel: TradingViewModel) {
             onStartSip = { sipTarget = selected }
         )
     } else if (funds.isEmpty()) {
-        LoadingOrEmpty("Mutual Funds", "No funds found yet.", loading)
+        LoadingOrEmpty(
+            title = "Mutual Funds",
+            subtitle = "No funds found yet.",
+            loading = loading,
+            body = "Browse AMFI NAVs and rehearse paper SIPs. This is not a live purchase rail and returns are not guaranteed.",
+        )
     } else {
         LazyColumn(
             modifier = Modifier.fillMaxSize().background(LocalAppTheme.current.surface).padding(16.dp),
@@ -455,10 +491,13 @@ fun MutualFundsScreen(viewModel: TradingViewModel) {
             item { Text("Mutual Funds", color = LocalAppTheme.current.text, fontSize = 24.sp, fontWeight = FontWeight.Bold) }
             item {
                 Text(
-                    "Live AMFI NAVs for browsing · SIP is paper-practice only · returns may be blank on live feed",
+                    "AMFI NAVs for browsing · SIP is paper-practice only · past returns are not guaranteed",
                     color = LocalAppTheme.current.textSecondary,
                     fontSize = 12.sp,
                 )
+            }
+            item {
+                ProductPaperBanner("Paper practice — no real money is invested and this is not a live AMC purchase.")
             }
             item { ActionBanner(viewModel) }
             item {
@@ -599,7 +638,7 @@ fun MutualFundsScreen(viewModel: TradingViewModel) {
                                 )
                             }
                         ) {
-                            Text("Get AI Recommendations")
+                            Text("Find paper matches")
                         }
 
                         val topRecommendations = recommendations?.recommendations.orEmpty().take(3)
@@ -655,7 +694,10 @@ fun MutualFundsScreen(viewModel: TradingViewModel) {
 
             items(filteredFunds, key = { it.schemeCode }) { fund ->
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+                    colors = byselCardColors(),
+                    elevation = byselCardElevation(),
+                    border = byselCardBorder(),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth().clickable { selected = fund }
                 ) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -697,7 +739,7 @@ fun MutualFundsScreen(viewModel: TradingViewModel) {
                                 Text(selectedText, maxLines = 1)
                             }
                             TextButton(onClick = { sipTarget = fund }) {
-                                Text("Start SIP", maxLines = 1)
+                                Text("Practice SIP", maxLines = 1)
                             }
                         }
                     }
@@ -724,6 +766,11 @@ fun MutualFundsScreen(viewModel: TradingViewModel) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(result.summary, fontSize = 13.sp)
                     Text(comparisonText, fontSize = 12.sp)
+                    Text(
+                        "Educational compare only — past returns are not guaranteed and this is not a fund recommendation.",
+                        fontSize = 11.sp,
+                        color = LocalAppTheme.current.textSecondary,
+                    )
                 }
             },
             confirmButton = {
@@ -797,12 +844,18 @@ private fun MutualFundDetailScreen(fund: MutualFund, onBack: () -> Unit, onStart
                 Text("Returns: 1Y ${fund.returns1Y ?: "-"}% • 3Y ${fund.returns3Y ?: "-"}% • 5Y ${fund.returns5Y ?: "-"}%")
                 Text("Fund House: ${fund.fundHouse ?: "N/A"}")
                 Text("Risk: ${fund.riskLevel ?: "N/A"}")
+                Text(
+                    "Past returns are not guaranteed. SIP here is paper practice only.",
+                    color = LocalAppTheme.current.textSecondary,
+                    fontSize = 11.sp,
+                )
             }
         }
-        Button(onClick = onStartSip, modifier = Modifier.fillMaxWidth()) { Text("Start SIP") }
+        Button(onClick = onStartSip, modifier = Modifier.fillMaxWidth()) { Text("Practice SIP") }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun IpoListingsScreen(viewModel: TradingViewModel) {
     val ipos by viewModel.ipoListings.collectAsStateWithLifecycle()
@@ -835,7 +888,12 @@ fun IpoListingsScreen(viewModel: TradingViewModel) {
             onApply = { if (selected?.status.equals("OPEN", true)) applyTarget = selected }
         )
     } else if (ipos.isEmpty()) {
-        LoadingOrEmpty("IPO Listings", "No IPOs available right now.", loading)
+        LoadingOrEmpty(
+            title = "IPO Listings",
+            subtitle = "No practice IPOs in the calendar right now.",
+            loading = loading,
+            body = "This is a paper IPO browser. Apply here is practice only — no real money, no ASBA block, and not an exchange application.",
+        )
     } else {
         LazyColumn(
             modifier = Modifier.fillMaxSize().background(LocalAppTheme.current.surface).padding(16.dp),
@@ -844,10 +902,13 @@ fun IpoListingsScreen(viewModel: TradingViewModel) {
             item { Text("IPO Listings", color = LocalAppTheme.current.text, fontSize = 24.sp, fontWeight = FontWeight.Bold) }
             item {
                 Text(
-                    "Demo IPO calendar for practice applies — not live NSE/BSE IPO filings.",
+                    "Paper IPO calendar for practice applies — not live NSE/BSE filings or ASBA.",
                     color = LocalAppTheme.current.textSecondary,
                     fontSize = 12.sp,
                 )
+            }
+            item {
+                ProductPaperBanner("No real money. Practice apply is not an exchange application and does not block UPI/ASBA cash.")
             }
             item { ActionBanner(viewModel) }
             item {
@@ -869,38 +930,55 @@ fun IpoListingsScreen(viewModel: TradingViewModel) {
             }
 
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     listOf(
                         IpoListingTab.OPEN to "Open (${openIpos.size})",
                         IpoListingTab.CLOSED to "Closed (${closedIpos.size})",
                         IpoListingTab.UPCOMING to "Upcoming (${upcomingIpos.size})"
                     ).forEach { (tab, label) ->
-                        TextButton(onClick = { selectedTab = tab }) {
-                            val title = if (selectedTab == tab) "● $label" else label
-                            Text(title)
-                        }
+                        FilterChip(
+                            selected = selectedTab == tab,
+                            onClick = { selectedTab = tab },
+                            label = { Text(label, fontSize = 12.sp, maxLines = 1) },
+                        )
                     }
                 }
             }
 
             if (filteredIpos.isEmpty()) {
                 item {
-                    Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
-                        Text(
-                            "No ${selectedTab.label.lowercase()} IPOs right now.",
-                            color = LocalAppTheme.current.textSecondary,
-                            modifier = Modifier.padding(12.dp)
-                        )
+                    Card(
+                        colors = byselCardColors(),
+                        elevation = byselCardElevation(),
+                        border = byselCardBorder(),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                "No ${selectedTab.label.lowercase()} IPOs right now.",
+                                color = LocalAppTheme.current.text,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                "Open = practice window now · Upcoming = announced later · Closed = window ended. Dates are educational IST calendar, not live exchange bids.",
+                                color = LocalAppTheme.current.textSecondary,
+                                fontSize = 12.sp,
+                            )
+                        }
                     }
                 }
             }
 
             items(filteredIpos, key = { it.ipoId }) { ipo ->
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
+                    colors = byselCardColors(),
+                    elevation = byselCardElevation(),
+                    border = byselCardBorder(),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth().clickable { selected = ipo }
                 ) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -972,18 +1050,24 @@ private fun IpoDetailScreen(ipo: IPOListing, onBack: () -> Unit, onApply: () -> 
     ) {
         TextButton(onClick = onBack) { Text("← Back") }
         Text(ipo.companyName, color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold, fontSize = 24.sp)
-        Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
+        ProductPaperBanner("Paper practice apply — no real money and not an exchange / ASBA application.")
+        Card(
+            colors = byselCardColors(),
+            elevation = byselCardElevation(),
+            border = byselCardBorder(),
+            shape = RoundedCornerShape(12.dp),
+        ) {
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Symbol: ${ipo.symbol}")
-                Text("Status: ${ipo.status}")
-                Text("Issue Window: ${ipo.issueOpenDate} - ${ipo.issueCloseDate}")
-                Text("Listing Date: ${ipo.listingDate ?: "TBA"}")
-                Text("Price Band: ₹${ipo.priceBandMin ?: "-"} - ₹${ipo.priceBandMax ?: "-"}")
-                Text("Lot Size: ${ipo.lotSize ?: "-"}")
+                Text("Symbol: ${ipo.symbol}", color = LocalAppTheme.current.text)
+                Text("Status: ${ipo.status}", color = LocalAppTheme.current.text)
+                Text("Issue Window (IST calendar): ${ipo.issueOpenDate} - ${ipo.issueCloseDate}", color = LocalAppTheme.current.text)
+                Text("Listing Date: ${ipo.listingDate ?: "TBA"}", color = LocalAppTheme.current.text)
+                Text("Price Band: ₹${ipo.priceBandMin ?: "-"} - ₹${ipo.priceBandMax ?: "-"}", color = LocalAppTheme.current.text)
+                Text("Lot Size: ${ipo.lotSize ?: "-"}", color = LocalAppTheme.current.text)
             }
         }
         if (ipo.status.equals("OPEN", true)) {
-            Button(onClick = onApply, modifier = Modifier.fillMaxWidth()) { Text("Apply IPO") }
+            Button(onClick = onApply, modifier = Modifier.fillMaxWidth()) { Text("Practice apply") }
         }
     }
 }
@@ -1064,7 +1148,12 @@ fun SipPlansScreen(viewModel: TradingViewModel) {
     LaunchedEffect(Unit) { viewModel.loadSipPlans() }
 
     if (plans.isEmpty()) {
-        LoadingOrEmpty("My SIPs", "No SIP plans created for this user yet.", loading)
+        LoadingOrEmpty(
+            title = "My SIPs",
+            subtitle = "No practice SIP plans yet.",
+            loading = loading,
+            body = "Create a paper SIP from Mutual Funds. No real money is invested and returns are not guaranteed.",
+        )
         return
     }
 
@@ -1073,6 +1162,9 @@ fun SipPlansScreen(viewModel: TradingViewModel) {
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item { Text("My SIPs", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold, fontSize = 24.sp) }
+        item {
+            ProductPaperBanner("Paper SIPs only — no real AMC debit and returns are not guaranteed.")
+        }
         item { ActionBanner(viewModel) }
         items(plans, key = { it.id }) { plan ->
             Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card), modifier = Modifier.fillMaxWidth()) {
@@ -1126,7 +1218,12 @@ fun MyIpoApplicationsScreen(viewModel: TradingViewModel) {
     }
 
     if (applications.isEmpty()) {
-        LoadingOrEmpty("My IPO Applications", "No IPO applications submitted yet.", loading)
+        LoadingOrEmpty(
+            title = "My IPO Applications",
+            subtitle = "No paper IPO applications yet.",
+            loading = loading,
+            body = "Practice applies from IPO Listings show up here. They are not exchange allotments and no real money is blocked.",
+        )
         return
     }
 
@@ -1135,6 +1232,9 @@ fun MyIpoApplicationsScreen(viewModel: TradingViewModel) {
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item { Text("My IPO Applications", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold, fontSize = 24.sp) }
+        item {
+            ProductPaperBanner("Paper applications only — not live ASBA, UPI debit, or exchange allotment.")
+        }
         item { ActionBanner(viewModel) }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1160,7 +1260,7 @@ fun MyIpoApplicationsScreen(viewModel: TradingViewModel) {
                     )
                     Text("${app.ipoId} • ${app.status}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                     Text("Lots: ${app.lots} • Bid: ₹${app.bidPrice}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                    Text("UPI: ${app.upiId} • ${app.appliedAt}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                    Text("Practice ref: ${app.upiId} • ${app.appliedAt}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                 }
             }
         }
@@ -1218,10 +1318,15 @@ private fun SipCreateDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Create SIP") },
+        title = { Text("Practice SIP") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(fundName, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Paper SIP only — no real money is invested and returns are not guaranteed.",
+                    fontSize = 12.sp,
+                    color = LocalAppTheme.current.textSecondary,
+                )
                 OutlinedTextField(value = amountText, onValueChange = { amountText = it }, label = { Text("Amount") })
                 OutlinedTextField(value = frequency, onValueChange = { frequency = it.uppercase() }, label = { Text("Frequency (MONTHLY/QUARTERLY)") })
                 OutlinedTextField(value = dayText, onValueChange = { dayText = it }, label = { Text("Installment Day") })
@@ -1232,7 +1337,7 @@ private fun SipCreateDialog(
                 val amount = amountText.toDoubleOrNull() ?: 0.0
                 val day = dayText.toIntOrNull() ?: 5
                 if (amount > 0) onCreate(amount, frequency, day)
-            }) { Text("Create") }
+            }) { Text("Create practice SIP") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
@@ -1245,18 +1350,27 @@ private fun IpoApplyDialog(
     onApply: (lots: Int, upiId: String, bidPrice: Double) -> Unit
 ) {
     var lotsText by remember { mutableStateOf("1") }
-    var upiText by remember { mutableStateOf("demo@upi") }
+    var upiText by remember { mutableStateOf("paper@bysel") }
     var bidText by remember { mutableStateOf((ipo.priceBandMax ?: ipo.priceBandMin ?: 0.0).toString()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Apply IPO") },
+        title = { Text("Practice apply") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(ipo.companyName, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "No real money. This is not an exchange application and does not block UPI or ASBA cash.",
+                    fontSize = 12.sp,
+                    color = LocalAppTheme.current.textSecondary,
+                )
                 OutlinedTextField(value = lotsText, onValueChange = { lotsText = it }, label = { Text("Lots") })
                 OutlinedTextField(value = bidText, onValueChange = { bidText = it }, label = { Text("Bid Price") })
-                OutlinedTextField(value = upiText, onValueChange = { upiText = it }, label = { Text("UPI ID") })
+                OutlinedTextField(
+                    value = upiText,
+                    onValueChange = { upiText = it },
+                    label = { Text("Practice reference (not real UPI)") },
+                )
             }
         },
         confirmButton = {
@@ -1264,7 +1378,7 @@ private fun IpoApplyDialog(
                 val lots = lotsText.toIntOrNull() ?: 1
                 val bid = bidText.toDoubleOrNull() ?: 0.0
                 if (lots > 0 && bid > 0) onApply(lots, upiText, bid)
-            }) { Text("Submit") }
+            }) { Text("Submit paper apply") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
@@ -1702,16 +1816,19 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
                 color = LocalAppTheme.current.text,
                 fontWeight = FontWeight.Bold,
                 fontSize = 24.sp,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
         }
         item {
             Text(
-                "F&O gym: live NSE chain when reachable, else synthetic Black–Scholes. PCR / IV skew included for both.",
+                "Paper F&O gym: live NSE chain when reachable, else synthetic Black–Scholes. Educational only — no guaranteed P&L.",
                 color = LocalAppTheme.current.textSecondary,
                 fontSize = 12.sp,
             )
+        }
+        item {
+            ProductPaperBanner("IST session: cash 9:15–15:30 · from 3 Aug 2026 F&O cash ~15:15, CAS ~15:35, derivatives ~15:40. Paper practice, not live brokerage.")
         }
         item { ActionBanner(viewModel) }
         item {
@@ -1720,7 +1837,7 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
                 topicLabel = investorTips.topicLabel.ifBlank { "F&O" },
                 tips = if (investorTips.topic == "fno") investorTips.tips else localInvestorTips("fno").tips,
                 disclaimer = investorTips.disclaimer.ifBlank {
-                    "Educational habits — not trade recommendations."
+                    "Educational paper habits — not trade recommendations. Returns are not guaranteed."
                 },
                 loading = investorTipsLoading,
                 compact = true,
@@ -1750,6 +1867,30 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
                     }
                     if (loading) {
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = LocalAppTheme.current.primary)
+                    }
+                }
+            }
+        }
+
+        if (optionChain == null && !loading) {
+            item {
+                Card(
+                    colors = byselCardColors(),
+                    elevation = byselCardElevation(),
+                    border = byselCardBorder(),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            "No chain loaded yet",
+                            color = LocalAppTheme.current.text,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            "Enter an underlying (NIFTY, BANKNIFTY, or a stock) and expiry, then Load Chain. This is an educational paper gym — not a live F&O ticket and P&L is not guaranteed.",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 12.sp,
+                        )
                     }
                 }
             }
@@ -1841,7 +1982,12 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
         item {
             Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Strategy Builder", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    Text("Strategy Builder (paper)", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Illustrative risk preview — not a live order and P&L is not guaranteed.",
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 11.sp,
+                    )
                     OutlinedTextField(
                         value = strategySpotInput,
                         onValueChange = { strategySpotInput = it },
@@ -1872,7 +2018,7 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Strategy Risk Preview", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                        Text("Strategy Risk Preview (paper)", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
                         Text("Max Profit: ₹${String.format("%.2f", preview.maxProfit)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                         Text("Max Loss: ₹${String.format("%.2f", preview.maxLoss)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                         Text("Margin Estimate: ₹${String.format("%.2f", preview.marginEstimate)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)

@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -513,6 +514,21 @@ private fun SpotTradingWorkspace(
             .mapNotNull { symbol -> liveQuoteMap[symbol.uppercase()]?.let { computeWatchlistInsight(it) } }
             .sortedByDescending { it.confidence }
     }
+    val watchlistListState = rememberLazyListState()
+    val liveBoardListState = rememberLazyListState()
+    var listExpanded by remember { mutableStateOf(false) }
+    val activeListState = if (boardModeWatchlist) watchlistListState else liveBoardListState
+    LaunchedEffect(boardModeWatchlist, activeListState) {
+        snapshotFlow {
+            activeListState.firstVisibleItemIndex to activeListState.firstVisibleItemScrollOffset
+        }.collect { (index, offset) ->
+            if (index > 0 || offset > 64) {
+                listExpanded = true
+            } else if (index == 0 && offset < 8) {
+                listExpanded = false
+            }
+        }
+    }
 
     LaunchedEffect(showAddWatchlistDialog) {
         if (showAddWatchlistDialog) {
@@ -577,34 +593,40 @@ private fun SpotTradingWorkspace(
             .fillMaxSize()
             .background(LocalAppTheme.current.surface)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+        AnimatedVisibility(
+            visible = !listExpanded,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "My Watchlist",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = LocalAppTheme.current.text,
-                )
-                Text(
-                    text = if (activeWatchlistSymbols.isEmpty()) {
-                        "Search any listed NSE name to start tracking"
-                    } else {
-                        "${activeWatchlistSymbols.size} tracked · tap a name to trade"
-                    },
-                    fontSize = 11.sp,
-                    color = LocalAppTheme.current.textSecondary,
-                )
-            }
-            Button(
-                onClick = { showAddWatchlistDialog = true },
-                modifier = Modifier.height(36.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp),
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("+ Add", fontSize = 12.sp)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "My Watchlist",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = LocalAppTheme.current.text,
+                    )
+                    Text(
+                        text = if (activeWatchlistSymbols.isEmpty()) {
+                            "Search any listed NSE name to start tracking"
+                        } else {
+                            "${activeWatchlistSymbols.size} tracked · tap a name to trade"
+                        },
+                        fontSize = 11.sp,
+                        color = LocalAppTheme.current.textSecondary,
+                    )
+                }
+                Button(
+                    onClick = { showAddWatchlistDialog = true },
+                    modifier = Modifier.height(36.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                ) {
+                    Text("+ Add", fontSize = 12.sp)
+                }
             }
         }
 
@@ -613,6 +635,7 @@ private fun SpotTradingWorkspace(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             FilterChip(
                 selected = boardModeWatchlist,
@@ -624,6 +647,14 @@ private fun SpotTradingWorkspace(
                 onClick = { boardModeWatchlist = false },
                 label = { Text("Live board") },
             )
+            if (listExpanded) {
+                TextButton(
+                    onClick = { showAddWatchlistDialog = true },
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                ) {
+                    Text("+ Add", fontSize = 12.sp, maxLines = 1)
+                }
+            }
             Spacer(modifier = Modifier.weight(1f))
             StreamHealthPill(health = streamHealth)
         }
@@ -666,86 +697,94 @@ private fun SpotTradingWorkspace(
             )
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+        AnimatedVisibility(
+            visible = !listExpanded,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = if (boardModeWatchlist) "My list (tracked quotes)" else "Live board (loaded quotes)",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = LocalAppTheme.current.text,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = if (boardModeWatchlist) {
-                        "${sortMode.label} · $quoteFreshnessLabel"
-                    } else {
-                        "Not the full NSE catalog — use Search / + Add for any listed name · $quoteFreshnessLabel"
-                    },
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = quoteFreshnessColor,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onOpenAdvancedWorkspace) { Text("Tools", fontSize = 11.sp, maxLines = 1) }
-                Button(
-                    onClick = onRefresh,
-                    colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
-                    modifier = Modifier.height(36.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp),
-                ) {
-                    Text("Refresh", fontSize = 12.sp, maxLines = 1)
-                }
-            }
-        }
-
-        if (marketStatus != null) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (marketStatus.isOpen) LocalAppTheme.current.pnlWash(true, 0.28f)
-                    else LocalAppTheme.current.primary.copy(alpha = 0.12f)
-                ),
-                shape = RoundedCornerShape(8.dp)
-            ) {
+            Column {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.Top,
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "\u2B24",
-                        fontSize = 10.sp,
-                        color = if (marketStatus.isOpen) LocalAppTheme.current.positive else LocalAppTheme.current.primary,
-                        modifier = Modifier.padding(end = 8.dp, top = 3.dp),
-                    )
-                    Text(
-                        text = if (marketStatus.isOpen) {
-                            marketStatus.message
-                        } else {
-                            "NSE closed · Paper trading still available"
-                        },
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (marketStatus.isOpen) LocalAppTheme.current.positive else LocalAppTheme.current.text,
-                        modifier = Modifier.weight(1f),
-                        softWrap = true,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                        lineHeight = 18.sp,
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (boardModeWatchlist) "My list (tracked quotes)" else "Live board (loaded quotes)",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = LocalAppTheme.current.text,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = if (boardModeWatchlist) {
+                                "${sortMode.label} · $quoteFreshnessLabel"
+                            } else {
+                                "Not the full NSE catalog — use Search / + Add for any listed name · $quoteFreshnessLabel"
+                            },
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = quoteFreshnessColor,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = onOpenAdvancedWorkspace) { Text("Tools", fontSize = 11.sp, maxLines = 1) }
+                        Button(
+                            onClick = onRefresh,
+                            colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
+                            modifier = Modifier.height(36.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp),
+                        ) {
+                            Text("Refresh", fontSize = 12.sp, maxLines = 1)
+                        }
+                    }
+                }
+
+                if (marketStatus != null) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (marketStatus.isOpen) LocalAppTheme.current.pnlWash(true, 0.28f)
+                            else LocalAppTheme.current.primary.copy(alpha = 0.12f)
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            Text(
+                                text = "\u2B24",
+                                fontSize = 10.sp,
+                                color = if (marketStatus.isOpen) LocalAppTheme.current.positive else LocalAppTheme.current.primary,
+                                modifier = Modifier.padding(end = 8.dp, top = 3.dp),
+                            )
+                            Text(
+                                text = if (marketStatus.isOpen) {
+                                    marketStatus.message
+                                } else {
+                                    "NSE closed · Paper trading still available"
+                                },
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (marketStatus.isOpen) LocalAppTheme.current.positive else LocalAppTheme.current.text,
+                                modifier = Modifier.weight(1f),
+                                softWrap = true,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
+                                lineHeight = 18.sp,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -827,6 +866,7 @@ private fun SpotTradingWorkspace(
                     }
                 } else {
                     LazyColumn(
+                        state = watchlistListState,
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(horizontal = 8.dp),
@@ -943,6 +983,7 @@ private fun SpotTradingWorkspace(
                     .fillMaxWidth(),
             ) {
                 LazyColumn(
+                    state = liveBoardListState,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 8.dp)
@@ -1076,9 +1117,14 @@ private fun FuturesRadarScreen(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        "Futures board: NSE contracts when reachable, else synthetic. Preview lot risk, then place a paper ticket in one tap.",
+                        "Paper F&O gym: NSE contracts when reachable, else synthetic. Preview lot risk, then place a paper ticket. No guaranteed P&L.",
                         color = LocalAppTheme.current.textSecondary,
                         fontSize = 12.sp,
+                    )
+                    Text(
+                        "IST session: cash 9:15–15:30 · from 3 Aug 2026 F&O cash ~15:15, CAS ~15:35, derivatives ~15:40.",
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 11.sp,
                     )
                     marketStatus?.let {
                         Text(
@@ -1099,7 +1145,7 @@ private fun FuturesRadarScreen(
                 title = "F&O Tips",
                 topicLabel = if (investorTips.topic == "fno") investorTips.topicLabel else foTipsFallback.topicLabel,
                 tips = if (investorTips.topic == "fno") investorTips.tips else foTipsFallback.tips,
-                disclaimer = "Educational habits — not trade recommendations.",
+                disclaimer = "Educational paper habits — not trade recommendations. Returns are not guaranteed.",
                 compact = true,
             )
         }
@@ -2038,7 +2084,11 @@ private fun TradeBottomSheetContent(
                 )
                 TradeSummaryLine(
                     label = "Spread",
-                    value = "${String.format("%.2f", spreadPct)}%"
+                    value = if (quote.bid != null && quote.ask != null) {
+                        "${String.format("%.2f", spreadPct)}%"
+                    } else {
+                        "— · No live book"
+                    }
                 )
                 TradeSummaryLine(
                     label = "Range",

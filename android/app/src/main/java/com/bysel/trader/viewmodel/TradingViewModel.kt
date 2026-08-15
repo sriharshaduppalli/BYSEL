@@ -493,7 +493,7 @@ class TradingViewModel(
     private fun syncSelectedQuoteFrom(quotes: List<Quote>) {
         val current = _selectedQuote.value ?: return
         val refreshed = quotes.firstOrNull { it.symbol.equals(current.symbol, ignoreCase = true) } ?: return
-        _selectedQuote.value = refreshed
+        _selectedQuote.value = refreshed.withSnapshotFrom(current)
     }
 
     private fun resetStockDetailContext() {
@@ -731,7 +731,7 @@ class TradingViewModel(
             val existing = merged[key]
             // Yahoo/empty shells must not wipe a last good print.
             if (quote.last <= 0.0 && existing != null && existing.last > 0.0) return@forEach
-            merged[key] = quote.withLiquidityFrom(existing)
+            merged[key] = quote.withSnapshotFrom(existing)
         }
         return merged.values.sortedBy { it.symbol }
     }
@@ -3211,7 +3211,7 @@ class TradingViewModel(
                 )
             )) {
                 is Result.Success -> {
-                    _productActionMessage.value = "SIP created successfully"
+                    _productActionMessage.value = "Practice SIP created — no real money is invested"
                     loadSipPlans()
                 }
                 is Result.Error -> _error.value = r.message
@@ -3221,7 +3221,7 @@ class TradingViewModel(
         }
     }
 
-    fun applyForIpo(ipo: IPOListing, lots: Int = 1, upiId: String = "demo@upi") {
+    fun applyForIpo(ipo: IPOListing, lots: Int = 1, upiId: String = "paper@bysel") {
         viewModelScope.launch {
             _productsLoading.value = true
             val bid = ipo.priceBandMax ?: ipo.priceBandMin ?: 0.0
@@ -3235,7 +3235,7 @@ class TradingViewModel(
             )) {
                 is Result.Success -> {
                     _productActionMessage.value =
-                        "Demo IPO application submitted — check My IPO Applications"
+                        "Paper IPO apply submitted — not a live exchange / ASBA application"
                     loadMyIpoApplications()
                 }
                 is Result.Error -> _error.value = r.message

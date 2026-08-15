@@ -903,8 +903,9 @@ private fun NotificationsSettingsDialog(
                 )
                 Text(
                     text = "BYSEL uses notifications only for price alerts you create. " +
-                        "We request permission when you turn banners on — alerts still save " +
-                        "and show in the app if you deny. On-device checks do not require server push.",
+                        "Levels are checked about every 15 minutes in the background, and faster " +
+                        "while the app is open. We request permission when you turn banners on — " +
+                        "alerts still save and show in the app if you deny.",
                     fontSize = 12.sp,
                     color = theme.textSecondary,
                 )

@@ -49,9 +49,13 @@ import com.bysel.trader.ui.theme.byselCardBorder
 import com.bysel.trader.ui.theme.byselCardColors
 import com.bysel.trader.ui.theme.byselCardElevation
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.saveable.rememberSaveable
+import com.bysel.trader.ui.components.PortfolioSortMode
+import com.bysel.trader.ui.components.sortedByPortfolioMode
 
 @Composable
 fun WatchlistScreen(
@@ -290,6 +294,7 @@ fun UpgradedQuoteCard(quote: Quote, onClick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PortfolioScreen(
     holdings: List<Holding>,
@@ -312,6 +317,13 @@ fun PortfolioScreen(
     }
 
     val quoteBySymbol = remember(quotes) { quotes.associateBy { it.symbol.uppercase() } }
+    var sortModeName by rememberSaveable { mutableStateOf(PortfolioSortMode.VALUE.name) }
+    val sortMode = remember(sortModeName) {
+        runCatching { PortfolioSortMode.valueOf(sortModeName) }.getOrDefault(PortfolioSortMode.VALUE)
+    }
+    val sortedHoldings = remember(holdings, quoteBySymbol, sortMode) {
+        holdings.sortedByPortfolioMode(sortMode, quoteBySymbol)
+    }
 
     var pendingSell by remember { mutableStateOf<Holding?>(null) }
 
@@ -386,7 +398,11 @@ fun PortfolioScreen(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = "Paper Practice · Simulated holdings",
+                        text = if (holdings.isEmpty()) {
+                            "Paper Practice · Simulated holdings"
+                        } else {
+                            "Paper Practice · ${sortMode.label}"
+                        },
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                         color = theme.primary,
@@ -401,13 +417,15 @@ fun PortfolioScreen(
                     onClick = {
                         val sb = StringBuilder()
                         sb.appendLine("Symbol,Qty,Avg Price,Current Price,Value,P&L,P&L %")
-                        holdings.forEach { h ->
-                            val value = h.last * h.qty
+                        sortedHoldings.forEach { h ->
+                            val quote = quoteBySymbol[h.symbol.uppercase()]
+                            val last = if (quote != null && quote.last > 0.0) quote.last else h.last
+                            val value = last * h.qty
                             val invested = h.avgPrice * h.qty
                             val pnl = value - invested
                             val pct = if (invested > 0) "%.2f".format(pnl / invested * 100) else "0.00"
                             sb.appendLine(
-                                "${h.symbol},${h.qty},${"%.2f".format(h.avgPrice)},${"%.2f".format(h.last)}," +
+                                "${h.symbol},${h.qty},${"%.2f".format(h.avgPrice)},${"%.2f".format(last)}," +
                                     "${"%.2f".format(value)},${"%.2f".format(pnl)},$pct",
                             )
                         }
@@ -461,6 +479,24 @@ fun PortfolioScreen(
                     }
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(if (isLoading) "Updating" else "Refresh", fontSize = 12.sp, color = theme.onPrimary)
+                }
+            }
+
+            if (holdings.isNotEmpty()) {
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    PortfolioSortMode.entries.forEach { mode ->
+                        FilterChip(
+                            selected = sortMode == mode,
+                            onClick = { sortModeName = mode.name },
+                            label = { Text(mode.label, fontSize = 11.sp) },
+                        )
+                    }
                 }
             }
 
@@ -546,7 +582,7 @@ fun PortfolioScreen(
                         }
                     }
 
-                    items(items = holdings, key = { it.symbol }) { holding ->
+                    items(items = sortedHoldings, key = { it.symbol }) { holding ->
                         val quote = quoteBySymbol[holding.symbol.uppercase()]
                         val displayHolding = if (quote != null && quote.last > 0.0) {
                             holding.copy(
@@ -905,6 +941,17 @@ fun PortfolioHealthCard(
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    health.snapshotNote.ifBlank {
+                        "Snapshot of current book quality — not a return forecast."
+                    },
+                    color = LocalAppTheme.current.textSecondary,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Summary
                 Text(

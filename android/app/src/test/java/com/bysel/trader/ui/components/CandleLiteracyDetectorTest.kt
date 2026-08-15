@@ -1,6 +1,7 @@
 package com.bysel.trader.ui.components
 
 import com.bysel.trader.data.models.HistoryCandle
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -26,6 +27,46 @@ class CandleLiteracyDetectorTest {
         )
         val lessons = CandleLiteracyDetector.detectRecent(bars)
         assertTrue(lessons.any { it.name.equals("Doji", ignoreCase = true) })
+    }
+
+    @Test
+    fun detectsHammerAfterDip() {
+        val bars = listOf(
+            candle(100, 101, 99, 100),
+            candle(100, 100.5, 96, 97),
+            candle(97, 97.2, 94, 95.5),
+            candle(95.2, 97.4, 92.0, 97.1), // long lower wick after dip
+        )
+        val lessons = CandleLiteracyDetector.detectRecent(bars)
+        assertTrue(lessons.any { it.name.equals("Hammer", ignoreCase = true) })
+    }
+
+    @Test
+    fun neverLabelsInsideBarAsHarami() {
+        val bars = listOf(
+            candle(100, 112, 98, 111),
+            candle(108, 110, 106, 107), // small body inside prior large body
+        )
+        val lessons = CandleLiteracyDetector.detectRecent(bars)
+        assertFalse(lessons.any { it.name.contains("harami", ignoreCase = true) })
+        val cards = StockLiteracyCatalog.cardsFor(bars)
+        val blob = cards.joinToString("\n") { "${it.title}\n${it.summary}\n${it.learnQuery}" }
+        assertFalse(blob.contains("harami", ignoreCase = true))
+        assertFalse(blob.contains("Screener.in", ignoreCase = true))
+        assertFalse(blob.contains("TradingView", ignoreCase = true))
+        assertTrue(cards.size in 4..8)
+        assertTrue(blob.contains("engulfing", ignoreCase = true))
+        assertTrue(blob.contains("doji", ignoreCase = true))
+        assertTrue(blob.contains("hammer", ignoreCase = true))
+        assertTrue(blob.contains("P/E", ignoreCase = true))
+        assertTrue(blob.contains("ROE", ignoreCase = true))
+        assertTrue(blob.contains("Interest coverage", ignoreCase = true))
+        assertTrue(blob.contains("PEG", ignoreCase = true))
+        assertTrue(blob.contains("Thursday", ignoreCase = true))
+        assertTrue(blob.contains("promoter pledging", ignoreCase = true))
+        assertTrue(cards.any { it.title.equals("Bottom line", ignoreCase = true) })
+        assertTrue(cards.any { it.title.equals("Best practice", ignoreCase = true) })
+        assertTrue(cards.any { it.title.equals("Other checks", ignoreCase = true) })
     }
 
     private fun candle(o: Number, h: Number, l: Number, c: Number) = HistoryCandle(

@@ -22,7 +22,7 @@ export default function PrivacyPolicy() {
             and improvement.
           </p>
           <p className="mini-muted" style={{ marginTop: "0.5rem" }}>
-            Last updated: July 31, 2026 &middot; Effective immediately
+            Last updated: August 15, 2026 &middot; Effective immediately
           </p>
 
           <div className="legal-stack" style={{ marginTop: "1rem" }}>
@@ -38,23 +38,25 @@ export default function PrivacyPolicy() {
 
               <h3 style={{ fontSize: "0.95rem", marginTop: "0.7rem" }}>Usage Data</h3>
               <ul className="list-tight">
-                <li>Simulation activity (paper trades, watchlists, portfolio configurations)</li>
-                <li>Feature usage metrics and interaction patterns</li>
+                <li>Simulation activity (paper trades, watchlists, alerts, portfolio configurations)</li>
+                <li>Private stock notes you save on a symbol</li>
+                <li>Firebase Analytics usage events (app opens / basic diagnostics — not advertising)</li>
                 <li>AI assistant conversation history for improving response quality</li>
               </ul>
 
               <h3 style={{ fontSize: "0.95rem", marginTop: "0.7rem" }}>Technical Data</h3>
               <ul className="list-tight">
                 <li>Device type, operating system version, and app version</li>
-                <li>Crash logs and performance diagnostics</li>
+                <li>Firebase Cloud Messaging device token (price-alert notifications you create)</li>
                 <li>IP address (for security and abuse prevention)</li>
               </ul>
 
               <h3 style={{ fontSize: "0.95rem", marginTop: "0.7rem" }}>What We Do NOT Collect</h3>
               <ul className="list-tight">
-                <li>Real brokerage account credentials or financial information</li>
+                <li>Real brokerage account credentials or live bank account details</li>
                 <li>Contacts, photos, files, or other personal content from your device</li>
                 <li>Precise location (GPS) data</li>
+                <li>Advertising ID (the Android app disables Google advertising ID collection)</li>
                 <li>Biometric images or templates — optional fingerprint/face unlock uses your device OS APIs only</li>
               </ul>
             </article>
@@ -77,8 +79,10 @@ export default function PrivacyPolicy() {
                 We do not sell or rent your personal data. We share data only in these limited cases:
               </p>
               <ul className="list-tight">
-                <li><strong>SMS delivery providers:</strong> When you use phone OTP, your phone number is shared with our SMS
-                  service provider solely for OTP delivery</li>
+                <li><strong>SMS delivery providers and Firebase Authentication:</strong> When you use phone OTP, your phone number is shared solely for login codes</li>
+                <li><strong>Firebase Cloud Messaging:</strong> Device tokens are used to deliver price-alert notifications</li>
+                <li><strong>Firebase Analytics:</strong> Basic app-usage diagnostics (not advertising; no Advertising ID)</li>
+                <li><strong>AI providers</strong> (for example Groq / Gemini / our Indian Stock LLM stack): when you use AI chat; queries are stock-related prompts processed to return answers. We remain responsible for this processing under Play User Data requirements (limited use; not sold as marketing data)</li>
                 <li><strong>Cloud infrastructure:</strong> Data is stored on secure cloud servers for
                   app operation</li>
                 <li><strong>Legal requirements:</strong> If required by Indian law or legal process</li>

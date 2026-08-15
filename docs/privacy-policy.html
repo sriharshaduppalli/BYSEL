@@ -23,7 +23,7 @@
 <body>
   <div class="wrap">
     <h1>Privacy Policy</h1>
-    <p class="meta">Last updated: 3 August 2026 · Effective immediately</p>
+    <p class="meta">Last updated: 15 August 2026 · Effective immediately</p>
 
     <div class="callout">
       <strong>Summary:</strong> BYSEL is a paper-trading and market-education app.
@@ -37,20 +37,23 @@
     <h2>2. Information we collect</h2>
     <h3>Account information</h3>
     <ul>
+      <li>Username and email for password-based accounts</li>
       <li>Phone number for OTP / Firebase phone authentication</li>
-      <li>Optional display name or email if you provide it</li>
+      <li>Optional display name if you provide it</li>
       <li>Session tokens used to keep you signed in</li>
     </ul>
     <h3>Usage and simulation data</h3>
     <ul>
       <li>Paper trades, holdings, watchlists, alerts, and portfolio settings</li>
+      <li>Private stock notes you save on a symbol</li>
       <li>AI Assistant queries and responses (to operate and improve the feature)</li>
       <li>App preferences such as theme and refresh settings</li>
     </ul>
     <h3>Technical data</h3>
     <ul>
       <li>Device type, OS version, and app version</li>
-      <li>Crash / performance diagnostics</li>
+      <li>Firebase Cloud Messaging device token (to deliver price-alert notifications you create)</li>
+      <li>Firebase Analytics usage events (app opens / basic diagnostics). Advertising ID collection is disabled</li>
       <li>IP address for security and abuse prevention</li>
     </ul>
     <h3>What we do not collect</h3>
@@ -73,6 +76,8 @@
     <p>We do not sell or rent personal data. Limited sharing occurs only for:</p>
     <ul>
       <li><strong>OTP / SMS providers</strong> and Firebase Authentication — to deliver login codes</li>
+      <li><strong>Firebase Cloud Messaging</strong> — to deliver price-alert notifications to this device</li>
+      <li><strong>Firebase Analytics</strong> — basic app-usage diagnostics (not advertising; no Advertising ID)</li>
       <li><strong>Cloud hosting</strong> (for example our API host) — to run the product</li>
       <li><strong>AI providers</strong> (for example Groq / Gemini / our Indian Stock LLM stack) — when you use AI chat; queries are stock-related prompts processed to return answers. We remain responsible for this processing under Play User Data requirements (limited use; not sold as marketing data)</li>
       <li><strong>Market data sources</strong> (for example Yahoo Finance and exchange feeds via our backend) — publicly available market data only</li>
