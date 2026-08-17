@@ -79,6 +79,7 @@ from ..models.schemas import (
     SignalLabCandidate,
     SignalLabBucketFeed,
     SignalLabBucketsResponse,
+    ScannerResponse,
     SipPlanUpdateRequest, IPOApplicationRequest, IPOApplicationResponse, IPOApplication, ETFInstrument,
     AdvancedOrderResponse,
     TriggerOrderSummary,
@@ -121,6 +122,7 @@ from ..ai_engine import (
 )
 from ..portfolio_scorer import calculate_portfolio_health
 from ..market_heatmap import SECTOR_STOCKS, get_market_heatmap, get_sector_detail
+from ..market_scanner import get_market_scanner
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -3187,6 +3189,23 @@ async def signal_lab_buckets_endpoint(
     _SIGNAL_LAB_CACHE[limitPerBucket] = (now, payload)
     _trim_signal_lab_cache()
     return payload
+
+
+@router.get("/market/scanner", response_model=ScannerResponse)
+async def market_scanner_endpoint(
+    mode: str = Query("long_term", description="long_term, swing, high_quality, momentum, value"),
+    limit: int = Query(30, ge=5, le=40),
+    forceRefresh: bool = Query(False),
+):
+    """Hybrid scanner shortlist with BYSEL Score pillars.
+
+    Universe is NIFTY 50 + the default watchlist catalog (not a full NSE crawl).
+    Missing Yahoo fields stay null and are skipped in the weighted blend.
+    """
+    normalized = (mode or "long_term").strip().lower()
+    if normalized not in ("long_term", "swing", "high_quality", "momentum", "value"):
+        raise HTTPException(status_code=400, detail="mode must be long_term, swing, high_quality, momentum, or value")
+    return await asyncio.to_thread(get_market_scanner, normalized, limit, forceRefresh)
 
 
 # ==================== PHASE 1: MUTUAL FUNDS & SIP ====================

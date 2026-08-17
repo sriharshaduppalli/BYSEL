@@ -59,6 +59,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.alerts.FcmTokenRegistrar
+import com.bysel.trader.data.WatchlistSymbols
 import com.bysel.trader.data.auth.AuthSessionManager
 import com.bysel.trader.data.local.BYSELDatabase
 import com.bysel.trader.data.repository.AuthRepository
@@ -1010,6 +1011,7 @@ fun BYSELApp(
                                             selectRootTab(2)
                                         },
                                         onSignalLabClick = { navigatePushingCurrent(20) },
+                                        onScannerClick = { navigatePushingCurrent(28) },
                                         onSmartMoneyClick = {
                                             navigatePushingCurrent(21)
                                         },
@@ -1168,6 +1170,7 @@ fun BYSELApp(
                                     onWealthOsClick = { selectedTab = 18 },
                                     onCopilotCenterClick = { selectedTab = 19 },
                                     onSignalLabClick = { selectedTab = 20 },
+                                    onScannerClick = { selectedTab = 28 },
                                     onInvestorPortfoliosClick = { selectedTab = 21 },
                                     onRiskLabClick = { selectedTab = 22 },
                                     onEarningsCalendarClick = { selectedTab = 23 },
@@ -1186,6 +1189,16 @@ fun BYSELApp(
                                 17 -> DerivativesIntelligenceScreen(viewModel)
                                 18 -> WealthOsScreen(viewModel)
                                 19 -> CopilotCenterScreen(viewModel)
+                                28 -> ScannerScreen(
+                                    viewModel = viewModel,
+                                    onBack = { selectedTab = 5 },
+                                    onOpenSymbol = { row ->
+                                        viewModel.selectScannerRow(row)
+                                        viewModel.fetchAndSelectQuote(row.symbol)
+                                        openStockDetailTab()
+                                    },
+                                    onOpenPaperGym = { selectRootTab(2) },
+                                )
                                 20 -> SignalLabScreen(
                                     quotes = quotes,
                                     heatmap = marketHeatmap,
@@ -1230,7 +1243,7 @@ fun BYSELApp(
                                 )
                                 25 -> WatchlistScreen(
                                     quotes = quotes.filter { quote ->
-                                        watchlistSymbols.any { it.equals(quote.symbol, ignoreCase = true) }
+                                        watchlistSymbols.any { WatchlistSymbols.matches(it, quote.symbol) }
                                     },
                                     isLoading = quotesRefreshing,
                                     error = marketError,

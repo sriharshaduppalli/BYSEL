@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
+import com.bysel.trader.data.WatchlistSymbols
 import com.bysel.trader.ui.format.formatInr
 import com.bysel.trader.ui.format.formatSignedPct
 import com.bysel.trader.data.models.Quote
@@ -208,6 +209,7 @@ fun TradingScreen(
     LaunchedEffect(viewModel, isActive) {
         if (isActive) {
             // Do not stop the app-wide stream on leave — Home/Watchlist keep using it.
+            viewModel.ensureWatchlistLoaded()
             viewModel.startFastRefresh()
             viewModel.loadAllQuotes()
         }
@@ -453,7 +455,7 @@ private fun SpotTradingWorkspace(
 ) {
     var showAddWatchlistDialog by remember { mutableStateOf(false) }
     var watchSearchQuery by remember { mutableStateOf("") }
-    var boardModeWatchlist by remember { mutableStateOf(true) }
+    var boardModeWatchlist by rememberSaveable { mutableStateOf(true) }
     var sortModeName by rememberSaveable { mutableStateOf(WatchlistSortMode.MOVE.name) }
     val sortMode = remember(sortModeName) {
         runCatching { WatchlistSortMode.valueOf(sortModeName) }.getOrDefault(WatchlistSortMode.MOVE)
@@ -472,12 +474,16 @@ private fun SpotTradingWorkspace(
     val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
     val isSearching by viewModel.isSearching.collectAsStateWithLifecycle()
     val liveQuotes by viewModel.quotes.collectAsStateWithLifecycle()
-    val liveQuoteMap = remember(liveQuotes) { liveQuotes.associateBy { it.symbol.uppercase() } }
     val watchlistQuotes = remember(activeWatchlistSymbols, liveQuotes, sortMode) {
         activeWatchlistSymbols
-            .mapNotNull { sym -> liveQuoteMap[sym] }
+            .mapNotNull { sym -> WatchlistSymbols.findQuote(liveQuotes, sym) }
+            .distinctBy { WatchlistSymbols.normalize(it.symbol) }
             .sortedByWatchlistMode(sortMode)
     }
+    val missingWatchlistSymbols = remember(activeWatchlistSymbols, liveQuotes) {
+        activeWatchlistSymbols.filter { WatchlistSymbols.findQuote(liveQuotes, it) == null }
+    }
+    val watchlistSyncError by viewModel.watchlistSyncError.collectAsStateWithLifecycle()
     val lastQuoteUpdateAt by viewModel.lastQuoteUpdateAt.collectAsStateWithLifecycle()
     val streamHealth by viewModel.streamHealth.collectAsStateWithLifecycle()
     val statusNow by produceState(initialValue = System.currentTimeMillis()) {
@@ -512,7 +518,9 @@ private fun SpotTradingWorkspace(
     }
     val watchlistInsights = remember(activeWatchlistSymbols, liveQuotes) {
         activeWatchlistSymbols
-            .mapNotNull { symbol -> liveQuoteMap[symbol.uppercase()]?.let { computeWatchlistInsight(it) } }
+            .mapNotNull { symbol ->
+                WatchlistSymbols.findQuote(liveQuotes, symbol)?.let { computeWatchlistInsight(it) }
+            }
             .sortedByDescending { it.confidence }
     }
     val watchlistListState = rememberLazyListState()
@@ -594,40 +602,34 @@ private fun SpotTradingWorkspace(
             .fillMaxSize()
             .background(LocalAppTheme.current.surface)
     ) {
-        AnimatedVisibility(
-            visible = !listExpanded,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically(),
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "My Watchlist",
+                    fontSize = if (listExpanded) 16.sp else 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = LocalAppTheme.current.text,
+                )
+                Text(
+                    text = if (activeWatchlistSymbols.isEmpty()) {
+                        "Search any listed NSE name to start tracking"
+                    } else {
+                        "${activeWatchlistSymbols.size} tracked · tap a name to trade"
+                    },
+                    fontSize = 11.sp,
+                    color = LocalAppTheme.current.textSecondary,
+                )
+            }
+            Button(
+                onClick = { showAddWatchlistDialog = true },
+                modifier = Modifier.height(36.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp),
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "My Watchlist",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = LocalAppTheme.current.text,
-                    )
-                    Text(
-                        text = if (activeWatchlistSymbols.isEmpty()) {
-                            "Search any listed NSE name to start tracking"
-                        } else {
-                            "${activeWatchlistSymbols.size} tracked · tap a name to trade"
-                        },
-                        fontSize = 11.sp,
-                        color = LocalAppTheme.current.textSecondary,
-                    )
-                }
-                Button(
-                    onClick = { showAddWatchlistDialog = true },
-                    modifier = Modifier.height(36.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp),
-                ) {
-                    Text("+ Add", fontSize = 12.sp)
-                }
+                Text("+ Add", fontSize = 12.sp)
             }
         }
 
@@ -648,14 +650,6 @@ private fun SpotTradingWorkspace(
                 onClick = { boardModeWatchlist = false },
                 label = { Text("Live board") },
             )
-            if (listExpanded) {
-                TextButton(
-                    onClick = { showAddWatchlistDialog = true },
-                    contentPadding = PaddingValues(horizontal = 8.dp),
-                ) {
-                    Text("+ Add", fontSize = 12.sp, maxLines = 1)
-                }
-            }
             Spacer(modifier = Modifier.weight(1f))
             StreamHealthPill(health = streamHealth)
         }
@@ -799,6 +793,39 @@ private fun SpotTradingWorkspace(
                     .fillMaxWidth()
                     .padding(16.dp),
             )
+        }
+
+        if (boardModeWatchlist && watchlistSyncError != null) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = LocalAppTheme.current.negative.copy(alpha = 0.14f)
+                ),
+                shape = RoundedCornerShape(10.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = watchlistSyncError ?: "",
+                        fontSize = 12.sp,
+                        color = LocalAppTheme.current.text,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { viewModel.retryWatchlistQuotes() }) {
+                        Text("Retry", fontSize = 12.sp)
+                    }
+                    TextButton(onClick = { viewModel.clearWatchlistSyncError() }) {
+                        Text("Dismiss", fontSize = 12.sp)
+                    }
+                }
+            }
         }
 
         if (isLoading && watchlistQuotes.isEmpty() && !boardModeWatchlist) {
@@ -955,15 +982,55 @@ private fun SpotTradingWorkspace(
                                 TradingQuoteCard(quote) { onSelectQuote(quote) }
                             }
                         }
-                        val missingQuotes = activeWatchlistSymbols.filter { liveQuoteMap[it] == null }
-                        if (missingQuotes.isNotEmpty()) {
-                            item {
+                        if (watchlistQuotes.isEmpty() && missingWatchlistSymbols.isEmpty()) {
+                            item(key = "watchlist_sort_empty") {
                                 Text(
-                                    text = "Fetching live quotes for ${missingQuotes.joinToString()}",
-                                    fontSize = 12.sp,
+                                    text = when (sortMode) {
+                                        WatchlistSortMode.GAINERS -> "None of your names are up this session. Try Top move."
+                                        WatchlistSortMode.LOSERS -> "None of your names are down this session. Try Top move."
+                                        else -> "Nothing to show for this sort."
+                                    },
+                                    fontSize = 13.sp,
                                     color = LocalAppTheme.current.textSecondary,
                                     modifier = Modifier.padding(16.dp),
                                 )
+                            }
+                        }
+                        if (missingWatchlistSymbols.isNotEmpty()) {
+                            items(missingWatchlistSymbols, key = { "missing_$it" }) { symbol ->
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                                    colors = byselCardColors(),
+                                    elevation = byselCardElevation(),
+                                    border = byselCardBorder(),
+                                    shape = MaterialTheme.shapes.medium,
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = symbol,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = LocalAppTheme.current.text,
+                                            )
+                                            Text(
+                                                text = "Quote unavailable · last saved name kept",
+                                                fontSize = 12.sp,
+                                                color = LocalAppTheme.current.textSecondary,
+                                            )
+                                        }
+                                        TextButton(onClick = { viewModel.retryWatchlistQuotes() }) {
+                                            Text("Retry", fontSize = 12.sp)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

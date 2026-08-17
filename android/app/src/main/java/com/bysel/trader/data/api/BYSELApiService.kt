@@ -397,6 +397,13 @@ interface BYSELApiService {
         @Query("forceRefresh") forceRefresh: Boolean = false,
     ): SignalLabBucketsResponse
 
+    @GET("/market/scanner")
+    suspend fun getMarketScanner(
+        @Query("mode") mode: String = "long_term",
+        @Query("limit") limit: Int = 30,
+        @Query("forceRefresh") forceRefresh: Boolean = false,
+    ): ScannerResponse
+
     // ==================== DERIVATIVES INTELLIGENCE ====================
     @GET("/derivatives/option-chain")
     suspend fun getOptionChain(

@@ -1129,6 +1129,89 @@ data class SignalLabBucketsResponse(
     @SerializedName("buckets") val buckets: List<SignalLabBucketFeed> = emptyList(),
 )
 
+// ==================== HYBRID SCANNER / BYSEL SCORE ====================
+
+data class ScannerEducationFilter(
+    @SerializedName("id") val id: String = "",
+    @SerializedName("label") val label: String = "",
+    @SerializedName("applied") val applied: Boolean = false,
+    @SerializedName("status") val status: String = "",
+)
+
+data class ScannerEducation(
+    @SerializedName("title") val title: String = "",
+    @SerializedName("summary") val summary: String = "",
+    @SerializedName("filters") val filters: List<ScannerEducationFilter> = emptyList(),
+    @SerializedName("scoreGuide") val scoreGuide: String = "",
+    @SerializedName("riskNote") val riskNote: String = "",
+    @SerializedName("disclaimer") val disclaimer: String = "",
+    @SerializedName("dataLimits") val dataLimits: String = "",
+)
+
+data class ScannerMetrics(
+    @SerializedName("pe") val pe: Double? = null,
+    @SerializedName("roe") val roe: Double? = null,
+    @SerializedName("roce") val roce: Double? = null,
+    @SerializedName("debtToEquity") val debtToEquity: Double? = null,
+    @SerializedName("peg") val peg: Double? = null,
+    @SerializedName("rsi") val rsi: Double? = null,
+    @SerializedName("fiftyDayAverage") val fiftyDayAverage: Double? = null,
+    @SerializedName("twoHundredDayAverage") val twoHundredDayAverage: Double? = null,
+    @SerializedName("volumeRatio") val volumeRatio: Double? = null,
+    @SerializedName("sector") val sector: String? = null,
+    @SerializedName("sectorPe") val sectorPe: Double? = null,
+)
+
+data class ScannerPracticeSetup(
+    @SerializedName("kind") val kind: String = "",
+    @SerializedName("title") val title: String = "",
+    @SerializedName("entry") val entry: Double? = null,
+    @SerializedName("stop") val stop: Double? = null,
+    @SerializedName("target") val target: Double? = null,
+    @SerializedName("note") val note: String = "Practice levels, not advice",
+)
+
+data class ScannerRow(
+    @SerializedName("symbol") val symbol: String = "",
+    @SerializedName("name") val name: String = "",
+    @SerializedName("last") val last: Double = 0.0,
+    @SerializedName("pctChange") val pctChange: Double = 0.0,
+    @SerializedName(value = "byselScore", alternate = ["bysel_score"]) val byselScore: Int? = null,
+    @SerializedName("quality") val quality: Int? = null,
+    @SerializedName("valuation") val valuation: Int? = null,
+    @SerializedName("value") val value: Int? = null,
+    @SerializedName("trend") val trend: Int? = null,
+    @SerializedName("momentum") val momentum: Int? = null,
+    @SerializedName("risk") val risk: Int? = null,
+    @SerializedName("riskLabel") val riskLabel: String = "Risk —",
+    @SerializedName("overall") val overall: Int = 0,
+    @SerializedName("convictionLabel") val convictionLabel: String = "",
+    @SerializedName(value = "scoreLabel", alternate = ["score_label"]) val scoreLabel: String = "",
+    @SerializedName(value = "aiSummary", alternate = ["ai_summary", "explanation", "why"]) val aiSummary: String = "",
+    @SerializedName("stance") val stance: List<String> = emptyList(),
+    @SerializedName("setup") val setup: ScannerPracticeSetup? = null,
+    @SerializedName("why") val why: String = "",
+    @SerializedName("metrics") val metrics: ScannerMetrics = ScannerMetrics(),
+    @SerializedName("missing") val missing: List<String> = emptyList(),
+) {
+    val displayValuation: Int? get() = valuation ?: value
+    val displayScore: Int get() = byselScore ?: overall
+    val displaySummary: String get() = aiSummary.ifBlank { why }
+}
+
+data class ScannerResponse(
+    @SerializedName("mode") val mode: String = "long_term",
+    @SerializedName("generatedAt") val generatedAt: String = "",
+    @SerializedName("cacheTtlSeconds") val cacheTtlSeconds: Int = 600,
+    @SerializedName("universe") val universe: String = "",
+    @SerializedName("universeSize") val universeSize: Int = 0,
+    @SerializedName("quotedCount") val quotedCount: Int = 0,
+    @SerializedName("disclaimer") val disclaimer: String = "",
+    @SerializedName("education") val education: ScannerEducation = ScannerEducation(),
+    @SerializedName("rows") val rows: List<ScannerRow> = emptyList(),
+    @SerializedName("cached") val cached: Boolean = false,
+)
+
 // ==================== ENHANCED AI ANALYSIS MODELS (LEVEL 2) ====================
 
 data class EnhancedStockAnalysisResponse(

@@ -821,6 +821,27 @@ open class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
+    suspend fun getMarketScanner(
+        mode: String = "long_term",
+        limit: Int = 30,
+        forceRefresh: Boolean = false,
+    ): Result<ScannerResponse> {
+        return try {
+            val normalizedMode = when (mode) {
+                "swing", "high_quality", "momentum", "value" -> mode
+                else -> "long_term"
+            }
+            val response = apiService.getMarketScanner(
+                mode = normalizedMode,
+                limit = limit.coerceIn(5, 40),
+                forceRefresh = forceRefresh,
+            )
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
     suspend fun getSectorDetail(sectorName: String): Result<HeatmapSector> {
         return try {
             val sector = apiService.getSectorDetail(sectorName)

@@ -816,32 +816,24 @@ def test_refresh_token_reuse_same_client_preserves_active_session():
     rotated_payload = rotate_response.json()
     second_refresh_token = rotated_payload["refresh_token"]
 
-    # Concurrent retry with the just-rotated token should recover (not sign the user out).
+    # Lost-response retry must return the SAME tokens, not rotate the successor
+    # (that used to invalidate the client that already saved the first rotation).
     reuse_response = client.post(
         "/auth/refresh",
         json={"refreshToken": first_refresh_token},
         headers=headers,
     )
     assert reuse_response.status_code == 200
-    recovered_refresh = reuse_response.json()["refresh_token"]
-    assert recovered_refresh
-    assert recovered_refresh != first_refresh_token
+    assert reuse_response.json()["refresh_token"] == second_refresh_token
+    assert reuse_response.json()["access_token"] == rotated_payload["access_token"]
 
     recovered_refresh_attempt = client.post(
-        "/auth/refresh",
-        json={"refreshToken": recovered_refresh},
-        headers=headers,
-    )
-    assert recovered_refresh_attempt.status_code == 200
-    assert recovered_refresh_attempt.json()["status"] == "ok"
-
-    # The intermediate token may already have been rotated during recovery.
-    second_refresh_attempt = client.post(
         "/auth/refresh",
         json={"refreshToken": second_refresh_token},
         headers=headers,
     )
-    assert second_refresh_attempt.status_code in (200, 401)
+    assert recovered_refresh_attempt.status_code == 200
+    assert recovered_refresh_attempt.json()["status"] == "ok"
 
 
 def test_refresh_token_reuse_different_client_within_grace_recovers():
@@ -865,6 +857,7 @@ def test_refresh_token_reuse_different_client_within_grace_recovers():
         headers=primary_headers,
     )
     assert rotate_response.status_code == 200
+    rotated_payload = rotate_response.json()
 
     replay_response = client.post(
         "/auth/refresh",
@@ -873,7 +866,8 @@ def test_refresh_token_reuse_different_client_within_grace_recovers():
     )
     assert replay_response.status_code == 200
     assert replay_response.json()["status"] == "ok"
-    assert "access_token" in replay_response.json()
+    assert replay_response.json()["refresh_token"] == rotated_payload["refresh_token"]
+    assert replay_response.json()["access_token"] == rotated_payload["access_token"]
 
 
 def test_refresh_token_reuse_outside_grace_invalidates_active_sessions(monkeypatch):
@@ -915,6 +909,79 @@ def test_refresh_token_reuse_outside_grace_invalidates_active_sessions(monkeypat
     )
     assert second_refresh_attempt.status_code == 401
     assert second_refresh_attempt.json()["detail"] == "Session invalidated"
+
+
+def test_access_token_accepts_small_clock_skew(monkeypatch):
+    monkeypatch.setattr(auth_routes, "ACCESS_TOKEN_CLOCK_SKEW_SECONDS", 60)
+    token = auth_routes.create_token(
+        user_id=1,
+        token_type="access",
+        ttl_seconds=1,
+        token_version=0,
+    )
+    real_now = time.time()
+    monkeypatch.setattr(auth_routes.time, "time", lambda: real_now + 30)
+    payload = auth_routes.verify_token(token, expected_type="access")
+    assert payload["uid"] == 1
+
+
+def test_access_token_rejects_beyond_clock_skew(monkeypatch):
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(auth_routes, "ACCESS_TOKEN_CLOCK_SKEW_SECONDS", 60)
+    token = auth_routes.create_token(
+        user_id=1,
+        token_type="access",
+        ttl_seconds=1,
+        token_version=0,
+    )
+    real_now = time.time()
+    monkeypatch.setattr(auth_routes.time, "time", lambda: real_now + 90)
+    try:
+        auth_routes.verify_token(token, expected_type="access")
+        raise AssertionError("expired token should not verify")
+    except HTTPException as exc:
+        assert exc.status_code == 401
+        assert exc.detail == "Token expired"
+
+
+def test_refresh_issues_new_access_after_access_ttl(monkeypatch):
+    monkeypatch.setattr(auth_routes, "ACCESS_TOKEN_TTL_SECONDS", 1)
+    monkeypatch.setattr(auth_routes, "ACCESS_TOKEN_CLOCK_SKEW_SECONDS", 0)
+
+    username, email, password = _unique_user("access_ttl_refresh_user")
+    register_response = client.post(
+        "/auth/register",
+        json={"username": username, "email": email, "password": password},
+    )
+    assert register_response.status_code == 200
+    payload = register_response.json()
+    access_token = payload["access_token"]
+    refresh_token = payload["refresh_token"]
+
+    real_now = time.time()
+    monkeypatch.setattr(auth_routes.time, "time", lambda: real_now + 5)
+
+    expired_me = client.get(
+        "/auth/me",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert expired_me.status_code == 401
+    assert expired_me.json()["detail"] == "Token expired"
+
+    rotated = client.post("/auth/refresh", json={"refreshToken": refresh_token})
+    assert rotated.status_code == 200
+    new_access = rotated.json()["access_token"]
+    assert new_access
+    assert new_access != access_token
+
+    # verify_token uses the monkeypatched clock; new token exp is real_now+5+1.
+    recovered_me = client.get(
+        "/auth/me",
+        headers={"Authorization": f"Bearer {new_access}"},
+    )
+    assert recovered_me.status_code == 200
+    assert recovered_me.json()["user_id"] == payload["user_id"]
 
 
 def test_login_username_is_case_insensitive():

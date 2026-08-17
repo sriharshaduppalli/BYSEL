@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.Info
@@ -83,6 +84,7 @@ import com.bysel.trader.ui.components.exclusiveHorizontalScroll
 import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
 import com.bysel.trader.ui.components.WatchlistWidget
 import com.bysel.trader.ui.components.localInvestorTips
+import com.bysel.trader.data.WatchlistSymbols
 import com.bysel.trader.data.models.InvestorTipsResponse
 import com.bysel.trader.ui.format.formatInr
 import com.bysel.trader.ui.format.formatInrCompact
@@ -320,6 +322,7 @@ fun DashboardScreen(
     marketStatus: MarketStatus? = null,
     onQuickTradeClick: ((String) -> Unit)? = null,
     onSignalLabClick: (() -> Unit)? = null,
+    onScannerClick: (() -> Unit)? = null,
     onSmartMoneyClick: (() -> Unit)? = null,
     onPaperBuy: ((String, Int) -> Unit)? = null,
     onPracticeAlert: ((String, Double, String) -> Unit)? = null,
@@ -464,6 +467,7 @@ fun DashboardScreen(
             marketStatus = marketStatus,
             onQuickTradeClick = onQuickTradeClick,
             onSignalLabClick = onSignalLabClick,
+            onScannerClick = onScannerClick,
             onSmartMoneyClick = onSmartMoneyClick,
             onPaperBuy = onPaperBuy?.let { buy ->
                 { symbol, qty ->
@@ -550,6 +554,7 @@ fun DashboardContent(
     marketStatus: MarketStatus? = null,
     onQuickTradeClick: ((String) -> Unit)? = null,
     onSignalLabClick: (() -> Unit)? = null,
+    onScannerClick: (() -> Unit)? = null,
     onSmartMoneyClick: (() -> Unit)? = null,
     onPaperBuy: ((String, Int) -> Unit)? = null,
     onPracticeAlert: ((String, Double, String) -> Unit)? = null,
@@ -676,8 +681,8 @@ fun DashboardContent(
             .take(6)
     }
     val watchlistQuotes = remember(quotes, watchlistSymbols) {
-        val order = watchlistSymbols.map { it.trim().uppercase() }.filter { it.isNotBlank() }.distinct()
-        order.mapNotNull { sym -> quotes.firstOrNull { it.symbol.equals(sym, ignoreCase = true) } }
+        val order = watchlistSymbols.map { WatchlistSymbols.normalize(it) }.filter { it.isNotBlank() }.distinct()
+        order.mapNotNull { sym -> WatchlistSymbols.findQuote(quotes, sym) }
     }
     val newsRefreshSymbols = remember(watchlistSymbols, holdings) {
         buildPersonalNewsSymbols(watchlistSymbols, holdings.map { it.symbol })
@@ -819,6 +824,7 @@ fun DashboardContent(
                 newsCount = marketNews.size,
                 onAiBrief = onAiClick,
                 onSignalLab = onSignalLabClick,
+                onScanner = onScannerClick,
                 onSmartMoney = onSmartMoneyClick,
                 onOpenMover = focusQuotes.firstOrNull()?.let { q -> { onTradeClick(q.symbol) } },
             )
@@ -2899,6 +2905,7 @@ private fun IdeasRail(
     newsCount: Int,
     onAiBrief: (() -> Unit)?,
     onSignalLab: (() -> Unit)?,
+    onScanner: (() -> Unit)?,
     onSmartMoney: (() -> Unit)?,
     onOpenMover: (() -> Unit)?,
 ) {
@@ -2909,6 +2916,14 @@ private fun IdeasRail(
                 title = "AI Brief",
                 subtitle = if (newsCount > 0) "$newsCount stories in play" else "Ask the AI tab",
                 icon = Icons.Filled.Psychology,
+                onClick = it,
+            )
+        },
+        onScanner?.let {
+            IdeaChip(
+                title = "BYSEL Top Picks",
+                subtitle = "Scanner · score 0–100",
+                icon = Icons.Filled.Explore,
                 onClick = it,
             )
         },

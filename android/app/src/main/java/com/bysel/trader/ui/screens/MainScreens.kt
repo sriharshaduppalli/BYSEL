@@ -56,6 +56,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.bysel.trader.ui.components.PortfolioSortMode
 import com.bysel.trader.ui.components.sortedByPortfolioMode
+import com.bysel.trader.ui.format.formatSignedPct
 
 @Composable
 fun WatchlistScreen(
@@ -641,16 +642,16 @@ fun UpgradedPortfolioHoldingItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(8.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         colors = byselCardColors(),
         elevation = byselCardElevation(),
         border = byselCardBorder(),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(10.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -661,41 +662,54 @@ fun UpgradedPortfolioHoldingItem(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = holding.symbol,
-                            fontSize = 18.sp,
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = theme.text
                         )
-                        StockNotesIcon(symbol = holding.symbol)
+                        StockNotesIcon(
+                            symbol = holding.symbol,
+                            iconSize = 18.dp,
+                            buttonSize = 48.dp,
+                        )
                     }
                     Text(
                         text = "₹${String.format("%.2f", holding.last)}",
-                        fontSize = 14.sp,
+                        fontSize = 12.sp,
                         color = theme.textSecondary,
-                        modifier = Modifier.padding(top = 4.dp)
+                        modifier = Modifier.padding(top = 1.dp)
                     )
                 }
 
-                Text(
-                    text = "${if (holding.pnl > 0) "+" else ""}₹${String.format("%.2f", holding.pnl)}",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (holding.pnl > 0) theme.positive else theme.negative,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = "${if (holding.pnl > 0) "+" else ""}₹${String.format("%.2f", holding.pnl)}",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (holding.pnl > 0) theme.positive else theme.negative,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = formatSignedPct(dayPctChange),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (dayPctChange >= 0) theme.positive else theme.negative,
+                        maxLines = 1,
+                    )
+                }
             }
 
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 10.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .padding(top = 6.dp)
+                    .clip(RoundedCornerShape(8.dp))
                     .background(stance.accent.copy(alpha = 0.12f))
-                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text(
                     text = "Practice stance · ${stance.label}",
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = stance.accent,
                     maxLines = 1,
@@ -703,34 +717,34 @@ fun UpgradedPortfolioHoldingItem(
                 )
                 Text(
                     text = stance.reason,
-                    fontSize = 11.sp,
+                    fontSize = 10.sp,
                     color = theme.textSecondary,
-                    modifier = Modifier.padding(top = 2.dp),
-                    maxLines = 3,
+                    modifier = Modifier.padding(top = 1.dp),
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
 
             HorizontalDivider(
-                modifier = Modifier.padding(vertical = 12.dp),
+                modifier = Modifier.padding(vertical = 6.dp),
                 color = theme.textSecondary.copy(alpha = 0.25f)
             )
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 12.dp),
+                    .padding(bottom = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column {
                     Text(
                         text = "Quantity",
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         color = theme.textSecondary
                     )
                     Text(
                         text = "${holding.qty}",
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = theme.text
                     )
@@ -738,12 +752,12 @@ fun UpgradedPortfolioHoldingItem(
                 Column {
                     Text(
                         text = "Avg Cost",
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         color = theme.textSecondary
                     )
                     Text(
                         text = "₹${String.format("%.2f", holding.avgPrice)}",
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = theme.text
                     )
@@ -751,12 +765,12 @@ fun UpgradedPortfolioHoldingItem(
                 Column {
                     Text(
                         text = "Current Value",
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         color = theme.textSecondary
                     )
                     Text(
                         text = "₹${String.format("%.2f", holding.qty * holding.last)}",
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = theme.text
                     )
@@ -772,24 +786,24 @@ fun UpgradedPortfolioHoldingItem(
                     onClick = onBuy,
                     modifier = Modifier
                         .weight(1f)
-                        .height(36.dp),
+                        .height(48.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = LocalAppTheme.current.positive,
                         contentColor = Color.White,
                     ),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text("Buy", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("Buy", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
                 Button(
                     onClick = onSell,
                     modifier = Modifier
                         .weight(1f)
-                        .height(36.dp),
+                        .height(48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = theme.negative),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text("Sell", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("Sell", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

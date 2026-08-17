@@ -711,3 +711,86 @@ class SignalLabBucketFeed(BaseModel):
 class SignalLabBucketsResponse(BaseModel):
     generatedAt: str
     buckets: List[SignalLabBucketFeed] = []
+
+
+class ScannerEducationFilter(BaseModel):
+    id: str
+    label: str
+    applied: bool = False
+    status: str = ""
+
+
+class ScannerEducation(BaseModel):
+    title: str
+    summary: str
+    filters: List[ScannerEducationFilter] = []
+    scoreGuide: str = ""
+    riskNote: str = ""
+    disclaimer: str = ""
+    dataLimits: str = ""
+
+
+class ScannerMetrics(BaseModel):
+    pe: Optional[float] = None
+    roe: Optional[float] = None
+    roce: Optional[float] = None
+    debtToEquity: Optional[float] = None
+    peg: Optional[float] = None
+    rsi: Optional[float] = None
+    fiftyDayAverage: Optional[float] = None
+    twoHundredDayAverage: Optional[float] = None
+    volumeRatio: Optional[float] = None
+    sector: Optional[str] = None
+    sectorPe: Optional[float] = None
+
+
+class ScannerPracticeSetup(BaseModel):
+    kind: str = ""
+    title: str = ""
+    entry: Optional[float] = None
+    stop: Optional[float] = None
+    target: Optional[float] = None
+    note: str = "Practice levels, not advice"
+
+
+class ScannerRow(BaseModel):
+    symbol: str
+    name: str = ""
+    last: float = 0.0
+    pctChange: float = 0.0
+    byselScore: Optional[int] = None
+    bysel_score: Optional[int] = None
+    quality: Optional[int] = None
+    valuation: Optional[int] = None
+    value: Optional[int] = None
+    trend: Optional[int] = None
+    momentum: Optional[int] = None
+    risk: Optional[int] = None
+    riskLabel: str = "Risk —"
+    overall: int = 0
+    convictionLabel: str = ""
+    score_label: str = "insufficient"
+    scoreLabel: str = "insufficient"
+    explanation: str = ""
+    ai_summary: str = ""
+    aiSummary: str = ""
+    stance: List[str] = []
+    pillars: Optional[dict] = None
+    setup: Optional[ScannerPracticeSetup] = None
+    why: str = ""
+    metrics: ScannerMetrics = ScannerMetrics()
+    missing: List[str] = []
+
+
+class ScannerResponse(BaseModel):
+    mode: str
+    generatedAt: str
+    cacheTtlSeconds: int = 600
+    universe: str = "NIFTY50 + watchlist catalog"
+    universeSize: int = 0
+    quotedCount: int = 0
+    disclaimer: str = ""
+    formulaNote: str = ""
+    education: ScannerEducation
+    rows: List[ScannerRow] = []
+    cached: bool = False

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Notifications
@@ -100,6 +101,7 @@ fun MoreScreen(
     onWealthOsClick: () -> Unit,
     onCopilotCenterClick: () -> Unit,
     onSignalLabClick: () -> Unit,
+    onScannerClick: () -> Unit = {},
     onInvestorPortfoliosClick: () -> Unit,
     onRiskLabClick: () -> Unit,
     onEarningsCalendarClick: () -> Unit,
@@ -110,6 +112,13 @@ fun MoreScreen(
     var investExpanded by rememberSaveable { mutableStateOf(false) }
 
     val labsEntries = listOf(
+        MoreMenuEntry(
+            icon = Icons.Filled.Explore,
+            title = "Scanner",
+            subtitle = "Long-term, swing, quality, momentum, value",
+            gradientColors = listOf(Color(0xFF0D47A1), Color(0xFF42A5F5)),
+            onClick = onScannerClick,
+        ),
         MoreMenuEntry(
             icon = Icons.AutoMirrored.Filled.ShowChart,
             title = "Signal Lab",
@@ -309,6 +318,7 @@ fun MoreScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                QuickInfoChip(label = "Scanner", onClick = onScannerClick)
                 QuickInfoChip(label = "Signal Lab", onClick = onSignalLabClick)
                 QuickInfoChip(label = "Risk Lab", onClick = onRiskLabClick)
                 QuickInfoChip(label = "Journal", onClick = onTradeJournalClick)

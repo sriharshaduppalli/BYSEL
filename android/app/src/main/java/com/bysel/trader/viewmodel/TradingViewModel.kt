@@ -7,6 +7,8 @@ import com.bysel.trader.ai.OnDeviceLlmManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.bysel.trader.data.WatchlistStore
+import com.bysel.trader.data.WatchlistSymbols
 import com.bysel.trader.data.models.*
 import com.bysel.trader.data.repository.Result
 import com.bysel.trader.data.repository.TradingRepository
@@ -86,11 +88,13 @@ class TradingViewModel(
     private val _lastQuoteUpdateAt = MutableStateFlow(0L)
     val lastQuoteUpdateAt: StateFlow<Long> = _lastQuoteUpdateAt.asStateFlow()
 
-    // Watchlist stored in SharedPreferences for quick cold-start access
-    private val watchlistPrefs = getApplication<Application>()
-        .getSharedPreferences("bysel_watchlist", Context.MODE_PRIVATE)
+    // Watchlist: per-user SharedPreferences string + DataStore mirror (never StringSet).
     private val _watchlist = MutableStateFlow<List<String>>(emptyList())
     val watchlist: StateFlow<List<String>> = _watchlist.asStateFlow()
+    private var watchlistOwnerKey: String = WatchlistSymbols.userKey(AuthSessionManager.getUserId())
+    private val _watchlistSyncError = MutableStateFlow<String?>(null)
+    val watchlistSyncError: StateFlow<String?> = _watchlistSyncError.asStateFlow()
+    fun clearWatchlistSyncError() { _watchlistSyncError.value = null }
 
     private val _holdings = MutableStateFlow<List<Holding>>(emptyList())
     val holdings: StateFlow<List<Holding>> = _holdings.asStateFlow()
@@ -243,6 +247,17 @@ class TradingViewModel(
     val signalLabBuckets: StateFlow<List<SignalLabBucketFeed>> = _signalLabBuckets.asStateFlow()
     private val _signalLabBucketsLoading = MutableStateFlow(false)
     val signalLabBucketsLoading: StateFlow<Boolean> = _signalLabBucketsLoading.asStateFlow()
+
+    private val _marketScanner = MutableStateFlow<ScannerResponse?>(null)
+    val marketScanner: StateFlow<ScannerResponse?> = _marketScanner.asStateFlow()
+    private val _scannerLoading = MutableStateFlow(false)
+    val scannerLoading: StateFlow<Boolean> = _scannerLoading.asStateFlow()
+    private val _scannerError = MutableStateFlow<String?>(null)
+    val scannerError: StateFlow<String?> = _scannerError.asStateFlow()
+    private val _selectedScannerRow = MutableStateFlow<ScannerRow?>(null)
+    val selectedScannerRow: StateFlow<ScannerRow?> = _selectedScannerRow.asStateFlow()
+    private var lastScannerRefreshAt = 0L
+    private var lastScannerMode: String = "long_term"
 
     // Phase 1 products
     private val _mutualFunds = MutableStateFlow<List<MutualFund>>(emptyList())
@@ -444,44 +459,82 @@ class TradingViewModel(
         if (changed) _holdings.value = updated
     }
 
-    private fun normalizeWatchlistSymbol(raw: String): String {
-        val cleaned = raw.trim().uppercase().replace(" ", "")
-        if (cleaned.isBlank()) return ""
+    private fun watchlistAppContext(): Context = getApplication()
 
-        val prefixed = when {
-            cleaned.startsWith("NSE:") -> cleaned.removePrefix("NSE:")
-            cleaned.startsWith("BSE:") -> "${cleaned.removePrefix("BSE:").removeSuffix(".BO")}.BO"
-            else -> cleaned
+    private fun currentWatchlistUserId(): Int? = AuthSessionManager.getUserId()
+
+    private fun persistWatchlist(symbols: List<String>, allowEmpty: Boolean) {
+        val saved = WatchlistStore.writeSync(
+            context = watchlistAppContext(),
+            userId = currentWatchlistUserId(),
+            symbols = symbols,
+            lastGood = _watchlist.value,
+            allowEmpty = allowEmpty,
+        )
+        _watchlist.value = saved
+        viewModelScope.launch {
+            WatchlistStore.writeDataStore(watchlistAppContext(), currentWatchlistUserId(), saved)
         }
-
-        if (prefixed.endsWith(".BO")) {
-            val base = prefixed.removeSuffix(".BO")
-            return if (base.isNotBlank()) "$base.BO" else ""
-        }
-
-        if (prefixed.endsWith(".NS")) {
-            return prefixed.removeSuffix(".NS")
-        }
-
-        if (prefixed.length == 6 && prefixed.all { it.isDigit() }) {
-            return "$prefixed.BO"
-        }
-
-        return prefixed
     }
 
-    private fun readNormalizedWatchlist(): List<String> {
-        val raw = watchlistPrefs.getStringSet("symbols", emptySet())?.toList() ?: emptyList()
-        return raw
-            .map { normalizeWatchlistSymbol(it) }
-            .filter { it.isNotBlank() }
-            .distinct()
-            .sorted()
+    /** Reload disk into memory without ever replacing a non-empty list with empty. */
+    fun ensureWatchlistLoaded() {
+        val lastGood = _watchlist.value
+        val loaded = WatchlistStore.readSync(
+            context = watchlistAppContext(),
+            userId = currentWatchlistUserId(),
+            lastGood = lastGood,
+        )
+        if (loaded != lastGood) {
+            _watchlist.value = loaded
+        }
+        if (loaded.isNotEmpty()) {
+            viewModelScope.launch {
+                WatchlistStore.writeDataStore(watchlistAppContext(), currentWatchlistUserId(), loaded)
+            }
+        }
+        watchlistOwnerKey = WatchlistSymbols.userKey(currentWatchlistUserId())
     }
 
-    private fun persistWatchlist(symbols: List<String>) {
-        watchlistPrefs.edit().putStringSet("symbols", symbols.toSet()).apply()
-        _watchlist.value = symbols
+    fun retryWatchlistQuotes() {
+        _watchlistSyncError.value = null
+        ensureWatchlistLoaded()
+        refreshQuotes(force = true, showSpinner = true)
+    }
+
+    private fun applyWatchlistOwnerChange() {
+        val newKey = WatchlistSymbols.userKey(currentWatchlistUserId())
+        val lastGood = _watchlist.value
+        if (newKey != watchlistOwnerKey && lastGood.isNotEmpty()) {
+            WatchlistStore.writeSync(
+                context = watchlistAppContext(),
+                userId = userIdFromWatchlistKey(watchlistOwnerKey),
+                symbols = lastGood,
+                lastGood = lastGood,
+                allowEmpty = false,
+            )
+        }
+        watchlistOwnerKey = newKey
+        val loaded = WatchlistStore.readSync(
+            context = watchlistAppContext(),
+            userId = currentWatchlistUserId(),
+            lastGood = lastGood,
+        )
+        _watchlist.value = loaded
+        if (loaded.isNotEmpty()) {
+            viewModelScope.launch {
+                WatchlistStore.writeDataStore(watchlistAppContext(), currentWatchlistUserId(), loaded)
+            }
+        }
+    }
+
+    private fun userIdFromWatchlistKey(key: String): Int? =
+        key.removePrefix("u_").toIntOrNull()?.takeIf { key.startsWith("u_") }
+
+    private fun flagWatchlistSyncFailure(message: String?) {
+        if (_watchlist.value.isEmpty()) return
+        val detail = message?.trim().orEmpty().ifBlank { "Couldn't refresh quotes" }
+        _watchlistSyncError.value = "$detail. Showing your last saved list."
     }
 
     private fun markQuoteUpdate(nowMs: Long = System.currentTimeMillis()) {
@@ -562,10 +615,15 @@ class TradingViewModel(
         // Load cached quotes + holdings immediately so reopen is not blank while network wakes.
         viewModelScope.launch {
             try {
-                val wl = readNormalizedWatchlist()
+                val wl = WatchlistStore.readSync(
+                    watchlistAppContext(),
+                    currentWatchlistUserId(),
+                    lastGood = _watchlist.value,
+                )
                 val symbolsToLoad = homePrioritySymbols(wl)
-                repository.getCachedQuotes(symbolsToLoad).collectLatest { cached ->
-                    if (cached.isNotEmpty()) _quotes.value = cached
+                val cached = repository.getCachedQuotes(symbolsToLoad).firstOrNull().orEmpty()
+                if (cached.isNotEmpty()) {
+                    _quotes.value = mergeQuotesWithExisting(cached)
                 }
             } catch (_: Exception) { }
         }
@@ -578,10 +636,26 @@ class TradingViewModel(
             } catch (_: Exception) { }
         }
 
-        // restore watchlist into state
-        val restoredWatchlist = readNormalizedWatchlist()
+        // Restore watchlist into state (never write an empty list over a last-good copy).
+        val restoredWatchlist = WatchlistStore.readSync(
+            watchlistAppContext(),
+            currentWatchlistUserId(),
+            lastGood = emptyList(),
+        )
         _watchlist.value = restoredWatchlist
-        watchlistPrefs.edit().putStringSet("symbols", restoredWatchlist.toSet()).apply()
+        if (restoredWatchlist.isNotEmpty()) {
+            persistWatchlist(restoredWatchlist, allowEmpty = false)
+        }
+        viewModelScope.launch {
+            val fromDataStore = WatchlistStore.readDataStore(watchlistAppContext(), currentWatchlistUserId())
+            val merged = WatchlistSymbols.coalesce(fromDataStore, _watchlist.value, allowEmpty = false)
+            if (merged.isNotEmpty() && merged != _watchlist.value) {
+                persistWatchlist(merged, allowEmpty = false)
+            }
+        }
+        viewModelScope.launch {
+            AuthSessionManager.userId.collect { applyWatchlistOwnerChange() }
+        }
         // Smaller first network burst (indices + watchlist + holdings), then expand.
         refreshQuotes(force = true, symbolsOverride = homePrioritySymbols(restoredWatchlist))
         viewModelScope.launch {
@@ -623,33 +697,41 @@ class TradingViewModel(
     
 
     fun addToWatchlist(symbol: String) {
-        val normalized = normalizeWatchlistSymbol(symbol)
+        val normalized = WatchlistSymbols.normalize(symbol)
         if (normalized.isBlank()) return
 
-        val current = readNormalizedWatchlist().toMutableList()
-        if (!current.contains(normalized)) {
+        val current = WatchlistSymbols.coalesce(
+            incoming = WatchlistStore.readSync(
+                watchlistAppContext(),
+                currentWatchlistUserId(),
+                lastGood = _watchlist.value,
+            ),
+            lastGood = _watchlist.value,
+            allowEmpty = false,
+        ).toMutableList()
+        if (current.none { WatchlistSymbols.matches(it, normalized) }) {
             current.add(normalized)
-            val updated = current.distinct().sorted()
-            persistWatchlist(updated)
-            refreshQuotes()
+            persistWatchlist(WatchlistSymbols.normalizeAll(current), allowEmpty = false)
+            refreshQuotes(force = true)
         }
     }
 
     fun removeFromWatchlist(symbol: String) {
-        val normalized = normalizeWatchlistSymbol(symbol)
+        val normalized = WatchlistSymbols.normalize(symbol)
         if (normalized.isBlank()) return
 
-        val base = normalized.removeSuffix(".BO").removeSuffix(".NS")
-        val aliases = linkedSetOf(
-            normalized,
-            base,
-            "$base.NS",
-            "$base.BO",
+        val current = WatchlistSymbols.coalesce(
+            incoming = WatchlistStore.readSync(
+                watchlistAppContext(),
+                currentWatchlistUserId(),
+                lastGood = _watchlist.value,
+            ),
+            lastGood = _watchlist.value,
+            allowEmpty = false,
         )
-        val current = readNormalizedWatchlist()
-        val updated = current.filterNot { it in aliases }
+        val updated = current.filterNot { WatchlistSymbols.matches(it, normalized) }
         if (updated.size != current.size) {
-            persistWatchlist(updated)
+            persistWatchlist(updated, allowEmpty = true)
             refreshQuotes()
         }
     }
@@ -725,6 +807,7 @@ class TradingViewModel(
 
     // --- Quotes / holdings / wallet ---
     private fun mergeQuotesWithExisting(incoming: List<Quote>): List<Quote> {
+        if (incoming.isEmpty()) return _quotes.value
         val merged = _quotes.value.associateBy { it.symbol.uppercase() }.toMutableMap()
         incoming.forEach { quote ->
             val key = quote.symbol.uppercase()
@@ -758,7 +841,7 @@ class TradingViewModel(
                 null
             }
             try {
-                try {
+                    try {
                     val cached = repository.getCachedQuotes(symbols).firstOrNull().orEmpty()
                     if (cached.isNotEmpty()) {
                         _quotes.value = mergeQuotesWithExisting(cached)
@@ -774,21 +857,28 @@ class TradingViewModel(
                     when (result) {
                         is Result.Loading -> _isLoading.value = _quotes.value.isEmpty()
                         is Result.Success -> {
-                            _quotes.value = mergeQuotesWithExisting(result.data)
-                            overlayHoldingsFromQuotes(result.data)
-                            _isLoading.value = false
-                            markQuoteUpdate()
-                            syncSelectedQuoteFrom(_quotes.value)
-                            evaluateAlerts(result.data)
-                            maybeAutoEvaluateTriggers(_quotes.value.map { it.symbol })
-                            // Reset paging after success
-                            _pagedQuotes.value = emptyList()
-                            currentPage = 0
-                            loadNextQuotesPage()
+                            if (result.data.isEmpty()) {
+                                flagWatchlistSyncFailure("Quote refresh returned no prices")
+                                _isLoading.value = false
+                            } else {
+                                _quotes.value = mergeQuotesWithExisting(result.data)
+                                overlayHoldingsFromQuotes(result.data)
+                                _isLoading.value = false
+                                markQuoteUpdate()
+                                syncSelectedQuoteFrom(_quotes.value)
+                                evaluateAlerts(result.data)
+                                maybeAutoEvaluateTriggers(_quotes.value.map { it.symbol })
+                                _watchlistSyncError.value = null
+                                // Reset paging after success
+                                _pagedQuotes.value = emptyList()
+                                currentPage = 0
+                                loadNextQuotesPage()
+                            }
                         }
                         is Result.Error -> {
                             // Keep showing cached quotes; only surface a hard error when Home
                             // has nothing to render (otherwise "timeout" sits on Home Layout).
+                            flagWatchlistSyncFailure(result.message)
                             if (_quotes.value.isEmpty()) {
                                 _marketError.value = result.message
                             } else {
@@ -1393,6 +1483,7 @@ class TradingViewModel(
         lastForegroundWarmupAt = now
 
         viewModelScope.launch {
+            ensureWatchlistLoaded()
             // Instant local seed if process was killed / state empty.
             if (_walletBalance.value <= 0.0) {
                 val cached = readCachedWalletBalance()
@@ -3025,6 +3116,44 @@ class TradingViewModel(
             }
             _signalLabBucketsLoading.value = false
         }
+    }
+
+    fun loadMarketScanner(mode: String = "long_term", force: Boolean = false) {
+        val normalized = when (mode) {
+            "swing", "high_quality", "momentum", "value" -> mode
+            else -> "long_term"
+        }
+        val now = System.currentTimeMillis()
+        if (
+            !force &&
+            _marketScanner.value != null &&
+            lastScannerMode == normalized &&
+            (now - lastScannerRefreshAt) < 60_000L
+        ) {
+            return
+        }
+        viewModelScope.launch {
+            _scannerLoading.value = true
+            _scannerError.value = null
+            when (val result = repository.getMarketScanner(mode = normalized, forceRefresh = force)) {
+                is Result.Success -> {
+                    _marketScanner.value = result.data
+                    lastScannerRefreshAt = System.currentTimeMillis()
+                    lastScannerMode = normalized
+                }
+                is Result.Error -> {
+                    if (_marketScanner.value == null) {
+                        _scannerError.value = result.message ?: "Scanner unavailable"
+                    }
+                }
+                else -> {}
+            }
+            _scannerLoading.value = false
+        }
+    }
+
+    fun selectScannerRow(row: ScannerRow?) {
+        _selectedScannerRow.value = row
     }
 
     fun loadMutualFunds(

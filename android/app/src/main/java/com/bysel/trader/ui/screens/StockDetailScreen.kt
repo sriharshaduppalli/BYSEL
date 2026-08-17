@@ -77,6 +77,9 @@ import com.bysel.trader.ui.components.InfoChip
 import com.bysel.trader.ui.components.StockNotesIcon
 import com.bysel.trader.ui.components.StockNotesPreviewText
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.byselCardBorder
+import com.bysel.trader.ui.theme.byselCardColors
+import com.bysel.trader.ui.theme.byselCardElevation
 import com.bysel.trader.viewmodel.TradingViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -124,6 +127,7 @@ fun StockDetailScreen(
     val copilotPortfolioActions by viewModel.copilotPortfolioActions.collectAsStateWithLifecycle()
     val lastOrderTraceId by viewModel.lastOrderTraceId.collectAsStateWithLifecycle()
     val marketStatus by viewModel.marketStatus.collectAsStateWithLifecycle()
+    val scannerXrayRow by viewModel.selectedScannerRow.collectAsStateWithLifecycle()
 
     if (quote == null) {
         Box(
@@ -404,6 +408,27 @@ fun StockDetailScreen(
                     targetGapPct = targetGapPct,
                     yearPositionPct = yearPositionPct,
                 )
+            }
+
+            val scannerXray = scannerXrayRow
+            if (scannerXray != null && scannerXray.symbol.equals(quote.symbol, ignoreCase = true)) {
+                item {
+                    Card(
+                        colors = byselCardColors(),
+                        elevation = byselCardElevation(),
+                        border = byselCardBorder(),
+                        shape = RoundedCornerShape(14.dp),
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                "Stock X-Ray",
+                                fontWeight = FontWeight.SemiBold,
+                                color = theme.text,
+                            )
+                            ByselScoreStrip(row = scannerXray, compact = false)
+                        }
+                    }
+                }
             }
 
             // Chart first — AI "View chart" and stock opens should show candles immediately.

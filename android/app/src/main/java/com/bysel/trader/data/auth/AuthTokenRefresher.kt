@@ -26,11 +26,12 @@ object AuthTokenRefresher {
     private val refreshClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .addInterceptor(RequestMetadataInterceptor())
-            // Keep proactive resume refresh snappy; authenticator can still retry later.
-            .callTimeout(20, TimeUnit.SECONDS)
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(20, TimeUnit.SECONDS)
-            .writeTimeout(15, TimeUnit.SECONDS)
+            // Match authHttpClient: Render wake + Yahoo-blocked event loop can exceed 20s.
+            // A timed-out refresh that already rotated server-side used to look like theft.
+            .callTimeout(90, TimeUnit.SECONDS)
+            .connectTimeout(45, TimeUnit.SECONDS)
+            .readTimeout(90, TimeUnit.SECONDS)
+            .writeTimeout(45, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .build()
     }
@@ -92,9 +93,11 @@ object AuthTokenRefresher {
     suspend fun refreshIfNeeded(): String? = refreshBlocking(failedAccessToken = null)
 
     private fun persist(refreshed: AuthResponse) {
+        val nextRefresh = refreshed.refresh_token.takeIf { it.isNotBlank() }
+            ?: AuthSessionManager.getRefreshToken()
         AuthSessionManager.saveSession(
             accessToken = refreshed.access_token,
-            refreshToken = refreshed.refresh_token,
+            refreshToken = nextRefresh,
             userId = refreshed.user_id,
             accessTokenTtlSeconds = refreshed.accessTtlSeconds(),
         )
@@ -112,7 +115,7 @@ object AuthTokenRefresher {
         val currentAccess = AuthSessionManager.getAccessToken()
         if (
             code == 401 &&
-            isBenignRotation(detail) &&
+            AuthRefreshPolicy.isBenignRotation(detail) &&
             !currentRefresh.isNullOrBlank() &&
             currentRefresh != attemptedRefreshToken &&
             !currentAccess.isNullOrBlank()
@@ -120,33 +123,13 @@ object AuthTokenRefresher {
             return currentAccess
         }
 
-        if (shouldClearSession(code, detail)) {
+        if (AuthRefreshPolicy.shouldClearSession(code, detail)) {
             if (BuildConfig.DEBUG) {
                 Log.w(TAG, "clearing session after definitive refresh failure: $detail")
             }
             AuthSessionManager.clearSession()
         }
         return null
-    }
-
-    private fun shouldClearSession(code: Int, detail: String?): Boolean {
-        if (code != 401 && code != 403) return false
-        if (isBenignRotation(detail)) return false
-        val normalized = detail.orEmpty().lowercase()
-        // Stay signed in through cold starts, races, and flaky 401s.
-        // Only wipe when the server explicitly ended this session family.
-        return normalized.contains("reuse detected") ||
-            normalized.contains("session invalidated") ||
-            normalized.contains("refresh token expired") ||
-            normalized.contains("refresh token revoked") ||
-            normalized.contains("logged out from all")
-    }
-
-    private fun isBenignRotation(detail: String?): Boolean {
-        val normalized = detail.orEmpty().lowercase()
-        return normalized.contains("already rotated") ||
-            normalized.contains("replay") ||
-            normalized.contains("recovered")
     }
 
     private fun extractErrorDetail(httpException: HttpException): String? {

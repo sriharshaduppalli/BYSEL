@@ -51,6 +51,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bysel.trader.data.WatchlistSymbols
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.SignalLabBucketFeed
 import com.bysel.trader.data.models.StockSearchResult
@@ -100,6 +101,7 @@ fun SearchScreen(
         listOf(
             SearchJump("Trade", 2, listOf("trade", "spot", "wallet", "paper")),
             SearchJump("Heatmap", 4, listOf("heatmap", "sector", "breadth", "tqi")),
+            SearchJump("Scanner", 28, listOf("scanner", "discover", "screener", "bysel")),
             SearchJump("Signal Lab", 20, listOf("signal", "screener", "breakout")),
             SearchJump("Watchlist", 25, listOf("watchlist", "watch")),
             SearchJump("AI", 1, listOf("ai", "assistant", "chat", "coach")),
@@ -111,7 +113,7 @@ fun SearchScreen(
 
     val watchlistQuotes = remember(quotes, watchlistSymbols) {
         watchlistSymbols.mapNotNull { symbol ->
-            quotes.firstOrNull { it.symbol.equals(symbol, ignoreCase = true) }
+            WatchlistSymbols.findQuote(quotes, symbol)
         }.take(6)
     }
     val topMovers = remember(quotes) {
@@ -271,7 +273,7 @@ fun SearchScreen(
                         )
                     }
                     items(topMovers, key = { "mv-${it.symbol}" }) { quote ->
-                        val watched = watchlistSymbols.any { it.equals(quote.symbol, ignoreCase = true) }
+                        val watched = watchlistSymbols.any { WatchlistSymbols.matches(it, quote.symbol) }
                         DiscoveryQuoteCard(
                             quote = quote,
                             subtitle = if (quote.pctChange >= 0.0) "Gainer" else "Loser",
@@ -314,7 +316,7 @@ fun SearchScreen(
                     }
                     items(searchResults, key = { it.symbol }) { result ->
                         val existingQuote = quotes.firstOrNull { it.symbol.equals(result.symbol, ignoreCase = true) }
-                        val alreadyWatched = watchlistSymbols.any { it.equals(result.symbol, ignoreCase = true) }
+                        val alreadyWatched = watchlistSymbols.any { WatchlistSymbols.matches(it, result.symbol) }
                         SearchResultCard(
                             result = result,
                             quote = existingQuote,

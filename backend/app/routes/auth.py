@@ -82,6 +82,9 @@ if not AUTH_SECRET:
     logger.warning("auth.secret.generated — AUTH_SECRET env var not set; using random secret (tokens will not survive restarts)")
 ACCESS_TOKEN_TTL_SECONDS = int(os.getenv("ACCESS_TOKEN_TTL_SECONDS", "7200"))
 REFRESH_TOKEN_TTL_SECONDS = int(os.getenv("REFRESH_TOKEN_TTL_SECONDS", "2592000"))
+# Accept access tokens a minute past exp so in-flight /quotes and clock skew
+# do not 401 the next authenticated call at the exact TTL boundary.
+ACCESS_TOKEN_CLOCK_SKEW_SECONDS = int(os.getenv("ACCESS_TOKEN_CLOCK_SKEW_SECONDS", "60"))
 LOGIN_RATE_LIMIT_ATTEMPTS = int(os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "6"))
 LOGIN_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", "60"))
 REFRESH_RATE_LIMIT_ATTEMPTS = int(os.getenv("REFRESH_RATE_LIMIT_ATTEMPTS", "12"))
@@ -94,8 +97,10 @@ AUTH_DEBUG_TOKEN = os.getenv("AUTH_DEBUG_TOKEN", "")
 AUTH_ADMIN_TOKEN = os.getenv("AUTH_ADMIN_TOKEN", "")
 REFRESH_TOKEN_RETENTION_DAYS = int(os.getenv("REFRESH_TOKEN_RETENTION_DAYS", "30"))
 MAX_ACTIVE_SESSIONS_PER_USER = int(os.getenv("MAX_ACTIVE_SESSIONS_PER_USER", "5"))
-# Wide enough for concurrent OkHttp authenticators + mobile network switches.
-REFRESH_TOKEN_REPLAY_GRACE_SECONDS = int(os.getenv("REFRESH_TOKEN_REPLAY_GRACE_SECONDS", "120"))
+# Wide enough for concurrent OkHttp authenticators, Render wake, and a lost
+# refresh response. Replay within this window returns the cached tokens
+# instead of rotating again (which used to invalidate the winner's session).
+REFRESH_TOKEN_REPLAY_GRACE_SECONDS = int(os.getenv("REFRESH_TOKEN_REPLAY_GRACE_SECONDS", "300"))
 PASSWORD_RESET_TOKEN_TTL_SECONDS = int(os.getenv("PASSWORD_RESET_TOKEN_TTL_SECONDS", "900"))
 RATE_LIMIT_BUCKET_MAX_KEYS = int(os.getenv("RATE_LIMIT_BUCKET_MAX_KEYS", "5000"))
 RATE_LIMIT_PRUNE_INTERVAL_SECONDS = int(os.getenv("RATE_LIMIT_PRUNE_INTERVAL_SECONDS", "30"))
@@ -134,6 +139,12 @@ _rate_limit_lock = Lock()
 _rate_limit_last_prune_at = 0.0
 _metrics_lock = Lock()
 _auth_metrics: dict[str, int] = defaultdict(int)
+# incoming refresh-token hash -> (cached_at, AuthResponse payload)
+# Lets a lost HTTP response / concurrent authenticator replay the same tokens
+# instead of rotating the successor and kicking the original client.
+_refresh_replay_lock = Lock()
+_refresh_replay_cache: dict[str, tuple[float, object]] = {}
+_refresh_inflight_locks: dict[str, Lock] = {}
 
 class UserRegister(BaseModel):
     username: str
@@ -1013,6 +1024,47 @@ def _resolve_refresh_successor(
     )
 
 
+def _refresh_token_lock(token_hash: str) -> Lock:
+    with _refresh_replay_lock:
+        lock = _refresh_inflight_locks.get(token_hash)
+        if lock is None:
+            lock = Lock()
+            _refresh_inflight_locks[token_hash] = lock
+        return lock
+
+
+def _prune_refresh_replay_cache_locked(now: float) -> None:
+    grace = max(0, REFRESH_TOKEN_REPLAY_GRACE_SECONDS)
+    stale_keys = [
+        key for key, (cached_at, _payload) in _refresh_replay_cache.items()
+        if grace <= 0 or (now - cached_at) >= grace
+    ]
+    for key in stale_keys:
+        _refresh_replay_cache.pop(key, None)
+        _refresh_inflight_locks.pop(key, None)
+
+
+def _cache_refresh_result(incoming_token_hash: str, response: AuthResponse) -> None:
+    now = time.time()
+    with _refresh_replay_lock:
+        _refresh_replay_cache[incoming_token_hash] = (now, response)
+        _prune_refresh_replay_cache_locked(now)
+
+
+def _cached_refresh_result(incoming_token_hash: str) -> AuthResponse | None:
+    now = time.time()
+    grace = max(0, REFRESH_TOKEN_REPLAY_GRACE_SECONDS)
+    with _refresh_replay_lock:
+        entry = _refresh_replay_cache.get(incoming_token_hash)
+        if entry is None:
+            return None
+        cached_at, payload = entry
+        if grace <= 0 or (now - cached_at) >= grace:
+            _refresh_replay_cache.pop(incoming_token_hash, None)
+            return None
+        return payload
+
+
 def _reset_debug_state() -> None:
     global _rate_limit_last_prune_at
     with _rate_limit_lock:
@@ -1024,6 +1076,10 @@ def _reset_debug_state() -> None:
 
     with _metrics_lock:
         _auth_metrics.clear()
+
+    with _refresh_replay_lock:
+        _refresh_replay_cache.clear()
+        _refresh_inflight_locks.clear()
 
 
 def _session_health_snapshot(db: Session) -> dict:
@@ -1095,7 +1151,9 @@ def verify_token(token: str, expected_type: str | None = None) -> dict:
         raise HTTPException(status_code=401, detail="Invalid token payload")
 
     now = int(time.time())
-    if int(payload.get("exp", 0)) <= now:
+    exp = int(payload.get("exp", 0))
+    skew = max(0, ACCESS_TOKEN_CLOCK_SKEW_SECONDS)
+    if exp + skew <= now:
         raise HTTPException(status_code=401, detail="Token expired")
 
     token_type = payload.get("typ")
@@ -1702,10 +1760,35 @@ def refresh_token(body: TokenRefreshRequest, request: Request):
         raise
     user_id = int(payload["uid"])
     token_version = int(payload.get("ver", 0))
+    incoming_token_hash = _hash_token(body.refreshToken)
 
+    with _refresh_token_lock(incoming_token_hash):
+        cached = _cached_refresh_result(incoming_token_hash)
+        if cached is not None:
+            _metric_inc("refresh.reuse_cache_hit")
+            logger.info("auth.refresh.replay_cache_hit ip=%s user_id=%s", client_ip, user_id)
+            return cached
+        return _rotate_refresh_session(
+            request=request,
+            client_ip=client_ip,
+            user_id=user_id,
+            token_version=token_version,
+            incoming_token_hash=incoming_token_hash,
+        )
+
+
+def _rotate_refresh_session(
+    *,
+    request: Request,
+    client_ip: str,
+    user_id: int,
+    token_version: int,
+    incoming_token_hash: str,
+) -> AuthResponse:
     db: Session = SessionLocal()
     now = datetime.utcnow()
-    incoming_token_hash = _hash_token(body.refreshToken)
+    access_token = ""
+    new_refresh_token = ""
 
     try:
         _prune_stale_refresh_tokens(db)
@@ -1798,13 +1881,15 @@ def refresh_token(body: TokenRefreshRequest, request: Request):
     finally:
         db.close()
 
-    return AuthResponse(
+    response = AuthResponse(
         status="ok",
         user_id=user_id,
         access_token=access_token,
         refresh_token=new_refresh_token,
         expires_in=ACCESS_TOKEN_TTL_SECONDS,
     )
+    _cache_refresh_result(incoming_token_hash, response)
+    return response
 
 
 @router.post("/logout", response_model=LogoutResponse)

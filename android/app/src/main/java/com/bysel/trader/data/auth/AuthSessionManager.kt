@@ -19,8 +19,6 @@ object AuthSessionManager {
     private const val KEY_EMAIL = "email"
     private const val KEY_MOBILE = "mobile_number"
     private const val KEY_ACCESS_TOKEN_EXPIRY = "access_token_expiry_ms"
-    // Proactively refresh when less than 5 minutes remain
-    private const val EXPIRY_BUFFER_MS = 5 * 60 * 1000L
 
     @Volatile
     private var prefs: SharedPreferences? = null
@@ -28,6 +26,8 @@ object AuthSessionManager {
     private var appContext: Context? = null
     private val _sessionState = MutableStateFlow(false)
     val sessionState: StateFlow<Boolean> = _sessionState.asStateFlow()
+    private val _userId = MutableStateFlow<Int?>(null)
+    val userId: StateFlow<Int?> = _userId.asStateFlow()
 
     data class CachedIdentity(
         val userId: Int?,
@@ -71,7 +71,7 @@ object AuthSessionManager {
                         context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                     }
                     migrateLegacyPrefs(context)
-                    _sessionState.value = hasSession()
+                    publishIdentity()
                 }
             }
         }
@@ -95,16 +95,23 @@ object AuthSessionManager {
 
     fun saveSession(accessToken: String?, refreshToken: String?, userId: Int?, accessTokenTtlSeconds: Int = 7200) {
         val sharedPrefs = prefs ?: return
-        val expiryMs = if (!accessToken.isNullOrBlank()) System.currentTimeMillis() + (accessTokenTtlSeconds * 1000L) else 0L
+        val jwtExpiryMs = AuthRefreshPolicy.decodeAccessTokenExpiryMs(accessToken)
+        val expiryMs = jwtExpiryMs
+            ?: if (!accessToken.isNullOrBlank()) {
+                System.currentTimeMillis() + (accessTokenTtlSeconds * 1000L)
+            } else {
+                0L
+            }
         // commit() so concurrent refresh/auth threads always see the latest tokens.
+        // Never drop a still-valid refresh token if a partial response omitted it.
         with(sharedPrefs.edit()) {
-            if (accessToken.isNullOrBlank()) remove(KEY_ACCESS_TOKEN) else putString(KEY_ACCESS_TOKEN, accessToken)
-            if (refreshToken.isNullOrBlank()) remove(KEY_REFRESH_TOKEN) else putString(KEY_REFRESH_TOKEN, refreshToken)
-            if (userId == null) remove(KEY_USER_ID) else putInt(KEY_USER_ID, userId)
-            if (expiryMs > 0L) putLong(KEY_ACCESS_TOKEN_EXPIRY, expiryMs) else remove(KEY_ACCESS_TOKEN_EXPIRY)
+            if (!accessToken.isNullOrBlank()) putString(KEY_ACCESS_TOKEN, accessToken)
+            if (!refreshToken.isNullOrBlank()) putString(KEY_REFRESH_TOKEN, refreshToken)
+            if (userId != null && userId > 0) putInt(KEY_USER_ID, userId)
+            if (expiryMs > 0L) putLong(KEY_ACCESS_TOKEN_EXPIRY, expiryMs)
             commit()
         }
-        _sessionState.value = hasSession()
+        publishIdentity()
     }
 
     fun saveProfileIdentity(
@@ -123,6 +130,7 @@ object AuthSessionManager {
             if (userId != null && userId > 0) putInt(KEY_USER_ID, userId)
             commit()
         }
+        publishIdentity()
     }
 
     fun getCachedIdentity(): CachedIdentity {
@@ -143,7 +151,12 @@ object AuthSessionManager {
     fun clearSession() {
         val sharedPrefs = prefs ?: return
         sharedPrefs.edit().clear().commit()
-        _sessionState.value = false
+        publishIdentity()
+    }
+
+    private fun publishIdentity() {
+        _userId.value = getUserId()
+        _sessionState.value = hasSession()
     }
 
     fun getAccessToken(): String? = prefs?.getString(KEY_ACCESS_TOKEN, null)
@@ -151,9 +164,10 @@ object AuthSessionManager {
     fun getRefreshToken(): String? = prefs?.getString(KEY_REFRESH_TOKEN, null)
 
     fun isAccessTokenExpiringSoon(): Boolean {
-        val expiryMs = prefs?.getLong(KEY_ACCESS_TOKEN_EXPIRY, 0L) ?: return false
-        if (expiryMs == 0L) return false
-        return System.currentTimeMillis() >= expiryMs - EXPIRY_BUFFER_MS
+        val jwtExpiryMs = AuthRefreshPolicy.decodeAccessTokenExpiryMs(getAccessToken())
+        val storedExpiryMs = prefs?.getLong(KEY_ACCESS_TOKEN_EXPIRY, 0L) ?: 0L
+        val expiryMs = jwtExpiryMs ?: storedExpiryMs
+        return AuthRefreshPolicy.isAccessTokenExpiringSoon(expiryMs, System.currentTimeMillis())
     }
 
     fun getUserId(): Int? {
