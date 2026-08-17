@@ -417,13 +417,13 @@ def _curated_sector_symbols() -> Dict[str, List[str]]:
 
 
 def _fetch_heatmap_quotes(symbols: List[str]) -> List[dict]:
-    """Yahoo pull tuned for heatmap: larger batches, threads on, no per-symbol fallback."""
+    """Yahoo pull tuned for heatmap: larger batches, no per-symbol history walk."""
     if not symbols:
         return []
     try:
         return fetch_quotes(
             symbols,
-            max_age_seconds=0,
+            max_age_seconds=None,
             batch_size=max(80, int(os.getenv("QUOTE_BATCH_SIZE", "40") or 40)),
             yf_threads=True,
             individual_fallback=False,

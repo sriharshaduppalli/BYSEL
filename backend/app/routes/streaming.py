@@ -9,7 +9,12 @@ from uuid import uuid4
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from ..market_data import fetch_quotes, get_default_symbols, quote_max_age_seconds
+from ..market_data import (
+    QUOTE_CACHE_STORAGE_SECONDS,
+    fetch_quotes,
+    get_default_symbols,
+    quote_max_age_seconds,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -296,14 +301,35 @@ async def stream_quotes(websocket: WebSocket):
                 )
 
             # Keep Yahoo I/O off the asyncio event loop so REST resume calls stay responsive.
-            # Keep Yahoo I/O off the asyncio event loop so REST resume calls stay responsive.
-            def _stream_fetch(batch: list[str]) -> list:
+            def _stream_fetch(batch: list[str], *, allow_stale: bool = False) -> list:
+                age = (
+                    float(QUOTE_CACHE_STORAGE_SECONDS)
+                    if allow_stale
+                    else quote_max_age_seconds()
+                )
                 try:
-                    return fetch_quotes(batch, max_age_seconds=quote_max_age_seconds())
+                    return fetch_quotes(
+                        batch,
+                        max_age_seconds=age,
+                        individual_fallback=False,
+                    )
                 except TypeError:
                     return fetch_quotes(batch)
 
-            quote_rows = await asyncio.to_thread(_stream_fetch, symbols)
+            try:
+                quote_rows = await asyncio.wait_for(
+                    asyncio.to_thread(_stream_fetch, symbols),
+                    timeout=6.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "quotes_stream.fetch_timeout trace_id=%s symbols=%s",
+                    stream_trace_id,
+                    len(symbols),
+                )
+                quote_rows = await asyncio.to_thread(
+                    lambda: _stream_fetch(symbols, allow_stale=True)
+                )
             sequence = _next_stream_sequence()
             payload = {
                 "type": "quotes",

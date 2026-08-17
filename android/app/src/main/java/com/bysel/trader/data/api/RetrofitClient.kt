@@ -55,12 +55,12 @@ object RetrofitClient {
             .addInterceptor(HttpLoggingInterceptor().apply {
                 level = loggingLevel
             })
-            // Market/trading + heatmap share this client. Render free-tier cold starts
-            // often exceed 25s, so keep enough headroom for heatmap wake-ups.
-            .callTimeout(60, TimeUnit.SECONDS)
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+            // Paid Render is always-on. Quotes/heatmap must fail in ~15s, never sit 45–60s.
+            .callTimeout(15, TimeUnit.SECONDS)
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(10, TimeUnit.SECONDS)
+            .pingInterval(12, TimeUnit.SECONDS)
 
         // Pinning is optional until release pins are provided via BuildConfig env values.
         buildCertificatePinner()?.let { pinner ->

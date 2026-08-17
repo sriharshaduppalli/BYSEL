@@ -40,6 +40,10 @@ QUOTE_CACHE_STORAGE_SECONDS = _env_int("QUOTE_CACHE_STORAGE_SECONDS", 300, minim
 QUOTE_CACHE_TTL_SECONDS = _env_int("QUOTE_CACHE_TTL_SECONDS", QUOTE_CACHE_TTL_OPEN, minimum=3)
 QUOTE_CACHE_MAX_ENTRIES = _env_int("QUOTE_CACHE_MAX_ENTRIES", 3000, minimum=50)
 QUOTE_BATCH_SIZE = _env_int("QUOTE_BATCH_SIZE", 40, minimum=1)
+# Cap per-symbol Ticker.history fallback. A 20–40 name sequential walk is the 40–50s hang.
+QUOTE_INDIVIDUAL_FALLBACK_MAX = _env_int("QUOTE_INDIVIDUAL_FALLBACK_MAX", 2, minimum=0)
+QUOTE_YF_DOWNLOAD_TIMEOUT = _env_int("QUOTE_YF_DOWNLOAD_TIMEOUT", 8, minimum=3)
+QUOTE_V7_TIMEOUT = _env_int("QUOTE_V7_TIMEOUT", 4, minimum=2)
 # PE / EPS / yield / avg volume / target change slowly — keep them off the 5s last-price path.
 FUNDAMENTALS_CACHE_TTL_SECONDS = _env_int("FUNDAMENTALS_CACHE_TTL_SECONDS", 4 * 3600, minimum=300)
 
@@ -1223,12 +1227,25 @@ def clear_fundamentals_cache() -> None:
         _fundamentals_inflight.clear()
 
 
+_yf_data = None
+_yf_data_lock = Lock()
+
+
+def _yahoo_data():
+    """Reuse one crumb+cookie client. A new YfData() on every call re-fetches the crumb."""
+    global _yf_data
+    with _yf_data_lock:
+        if _yf_data is None:
+            from yfinance.data import YfData
+
+            _yf_data = YfData(session=None)
+        return _yf_data
+
+
 def _yahoo_authed_json(url: str, timeout: float = 6.0) -> dict:
     """Yahoo quote/quoteSummary JSON via yfinance crumb+cookie (bare urllib gets 401)."""
     try:
-        from yfinance.data import YfData
-
-        payload = YfData(session=None).get_raw_json(url, timeout=max(1.5, float(timeout)))
+        payload = _yahoo_data().get_raw_json(url, timeout=max(1.5, float(timeout)))
         return payload if isinstance(payload, dict) else {}
     except Exception as exc:
         logger.debug("yahoo authed json failed: %s", exc)
@@ -1247,19 +1264,9 @@ def _parse_yahoo_v7_rows(data: Optional[dict]) -> Dict[str, dict]:
     return out
 
 
-def _fetch_yahoo_v7_quotes(yf_symbols: List[str], timeout: float = 4.0) -> Dict[str, dict]:
-    """Yahoo v7 quote endpoint — last price plus PE/EPS/yield/bid/ask/avg volume."""
-    uniq: List[str] = []
-    seen: set = set()
-    for symbol in yf_symbols:
-        token = (symbol or "").strip()
-        if token and token not in seen:
-            seen.add(token)
-            uniq.append(token)
-    if not uniq:
-        return {}
-
-    encoded = urllib.parse.quote(",".join(uniq), safe=",.")
+def _fetch_yahoo_v7_quotes_once(yf_symbols: List[str], timeout: float = 4.0) -> Dict[str, dict]:
+    """One Yahoo v7 HTTP call for a small symbol list."""
+    encoded = urllib.parse.quote(",".join(yf_symbols), safe=",.")
     for host in ("query1", "query2"):
         url = f"https://{host}.finance.yahoo.com/v7/finance/quote?symbols={encoded}"
         out = _parse_yahoo_v7_rows(_yahoo_authed_json(url, timeout=timeout))
@@ -1286,6 +1293,65 @@ def _fetch_yahoo_v7_quotes(yf_symbols: List[str], timeout: float = 4.0) -> Dict[
         except Exception as exc:
             logger.debug("yahoo v7 quote failed via %s: %s", host, exc)
     return {}
+
+
+def _fetch_yahoo_v7_quotes(yf_symbols: List[str], timeout: float = 4.0) -> Dict[str, dict]:
+    """Yahoo v7 quote endpoint — last price plus PE/EPS/yield/bid/ask/avg volume."""
+    uniq: List[str] = []
+    seen: set = set()
+    for symbol in yf_symbols:
+        token = (symbol or "").strip()
+        if token and token not in seen:
+            seen.add(token)
+            uniq.append(token)
+    if not uniq:
+        return {}
+
+    chunk_size = max(1, min(int(QUOTE_BATCH_SIZE), 40))
+    if len(uniq) <= chunk_size:
+        return _fetch_yahoo_v7_quotes_once(uniq, timeout=timeout)
+
+    merged: Dict[str, dict] = {}
+    for start in range(0, len(uniq), chunk_size):
+        merged.update(_fetch_yahoo_v7_quotes_once(uniq[start:start + chunk_size], timeout=timeout))
+    return merged
+
+
+def _quote_from_yahoo_v7(symbol: str, v7: dict, stale: Optional[dict] = None) -> Optional[dict]:
+    """Map a Yahoo v7 row onto BYSEL's last-price quote shape. None if no usable last."""
+    if not isinstance(v7, dict) or not v7:
+        return None
+    last_price = _safe_number(
+        v7.get("regularMarketPrice") or v7.get("regularMarketPreviousClose"),
+        0.0,
+    )
+    if last_price <= 0:
+        return None
+    prev_close = _safe_number(v7.get("regularMarketPreviousClose"), last_price)
+    pct_raw = _first_yahoo_number(v7, "regularMarketChangePercent")
+    if pct_raw is None:
+        pct_change = round(((last_price - prev_close) / prev_close) * 100, 2) if prev_close > 0 else 0.0
+    else:
+        pct_change = round(float(pct_raw), 2)
+    fund = fundamentals_from_yahoo_quote(v7, last_price=last_price)
+    if fund:
+        _put_fundamentals(symbol, fund)
+    quote = dict(stale) if stale else {}
+    quote.update(
+        {
+            "symbol": symbol,
+            "last": round(last_price, 2),
+            "pctChange": pct_change,
+            "open": round(_safe_number(v7.get("regularMarketOpen"), last_price), 2),
+            "high": round(_safe_number(v7.get("regularMarketDayHigh"), last_price), 2),
+            "low": round(_safe_number(v7.get("regularMarketDayLow"), last_price), 2),
+            "previousClose": round(prev_close, 2),
+            "prevClose": round(prev_close, 2),
+            "volume": int(_safe_number(v7.get("regularMarketVolume"), 0.0)),
+            "timestamp": int(datetime.utcnow().timestamp() * 1000),
+        }
+    )
+    return _overlay_fundamentals(quote, fund or _get_cached_fundamentals(symbol))
 
 
 def _fetch_yahoo_quote_summary(yf_symbol: str, timeout: float = 4.0) -> dict:
@@ -1402,41 +1468,24 @@ def fetch_quote(symbol: str) -> dict:
     stale = _quote_cache.get_allow_stale(symbol, float(QUOTE_CACHE_STORAGE_SECONDS))
 
     try:
-        ticker = yf.Ticker(_yf_ticker(symbol))
+        # Near-live last price: one v7 call (~4s). Never start with Ticker.history —
+        # that plus sequential fallback is the 40–50s open-hours hang.
+        yf_sym = _yf_ticker(symbol)
+        v7 = (_fetch_yahoo_v7_quotes([yf_sym], timeout=float(QUOTE_V7_TIMEOUT)) or {}).get(yf_sym) or {}
+        live = _quote_from_yahoo_v7(symbol, v7, stale=stale)
+        if live:
+            _quote_cache.put(symbol, live)
+            if _needs_fundamentals(live):
+                _schedule_fundamentals_fill([symbol])
+            return live
+        if stale:
+            return stale
+
+        ticker = yf.Ticker(yf_sym)
         info = ticker.fast_info
         hist = ticker.history(period="2d")
 
         if hist.empty:
-            yf_sym = _yf_ticker(symbol)
-            v7 = (_fetch_yahoo_v7_quotes([yf_sym], timeout=3.5) or {}).get(yf_sym) or {}
-            v7_last = _safe_number(v7.get("regularMarketPrice") or v7.get("regularMarketPreviousClose"))
-            if v7_last > 0:
-                fund = fundamentals_from_yahoo_quote(v7, last_price=v7_last)
-                if fund:
-                    _put_fundamentals(symbol, fund)
-                prev_close = _safe_number(v7.get("regularMarketPreviousClose"), v7_last)
-                pct_change = (
-                    round(((v7_last - prev_close) / prev_close) * 100, 2) if prev_close > 0 else 0.0
-                )
-                quote = {
-                    "symbol": symbol,
-                    "last": round(v7_last, 2),
-                    "pctChange": pct_change,
-                    "open": round(_safe_number(v7.get("regularMarketOpen"), v7_last), 2),
-                    "high": round(_safe_number(v7.get("regularMarketDayHigh"), v7_last), 2),
-                    "low": round(_safe_number(v7.get("regularMarketDayLow"), v7_last), 2),
-                    "previousClose": round(prev_close, 2),
-                    "prevClose": round(prev_close, 2),
-                    "volume": int(_safe_number(v7.get("regularMarketVolume"), 0.0)),
-                    "timestamp": int(datetime.utcnow().timestamp() * 1000),
-                }
-                quote = _overlay_fundamentals(quote, fund or _get_cached_fundamentals(symbol))
-                _quote_cache.put(symbol, quote)
-                if _needs_fundamentals(quote):
-                    _schedule_fundamentals_fill([symbol])
-                return quote
-            if stale:
-                return stale
             logger.warning(f"No history data for {symbol}")
             return _empty_quote(symbol)
 
@@ -1550,9 +1599,9 @@ def fetch_quotes(
     max_age_seconds: if set, treat cache entries older than this as misses
     (heatmap / stream pass a short age while the market is open).
     If omitted, uses quote_max_age_seconds() (~5s open, ~3m closed).
-    batch_size / yf_threads: heatmap uses a larger Yahoo batch with threads
-    so curated leaders paint in one or two downloads instead of many sequential ones.
-    individual_fallback: per-symbol Yahoo calls for batch misses (disable on heatmap).
+    batch_size / yf_threads: heatmap still requests a larger batch; last prices
+    come from Yahoo v7 (one HTTP per ~40 tickers). yf.download is last-resort only.
+    individual_fallback: at most QUOTE_INDIVIDUAL_FALLBACK_MAX per-symbol calls.
     """
     if not symbols:
         return []
@@ -1573,14 +1622,16 @@ def fetch_quotes(
             symbol_map[s] = idx
 
     # Fetch uncached symbols in batches
+    fallback_left = int(QUOTE_INDIVIDUAL_FALLBACK_MAX) if individual_fallback else 0
     if uncached:
         for start in range(0, len(uncached), size):
             batch_symbols = uncached[start:start + size]
             fetched = _fetch_batch_quotes(batch_symbols, yf_threads=yf_threads)
-            for idx, symbol in enumerate(batch_symbols):
+            for symbol in batch_symbols:
                 quote = fetched.get(symbol)
-                if quote is None and individual_fallback:
+                if quote is None and fallback_left > 0:
                     quote = fetch_quote(symbol)
+                    fallback_left -= 1
                 last_px = _safe_number((quote or {}).get("last"), 0.0) if quote else 0.0
                 if quote and last_px > 0:
                     results.append((symbol_map[symbol], quote))
@@ -1594,8 +1645,55 @@ def fetch_quotes(
     return [q for _, q in results]
 
 
+def _quotes_from_v7_batch(batch_symbols: List[str], timeout: Optional[float] = None) -> dict:
+    """Last-price batch via Yahoo v7 (one HTTP per ~40 tickers)."""
+    results = {}
+    yf_map = {symbol: _yf_ticker(symbol) for symbol in batch_symbols if symbol}
+    reverse: Dict[str, List[str]] = {}
+    for symbol, yf_sym in yf_map.items():
+        if yf_sym:
+            reverse.setdefault(yf_sym, []).append(symbol)
+    if not reverse:
+        return results
+    rows = _fetch_yahoo_v7_quotes(
+        list(reverse.keys()),
+        timeout=float(timeout if timeout is not None else QUOTE_V7_TIMEOUT),
+    )
+    for yf_sym, raw in rows.items():
+        for symbol in reverse.get(yf_sym, []):
+            stale = _quote_cache.get_allow_stale(symbol, float(QUOTE_CACHE_STORAGE_SECONDS))
+            quote = _quote_from_yahoo_v7(symbol, raw, stale=stale)
+            if quote:
+                _quote_cache.put(symbol, quote)
+                results[symbol] = quote
+    return results
+
+
 def _fetch_batch_quotes(batch_symbols: List[str], *, yf_threads: bool = False) -> dict:
-    """Fetch a batch of quotes (max QUOTE_BATCH_SIZE) efficiently."""
+    """Fetch a batch of last prices. Yahoo v7 first; yf.download only if v7 returns nothing."""
+    results = _quotes_from_v7_batch(batch_symbols)
+    missing = [symbol for symbol in batch_symbols if symbol not in results]
+    if missing and not results:
+        results.update(
+            _fetch_batch_quotes_download(
+                missing,
+                yf_threads=True if yf_threads or len(missing) > 1 else False,
+                timeout=float(QUOTE_YF_DOWNLOAD_TIMEOUT),
+            )
+        )
+    need_fund = [symbol for symbol, quote in results.items() if _needs_fundamentals(quote)]
+    if need_fund:
+        _schedule_fundamentals_fill(need_fund)
+    return results
+
+
+def _fetch_batch_quotes_download(
+    batch_symbols: List[str],
+    *,
+    yf_threads: bool = False,
+    timeout: float = 8.0,
+) -> dict:
+    """Last-resort yfinance download. Never the open-hours hot path."""
     results = {}
     
     try:
@@ -1606,7 +1704,7 @@ def _fetch_batch_quotes(batch_symbols: List[str], *, yf_threads: bool = False) -
             group_by="ticker",
             progress=False,
             threads=bool(yf_threads),
-            timeout=15,  # Add timeout to prevent hanging
+            timeout=max(3.0, float(timeout)),
         )
 
         for symbol in batch_symbols:

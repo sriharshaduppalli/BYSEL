@@ -1420,12 +1420,27 @@ async def get_quotes_endpoint(
         sym_list = get_default_symbols()
 
     try:
-        raw_quotes = await asyncio.to_thread(fetch_quotes, sym_list)
+        raw_quotes = await asyncio.wait_for(
+            asyncio.to_thread(fetch_quotes, sym_list),
+            timeout=8.0,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("quotes_fetch_timeout symbols=%s", len(sym_list))
+        try:
+            from ..market_data import QUOTE_CACHE_STORAGE_SECONDS
+
+            raw_quotes = await asyncio.to_thread(
+                fetch_quotes,
+                sym_list,
+                float(QUOTE_CACHE_STORAGE_SECONDS),
+            )
+        except Exception:
+            raw_quotes = []
     except Exception as exc:
         logger.error("quotes_fetch_failed reason=%s", exc)
         raise HTTPException(status_code=503, detail="Quote provider temporarily unavailable") from exc
 
-    # Trigger evaluation must not use the request Session across threads.
+    # Triggers/alerts must not delay the live tape. Fire-and-forget after quotes return.
     try:
         from ..database.db import SessionLocal
 
@@ -1436,7 +1451,7 @@ async def get_quotes_endpoint(
             finally:
                 session.close()
 
-        await asyncio.to_thread(_run_triggers)
+        threading.Thread(target=_run_triggers, name="quote-triggers", daemon=True).start()
     except Exception as exc:
         logger.warning("trigger_evaluation_failed reason=%s", str(exc))
 
@@ -1444,14 +1459,16 @@ async def get_quotes_endpoint(
         from ..alert_push import evaluate_price_alerts
         from ..database.db import SessionLocal as AlertSessionLocal
 
+        quotes_for_alerts = list(raw_quotes or [])
+
         def _run_alerts():
             session = AlertSessionLocal()
             try:
-                return evaluate_price_alerts(db=session, quotes=raw_quotes, symbols=sym_list)
+                return evaluate_price_alerts(db=session, quotes=quotes_for_alerts, symbols=sym_list)
             finally:
                 session.close()
 
-        await asyncio.to_thread(_run_alerts)
+        threading.Thread(target=_run_alerts, name="quote-alerts", daemon=True).start()
     except Exception as exc:
         logger.warning("alert_push_evaluation_failed reason=%s", str(exc))
 

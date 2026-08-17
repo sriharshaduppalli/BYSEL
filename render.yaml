@@ -15,13 +15,15 @@ services:
       - key: AUTH_SECRET
         sync: false
       - key: QUOTE_BATCH_SIZE
-        value: "25"
+        value: "40"
+      - key: QUOTE_CACHE_TTL_OPEN
+        value: "5"
       - key: QUOTE_CACHE_MAX_ENTRIES
         value: "2500"
       - key: HEATMAP_CACHE_TTL_OPEN
-        value: "5"
+        value: "2"
       - key: HEATMAP_QUOTE_MAX_AGE_OPEN
-        value: "90"
+        value: "5"
       # Long-tail universe only. Curated leaders (~130 names) always fetch first.
       - key: HEATMAP_QUOTE_REFRESH_BUDGET
         value: "60"

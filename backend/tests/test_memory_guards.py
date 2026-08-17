@@ -64,6 +64,7 @@ def test_fetch_quote_returns_stale_print_when_yahoo_fails(monkeypatch):
     def _boom(_symbol):
         raise RuntimeError("yahoo down")
 
+    monkeypatch.setattr(market_data, "_fetch_yahoo_v7_quotes", lambda *_a, **_k: {})
     monkeypatch.setattr(market_data.yf, "Ticker", _boom)
     quote = market_data.fetch_quote("INFY")
     assert quote["last"] == 1500.0

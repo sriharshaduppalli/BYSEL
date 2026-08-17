@@ -8,6 +8,7 @@ from app.market_data import (
     _needs_fundamentals,
     _overlay_fundamentals,
     _parse_yahoo_v7_rows,
+    _quote_from_yahoo_v7,
     clear_fundamentals_cache,
     fundamentals_from_fast_info,
     fundamentals_from_yahoo_quote,
@@ -244,3 +245,63 @@ def test_parse_yahoo_v7_rows_ignores_empty_envelope():
         {"quoteResponse": {"result": [{"symbol": "TCS.NS", "trailingPE": 17.1}]}}
     )
     assert parsed["TCS.NS"]["trailingPE"] == 17.1
+
+
+def test_quote_from_yahoo_v7_maps_last_and_pct():
+    quote = _quote_from_yahoo_v7("RELIANCE", YAHOO_V7_RELIANCE)
+    assert quote["symbol"] == "RELIANCE"
+    assert quote["last"] == 1375.5
+    assert quote["pctChange"] == 0.45
+    assert quote["volume"] == 5_200_000
+    assert quote["trailingPE"] == 24.52
+
+
+def test_fetch_batch_quotes_uses_v7_not_download(monkeypatch):
+    from app import market_data
+
+    market_data._quote_cache.clear()
+    download_calls = {"n": 0}
+
+    def _fake_v7(yf_symbols, timeout=4.0):
+        return {
+            "TCS.NS": {
+                "symbol": "TCS.NS",
+                "regularMarketPrice": 3501.0,
+                "regularMarketPreviousClose": 3480.0,
+                "regularMarketChangePercent": 0.6,
+                "regularMarketVolume": 1_000_000,
+            }
+        }
+
+    monkeypatch.setattr(market_data, "_fetch_yahoo_v7_quotes", _fake_v7)
+    monkeypatch.setattr(
+        market_data,
+        "_fetch_batch_quotes_download",
+        lambda *_a, **_k: download_calls.__setitem__("n", download_calls["n"] + 1) or {},
+    )
+
+    quotes = market_data.fetch_quotes(["TCS"], max_age_seconds=5)
+    assert len(quotes) == 1
+    assert quotes[0]["last"] == 3501.0
+    assert download_calls["n"] == 0
+
+
+def test_fetch_quotes_caps_individual_history_fallback(monkeypatch):
+    from app import market_data
+
+    market_data._quote_cache.clear()
+    fetch_calls = []
+
+    monkeypatch.setattr(market_data, "_quotes_from_v7_batch", lambda *_a, **_k: {})
+    monkeypatch.setattr(market_data, "_fetch_batch_quotes_download", lambda *_a, **_k: {})
+    monkeypatch.setattr(market_data, "QUOTE_INDIVIDUAL_FALLBACK_MAX", 2)
+
+    def _fake_fetch_quote(symbol):
+        fetch_calls.append(symbol)
+        return {"symbol": symbol, "last": 10.0, "pctChange": 0.1}
+
+    monkeypatch.setattr(market_data, "fetch_quote", _fake_fetch_quote)
+    quotes = market_data.fetch_quotes(["AAA", "BBB", "CCC", "DDD"], max_age_seconds=5)
+    assert fetch_calls == ["AAA", "BBB"]
+    assert [row["symbol"] for row in quotes] == ["AAA", "BBB"]
+

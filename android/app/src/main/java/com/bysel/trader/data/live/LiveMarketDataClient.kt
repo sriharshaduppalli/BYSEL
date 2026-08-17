@@ -216,7 +216,7 @@ class LiveMarketDataClient(
         }
     }
 
-    fun pollQuotes(symbols: List<String>, intervalMs: Long = 1000L): Flow<List<Quote>> = flow {
+    fun pollQuotes(symbols: List<String>, intervalMs: Long = 5_000L): Flow<List<Quote>> = flow {
         while (true) {
             val quoteList = apiService.getQuotes(symbols.joinToString(","))
             emit(quoteList)
