@@ -1160,6 +1160,14 @@ data class ScannerMetrics(
     @SerializedName("volumeRatio") val volumeRatio: Double? = null,
     @SerializedName("sector") val sector: String? = null,
     @SerializedName("sectorPe") val sectorPe: Double? = null,
+    @SerializedName("pledge") val pledge: Double? = null,
+    @SerializedName("marginPct") val marginPct: Double? = null,
+)
+
+data class ScannerAnomaly(
+    @SerializedName("id") val id: String = "",
+    @SerializedName("label") val label: String = "",
+    @SerializedName("detail") val detail: String = "",
 )
 
 data class ScannerPracticeSetup(
@@ -1234,10 +1242,29 @@ data class ScannerRow(
     @SerializedName("why") val why: String = "",
     @SerializedName("metrics") val metrics: ScannerMetrics = ScannerMetrics(),
     @SerializedName("missing") val missing: List<String> = emptyList(),
+    @SerializedName("anomalies") val anomalies: List<ScannerAnomaly> = emptyList(),
 ) {
     val displayValuation: Int? get() = valuation ?: value
     val displayScore: Int get() = byselScore ?: overall
     val displaySummary: String get() = aiSummary.ifBlank { why }
+
+    fun detectedAnomalies(): List<ScannerAnomaly> {
+        if (anomalies.isNotEmpty()) return anomalies
+        val inferred = mutableListOf<ScannerAnomaly>()
+        val vol = metrics.volumeRatio
+        if (vol != null && vol > 2.0) {
+            inferred += ScannerAnomaly("unusual_volume", "Unusual volume", String.format("%.1f× avg", vol))
+        }
+        val pledge = metrics.pledge
+        if (pledge != null && pledge > 0) {
+            inferred += ScannerAnomaly("pledging", "Pledging", "Pledge ${pledge.toInt()}%")
+        }
+        val margin = metrics.marginPct
+        if (margin != null) {
+            inferred += ScannerAnomaly("margin", "Margin", String.format("Margin %.1f%%", margin))
+        }
+        return inferred
+    }
 }
 
 data class ScoreHistoryPoint(

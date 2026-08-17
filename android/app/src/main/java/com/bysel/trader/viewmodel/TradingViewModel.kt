@@ -9,6 +9,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.bysel.trader.data.WatchlistStore
 import com.bysel.trader.data.WatchlistSymbols
+import com.bysel.trader.data.CustomScannerFilters
+import com.bysel.trader.data.CustomScannerFiltersStore
 import com.bysel.trader.data.models.*
 import com.bysel.trader.data.repository.Result
 import com.bysel.trader.data.repository.TradingRepository
@@ -260,6 +262,9 @@ class TradingViewModel(
     val symbolXray: StateFlow<ScannerRow?> = _symbolXray.asStateFlow()
     private val _scoreHistory = MutableStateFlow<ScoreHistoryResponse?>(null)
     val scoreHistory: StateFlow<ScoreHistoryResponse?> = _scoreHistory.asStateFlow()
+    private val _customScannerFilters = MutableStateFlow(CustomScannerFilters())
+    val customScannerFilters: StateFlow<CustomScannerFilters> = _customScannerFilters.asStateFlow()
+    private var customFiltersLoaded = false
     private var lastScannerRefreshAt = 0L
     private var lastScannerMode: String = "long_term"
 
@@ -3124,7 +3129,7 @@ class TradingViewModel(
 
     fun loadMarketScanner(mode: String = "long_term", force: Boolean = false) {
         val normalized = when (mode) {
-            "swing", "high_quality", "momentum", "value" -> mode
+            "swing", "high_quality", "momentum", "value", "custom" -> mode
             else -> "long_term"
         }
         val now = System.currentTimeMillis()
@@ -3153,6 +3158,62 @@ class TradingViewModel(
                 else -> {}
             }
             _scannerLoading.value = false
+        }
+    }
+
+    fun ensureCustomScannerFiltersLoaded() {
+        if (customFiltersLoaded) return
+        viewModelScope.launch {
+            _customScannerFilters.value = CustomScannerFiltersStore.read(getApplication())
+            customFiltersLoaded = true
+        }
+    }
+
+    fun toggleCustomScannerMinScore(value: Int) {
+        updateCustomScannerFilters(_customScannerFilters.value.copy(
+            minScore = if (_customScannerFilters.value.minScore == value) null else value,
+        ))
+    }
+
+    fun toggleCustomScannerRsi(value: String) {
+        updateCustomScannerFilters(_customScannerFilters.value.copy(
+            rsi = if (_customScannerFilters.value.rsi == value) null else value,
+        ))
+    }
+
+    fun toggleCustomScannerDma(value: String) {
+        updateCustomScannerFilters(_customScannerFilters.value.copy(
+            dma = if (_customScannerFilters.value.dma == value) null else value,
+        ))
+    }
+
+    fun toggleCustomScannerVolume(value: Double) {
+        updateCustomScannerFilters(_customScannerFilters.value.copy(
+            minVolume = if (_customScannerFilters.value.minVolume == value) null else value,
+        ))
+    }
+
+    fun toggleCustomScannerMaxPe(value: Double) {
+        updateCustomScannerFilters(_customScannerFilters.value.copy(
+            maxPe = if (_customScannerFilters.value.maxPe == value) null else value,
+        ))
+    }
+
+    fun toggleCustomScannerMinChange(value: Double) {
+        updateCustomScannerFilters(_customScannerFilters.value.copy(
+            minChange = if (_customScannerFilters.value.minChange == value) null else value,
+        ))
+    }
+
+    fun clearCustomScannerFilters() {
+        updateCustomScannerFilters(CustomScannerFilters())
+    }
+
+    private fun updateCustomScannerFilters(next: CustomScannerFilters) {
+        _customScannerFilters.value = next
+        viewModelScope.launch {
+            CustomScannerFiltersStore.write(getApplication(), next)
+            customFiltersLoaded = true
         }
     }
 

@@ -828,12 +828,12 @@ open class TradingRepository(private val database: BYSELDatabase) {
     ): Result<ScannerResponse> {
         return try {
             val normalizedMode = when (mode) {
-                "swing", "high_quality", "momentum", "value" -> mode
+                "swing", "high_quality", "momentum", "value", "custom" -> mode
                 else -> "long_term"
             }
             val response = apiService.getMarketScanner(
                 mode = normalizedMode,
-                limit = limit.coerceIn(5, 40),
+                limit = if (normalizedMode == "custom") 40 else limit.coerceIn(5, 40),
                 forceRefresh = forceRefresh,
             )
             Result.Success(response)

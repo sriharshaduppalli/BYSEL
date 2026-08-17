@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -49,7 +51,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.bysel.trader.data.CustomScannerFilters
 import com.bysel.trader.data.WatchlistSymbols
+import com.bysel.trader.data.models.ScannerAnomaly
 import com.bysel.trader.data.models.ScannerPillar
 import com.bysel.trader.data.models.ScannerRow
 import com.bysel.trader.data.models.ScoreHistoryResponse
@@ -67,6 +71,7 @@ private enum class ScannerModeChip(val apiMode: String, val title: String) {
     HIGH_QUALITY("high_quality", "High Quality"),
     MOMENTUM("momentum", "Momentum"),
     VALUE("value", "Value"),
+    CUSTOM("custom", "Custom"),
     FNO("fno", "F&O"),
 }
 
@@ -88,12 +93,17 @@ fun ScannerScreen(
     val loading by viewModel.scannerLoading.collectAsStateWithLifecycle()
     val error by viewModel.scannerError.collectAsStateWithLifecycle()
     val watchlist by viewModel.watchlist.collectAsStateWithLifecycle()
+    val customFilters by viewModel.customScannerFilters.collectAsStateWithLifecycle()
     var selectedKey by rememberSaveable { mutableStateOf(ScannerModeChip.LONG_TERM.name) }
     var setupFilterKey by rememberSaveable { mutableStateOf(SwingSetupFilter.ALL.name) }
     val selected = runCatching { ScannerModeChip.valueOf(selectedKey) }
         .getOrDefault(ScannerModeChip.LONG_TERM)
     val setupFilter = runCatching { SwingSetupFilter.valueOf(setupFilterKey) }
         .getOrDefault(SwingSetupFilter.ALL)
+
+    LaunchedEffect(Unit) {
+        viewModel.ensureCustomScannerFiltersLoaded()
+    }
 
     LaunchedEffect(selected) {
         if (selected != ScannerModeChip.FNO) {
@@ -173,16 +183,20 @@ fun ScannerScreen(
             else -> {
                 val education = payload?.education
                 val rawRows = payload?.rows.orEmpty()
-                val rows = if (selected == ScannerModeChip.SWING) {
-                    val typed = when (setupFilter) {
-                        SwingSetupFilter.ALL -> rawRows
-                        else -> rawRows.filter {
-                            it.setup?.displayType.equals(setupFilter.key, ignoreCase = true)
+                val rows = when (selected) {
+                    ScannerModeChip.SWING -> {
+                        val typed = when (setupFilter) {
+                            SwingSetupFilter.ALL -> rawRows
+                            else -> rawRows.filter {
+                                it.setup?.displayType.equals(setupFilter.key, ignoreCase = true)
+                            }
                         }
+                        typed.take(15)
                     }
-                    typed.take(15)
-                } else {
-                    rawRows
+                    ScannerModeChip.CUSTOM -> rawRows
+                        .filter { it.matchesCustom(customFilters) }
+                        .sortedByDescending { it.displayScore }
+                    else -> rawRows
                 }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -240,6 +254,21 @@ fun ScannerScreen(
                         }
                     }
 
+                    if (selected == ScannerModeChip.CUSTOM) {
+                        item {
+                            CustomFilterChips(
+                                filters = customFilters,
+                                onMinScore = viewModel::toggleCustomScannerMinScore,
+                                onRsi = viewModel::toggleCustomScannerRsi,
+                                onDma = viewModel::toggleCustomScannerDma,
+                                onVolume = viewModel::toggleCustomScannerVolume,
+                                onMaxPe = viewModel::toggleCustomScannerMaxPe,
+                                onMinChange = viewModel::toggleCustomScannerMinChange,
+                                onClear = viewModel::clearCustomScannerFilters,
+                            )
+                        }
+                    }
+
                     if (selected == ScannerModeChip.SWING) {
                         item {
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -261,10 +290,13 @@ fun ScannerScreen(
                     if (rows.isEmpty() && !loading) {
                         item {
                             Text(
-                                if (selected == ScannerModeChip.SWING) {
-                                    "No paper swing setups in this batch from the fields we have."
-                                } else {
-                                    "No quoted names in this batch. Pull to refresh after quotes warm."
+                                when (selected) {
+                                    ScannerModeChip.SWING ->
+                                        "No paper swing setups in this batch from the fields we have."
+                                    ScannerModeChip.CUSTOM ->
+                                        "No names match these chips from fields we have. Clear a chip or wait for RSI/DMA/PE on the quote."
+                                    else ->
+                                        "No quoted names in this batch. Pull to refresh after quotes warm."
                                 },
                                 color = theme.textSecondary,
                             )
@@ -346,6 +378,7 @@ private fun LongTermScannerRow(row: ScannerRow, onClick: () -> Unit) {
                 )
             }
             ByselScoreStrip(row = row, compact = true)
+            AnomalyBadgeRow(row.detectedAnomalies())
             Text(
                 row.why.ifBlank { "Limited Yahoo fields — scores use only what we have." },
                 fontSize = 12.sp,
@@ -406,6 +439,7 @@ fun SwingSetupCard(
                 }
             }
             ByselScoreStrip(row = row, compact = true)
+            AnomalyBadgeRow(row.detectedAnomalies())
             if (setup != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     PracticeLevel("Entry zone", setup.entry)
@@ -504,6 +538,7 @@ fun ByselExplainabilityCard(
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Why this score?", fontWeight = FontWeight.SemiBold, color = theme.text)
+            AnomalyBadgeRow(row.detectedAnomalies())
             ByselScoreStrip(row = row, compact = false)
             Text(
                 row.displaySummary.ifBlank {
@@ -670,3 +705,133 @@ fun scoreBandColor(score: Int?, theme: AppTheme): Color {
 }
 
 private fun formatLast(value: Double): String = "₹${String.format(Locale.US, "%,.2f", value)}"
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CustomFilterChips(
+    filters: CustomScannerFilters,
+    onMinScore: (Int) -> Unit,
+    onRsi: (String) -> Unit,
+    onDma: (String) -> Unit,
+    onVolume: (Double) -> Unit,
+    onMaxPe: (Double) -> Unit,
+    onMinChange: (Double) -> Unit,
+    onClear: () -> Unit,
+) {
+    val theme = LocalAppTheme.current
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            if (filters.activeCount == 0) {
+                "Tap chips we can compute. Saved on this device."
+            } else {
+                "${filters.activeCount} chip${if (filters.activeCount == 1) "" else "s"} saved on this device."
+            },
+            fontSize = 12.sp,
+            color = theme.textSecondary,
+        )
+        ChipGroup("Min BYSEL score") {
+            FilterChip(selected = filters.minScore == 50, onClick = { onMinScore(50) }, label = { Text("50+") })
+            FilterChip(selected = filters.minScore == 65, onClick = { onMinScore(65) }, label = { Text("65+") })
+            FilterChip(selected = filters.minScore == 80, onClick = { onMinScore(80) }, label = { Text("80+") })
+        }
+        ChipGroup("RSI") {
+            FilterChip(selected = filters.rsi == "40-65", onClick = { onRsi("40-65") }, label = { Text("40–65") })
+            FilterChip(selected = filters.rsi == "30-70", onClick = { onRsi("30-70") }, label = { Text("30–70") })
+            FilterChip(selected = filters.rsi == "<30", onClick = { onRsi("<30") }, label = { Text("<30") })
+            FilterChip(selected = filters.rsi == ">70", onClick = { onRsi(">70") }, label = { Text(">70") })
+        }
+        ChipGroup("Price vs DMA") {
+            FilterChip(selected = filters.dma == "50", onClick = { onDma("50") }, label = { Text("Above 50") })
+            FilterChip(selected = filters.dma == "200", onClick = { onDma("200") }, label = { Text("Above 200") })
+            FilterChip(selected = filters.dma == "both", onClick = { onDma("both") }, label = { Text("Above both") })
+        }
+        ChipGroup("Volume vs avg") {
+            FilterChip(selected = filters.minVolume == 1.0, onClick = { onVolume(1.0) }, label = { Text("≥1×") })
+            FilterChip(selected = filters.minVolume == 1.5, onClick = { onVolume(1.5) }, label = { Text("≥1.5×") })
+            FilterChip(selected = filters.minVolume == 2.0, onClick = { onVolume(2.0) }, label = { Text("≥2×") })
+        }
+        ChipGroup("PE max") {
+            FilterChip(selected = filters.maxPe == 20.0, onClick = { onMaxPe(20.0) }, label = { Text("≤20") })
+            FilterChip(selected = filters.maxPe == 25.0, onClick = { onMaxPe(25.0) }, label = { Text("≤25") })
+            FilterChip(selected = filters.maxPe == 30.0, onClick = { onMaxPe(30.0) }, label = { Text("≤30") })
+        }
+        ChipGroup("Day change") {
+            FilterChip(selected = filters.minChange == 0.0, onClick = { onMinChange(0.0) }, label = { Text("≥0%") })
+            FilterChip(selected = filters.minChange == 1.0, onClick = { onMinChange(1.0) }, label = { Text("≥1%") })
+            FilterChip(selected = filters.minChange == 2.0, onClick = { onMinChange(2.0) }, label = { Text("≥2%") })
+        }
+        if (filters.activeCount > 0) {
+            FilterChip(selected = false, onClick = onClear, label = { Text("Clear chips") })
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ChipGroup(title: String, content: @Composable () -> Unit) {
+    val theme = LocalAppTheme.current
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(title, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = theme.text)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            content()
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun AnomalyBadgeRow(anomalies: List<ScannerAnomaly>) {
+    if (anomalies.isEmpty()) return
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        anomalies.forEach { anomaly ->
+            Text(
+                listOf(anomaly.label, anomaly.detail).filter { it.isNotBlank() }.joinToString(" · "),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFFFF7043).copy(alpha = 0.16f))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFFFF7043),
+            )
+        }
+    }
+}
+
+private fun ScannerRow.matchesCustom(filters: CustomScannerFilters): Boolean {
+    if (filters.minScore != null && displayScore < filters.minScore) return false
+    if (filters.rsi != null) {
+        val rsi = metrics.rsi ?: return false
+        when (filters.rsi) {
+            "40-65" -> if (rsi < 40.0 || rsi > 65.0) return false
+            "30-70" -> if (rsi < 30.0 || rsi > 70.0) return false
+            "<30" -> if (rsi >= 30.0) return false
+            ">70" -> if (rsi <= 70.0) return false
+        }
+    }
+    if (filters.dma != null) {
+        val dma50 = metrics.fiftyDayAverage
+        val dma200 = metrics.twoHundredDayAverage
+        when (filters.dma) {
+            "50" -> if (dma50 == null || last <= dma50) return false
+            "200" -> if (dma200 == null || last <= dma200) return false
+            "both" -> if (dma50 == null || dma200 == null || last <= dma50 || last <= dma200) return false
+        }
+    }
+    if (filters.minVolume != null) {
+        val vol = metrics.volumeRatio ?: return false
+        if (vol < filters.minVolume!!) return false
+    }
+    if (filters.maxPe != null) {
+        val pe = metrics.pe ?: return false
+        if (pe > filters.maxPe!!) return false
+    }
+    if (filters.minChange != null && pctChange < filters.minChange!!) return false
+    return true
+}

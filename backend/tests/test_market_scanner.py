@@ -7,6 +7,7 @@ from app.market_scanner import (
     band_rsi,
     build_scanner_payload,
     color_band,
+    detect_anomalies,
     renormalized_score,
     score_quality,
     score_row,
@@ -220,6 +221,76 @@ def test_build_payload_keeps_missing_honest():
     assert infy["score_label"] in {"high_conviction", "attractive", "neutral", "caution", "weak", "insufficient"}
     assert "buy" not in infy["score_label"]
     assert "Never Strong Buy" in payload["education"]["scoreGuide"]
+
+
+def test_anomalies_flag_unusual_volume_and_existing_pledge_only():
+    empty = detect_anomalies({"volumeRatio": 1.4, "pledge": None, "marginPct": None})
+    assert empty == []
+    volume = detect_anomalies({"volumeRatio": 2.4})
+    assert any(item["id"] == "unusual_volume" for item in volume)
+    assert all(item["id"] != "pledging" for item in volume)
+    pledge = detect_anomalies({"pledge": 12.0})
+    assert any(item["id"] == "pledging" and "12" in item["detail"] for item in pledge)
+    zero_pledge = detect_anomalies({"pledge": 0.0})
+    assert all(item["id"] != "pledging" for item in zero_pledge)
+    invented_ids = {item["id"] for item in detect_anomalies({"volumeRatio": 3.0, "pledge": 8.0})}
+    assert "promoter_selling" not in invented_ids
+    assert "related_party" not in invented_ids
+
+
+def test_custom_payload_sorts_by_score_and_keeps_anomalies():
+    quotes = [
+        {
+            "symbol": "LOW",
+            "last": 100.0,
+            "pctChange": -0.4,
+            "trailingPE": 40.0,
+            "roe": 8.0,
+            "volume": 900_000,
+            "avgVolume": 1_000_000,
+        },
+        {
+            "symbol": "HIGH",
+            "last": 200.0,
+            "pctChange": 1.2,
+            "trailingPE": 18.0,
+            "roe": 22.0,
+            "fiftyDayAverage": 190.0,
+            "twoHundredDayAverage": 170.0,
+            "volume": 3_000_000,
+            "avgVolume": 1_000_000,
+            "pledge": 9.0,
+        },
+    ]
+    payload = build_scanner_payload(quotes, mode="custom", limit=20)
+    assert payload["mode"] == "custom"
+    symbols = [row["symbol"] for row in payload["rows"]]
+    assert symbols[0] == "HIGH"
+    high = payload["rows"][0]
+    anomaly_ids = {item["id"] for item in high.get("anomalies") or []}
+    assert "unusual_volume" in anomaly_ids
+    assert "pledging" in anomaly_ids
+    assert all("buy" not in (row.get("scoreLabel") or "").lower() for row in payload["rows"])
+    assert high.get("setup") is None
+
+
+def test_score_row_does_not_invent_promoter_or_related_party_anomalies():
+    scores = score_row(
+        {
+            "symbol": "TCS",
+            "last": 3500.0,
+            "pctChange": 0.2,
+            "pe": 22.0,
+            "roe": 28.0,
+            "volumeRatio": 1.1,
+        },
+        "custom",
+        sector_pe=24.0,
+    )
+    ids = {item["id"] for item in scores.get("anomalies") or []}
+    assert "promoter_selling" not in ids
+    assert "related_party" not in ids
+    assert "unusual_volume" not in ids
 
 
 def test_daily_snapshot_roundtrip_without_migration():

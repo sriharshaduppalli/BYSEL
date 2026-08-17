@@ -22,7 +22,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 logger = logging.getLogger(__name__)
 
 SCANNER_CACHE_TTL_SECONDS = int(os.getenv("SCANNER_CACHE_TTL_SECONDS", "600"))
-SCANNER_MODES = ("long_term", "swing", "high_quality", "momentum", "value")
+SCANNER_MODES = ("long_term", "swing", "high_quality", "momentum", "value", "custom")
 BANK_LIKE_SECTORS = {"Banking", "NBFC", "Finance", "Insurance"}
 
 # NIFTY 50-style large-cap universe (codebase tickers; TATAMOTORS → TMPV).
@@ -75,6 +75,45 @@ EDUCATION_FILTERS = (
         "label": "Low promoter pledge",
         "applied": False,
         "status": "Not in Yahoo quotes — shown as —",
+    },
+)
+
+CUSTOM_EDUCATION_FILTERS = (
+    {
+        "id": "minScore",
+        "label": "Min BYSEL score",
+        "applied": True,
+        "status": "Chip on the Custom tab; uses the computed score",
+    },
+    {
+        "id": "rsi",
+        "label": "RSI range",
+        "applied": True,
+        "status": "Skipped when RSI is missing on the quote",
+    },
+    {
+        "id": "dma",
+        "label": "Price vs 50/200 DMA",
+        "applied": True,
+        "status": "Skipped when the DMA is missing",
+    },
+    {
+        "id": "volume",
+        "label": "Volume vs average",
+        "applied": True,
+        "status": "Uses session volume / 3-month average when both exist",
+    },
+    {
+        "id": "pe",
+        "label": "PE max",
+        "applied": True,
+        "status": "Skipped when trailing PE is missing",
+    },
+    {
+        "id": "dayChange",
+        "label": "Day-change min",
+        "applied": True,
+        "status": "Uses the quote percent change",
     },
 )
 
@@ -911,6 +950,33 @@ def _weighted_bysel_score(
     return int(round(blended))
 
 
+def detect_anomalies(row: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Flag only events we can compute. Never invent promoter-selling or related-party."""
+    flags: List[Dict[str, str]] = []
+    vol_r = _safe_float(row.get("volumeRatio"))
+    if vol_r is not None and vol_r > 2.0:
+        flags.append({
+            "id": "unusual_volume",
+            "label": "Unusual volume",
+            "detail": f"{vol_r:.1f}× average",
+        })
+    pledge = _safe_float(row.get("pledge"))
+    if pledge is not None and pledge > 0:
+        flags.append({
+            "id": "pledging",
+            "label": "Pledging",
+            "detail": f"Pledge {pledge:.0f}%",
+        })
+    margin = _safe_float(row.get("marginPct") if row.get("marginPct") is not None else row.get("margin"))
+    if margin is not None:
+        flags.append({
+            "id": "margin",
+            "label": "Margin",
+            "detail": f"Margin {margin:.1f}%",
+        })
+    return flags
+
+
 def _soft_filter_multiplier(mode: str, row: Dict[str, Any]) -> float:
     """Apply textbook filters only when the field exists."""
     factor = 1.0
@@ -923,6 +989,8 @@ def _soft_filter_multiplier(mode: str, row: Dict[str, Any]) -> float:
     fifty = row.get("fiftyDayAverage")
     vol_r = row.get("volumeRatio")
 
+    if mode == "custom":
+        return 1.0
     if mode == "long_term":
         if roe is not None and roe < 15:
             factor *= 0.85
@@ -1145,6 +1213,7 @@ def score_row(
     )
     token = score_label_token(bysel)
     setup = practice_setup(row, momentum_score=momentum) if mode == "swing" else None
+    anomalies = detect_anomalies(row)
     return {
         "quality": quality,
         "valuation": valuation,
@@ -1169,6 +1238,7 @@ def score_row(
         "setup": setup,
         "why": explanation,
         "missing": missing,
+        "anomalies": anomalies,
     }
 
 
@@ -1261,6 +1331,7 @@ def normalize_quote_row(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "fcf": fcf,
         "hhhl": _optional_metric(raw, "hhhl"),
         "pledge": _optional_metric(raw, "pledge"),
+        "marginPct": _optional_metric(raw, "marginPct", "margin"),
         "rsi": rsi,
         "fiftyTwoWeekHigh": _optional_metric(raw, "fiftyTwoWeekHigh"),
         "fiftyTwoWeekLow": _optional_metric(raw, "fiftyTwoWeekLow"),
@@ -1333,10 +1404,19 @@ def _education(mode: str) -> Dict[str, Any]:
     elif mode == "value":
         title = "Value"
         summary = "Sorted by the Valuation pillar (PE vs sector-ish / PEG when present)."
+    elif mode == "custom":
+        title = "Custom — chips we can actually apply"
+        summary = (
+            "Filter the scored universe with fields Yahoo already gives us: "
+            "min BYSEL score, RSI, price vs 50/200 DMA, volume vs average, PE max, and day change. "
+            "Missing RSI/DMA/PE skips that name instead of inventing a value. "
+            "This is not a 40-filter builder."
+        )
+        risk_note = "Heuristic rank by BYSEL Score. Not a buy list. Unusual volume is flagged only at >2× average."
     return {
         "title": title,
         "summary": summary,
-        "filters": list(EDUCATION_FILTERS),
+        "filters": list(CUSTOM_EDUCATION_FILTERS if mode == "custom" else EDUCATION_FILTERS),
         "scoreGuide": FORMULA_NOTE + (
             " Labels: 80–100 High conviction setup (education); 65–79 Attractive on these factors; "
             "50–64 Neutral; 35–49 Caution; <35 Weak on these factors. "
@@ -1421,8 +1501,11 @@ def build_scanner_payload(
                 "volumeRatio": row.get("volumeRatio"),
                 "sector": row.get("sector"),
                 "sectorPe": sector_pe.get(str(row.get("sector") or "Other")),
+                "pledge": row.get("pledge"),
+                "marginPct": row.get("marginPct"),
             },
             "missing": scores["missing"],
+            "anomalies": scores.get("anomalies") or [],
         })
 
     def _rank(item: Dict[str, Any]) -> Tuple[int, str]:
@@ -1432,6 +1515,8 @@ def build_scanner_payload(
             key = item.get("momentum")
         elif mode_key == "value":
             key = item.get("valuation")
+        elif mode_key == "custom":
+            key = item.get("byselScore")
         else:
             key = item.get("overall")
         return (-int(key or 0), str(item.get("symbol") or ""))
@@ -1441,6 +1526,8 @@ def build_scanner_payload(
         with_setup = [item for item in scored if item.get("setup")]
         cap = min(max(int(limit), 5), 15)
         shortlist = with_setup[:cap]
+    elif mode_key == "custom":
+        shortlist = scored[: min(max(int(limit), 5), 40)]
     else:
         shortlist = scored[:limit]
 

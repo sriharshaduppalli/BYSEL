@@ -742,6 +742,14 @@ class ScannerMetrics(BaseModel):
     volumeRatio: Optional[float] = None
     sector: Optional[str] = None
     sectorPe: Optional[float] = None
+    pledge: Optional[float] = None
+    marginPct: Optional[float] = None
+
+
+class ScannerAnomaly(BaseModel):
+    id: str = ""
+    label: str = ""
+    detail: str = ""
 
 
 class ScannerPracticeSetup(BaseModel):
@@ -788,6 +796,7 @@ class ScannerRow(BaseModel):
     why: str = ""
     metrics: ScannerMetrics = ScannerMetrics()
     missing: List[str] = []
+    anomalies: List[ScannerAnomaly] = []
 
 
 class ScannerResponse(BaseModel):
