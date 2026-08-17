@@ -842,6 +842,27 @@ open class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
+    suspend fun getScannerXray(symbol: String): Result<ScannerRow> {
+        return try {
+            val key = normalizeSymbol(symbol)
+            if (key.isBlank()) return Result.Error("Missing symbol")
+            Result.Success(apiService.getScannerXray(key))
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getScannerScoreHistory(symbol: String, days: Int = 90): Result<ScoreHistoryResponse> {
+        return try {
+            val key = normalizeSymbol(symbol)
+            if (key.isBlank()) return Result.Error("Missing symbol")
+            val window = if (days <= 30) 30 else 90
+            Result.Success(apiService.getScannerScoreHistory(key, window))
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
     suspend fun getSectorDetail(sectorName: String): Result<HeatmapSector> {
         return try {
             val sector = apiService.getSectorDetail(sectorName)

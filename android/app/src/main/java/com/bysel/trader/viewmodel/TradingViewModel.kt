@@ -256,6 +256,10 @@ class TradingViewModel(
     val scannerError: StateFlow<String?> = _scannerError.asStateFlow()
     private val _selectedScannerRow = MutableStateFlow<ScannerRow?>(null)
     val selectedScannerRow: StateFlow<ScannerRow?> = _selectedScannerRow.asStateFlow()
+    private val _symbolXray = MutableStateFlow<ScannerRow?>(null)
+    val symbolXray: StateFlow<ScannerRow?> = _symbolXray.asStateFlow()
+    private val _scoreHistory = MutableStateFlow<ScoreHistoryResponse?>(null)
+    val scoreHistory: StateFlow<ScoreHistoryResponse?> = _scoreHistory.asStateFlow()
     private var lastScannerRefreshAt = 0L
     private var lastScannerMode: String = "long_term"
 
@@ -3154,6 +3158,51 @@ class TradingViewModel(
 
     fun selectScannerRow(row: ScannerRow?) {
         _selectedScannerRow.value = row
+        if (row != null) {
+            _symbolXray.value = row
+        }
+    }
+
+    fun loadSymbolXray(symbol: String) {
+        val key = WatchlistSymbols.normalize(symbol)
+        if (key.isBlank()) return
+        val selected = _selectedScannerRow.value
+        if (selected != null && WatchlistSymbols.matches(selected.symbol, key)) {
+            _symbolXray.value = selected
+            return
+        }
+        val cached = _symbolXray.value
+        if (cached != null && WatchlistSymbols.matches(cached.symbol, key)) return
+        viewModelScope.launch {
+            when (val result = repository.getScannerXray(key)) {
+                is Result.Success -> _symbolXray.value = result.data
+                else -> {
+                    if (_symbolXray.value?.let { WatchlistSymbols.matches(it.symbol, key) } != true) {
+                        _symbolXray.value = null
+                    }
+                }
+            }
+        }
+    }
+
+    fun loadScoreHistory(symbol: String, days: Int = 90) {
+        val key = WatchlistSymbols.normalize(symbol)
+        if (key.isBlank()) return
+        viewModelScope.launch {
+            when (val result = repository.getScannerScoreHistory(key, days)) {
+                is Result.Success -> _scoreHistory.value = result.data
+                else -> {
+                    if (_scoreHistory.value?.symbol?.equals(key, ignoreCase = true) != true) {
+                        _scoreHistory.value = ScoreHistoryResponse(
+                            symbol = key,
+                            days = if (days <= 30) 30 else 90,
+                            pending = true,
+                            note = "Score history starts after the first daily snapshot.",
+                        )
+                    }
+                }
+            }
+        }
     }
 
     fun loadMutualFunds(

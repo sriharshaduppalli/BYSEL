@@ -1164,11 +1164,50 @@ data class ScannerMetrics(
 
 data class ScannerPracticeSetup(
     @SerializedName("kind") val kind: String = "",
+    @SerializedName("setupType") val setupType: String = "",
     @SerializedName("title") val title: String = "",
     @SerializedName("entry") val entry: Double? = null,
     @SerializedName("stop") val stop: Double? = null,
     @SerializedName("target") val target: Double? = null,
-    @SerializedName("note") val note: String = "Practice levels, not advice",
+    @SerializedName("t1") val t1: Double? = null,
+    @SerializedName("t2") val t2: Double? = null,
+    @SerializedName(value = "riskReward", alternate = ["rr"]) val riskReward: Double? = null,
+    @SerializedName("momentumScore") val momentumScore: Int? = null,
+    @SerializedName("note") val note: String = "Paper — not advice. Practice levels only.",
+    @SerializedName("winRate") val winRate: Double? = null,
+    @SerializedName("winRateNote") val winRateNote: String = "n/a until we have journal data",
+) {
+    val displayType: String
+        get() = setupType.ifBlank { kind }.ifBlank { "setup" }
+    val displayT1: Double? get() = t1 ?: target
+}
+
+data class ScannerMetricCell(
+    @SerializedName("value") val value: Double? = null,
+    @SerializedName("score") val score: Int? = null,
+    @SerializedName("used") val used: Boolean = false,
+)
+
+data class ScannerTopMetric(
+    @SerializedName("id") val id: String = "",
+    @SerializedName("label") val label: String = "",
+    @SerializedName("value") val value: Double? = null,
+    @SerializedName("score") val score: Int? = null,
+    @SerializedName("contribution") val contribution: Double? = null,
+)
+
+data class ScannerPillar(
+    @SerializedName("score") val score: Int? = null,
+    @SerializedName("colorBand") val colorBand: String = "none",
+    @SerializedName("topMetrics") val topMetrics: List<ScannerTopMetric> = emptyList(),
+    @SerializedName("metrics") val metrics: Map<String, ScannerMetricCell> = emptyMap(),
+)
+
+data class ScannerPillars(
+    @SerializedName("quality") val quality: ScannerPillar = ScannerPillar(),
+    @SerializedName("valuation") val valuation: ScannerPillar = ScannerPillar(),
+    @SerializedName("trend") val trend: ScannerPillar = ScannerPillar(),
+    @SerializedName("momentum") val momentum: ScannerPillar = ScannerPillar(),
 )
 
 data class ScannerRow(
@@ -1185,10 +1224,12 @@ data class ScannerRow(
     @SerializedName("risk") val risk: Int? = null,
     @SerializedName("riskLabel") val riskLabel: String = "Risk —",
     @SerializedName("overall") val overall: Int = 0,
+    @SerializedName("colorBand") val colorBand: String = "none",
     @SerializedName("convictionLabel") val convictionLabel: String = "",
     @SerializedName(value = "scoreLabel", alternate = ["score_label"]) val scoreLabel: String = "",
     @SerializedName(value = "aiSummary", alternate = ["ai_summary", "explanation", "why"]) val aiSummary: String = "",
     @SerializedName("stance") val stance: List<String> = emptyList(),
+    @SerializedName("pillars") val pillars: ScannerPillars? = null,
     @SerializedName("setup") val setup: ScannerPracticeSetup? = null,
     @SerializedName("why") val why: String = "",
     @SerializedName("metrics") val metrics: ScannerMetrics = ScannerMetrics(),
@@ -1198,6 +1239,23 @@ data class ScannerRow(
     val displayScore: Int get() = byselScore ?: overall
     val displaySummary: String get() = aiSummary.ifBlank { why }
 }
+
+data class ScoreHistoryPoint(
+    @SerializedName("date") val date: String = "",
+    @SerializedName("byselScore") val byselScore: Int? = null,
+    @SerializedName("quality") val quality: Int? = null,
+    @SerializedName("valuation") val valuation: Int? = null,
+    @SerializedName("trend") val trend: Int? = null,
+    @SerializedName("momentum") val momentum: Int? = null,
+)
+
+data class ScoreHistoryResponse(
+    @SerializedName("symbol") val symbol: String = "",
+    @SerializedName("days") val days: Int = 90,
+    @SerializedName("points") val points: List<ScoreHistoryPoint> = emptyList(),
+    @SerializedName("pending") val pending: Boolean = true,
+    @SerializedName("note") val note: String = "",
+)
 
 data class ScannerResponse(
     @SerializedName("mode") val mode: String = "long_term",

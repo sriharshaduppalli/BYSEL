@@ -1,7 +1,7 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, UniqueConstraint, create_engine, text, inspect as sa_inspect
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Date, UniqueConstraint, create_engine, text, inspect as sa_inspect
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from datetime import datetime
+from datetime import datetime, date
 from pathlib import Path
 import logging
 import os
@@ -330,6 +330,24 @@ class ETFModel(Base):
     pct_change = Column(Float, default=0.0)
     aum_cr = Column(Float, nullable=True)
     expense_ratio = Column(Float, nullable=True)
+
+
+class ByselScoreSnapshotModel(Base):
+    """One daily BYSEL Score snapshot per symbol. Created via create_all (no Alembic)."""
+    __tablename__ = "bysel_score_snapshots"
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String, nullable=False, index=True)
+    snapshot_date = Column(Date, nullable=False, index=True, default=date.today)
+    bysel_score = Column(Integer, nullable=True)
+    quality = Column(Integer, nullable=True)
+    valuation = Column(Integer, nullable=True)
+    trend = Column(Integer, nullable=True)
+    momentum = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    __table_args__ = (
+        UniqueConstraint("symbol", "snapshot_date", name="uq_bysel_score_symbol_date"),
+    )
+
 
 Base.metadata.create_all(bind=engine)
 

@@ -19,7 +19,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -27,6 +31,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,12 +42,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.bysel.trader.data.WatchlistSymbols
+import com.bysel.trader.data.models.ScannerPillar
 import com.bysel.trader.data.models.ScannerRow
+import com.bysel.trader.data.models.ScoreHistoryResponse
+import com.bysel.trader.ui.theme.AppTheme
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.theme.byselCardBorder
 import com.bysel.trader.ui.theme.byselCardColors
@@ -59,6 +70,12 @@ private enum class ScannerModeChip(val apiMode: String, val title: String) {
     FNO("fno", "F&O"),
 }
 
+private enum class SwingSetupFilter(val key: String, val title: String) {
+    ALL("all", "All"),
+    PULLBACK("pullback", "Pullback"),
+    BREAKOUT("breakout", "Breakout"),
+}
+
 @Composable
 fun ScannerScreen(
     viewModel: TradingViewModel,
@@ -70,9 +87,13 @@ fun ScannerScreen(
     val payload by viewModel.marketScanner.collectAsStateWithLifecycle()
     val loading by viewModel.scannerLoading.collectAsStateWithLifecycle()
     val error by viewModel.scannerError.collectAsStateWithLifecycle()
+    val watchlist by viewModel.watchlist.collectAsStateWithLifecycle()
     var selectedKey by rememberSaveable { mutableStateOf(ScannerModeChip.LONG_TERM.name) }
+    var setupFilterKey by rememberSaveable { mutableStateOf(SwingSetupFilter.ALL.name) }
     val selected = runCatching { ScannerModeChip.valueOf(selectedKey) }
         .getOrDefault(ScannerModeChip.LONG_TERM)
+    val setupFilter = runCatching { SwingSetupFilter.valueOf(setupFilterKey) }
+        .getOrDefault(SwingSetupFilter.ALL)
 
     LaunchedEffect(selected) {
         if (selected != ScannerModeChip.FNO) {
@@ -151,7 +172,18 @@ fun ScannerScreen(
             }
             else -> {
                 val education = payload?.education
-                val rows = payload?.rows.orEmpty()
+                val rawRows = payload?.rows.orEmpty()
+                val rows = if (selected == ScannerModeChip.SWING) {
+                    val typed = when (setupFilter) {
+                        SwingSetupFilter.ALL -> rawRows
+                        else -> rawRows.filter {
+                            it.setup?.displayType.equals(setupFilter.key, ignoreCase = true)
+                        }
+                    }
+                    typed.take(15)
+                } else {
+                    rawRows
+                }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(16.dp),
@@ -208,10 +240,32 @@ fun ScannerScreen(
                         }
                     }
 
+                    if (selected == ScannerModeChip.SWING) {
+                        item {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(SwingSetupFilter.entries.toList(), key = { it.name }) { chip ->
+                                    FilterChip(
+                                        selected = setupFilter == chip,
+                                        onClick = { setupFilterKey = chip.name },
+                                        label = { Text(chip.title) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = theme.primary.copy(alpha = 0.2f),
+                                            selectedLabelColor = theme.text,
+                                        ),
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     if (rows.isEmpty() && !loading) {
                         item {
                             Text(
-                                "No quoted names in this batch. Pull to refresh after quotes warm.",
+                                if (selected == ScannerModeChip.SWING) {
+                                    "No paper swing setups in this batch from the fields we have."
+                                } else {
+                                    "No quoted names in this batch. Pull to refresh after quotes warm."
+                                },
                                 color = theme.textSecondary,
                             )
                         }
@@ -219,7 +273,12 @@ fun ScannerScreen(
 
                     items(rows, key = { it.symbol }) { row ->
                         if (selected == ScannerModeChip.SWING) {
-                            SwingSetupCard(row = row, onClick = { onOpenSymbol(row) })
+                            SwingSetupCard(
+                                row = row,
+                                watched = watchlist.any { WatchlistSymbols.matches(it, row.symbol) },
+                                onClick = { onOpenSymbol(row) },
+                                onWatchlist = { viewModel.addToWatchlist(row.symbol) },
+                            )
                         } else {
                             LongTermScannerRow(row = row, onClick = { onOpenSymbol(row) })
                         }
@@ -283,7 +342,7 @@ private fun LongTermScannerRow(row: ScannerRow, onClick: () -> Unit) {
                     "${row.displayScore}",
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 22.sp,
-                    color = theme.primary,
+                    color = scoreBandColor(row.byselScore ?: row.overall, theme),
                 )
             }
             ByselScoreStrip(row = row, compact = true)
@@ -299,7 +358,12 @@ private fun LongTermScannerRow(row: ScannerRow, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SwingSetupCard(row: ScannerRow, onClick: () -> Unit) {
+fun SwingSetupCard(
+    row: ScannerRow,
+    watched: Boolean,
+    onClick: () -> Unit,
+    onWatchlist: () -> Unit,
+) {
     val theme = LocalAppTheme.current
     val setup = row.setup
     Card(
@@ -321,19 +385,56 @@ private fun SwingSetupCard(row: ScannerRow, onClick: () -> Unit) {
                         color = theme.textSecondary,
                     )
                 }
-                Text("${row.displayScore}", fontWeight = FontWeight.ExtraBold, color = theme.primary)
+                    Text(
+                    setup?.displayType?.replaceFirstChar { ch ->
+                        if (ch.isLowerCase()) ch.titlecase(Locale.US) else ch.toString()
+                    } ?: "Setup",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = theme.text,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(theme.primary.copy(alpha = 0.14f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+                IconButton(onClick = onWatchlist) {
+                    Icon(
+                        imageVector = if (watched) Icons.Filled.Star else Icons.Filled.StarBorder,
+                        contentDescription = if (watched) "On watchlist" else "Add to watchlist",
+                        tint = if (watched) Color(0xFFFFD54F) else theme.textSecondary,
+                    )
+                }
             }
             ByselScoreStrip(row = row, compact = true)
             if (setup != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PracticeLevel("Entry", setup.entry)
+                    PracticeLevel("Entry zone", setup.entry)
                     PracticeLevel("SL", setup.stop)
-                    PracticeLevel("Target", setup.target)
+                    PracticeLevel("T1", setup.displayT1)
+                    PracticeLevel("T2", setup.t2)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        setup.riskReward?.let { "R:R ${String.format(Locale.US, "%.1f", it)}" } ?: "R:R —",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = theme.text,
+                    )
+                    Text(
+                        "Momentum ${setup.momentumScore ?: row.momentum ?: "—"}",
+                        fontSize = 12.sp,
+                        color = theme.textSecondary,
+                    )
                 }
                 Text(setup.note, fontSize = 11.sp, color = theme.textSecondary)
+                Text(
+                    setup.winRateNote.ifBlank { "Historical win rate n/a until we have journal data" },
+                    fontSize = 11.sp,
+                    color = theme.textSecondary,
+                )
             }
             Text(
-                "Paper practice · risk about 1–2% of the practice book.",
+                "Paper — not advice. Practice levels only.",
                 fontSize = 11.sp,
                 color = theme.textSecondary,
             )
@@ -359,7 +460,7 @@ fun ByselScoreStrip(row: ScannerRow, compact: Boolean = false) {
                 "${row.displayScore}",
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = if (compact) 20.sp else 28.sp,
-                color = theme.primary,
+                color = scoreBandColor(row.byselScore ?: row.overall, theme),
             )
             Spacer(modifier = Modifier.width(10.dp))
             Text(
@@ -371,10 +472,10 @@ fun ByselScoreStrip(row: ScannerRow, compact: Boolean = false) {
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            ScorePill("Q", row.quality)
-            ScorePill("V", row.displayValuation)
-            ScorePill("T", row.trend)
-            ScorePill("M", row.momentum)
+            ScorePill("Q", row.quality, theme)
+            ScorePill("V", row.displayValuation, theme)
+            ScorePill("T", row.trend, theme)
+            ScorePill("M", row.momentum, theme)
         }
         if (!compact) {
             Text(
@@ -389,22 +490,183 @@ fun ByselScoreStrip(row: ScannerRow, compact: Boolean = false) {
 }
 
 @Composable
-private fun ScorePill(label: String, value: Int?, muted: Boolean = false) {
+fun ByselExplainabilityCard(
+    row: ScannerRow,
+    history: ScoreHistoryResponse? = null,
+) {
     val theme = LocalAppTheme.current
+    var expanded by rememberSaveable(row.symbol) { mutableStateOf(true) }
+    Card(
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
+        shape = RoundedCornerShape(14.dp),
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Why this score?", fontWeight = FontWeight.SemiBold, color = theme.text)
+            ByselScoreStrip(row = row, compact = false)
+            Text(
+                row.displaySummary.ifBlank {
+                    "Educational readout from available Yahoo fields only. Not investment advice."
+                },
+                fontSize = 13.sp,
+                color = theme.text,
+            )
+            Text(
+                "Not investment advice. Labels are educational — never Strong Buy / Buy / Hold / Avoid.",
+                fontSize = 11.sp,
+                color = theme.textSecondary,
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Pillar breakdown",
+                    fontWeight = FontWeight.Medium,
+                    color = theme.text,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    tint = theme.textSecondary,
+                )
+            }
+            if (expanded) {
+                PillarBreakdown(title = "Quality", pillar = row.pillars?.quality, fallbackScore = row.quality)
+                PillarBreakdown(title = "Valuation", pillar = row.pillars?.valuation, fallbackScore = row.displayValuation)
+                PillarBreakdown(title = "Trend", pillar = row.pillars?.trend, fallbackScore = row.trend)
+                PillarBreakdown(title = "Momentum", pillar = row.pillars?.momentum, fallbackScore = row.momentum)
+            }
+            ScoreHistoryStrip(history = history, symbol = row.symbol)
+        }
+    }
+}
+
+@Composable
+private fun PillarBreakdown(
+    title: String,
+    pillar: ScannerPillar?,
+    fallbackScore: Int?,
+) {
+    val theme = LocalAppTheme.current
+    val score = pillar?.score ?: fallbackScore
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, fontWeight = FontWeight.Medium, color = theme.text, modifier = Modifier.weight(1f))
+            Text(
+                score?.toString() ?: "—",
+                fontWeight = FontWeight.Bold,
+                color = scoreBandColor(score, theme),
+            )
+        }
+        LinearProgressIndicator(
+            progress = { ((score ?: 0) / 100f).coerceIn(0f, 1f) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .clip(RoundedCornerShape(4.dp)),
+            color = scoreBandColor(score, theme),
+            trackColor = theme.textSecondary.copy(alpha = 0.16f),
+        )
+        val top = pillar?.topMetrics.orEmpty().take(3)
+        if (top.isEmpty()) {
+            Text("No contributing metrics in this snapshot.", fontSize = 11.sp, color = theme.textSecondary)
+        } else {
+            top.forEach { metric ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        metric.label.ifBlank { metric.id },
+                        fontSize = 12.sp,
+                        color = theme.text,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        metric.score?.toString() ?: "—",
+                        fontSize = 12.sp,
+                        color = scoreBandColor(metric.score, theme),
+                    )
+                }
+                LinearProgressIndicator(
+                    progress = { ((metric.score ?: 0) / 100f).coerceIn(0f, 1f) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(5.dp)
+                        .clip(RoundedCornerShape(3.dp)),
+                    color = scoreBandColor(metric.score, theme),
+                    trackColor = theme.textSecondary.copy(alpha = 0.12f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScoreHistoryStrip(history: ScoreHistoryResponse?, symbol: String) {
+    val theme = LocalAppTheme.current
+    val points = history?.takeIf { it.symbol.equals(symbol, ignoreCase = true) }?.points.orEmpty()
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Score history", fontWeight = FontWeight.Medium, color = theme.text)
+        if (points.size < 2) {
+            Text(
+                history?.note?.ifBlank { null }
+                    ?: "Score history starts after the first daily snapshot. 30/90-day trend is pending.",
+                fontSize = 12.sp,
+                color = theme.textSecondary,
+            )
+        } else {
+            val window = history?.days ?: 90
+            Text("$window-day snapshots (education only)", fontSize = 11.sp, color = theme.textSecondary)
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(points.takeLast(14), key = { it.date }) { point ->
+                    Column(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(theme.primary.copy(alpha = 0.1f))
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                    ) {
+                        Text(point.date.takeLast(5), fontSize = 10.sp, color = theme.textSecondary)
+                        Text(
+                            point.byselScore?.toString() ?: "—",
+                            fontWeight = FontWeight.Bold,
+                            color = scoreBandColor(point.byselScore, theme),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScorePill(label: String, value: Int?, theme: AppTheme) {
     val text = value?.toString() ?: "—"
     Text(
         "$label $text",
         modifier = Modifier
             .background(
-                color = if (muted) theme.card else theme.primary.copy(alpha = 0.12f),
+                color = scoreBandColor(value, theme).copy(alpha = 0.16f),
                 shape = RoundedCornerShape(20.dp),
             )
             .padding(horizontal = 8.dp, vertical = 4.dp),
         fontSize = 11.sp,
         fontWeight = FontWeight.Medium,
-        color = if (muted) theme.textSecondary else theme.text,
+        color = if (value == null) theme.textSecondary else theme.text,
         style = MaterialTheme.typography.labelSmall,
     )
+}
+
+fun scoreBandColor(score: Int?, theme: AppTheme): Color {
+    if (score == null) return theme.textSecondary
+    return when {
+        score >= 80 -> theme.positive
+        score >= 65 -> Color(0xFF81C784)
+        score >= 50 -> Color(0xFFFFC107)
+        else -> Color(0xFFFF7043)
+    }
 }
 
 private fun formatLast(value: Double): String = "₹${String.format(Locale.US, "%,.2f", value)}"

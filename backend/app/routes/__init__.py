@@ -80,6 +80,8 @@ from ..models.schemas import (
     SignalLabBucketFeed,
     SignalLabBucketsResponse,
     ScannerResponse,
+    ScannerRow,
+    ScoreHistoryResponse,
     SipPlanUpdateRequest, IPOApplicationRequest, IPOApplicationResponse, IPOApplication, ETFInstrument,
     AdvancedOrderResponse,
     TriggerOrderSummary,
@@ -122,7 +124,7 @@ from ..ai_engine import (
 )
 from ..portfolio_scorer import calculate_portfolio_health
 from ..market_heatmap import SECTOR_STOCKS, get_market_heatmap, get_sector_detail
-from ..market_scanner import get_market_scanner
+from ..market_scanner import get_market_scanner, get_score_history, get_symbol_xray
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -3206,6 +3208,25 @@ async def market_scanner_endpoint(
     if normalized not in ("long_term", "swing", "high_quality", "momentum", "value"):
         raise HTTPException(status_code=400, detail="mode must be long_term, swing, high_quality, momentum, or value")
     return await asyncio.to_thread(get_market_scanner, normalized, limit, forceRefresh)
+
+
+@router.get("/market/scanner/xray/{symbol}", response_model=ScannerRow)
+async def market_scanner_xray_endpoint(symbol: str):
+    """Single-symbol BYSEL Score x-ray (same pillars as the scanner)."""
+    row = await asyncio.to_thread(get_symbol_xray, symbol)
+    if not row:
+        raise HTTPException(status_code=404, detail="No quoted snapshot to score")
+    return row
+
+
+@router.get("/market/scanner/history/{symbol}", response_model=ScoreHistoryResponse)
+async def market_scanner_history_endpoint(
+    symbol: str,
+    days: int = Query(90, ge=1, le=90),
+):
+    """Daily BYSEL Score snapshots for 30/90-day history. Empty until snapshots exist."""
+    window = 30 if days <= 30 else 90
+    return await asyncio.to_thread(get_score_history, symbol, window)
 
 
 # ==================== PHASE 1: MUTUAL FUNDS & SIP ====================

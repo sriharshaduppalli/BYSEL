@@ -128,6 +128,8 @@ fun StockDetailScreen(
     val lastOrderTraceId by viewModel.lastOrderTraceId.collectAsStateWithLifecycle()
     val marketStatus by viewModel.marketStatus.collectAsStateWithLifecycle()
     val scannerXrayRow by viewModel.selectedScannerRow.collectAsStateWithLifecycle()
+    val symbolXray by viewModel.symbolXray.collectAsStateWithLifecycle()
+    val scoreHistory by viewModel.scoreHistory.collectAsStateWithLifecycle()
 
     if (quote == null) {
         Box(
@@ -308,6 +310,8 @@ fun StockDetailScreen(
 
     LaunchedEffect(quote.symbol, viewModel) {
         viewModel.startFastRefresh(symbols = listOf(quote.symbol))
+        viewModel.loadSymbolXray(quote.symbol)
+        viewModel.loadScoreHistory(quote.symbol, days = 90)
     }
 
     // Fetch sentiment score for this stock
@@ -410,24 +414,14 @@ fun StockDetailScreen(
                 )
             }
 
-            val scannerXray = scannerXrayRow
-            if (scannerXray != null && scannerXray.symbol.equals(quote.symbol, ignoreCase = true)) {
+            val scannerXray = scannerXrayRow?.takeIf { it.symbol.equals(quote.symbol, ignoreCase = true) }
+                ?: symbolXray?.takeIf { it.symbol.equals(quote.symbol, ignoreCase = true) }
+            if (scannerXray != null) {
                 item {
-                    Card(
-                        colors = byselCardColors(),
-                        elevation = byselCardElevation(),
-                        border = byselCardBorder(),
-                        shape = RoundedCornerShape(14.dp),
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(
-                                "Stock X-Ray",
-                                fontWeight = FontWeight.SemiBold,
-                                color = theme.text,
-                            )
-                            ByselScoreStrip(row = scannerXray, compact = false)
-                        }
-                    }
+                    ByselExplainabilityCard(
+                        row = scannerXray,
+                        history = scoreHistory,
+                    )
                 }
             }
 

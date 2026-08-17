@@ -746,11 +746,18 @@ class ScannerMetrics(BaseModel):
 
 class ScannerPracticeSetup(BaseModel):
     kind: str = ""
+    setupType: str = ""
     title: str = ""
     entry: Optional[float] = None
     stop: Optional[float] = None
     target: Optional[float] = None
-    note: str = "Practice levels, not advice"
+    t1: Optional[float] = None
+    t2: Optional[float] = None
+    riskReward: Optional[float] = None
+    momentumScore: Optional[int] = None
+    note: str = "Paper — not advice. Practice levels only."
+    winRate: Optional[float] = None
+    winRateNote: str = "n/a until we have journal data"
 
 
 class ScannerRow(BaseModel):
@@ -768,6 +775,7 @@ class ScannerRow(BaseModel):
     risk: Optional[int] = None
     riskLabel: str = "Risk —"
     overall: int = 0
+    colorBand: str = "none"
     convictionLabel: str = ""
     score_label: str = "insufficient"
     scoreLabel: str = "insufficient"
@@ -794,3 +802,20 @@ class ScannerResponse(BaseModel):
     education: ScannerEducation
     rows: List[ScannerRow] = []
     cached: bool = False
+
+
+class ScoreHistoryPoint(BaseModel):
+    date: str = ""
+    byselScore: Optional[int] = None
+    quality: Optional[int] = None
+    valuation: Optional[int] = None
+    trend: Optional[int] = None
+    momentum: Optional[int] = None
+
+
+class ScoreHistoryResponse(BaseModel):
+    symbol: str
+    days: int = 90
+    points: List[ScoreHistoryPoint] = []
+    pending: bool = True
+    note: str = ""

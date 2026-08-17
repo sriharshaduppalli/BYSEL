@@ -124,6 +124,45 @@ FORMULA_NOTE = (
     "are renormalized. ROCE, pledge, delivery, MACD, 5yr PE median, and HH/HL "
     "are not invented from Yahoo quotes."
 )
+METRIC_LABELS = {
+    "roce": "ROCE",
+    "roe": "ROE",
+    "de": "D/E",
+    "debtToEquity": "D/E",
+    "interestCoverage": "Interest cover",
+    "salesCagr": "Sales CAGR",
+    "profitCagr": "Profit CAGR",
+    "promoterPledge": "Pledge",
+    "pe": "PE vs baseline",
+    "peg": "PEG",
+    "pb": "P/B",
+    "evEbitda": "EV/EBITDA",
+    "vs200": "vs 200 DMA",
+    "vs50": "vs 50 DMA",
+    "cross": "50 vs 200 DMA",
+    "hhhl": "HH/HL",
+    "week52": "52-week range",
+    "fiftyDayAverage": "50 DMA",
+    "twoHundredDayAverage": "200 DMA",
+    "rsi": "RSI",
+    "macd": "MACD",
+    "rsNifty": "RS vs Nifty",
+    "volume": "Volume",
+    "volumeRatio": "Volume",
+    "roc": "ROC",
+}
+QUALITY_METRIC_WEIGHTS = {
+    "roce": QUALITY_WEIGHTS["roce"],
+    "roe": QUALITY_WEIGHTS["roe"],
+    "debtToEquity": QUALITY_WEIGHTS["de"],
+    "interestCoverage": QUALITY_WEIGHTS["interestCoverage"],
+    "salesCagr": QUALITY_WEIGHTS["salesCagr"],
+    "profitCagr": QUALITY_WEIGHTS["profitCagr"],
+    "promoterPledge": QUALITY_WEIGHTS["promoterPledge"],
+}
+VALUATION_METRIC_WEIGHTS = dict(VALUATION_WEIGHTS)
+TREND_METRIC_WEIGHTS = dict(TREND_WEIGHTS)
+MOMENTUM_METRIC_WEIGHTS = dict(MOMENTUM_WEIGHTS)
 
 _CACHE_LOCK = threading.Lock()
 _SCANNER_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
@@ -236,6 +275,70 @@ def renormalized_score(
 
 def _metric(value: Optional[float], score: Optional[int]) -> Dict[str, Any]:
     return {"value": value, "score": score, "used": score is not None}
+
+
+def _score_int(value: Optional[float]) -> Optional[int]:
+    if value is None:
+        return None
+    return int(round(float(value)))
+
+
+def color_band(score: Optional[int]) -> str:
+    """80+ green, 65–79 light green, 50–64 yellow, <50 orange/red."""
+    if score is None:
+        return "none"
+    if score >= 80:
+        return "green"
+    if score >= 65:
+        return "light_green"
+    if score >= 50:
+        return "yellow"
+    return "orange_red"
+
+
+def top_contributing_metrics(
+    metrics: Dict[str, Dict[str, Any]],
+    weights: Dict[str, float],
+    limit: int = 3,
+) -> List[Dict[str, Any]]:
+    """Top used metrics by weighted contribution. Missing metrics are skipped."""
+    used: List[Tuple[str, float, float, Any]] = []
+    for key, weight in weights.items():
+        cell = metrics.get(key) or {}
+        if not cell.get("used"):
+            continue
+        score = cell.get("score")
+        if score is None:
+            continue
+        used.append((key, float(score), float(weight), cell.get("value")))
+    if not used:
+        return []
+    weight_sum = sum(item[2] for item in used)
+    ranked: List[Dict[str, Any]] = []
+    for key, score, weight, value in used:
+        contribution = (score * weight / weight_sum) if weight_sum else 0.0
+        ranked.append({
+            "id": key,
+            "label": METRIC_LABELS.get(key, key),
+            "value": value,
+            "score": int(round(score)),
+            "contribution": round(contribution, 1),
+        })
+    ranked.sort(key=lambda item: (-item["contribution"], -item["score"], item["id"]))
+    return ranked[: max(0, int(limit))]
+
+
+def _pillar_payload(
+    score: Optional[int],
+    metrics: Dict[str, Dict[str, Any]],
+    weights: Dict[str, float],
+) -> Dict[str, Any]:
+    return {
+        "score": score,
+        "colorBand": color_band(score),
+        "metrics": metrics,
+        "topMetrics": top_contributing_metrics(metrics, weights, limit=3),
+    }
 
 
 def band_roce(value: Optional[float]) -> Optional[int]:
@@ -436,11 +539,11 @@ def score_quality(
 
     blended = renormalized_score(parts, QUALITY_WEIGHTS)
     if blended is None:
-        return None, notes
+        return None, notes, parts
     if fcf is not None and fcf > 0:
         notes.append("FCF bonus")
         blended = min(100.0, blended + 8)
-    return int(round(blended)), notes
+    return int(round(blended)), notes, parts
 
 
 def score_value(
@@ -492,8 +595,8 @@ def score_value(
 
     blended = renormalized_score(parts, VALUATION_WEIGHTS)
     if blended is None:
-        return None, notes
-    return int(round(blended)), notes
+        return None, notes, parts
+    return int(round(blended)), notes, parts
 
 
 def score_trend(
@@ -554,11 +657,11 @@ def score_trend(
 
     blended = renormalized_score(parts, TREND_WEIGHTS)
     if blended is None:
-        return None, notes
+        return None, notes, parts
     if hhhl is not None and hhhl > 0:
         notes.append("HH/HL bonus")
         blended = min(100.0, blended + 8)
-    return int(round(blended)), notes
+    return int(round(blended)), notes, parts
 
 
 def score_momentum(
@@ -655,8 +758,8 @@ def score_momentum(
 
     blended = renormalized_score(parts, MOMENTUM_WEIGHTS)
     if blended is None:
-        return None, notes
-    return int(round(blended)), notes
+        return None, notes, parts
+    return int(round(blended)), notes, parts
 
 
 def score_risk(
@@ -721,33 +824,70 @@ def stance_labels(score: Optional[int]) -> List[str]:
     return [label] if label else []
 
 
-def practice_setup(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def practice_setup(
+    row: Dict[str, Any],
+    momentum_score: Optional[int] = None,
+) -> Optional[Dict[str, Any]]:
     """Paper education levels for swing cards. Labeled not-advice."""
     last = _safe_float(row.get("last"))
     if last is None or last <= 0:
         return None
     fifty = _safe_float(row.get("fiftyDayAverage"))
-    rsi = row.get("rsi")
-    vol_r = row.get("volumeRatio")
-    kind = None
-    title = None
-    if rsi is not None and 40 <= rsi <= 65:
-        kind, title = "pullback", "RSI 40–65 zone"
-    elif fifty and last >= fifty * 0.98 and last <= fifty * 1.02:
-        kind, title = "pullback", "Near 50 DMA"
-    elif vol_r is not None and vol_r >= 1.5:
-        kind, title = "volume", "Volume pop"
+    two_hundred = _safe_float(row.get("twoHundredDayAverage"))
+    rsi = _safe_float(row.get("rsi"))
+    vol_r = _safe_float(row.get("volumeRatio"))
+    setup_type: Optional[str] = None
+    title: Optional[str] = None
+
+    near_fifty = bool(fifty and fifty > 0 and abs(last - fifty) / fifty <= 0.02)
+    above_dmas = bool(
+        fifty and two_hundred and last >= fifty and last >= two_hundred
+    )
+    volume_pop = vol_r is not None and vol_r >= 1.5
+    rsi_pullback = rsi is not None and 40 <= rsi <= 65
+
+    if rsi_pullback and (near_fifty or (fifty and last <= fifty * 1.02)):
+        setup_type, title = "pullback", "Pullback · RSI 40–65 zone"
+    elif near_fifty and not volume_pop:
+        setup_type, title = "pullback", "Pullback near 50 DMA"
+    elif above_dmas and volume_pop:
+        setup_type, title = "breakout", "Breakout above 50/200 DMA"
+    elif fifty and last >= fifty * 1.02 and volume_pop:
+        setup_type, title = "breakout", "Breakout with volume"
     elif fifty and last >= fifty:
-        kind, title = "dma", "Above 50 DMA"
-    if not kind:
+        setup_type, title = "breakout", "Above 50 DMA"
+    elif rsi_pullback:
+        setup_type, title = "pullback", "Pullback · RSI 40–65 zone"
+    if not setup_type:
         return None
+
+    if setup_type == "pullback":
+        stop = round(min(last * 0.98, (fifty * 0.97) if fifty else last * 0.98), 2)
+        t1 = round(last * 1.03, 2)
+        t2 = round(last * 1.06, 2)
+    else:
+        stop = round((fifty * 0.99) if fifty else last * 0.97, 2)
+        t1 = round(last * 1.04, 2)
+        t2 = round(last * 1.08, 2)
+    if stop >= last:
+        stop = round(last * 0.98, 2)
+    risk = abs(last - stop)
+    reward = abs(t1 - last)
+    rr = round(reward / risk, 2) if risk > 0 else None
     return {
-        "kind": kind,
+        "kind": setup_type,
+        "setupType": setup_type,
         "title": title,
         "entry": round(last, 2),
-        "stop": round(last * 0.98, 2),
-        "target": round(last * 1.03, 2),
-        "note": "Practice levels, not advice",
+        "stop": stop,
+        "target": t1,
+        "t1": t1,
+        "t2": t2,
+        "riskReward": rr,
+        "momentumScore": momentum_score,
+        "note": "Paper — not advice. Practice levels only.",
+        "winRate": None,
+        "winRateNote": "n/a until we have journal data",
     }
 
 
@@ -852,21 +992,46 @@ def explain_score(
     t_notes: Sequence[str],
     m_notes: Sequence[str],
     risk_label: str,
+    top_bits: Optional[Sequence[str]] = None,
+    missing: Optional[Sequence[str]] = None,
 ) -> str:
+    """2–4 sentence educational summary. Not investment advice."""
     if bysel is None:
-        return "Insufficient Yahoo fields to compute a BYSEL Score — pillars stay as —."
+        return (
+            "Insufficient Yahoo fields to compute a BYSEL Score — pillars stay as —. "
+            "Missing metrics are skipped rather than invented. "
+            "This is an educational readout, not investment advice."
+        )
     q_bit = next((n for n in q_notes if not n.endswith("—")), "only available quality metrics")
     v_bit = next((n for n in v_notes if not n.endswith("—")), "valuation incomplete")
     t_bit = next((n for n in t_notes if not n.endswith("—")), "trend incomplete")
     m_bit = next((n for n in m_notes if not n.endswith("—")), "momentum incomplete")
-    return (
-        f"scores {bysel} because "
-        f"{_fmt_pillar('Quality', quality, q_bit)}, "
-        f"{_fmt_pillar('Valuation', valuation, v_bit)}, "
-        f"{_fmt_pillar('Trend', trend, t_bit)}, "
-        f"{_fmt_pillar('Momentum', momentum, m_bit)}. "
-        f"{risk_label}."
+    sentences = [
+        (
+            f"BYSEL Score is {bysel}/100 from available Yahoo fields: "
+            f"{_fmt_pillar('Quality', quality, q_bit)}, "
+            f"{_fmt_pillar('Valuation', valuation, v_bit)}, "
+            f"{_fmt_pillar('Trend', trend, t_bit)}, "
+            f"{_fmt_pillar('Momentum', momentum, m_bit)}."
+        )
+    ]
+    if top_bits:
+        sentences.append(
+            "Largest contributions among metrics we actually have: "
+            + "; ".join(list(top_bits)[:4])
+            + "."
+        )
+    skip_note = "Missing metrics are skipped and remaining weights are renormalized"
+    if missing:
+        shown = ", ".join(list(missing)[:5])
+        sentences.append(f"{skip_note} ({shown} stay as —).")
+    else:
+        sentences.append(f"{skip_note} — we do not invent ROCE, pledge, MACD, or delivery.")
+    sentences.append(
+        f"{risk_label}. Educational labels only, not Strong Buy / Buy / Hold / Avoid. "
+        "Not investment advice."
     )
+    return " ".join(sentences[:4])
 
 
 def score_row(
@@ -875,7 +1040,7 @@ def score_row(
     sector_pe: Optional[float],
     nifty_change: Optional[float] = None,
 ) -> Dict[str, Any]:
-    quality, q_notes = score_quality(
+    quality, q_notes, q_parts = score_quality(
         symbol=str(row.get("symbol") or ""),
         market_cap=_safe_float(row.get("marketCap")),
         roe=row.get("roe"),
@@ -889,7 +1054,7 @@ def score_row(
         fcf=row.get("fcf"),
         sector=str(row.get("sector") or "Other"),
     )
-    valuation, v_notes = score_value(
+    valuation, v_notes, v_parts = score_value(
         pe=row.get("pe"),
         sector_pe=sector_pe,
         pe_median_5y=row.get("peMedian5y"),
@@ -897,7 +1062,7 @@ def score_row(
         pb=row.get("pb"),
         ev_ebitda=row.get("evEbitda"),
     )
-    trend, t_notes = score_trend(
+    trend, t_notes, t_parts = score_trend(
         last=row.get("last"),
         fifty_day=row.get("fiftyDayAverage"),
         two_hundred=row.get("twoHundredDayAverage"),
@@ -908,7 +1073,7 @@ def score_row(
     rs_vs_nifty = None
     if nifty_change is not None and row.get("pctChange") is not None:
         rs_vs_nifty = float(row["pctChange"]) - float(nifty_change)
-    momentum, m_notes = score_momentum(
+    momentum, m_notes, m_parts = score_momentum(
         last=row.get("last"),
         rsi=row.get("rsi"),
         vol_ratio=row.get("volumeRatio"),
@@ -929,48 +1094,57 @@ def score_row(
     rank_score = bysel if bysel is not None else 0
     rank_score = min(max(int(round(rank_score * _soft_filter_multiplier(mode, row))), 0), 100)
     label = conviction_label(bysel)
+    quality_metrics = {
+        "roce": _metric(row.get("roce"), _score_int(q_parts.get("roce"))),
+        "roe": _metric(row.get("roe"), _score_int(q_parts.get("roe"))),
+        "debtToEquity": _metric(row.get("debtToEquity"), _score_int(q_parts.get("de"))),
+        "interestCoverage": _metric(row.get("interestCoverage"), _score_int(q_parts.get("interestCoverage"))),
+        "salesCagr": _metric(row.get("salesCagr"), _score_int(q_parts.get("salesCagr"))),
+        "profitCagr": _metric(row.get("profitCagr"), _score_int(q_parts.get("profitCagr"))),
+        "promoterPledge": _metric(row.get("pledge"), _score_int(q_parts.get("promoterPledge"))),
+    }
+    valuation_metrics = {
+        "pe": _metric(row.get("pe"), _score_int(v_parts.get("pe"))),
+        "peg": _metric(row.get("peg"), _score_int(v_parts.get("peg"))),
+        "pb": _metric(row.get("pb"), _score_int(v_parts.get("pb"))),
+        "evEbitda": _metric(row.get("evEbitda"), _score_int(v_parts.get("evEbitda"))),
+    }
+    trend_metrics = {
+        "vs200": _metric(row.get("twoHundredDayAverage"), _score_int(t_parts.get("vs200"))),
+        "vs50": _metric(row.get("fiftyDayAverage"), _score_int(t_parts.get("vs50"))),
+        "cross": _metric(None, _score_int(t_parts.get("cross"))),
+        "hhhl": _metric(row.get("hhhl"), _score_int(t_parts.get("hhhl"))),
+        "week52": _metric(None, _score_int(t_parts.get("week52"))),
+        "fiftyDayAverage": _metric(row.get("fiftyDayAverage"), _score_int(t_parts.get("vs50"))),
+        "twoHundredDayAverage": _metric(row.get("twoHundredDayAverage"), _score_int(t_parts.get("vs200"))),
+    }
+    momentum_metrics = {
+        "rsi": _metric(row.get("rsi"), _score_int(m_parts.get("rsi"))),
+        "macd": _metric(row.get("macd"), _score_int(m_parts.get("macd"))),
+        "rsNifty": _metric(rs_vs_nifty, _score_int(m_parts.get("rsNifty"))),
+        "volume": _metric(row.get("volumeRatio"), _score_int(m_parts.get("volume"))),
+        "volumeRatio": _metric(row.get("volumeRatio"), _score_int(m_parts.get("volume"))),
+        "roc": _metric(row.get("roc") if row.get("roc") is not None else row.get("pctChange"), _score_int(m_parts.get("roc"))),
+    }
+    pillars = {
+        "quality": _pillar_payload(quality, quality_metrics, QUALITY_METRIC_WEIGHTS),
+        "valuation": _pillar_payload(valuation, valuation_metrics, VALUATION_METRIC_WEIGHTS),
+        "trend": _pillar_payload(trend, trend_metrics, TREND_METRIC_WEIGHTS),
+        "momentum": _pillar_payload(momentum, momentum_metrics, MOMENTUM_METRIC_WEIGHTS),
+    }
+    top_bits: List[str] = []
+    for name in ("quality", "valuation", "trend", "momentum"):
+        for metric in (pillars[name].get("topMetrics") or [])[:1]:
+            label_txt = metric.get("label") or metric.get("id")
+            top_bits.append(f"{name.title()} {label_txt} {metric.get('score')}")
     explanation = explain_score(
         bysel, quality, valuation, trend, momentum,
         q_notes, v_notes, t_notes, m_notes, risk_label,
+        top_bits=top_bits,
+        missing=missing,
     )
     token = score_label_token(bysel)
-    pillars = {
-        "quality": {
-            "score": quality,
-            "metrics": {
-                "roce": _metric(row.get("roce"), band_roce(row.get("roce"))),
-                "roe": _metric(row.get("roe"), band_roe(row.get("roe"))),
-                "debtToEquity": _metric(row.get("debtToEquity"), band_de(row.get("debtToEquity"))),
-                "interestCoverage": _metric(row.get("interestCoverage"), band_interest_coverage(row.get("interestCoverage"))),
-                "salesCagr": _metric(row.get("salesCagr"), band_cagr(row.get("salesCagr"))),
-                "profitCagr": _metric(row.get("profitCagr"), band_cagr(row.get("profitCagr"))),
-                "promoterPledge": _metric(row.get("pledge"), None),
-            },
-        },
-        "valuation": {
-            "score": valuation,
-            "metrics": {
-                "pe": _metric(row.get("pe"), None),
-                "peg": _metric(row.get("peg"), None),
-                "evEbitda": _metric(row.get("evEbitda"), None),
-            },
-        },
-        "trend": {
-            "score": trend,
-            "metrics": {
-                "fiftyDayAverage": _metric(row.get("fiftyDayAverage"), None),
-                "twoHundredDayAverage": _metric(row.get("twoHundredDayAverage"), None),
-            },
-        },
-        "momentum": {
-            "score": momentum,
-            "metrics": {
-                "rsi": _metric(row.get("rsi"), band_rsi(row.get("rsi"))),
-                "macd": _metric(row.get("macd"), None),
-                "volumeRatio": _metric(row.get("volumeRatio"), None),
-            },
-        },
-    }
+    setup = practice_setup(row, momentum_score=momentum) if mode == "swing" else None
     return {
         "quality": quality,
         "valuation": valuation,
@@ -983,6 +1157,7 @@ def score_row(
         "byselScore": bysel,
         "bysel_score": bysel,
         "overall": rank_score,
+        "colorBand": color_band(bysel),
         "convictionLabel": label,
         "score_label": token,
         "scoreLabel": token,
@@ -991,7 +1166,7 @@ def score_row(
         "aiSummary": explanation,
         "stance": [label],
         "pillars": pillars,
-        "setup": practice_setup(row) if mode == "swing" else None,
+        "setup": setup,
         "why": explanation,
         "missing": missing,
     }
@@ -1222,6 +1397,7 @@ def build_scanner_payload(
             "risk": scores["risk"],
             "riskLabel": scores["riskLabel"],
             "overall": scores["overall"],
+            "colorBand": scores.get("colorBand") or color_band(scores.get("byselScore")),
             "convictionLabel": scores["convictionLabel"],
             "score_label": scores["score_label"],
             "scoreLabel": scores["scoreLabel"],
@@ -1261,7 +1437,12 @@ def build_scanner_payload(
         return (-int(key or 0), str(item.get("symbol") or ""))
 
     scored.sort(key=_rank)
-    shortlist = scored[:limit]
+    if mode_key == "swing":
+        with_setup = [item for item in scored if item.get("setup")]
+        cap = min(max(int(limit), 5), 15)
+        shortlist = with_setup[:cap]
+    else:
+        shortlist = scored[:limit]
 
     return {
         "mode": mode_key,
@@ -1327,10 +1508,175 @@ def get_market_scanner(
         limit=limit,
         universe_size=len(symbols),
     )
+    try:
+        persist_daily_score_snapshots(payload.get("rows") or [])
+    except Exception as exc:
+        logger.warning("scanner.snapshot_persist_failed reason=%s", exc)
     with _CACHE_LOCK:
         _SCANNER_CACHE[cache_key] = (time.time(), dict(payload))
     payload["cached"] = False
     return payload
+
+
+def persist_daily_score_snapshots(rows: Sequence[Dict[str, Any]]) -> None:
+    """Upsert today's BYSEL Score per symbol. create_all table; no Alembic."""
+    if not rows:
+        return
+    try:
+        from .database.db import ByselScoreSnapshotModel, SessionLocal
+    except Exception as exc:
+        logger.warning("scanner.snapshot_db_unavailable reason=%s", exc)
+        return
+
+    today = datetime.now(timezone.utc).date()
+    db = SessionLocal()
+    try:
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            symbol = str(row.get("symbol") or "").strip().upper()
+            score = row.get("byselScore")
+            if not symbol or score is None:
+                continue
+            existing = (
+                db.query(ByselScoreSnapshotModel)
+                .filter(
+                    ByselScoreSnapshotModel.symbol == symbol,
+                    ByselScoreSnapshotModel.snapshot_date == today,
+                )
+                .first()
+            )
+            quality = row.get("quality")
+            valuation = row.get("valuation") if row.get("valuation") is not None else row.get("value")
+            trend = row.get("trend")
+            momentum = row.get("momentum")
+            if existing is None:
+                db.add(
+                    ByselScoreSnapshotModel(
+                        symbol=symbol,
+                        snapshot_date=today,
+                        bysel_score=int(score),
+                        quality=quality,
+                        valuation=valuation,
+                        trend=trend,
+                        momentum=momentum,
+                    )
+                )
+            else:
+                existing.bysel_score = int(score)
+                existing.quality = quality
+                existing.valuation = valuation
+                existing.trend = trend
+                existing.momentum = momentum
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.warning("scanner.snapshot_persist_failed reason=%s", exc)
+    finally:
+        db.close()
+
+
+def _normalize_xray_symbol(symbol: str) -> str:
+    key = (symbol or "").strip().upper()
+    for prefix in ("NSE:", "BSE:"):
+        if key.startswith(prefix):
+            key = key[len(prefix):]
+    if key.endswith(".NS") or key.endswith(".BO"):
+        key = key[:-3]
+    return key.strip()
+
+
+def get_symbol_xray(symbol: str) -> Optional[Dict[str, Any]]:
+    """Score a single symbol with the same BYSEL Score path as the scanner."""
+    key = _normalize_xray_symbol(symbol)
+    if not key:
+        return None
+    quotes: List[Dict[str, Any]] = []
+    try:
+        from .market_data import fetch_quotes
+
+        quotes = fetch_quotes(
+            [key],
+            max_age_seconds=180,
+            batch_size=1,
+            yf_threads=False,
+            individual_fallback=True,
+        ) or []
+    except Exception as exc:
+        logger.warning("scanner.xray_quotes_failed symbol=%s reason=%s", key, exc)
+        quotes = []
+    payload = build_scanner_payload(quotes, mode="long_term", limit=1, universe_size=1)
+    rows = payload.get("rows") or []
+    row = next((item for item in rows if str(item.get("symbol") or "").upper() == key), None)
+    if row is None and rows:
+        row = rows[0]
+    if row:
+        try:
+            persist_daily_score_snapshots([row])
+        except Exception as exc:
+            logger.warning("scanner.xray_snapshot_failed reason=%s", exc)
+    return row
+
+
+def get_score_history(symbol: str, days: int = 90) -> Dict[str, Any]:
+    key = _normalize_xray_symbol(symbol)
+    window = 30 if int(days or 90) <= 30 else 90
+    empty = {
+        "symbol": key,
+        "days": window,
+        "points": [],
+        "pending": True,
+        "note": "Score history fills after daily snapshots. 30/90-day view is pending until we have journal-free daily scores.",
+    }
+    if not key:
+        return empty
+    try:
+        from .database.db import ByselScoreSnapshotModel, SessionLocal
+    except Exception:
+        return empty
+
+    cutoff = datetime.now(timezone.utc).date()
+    start = cutoff.fromordinal(cutoff.toordinal() - window + 1)
+    db = SessionLocal()
+    try:
+        records = (
+            db.query(ByselScoreSnapshotModel)
+            .filter(
+                ByselScoreSnapshotModel.symbol == key,
+                ByselScoreSnapshotModel.snapshot_date >= start,
+            )
+            .order_by(ByselScoreSnapshotModel.snapshot_date.asc())
+            .all()
+        )
+        points = [
+            {
+                "date": rec.snapshot_date.isoformat() if rec.snapshot_date else "",
+                "byselScore": rec.bysel_score,
+                "quality": rec.quality,
+                "valuation": rec.valuation,
+                "trend": rec.trend,
+                "momentum": rec.momentum,
+            }
+            for rec in records
+        ]
+        pending = len(points) < 2
+        return {
+            "symbol": key,
+            "days": window,
+            "points": points,
+            "pending": pending,
+            "note": (
+                "Score history starts after the first daily snapshot. "
+                "30/90-day trend fills in over time."
+                if pending
+                else "Daily BYSEL Score snapshots (education only, not advice)."
+            ),
+        }
+    except Exception as exc:
+        logger.warning("scanner.history_failed symbol=%s reason=%s", key, exc)
+        return empty
+    finally:
+        db.close()
 
 
 def clear_scanner_cache() -> None:

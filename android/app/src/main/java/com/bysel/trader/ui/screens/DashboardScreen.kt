@@ -2922,7 +2922,7 @@ private fun IdeasRail(
         onScanner?.let {
             IdeaChip(
                 title = "BYSEL Top Picks",
-                subtitle = "Scanner · score 0–100",
+                subtitle = "Scanner · score + paper swing cards",
                 icon = Icons.Filled.Explore,
                 onClick = it,
             )

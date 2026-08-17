@@ -6,15 +6,17 @@ from app.market_scanner import (
     band_roe,
     band_rsi,
     build_scanner_payload,
+    color_band,
     renormalized_score,
     score_quality,
     score_row,
     score_label_token,
+    top_contributing_metrics,
 )
 
 
 def test_missing_quality_metrics_are_skipped_not_defaulted():
-    quality, notes = score_quality(
+    quality, notes, parts = score_quality(
         symbol="RELIANCE",
         roe=None,
         roce=None,
@@ -29,11 +31,13 @@ def test_missing_quality_metrics_are_skipped_not_defaulted():
     assert "ROCE —" in notes
     assert "ROE —" in notes
     assert "D/E —" in notes
+    assert parts["roce"] is None
+    assert parts["roe"] is None
 
 
 def test_quality_renormalizes_when_only_roe_exists():
-    only_roe, _ = score_quality(roe=22.0, roce=None, debt_to_equity=None)
-    both, _ = score_quality(roe=22.0, roce=16.0, debt_to_equity=None)
+    only_roe, _, _ = score_quality(roe=22.0, roce=None, debt_to_equity=None)
+    both, _, _ = score_quality(roe=22.0, roce=16.0, debt_to_equity=None)
     assert only_roe == 100
     assert both is not None
     assert both < only_roe
@@ -103,10 +107,101 @@ def test_score_row_json_has_pillars_and_skips_unknown_roce():
     scores = score_row(row, "long_term", sector_pe=28.0)
     assert scores["pillars"]["quality"]["metrics"]["roce"]["used"] is False
     assert scores["pillars"]["quality"]["metrics"]["roe"]["used"] is True
-    assert scores["ai_summary"].startswith("scores ")
+    assert "BYSEL Score" in scores["ai_summary"]
+    assert "not investment advice" in scores["ai_summary"].lower()
     assert scores["score_label"] in {"high_conviction", "attractive", "neutral", "caution", "weak", "insufficient"}
     assert "buy" not in scores["score_label"]
     assert scores["bysel_score"] == scores["byselScore"]
+    assert scores["colorBand"] in {"green", "light_green", "yellow", "orange_red", "none"}
+    q_top = scores["pillars"]["quality"]["topMetrics"]
+    assert len(q_top) <= 3
+    assert all(item["id"] != "roce" for item in q_top)
+    assert any(item["id"] == "roe" for item in q_top)
+
+
+def test_top_metrics_skip_missing_and_cap_three():
+    metrics = {
+        "roce": {"value": None, "score": None, "used": False},
+        "roe": {"value": 22.0, "score": 100, "used": True},
+        "debtToEquity": {"value": 0.4, "score": 100, "used": True},
+        "interestCoverage": {"value": None, "score": None, "used": False},
+        "salesCagr": {"value": 12.0, "score": 85, "used": True},
+        "profitCagr": {"value": 8.0, "score": 65, "used": True},
+        "promoterPledge": {"value": None, "score": None, "used": False},
+    }
+    weights = {
+        "roce": 0.25,
+        "roe": 0.20,
+        "debtToEquity": 0.15,
+        "interestCoverage": 0.10,
+        "salesCagr": 0.15,
+        "profitCagr": 0.10,
+        "promoterPledge": 0.05,
+    }
+    top = top_contributing_metrics(metrics, weights, limit=3)
+    assert len(top) == 3
+    assert all(item["id"] in {"roe", "debtToEquity", "salesCagr", "profitCagr"} for item in top)
+    assert "roce" not in {item["id"] for item in top}
+    assert top[0]["contribution"] >= top[-1]["contribution"]
+
+
+def test_color_band_thresholds():
+    assert color_band(None) == "none"
+    assert color_band(80) == "green"
+    assert color_band(79) == "light_green"
+    assert color_band(65) == "light_green"
+    assert color_band(64) == "yellow"
+    assert color_band(50) == "yellow"
+    assert color_band(49) == "orange_red"
+
+
+def test_swing_setup_has_paper_levels_and_no_invented_winrate():
+    row = {
+        "symbol": "INFY",
+        "name": "Infosys",
+        "last": 1500.0,
+        "pctChange": 0.5,
+        "pe": 24.0,
+        "roe": 20.0,
+        "fiftyDayAverage": 1480.0,
+        "twoHundredDayAverage": 1400.0,
+        "rsi": 52.0,
+        "volumeRatio": 1.7,
+        "sector": "IT",
+    }
+    scores = score_row(row, "swing", sector_pe=26.0)
+    setup = scores["setup"]
+    assert setup is not None
+    assert setup["setupType"] in {"pullback", "breakout"}
+    assert setup["t1"] is not None and setup["t2"] is not None and setup["stop"] is not None
+    assert setup["riskReward"] is not None
+    assert "paper" in setup["note"].lower()
+    assert "advice" in setup["note"].lower()
+    assert setup.get("winRate") is None
+    assert "n/a" in (setup.get("winRateNote") or "").lower()
+    assert setup.get("momentumScore") == scores["momentum"]
+
+
+def test_swing_payload_caps_cards_with_setups():
+    quotes = [
+        {
+            "symbol": f"S{i}",
+            "last": 1000.0 + i,
+            "pctChange": 0.2,
+            "trailingPE": 20.0,
+            "roe": 18.0,
+            "fiftyDayAverage": 990.0,
+            "twoHundredDayAverage": 900.0,
+            "rsi": 55.0,
+            "volume": 2_000_000,
+            "avgVolume": 1_000_000,
+        }
+        for i in range(20)
+    ]
+    payload = build_scanner_payload(quotes, mode="swing", limit=30)
+    assert 1 <= len(payload["rows"]) <= 15
+    assert all(row.get("setup") for row in payload["rows"])
+    assert all(row["setup"]["setupType"] in {"pullback", "breakout"} for row in payload["rows"])
 
 
 def test_build_payload_keeps_missing_honest():
@@ -125,3 +220,30 @@ def test_build_payload_keeps_missing_honest():
     assert infy["score_label"] in {"high_conviction", "attractive", "neutral", "caution", "weak", "insufficient"}
     assert "buy" not in infy["score_label"]
     assert "Never Strong Buy" in payload["education"]["scoreGuide"]
+
+
+def test_daily_snapshot_roundtrip_without_migration():
+    from app.database.db import ByselScoreSnapshotModel, SessionLocal
+    from app.market_scanner import get_score_history, persist_daily_score_snapshots
+
+    persist_daily_score_snapshots(
+        [
+            {
+                "symbol": "BYSELTEST",
+                "byselScore": 72,
+                "quality": 80,
+                "valuation": 60,
+                "trend": 70,
+                "momentum": 65,
+            }
+        ]
+    )
+    history = get_score_history("BYSELTEST", 30)
+    assert history["symbol"] == "BYSELTEST"
+    assert any(point.get("byselScore") == 72 for point in history["points"])
+    db = SessionLocal()
+    try:
+        db.query(ByselScoreSnapshotModel).filter(ByselScoreSnapshotModel.symbol == "BYSELTEST").delete()
+        db.commit()
+    finally:
+        db.close()

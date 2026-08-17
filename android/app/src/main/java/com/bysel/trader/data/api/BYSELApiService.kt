@@ -404,6 +404,15 @@ interface BYSELApiService {
         @Query("forceRefresh") forceRefresh: Boolean = false,
     ): ScannerResponse
 
+    @GET("/market/scanner/xray/{symbol}")
+    suspend fun getScannerXray(@Path("symbol") symbol: String): ScannerRow
+
+    @GET("/market/scanner/history/{symbol}")
+    suspend fun getScannerScoreHistory(
+        @Path("symbol") symbol: String,
+        @Query("days") days: Int = 90,
+    ): ScoreHistoryResponse
+
     // ==================== DERIVATIVES INTELLIGENCE ====================
     @GET("/derivatives/option-chain")
     suspend fun getOptionChain(
