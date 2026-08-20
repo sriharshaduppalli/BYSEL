@@ -3,7 +3,7 @@
 Living backlog from Google Play Console, Play Academy, and Android Developers docs shared in chat.  
 **Update rule:** append new items when more docs are reviewed; mark status as we ship.
 
-Last updated: 2026-08-15 (Edge-to-edge theme, FCM token, Data safety, CI tests)
+Last updated: 2026-08-20 (Open testing 4.0.10 listing + Data safety paste)
 
 ---
 
@@ -37,7 +37,7 @@ Last updated: 2026-08-15 (Edge-to-edge theme, FCM token, Data safety, CI tests)
 | Policy (Jul 15, 2026) | Personal loans / EWA | N/A |
 | Policy (Jul 15, 2026) | Location Data safety | No location permissions |
 | Privacy / User Data + AI | Third-party AI disclosure | Privacy policy mentions Groq/Gemini/ISM |
-| Releases | AABs ready to upload | Internal 2.6.165 (213), Closed 3.0.4 (214), Open 4.0.4 (212) — speed + in-app polish |
+| Releases | Open testing live | Open **4.0.10 (263)** on Play 20 Aug 2026. Internal 2.6.186 (261), Closed 3.0.26 (262). Production Inactive. |
 | Background work guide | API choice | Coroutines + WorkManager alerts + FCM |
 | Task scheduling (WorkManager) | Persistent work choice | Alerts use WorkManager; UI refresh stays on coroutines — correct split |
 | Keep device awake guide | Wake locks / keepScreenOn | No app wake locks found; correctly lets device suspend — **Skip** adding wake locks |
@@ -78,7 +78,7 @@ Last updated: 2026-08-15 (Edge-to-edge theme, FCM token, Data safety, CI tests)
 | ID | Item | Source | Status | Notes |
 |----|------|--------|--------|-------|
 | P0-1 | Android vitals: crash & ANR after new AABs | Technical quality | Watching | Filter versionCodes 209–211; fix only if over bad-behavior thresholds |
-| P0-2 | Data safety form matches privacy (AI + third-party AI) | Policy clarification Jul 2026 | Next (manual Console paste) | Checklist below matches current app + privacy pages (15 Aug 2026) |
+| P0-2 | Data safety form matches privacy (AI + third-party AI) | Policy clarification Jul 2026 | Next (manual Console paste **today**) | Live listing still says “No data collected” / “No account required” — false. Paste section below. |
 | P0-3 | Content rating questionnaire complete | Content ratings clarification | Next | Confirm not “unrated” |
 
 ### P1 — Product / UX quality
@@ -339,12 +339,71 @@ Last updated: 2026-08-15 (Edge-to-edge theme, FCM token, Data safety, CI tests)
 | 2026-08-08 | Live update notifications (updated Mar 2, 2026) | **Skip** Live Updates/ProgressStyle for BYSEL. Price alerts are event banners (already critical-only on threshold). Rideshare/delivery templates N/A. Confirmed P2-107 Done |
 | 2026-08-08 | Notifications (design guide, updated Mar 2, 2026) | Already: channels, contextual permission, BigText, deep-link. Done: grouping summary (P2-16), category/color/visibility (P2-108), concise titles (P2-109). Skip: wrong templates, promo notifs, duplicate actions |
 | 2026-08-15 | Android 15 edge-to-edge + FCM token + Data safety + CI tests | Material3 transparent system bars (no e2e opt-out); FCM token POST + honest 15-min alert copy; privacy pages aligned; `testDebugUnitTest` no longer `continue-on-error` |
+| 2026-08-20 | Open testing 4.0.10 listing rewrite | Store page still had “no account / no data / 363+ / Should I buy”. Paste listing + Data safety in Console. Login 503 is server concurrency, not credentials. |
+
+---
+
+## Play Console store listing (paste into Console — open testing)
+
+Replace the live 4.0.10 listing. The public page still says “no account”, “no data collected”, “363+ stocks”, and “Should I buy RELIANCE?” — that is stale and policy-risky.
+
+**App name:** BYSEL  
+**Category:** Finance  
+**Tags (optional):** Stocks, Education, Personal finance  
+
+**Short description** (80 characters max):
+
+```
+Indian market education and paper practice. Account required. Not live trading.
+```
+
+**Full description:**
+
+```
+BYSEL is a paper-practice and market-education app for Indian stocks (NSE / BSE).
+
+You need an account (email + password, or phone OTP). This is not anonymous and not live brokerage. Orders, wallet, and P&L are simulated. Prices come from public market-data sources and can lag the exchange tape.
+
+WHAT YOU CAN DO
+• Watch quotes, charts, a sector heatmap, and news headlines
+• Keep a watchlist and paper holdings with a compact P&L view
+• Use BYSEL Score and the Scanner to compare names (education, not a buy/sell call)
+• Ask the AI assistant about a snapshot in plain language
+• Set price-alert notifications (checked about every 15 minutes plus push when a threshold is crossed)
+• Practice IPO / mutual-fund / F&O style flows as paper only — no ASBA or live broker execution
+
+WHAT BYSEL IS NOT
+• Not a registered investment advisor and not a stock broker
+• Not live trading, not UPI payouts, not real ASBA IPO applications
+• AI answers and scores are educational. They are not a recommendation to buy or sell
+• Weekend and after-hours tape is frozen by design
+
+Open testing: features and data may change. If sign-in fails with a server error, wait a minute and try the same account again — that is a host issue, not a wrong password.
+
+Disclaimer: For education only. Past market data does not predict future results.
+```
+
+**What’s new** (4.0.10 / 263 — open testing):
+
+```
+Open testing 4.0.10
+• Account sign-in required (password or phone OTP)
+• Paper practice only — not live brokerage
+• Scanner and BYSEL Score for education (not a buy/sell label)
+• Heatmap, quotes, and paper portfolio
+• Price alerts are not tick-by-tick
+```
+
+**Do not put in listing or screenshots:** Strong Buy, Buy, Hold, Avoid, “guaranteed returns”, “real-time ticks”, “no sign-up”, “no data collected”.
+
+**Join / share URL:** https://play.google.com/apps/testing/com.bysel.trader  
+**Store listing URL:** https://play.google.com/store/apps/details?id=com.bysel.trader
 
 ---
 
 ## Play Console Data safety checklist (paste into Console)
 
-Matches in-app / website / backend privacy as of **15 August 2026**. Do not invent extra trackers. Fill Play Console manually.
+Matches in-app / website / backend privacy as of **20 August 2026**. The live Play Data safety card currently says **No data collected** — that is wrong and must be overwritten. Do not invent extra trackers. Fill Play Console manually.
 
 **Does your app collect or share any of the required user data types?** Yes
 
