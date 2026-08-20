@@ -104,6 +104,12 @@ android {
         val certPinHost = System.getenv("CERT_PIN_HOST") ?: "bysel-backend.onrender.com"
         val certPinPrimary = System.getenv("CERT_PIN_PRIMARY") ?: ""
         val certPinBackup = System.getenv("CERT_PIN_BACKUP") ?: ""
+        val marketRestUrl = (
+            System.getenv("MARKET_REST_URL")
+                ?: "https://bysel-backend.onrender.com/"
+            ).let { if (it.endsWith("/")) it else "$it/" }
+        val marketWsUrl = System.getenv("MARKET_WS_URL")
+            ?: "wss://bysel-backend.onrender.com/ws/quotes"
         // Read version from root gradle.properties, but for bundleRelease we pre-bump
         // here so the built AAB and gradle.properties stay in sync in one run.
         versionCode = configuredVersionCode
@@ -114,8 +120,8 @@ android {
             useSupportLibrary = true
         }
 
-        buildConfigField("String", "MARKET_REST_URL", "\"https://bysel-backend.onrender.com/\"")
-        buildConfigField("String", "MARKET_WS_URL", "\"wss://bysel-backend.onrender.com/ws/quotes\"")
+        buildConfigField("String", "MARKET_REST_URL", "\"$marketRestUrl\"")
+        buildConfigField("String", "MARKET_WS_URL", "\"$marketWsUrl\"")
         buildConfigField("String", "MARKET_DATA_PROVIDER", "\"REST_FALLBACK\"")
         buildConfigField("String", "MARKET_TRUEDATA_WS_URL", "\"wss://push.truedata.in\"")
         buildConfigField("String", "MARKET_TRUEDATA_TOKEN", "\"\"")

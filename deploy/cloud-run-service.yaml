@@ -1,0 +1,68 @@
+# Apply after the first image exists:
+#   gcloud run services replace deploy/cloud-run-service.yaml --region=us-west1
+#
+# Image name must match Artifact Registry from Cloud Build.
+# Secrets stay in Cloud Run env / Secret Manager — never in this file.
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: bysel-backend
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "1"
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/startup-cpu-boost: "true"
+    spec:
+      containerConcurrency: 40
+      timeoutSeconds: 300
+      containers:
+        - image: IMAGE_PLACEHOLDER
+          resources:
+            limits:
+              memory: 2Gi
+              cpu: "1"
+          env:
+            - name: DEBUG
+              value: "false"
+            - name: ALLOW_USER_ID_HEADER_FALLBACK
+              value: "false"
+            - name: AUTH_PASSWORD_RESET_DEBUG_RESPONSE
+              value: "false"
+            - name: QUOTE_BATCH_SIZE
+              value: "40"
+            - name: QUOTE_CACHE_TTL_OPEN
+              value: "5"
+            - name: QUOTE_CACHE_MAX_ENTRIES
+              value: "2500"
+            - name: HEATMAP_CACHE_TTL_OPEN
+              value: "2"
+            - name: HEATMAP_QUOTE_MAX_AGE_OPEN
+              value: "5"
+            - name: HEATMAP_QUOTE_REFRESH_BUDGET
+              value: "60"
+            - name: MARKET_NEWS_BUDGET_SECONDS
+              value: "4"
+            - name: NEWS_CACHE_MAX_SYMBOLS
+              value: "80"
+            - name: RESEND_FROM_EMAIL
+              value: "BYSEL <onboarding@resend.dev>"
+            - name: BYSEL_SUPPORT_EMAIL
+              value: "bysel.trader@gmail.com"
+          ports:
+            - name: http1
+              containerPort: 8080
+          startupProbe:
+            httpGet:
+              path: /health
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            httpGet:
+              path: /health
+            periodSeconds: 15
