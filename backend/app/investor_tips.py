@@ -205,6 +205,18 @@ _TIP_BANKS: dict[str, list[dict[str, str]]] = {
     ],
     "fno": [
         {
+            "id": "fo_vs",
+            "title": "Futures vs options",
+            "body": "Futures = agreement to buy/sell later (levered). Options = paid right to buy (call) or sell (put). Practice both in the paper gym first.",
+            "category": "process",
+        },
+        {
+            "id": "fo_lot",
+            "title": "Think in lots, not shares",
+            "body": "1 NIFTY lot is typically 50. Notional = lot × price. Margin is only cash blocked — a move can lose more than margin.",
+            "category": "risk",
+        },
+        {
             "id": "fo_edge",
             "title": "Define the edge",
             "body": "F&O without a directional/vol/hedge thesis is leveraged guessing. Write why the contract, not just the ticker.",

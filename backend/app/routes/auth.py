@@ -5,7 +5,27 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 from email.message import EmailMessage
 from ..config import DEBUG
-from ..database.db import SessionLocal, UserModel, WalletModel, RefreshTokenModel, PasswordResetTokenModel, OTPModel, DeviceTokenModel
+from ..database.db import (
+    SessionLocal,
+    UserModel,
+    WalletModel,
+    RefreshTokenModel,
+    PasswordResetTokenModel,
+    OTPModel,
+    DeviceTokenModel,
+    HoldingModel,
+    AlertModel,
+    OrderModel,
+    TriggerOrderModel,
+    BasketOrderModel,
+    BasketOrderLegModel,
+    TradeJournalModel,
+    StockNoteModel,
+    SipPlanModel,
+    IPOApplicationModel,
+    FamilyMemberModel,
+    GoalPlanModel,
+)
 from datetime import datetime, timedelta
 from typing import List
 from collections import defaultdict, deque
@@ -2499,7 +2519,40 @@ def firebase_phone_auth(request: FirebasePhoneAuthRequest, req: Request = None):
 # ---------- Account Deletion (Google Play requirement) ----------
 
 class DeleteAccountRequest(BaseModel):
-    password: str
+    password: str = ""
+    confirmation: str = ""
+
+
+def _is_otp_placeholder_user(user: UserModel) -> bool:
+    username = (getattr(user, "username", None) or "").strip().lower()
+    email = (getattr(user, "email", None) or "").strip().lower()
+    return username.startswith("mobile_") or email.startswith("mobile_")
+
+
+def _purge_user_rows(db: Session, user: UserModel) -> None:
+    user_id = user.id
+    mobile = user.mobile_number or ""
+    db.query(RefreshTokenModel).filter(RefreshTokenModel.user_id == user_id).delete()
+    db.query(DeviceTokenModel).filter(DeviceTokenModel.user_id == user_id).delete()
+    db.query(WalletModel).filter(WalletModel.user_id == user_id).delete()
+    db.query(HoldingModel).filter(HoldingModel.user_id == user_id).delete()
+    db.query(AlertModel).filter(AlertModel.user_id == user_id).delete()
+    db.query(OrderModel).filter(OrderModel.user_id == user_id).delete()
+    db.query(TriggerOrderModel).filter(TriggerOrderModel.user_id == user_id).delete()
+    basket_ids = [bid for (bid,) in db.query(BasketOrderModel.id).filter(BasketOrderModel.user_id == user_id).all()]
+    if basket_ids:
+        db.query(BasketOrderLegModel).filter(BasketOrderLegModel.basket_id.in_(basket_ids)).delete(synchronize_session=False)
+    db.query(BasketOrderModel).filter(BasketOrderModel.user_id == user_id).delete()
+    db.query(TradeJournalModel).filter(TradeJournalModel.user_id == user_id).delete()
+    db.query(StockNoteModel).filter(StockNoteModel.user_id == user_id).delete()
+    db.query(SipPlanModel).filter(SipPlanModel.user_id == user_id).delete()
+    db.query(IPOApplicationModel).filter(IPOApplicationModel.user_id == user_id).delete()
+    db.query(FamilyMemberModel).filter(FamilyMemberModel.user_id == user_id).delete()
+    db.query(GoalPlanModel).filter(GoalPlanModel.user_id == user_id).delete()
+    db.query(PasswordResetTokenModel).filter(PasswordResetTokenModel.user_id == user_id).delete()
+    if mobile:
+        db.query(OTPModel).filter(OTPModel.mobile_number == mobile).delete()
+
 
 @router.post("/delete-account")
 async def delete_account(
@@ -2518,22 +2571,27 @@ async def delete_account(
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        # Verify password before deletion
-        if not _verify_password(body.password, user.password_hash):
-            raise HTTPException(status_code=401, detail="Invalid password")
+        password = (body.password or "").strip()
+        confirmation = (body.confirmation or "").strip().upper()
+        otp_only = _is_otp_placeholder_user(user)
+        if password:
+            if not _verify_password(password, user.password_hash):
+                raise HTTPException(status_code=401, detail="Invalid password")
+        elif otp_only and confirmation == "DELETE":
+            pass
+        elif otp_only:
+            raise HTTPException(
+                status_code=400,
+                detail="Type DELETE to confirm. Phone-only accounts do not have a password.",
+            )
+        else:
+            raise HTTPException(status_code=401, detail="Password is required")
 
-        # Delete all associated data
-        db.query(RefreshTokenModel).filter(RefreshTokenModel.user_id == user_id).delete()
-        db.query(DeviceTokenModel).filter(DeviceTokenModel.user_id == user_id).delete()
-        db.query(WalletModel).filter(WalletModel.user_id == user_id).delete()
-        db.query(OTPModel).filter(OTPModel.mobile_number == (user.mobile_number or "")).delete()
-        db.query(PasswordResetTokenModel).filter(PasswordResetTokenModel.user_id == user_id).delete()
-
-        # Delete the user
+        _purge_user_rows(db, user)
         db.delete(user)
         db.commit()
 
-        logger.info("auth.account_deleted user_id=%s", user_id)
+        logger.info("auth.account_deleted user_id=%s otp_only=%s", user_id, otp_only)
         return {"status": "ok", "detail": "Account permanently deleted"}
     except HTTPException:
         raise

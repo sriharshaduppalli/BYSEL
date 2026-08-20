@@ -37,9 +37,11 @@ private val LOCAL_BANKS: Map<String, List<InvestorTip>> = mapOf(
         InvestorTip("ipo_asba", "Practice apply only", "BYSEL IPO apply is paper practice — no real ASBA block, UPI debit, or exchange allotment.", "process", "topic"),
     ),
     "fno" to listOf(
+        InvestorTip("fo_vs", "Futures vs options", "Futures = agreement to buy/sell later. Options = paid right to buy (call) or sell (put). Practice both before any live broker.", "process", "topic"),
+        InvestorTip("fo_lot", "Think in lots, not shares", "1 NIFTY lot is typically 50. Notional = lot × price. Margin is only the cash blocked — losses can exceed it.", "risk", "topic"),
         InvestorTip("fo_margin", "Margin ≠ capital at risk", "Size from max loss, not how many lots the margin allows.", "risk", "topic"),
-        InvestorTip("fo_expiry", "Respect expiry & CAS", "Theta accelerates near expiry; F&O cash continuous ~15:15, CAS ~15:35, derivatives ~15:40 IST.", "session", "topic"),
-        InvestorTip("fo_liquidity", "Trade liquid strikes", "Wide spreads and thin OI amplify slippage — prefer real depth.", "risk", "topic"),
+        InvestorTip("fo_expiry", "Expiry comes fast", "Options lose value as expiry nears (theta). Cash 9:15–3:30 IST; F&O has extra closes after 3:15.", "session", "topic"),
+        InvestorTip("fo_liquidity", "Stay near ATM and liquid names", "Start with NIFTY / BANKNIFTY ATM. Wide spreads and thin OI amplify slippage.", "risk", "topic"),
         InvestorTip("fo_overnight", "Overnight gap risk", "Short options into results/policy can gap through stops. Reduce size or stay flat into binary risk.", "risk", "topic"),
     ),
     "sgb" to listOf(

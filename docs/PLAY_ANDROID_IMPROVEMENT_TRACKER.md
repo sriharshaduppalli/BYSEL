@@ -3,7 +3,7 @@
 Living backlog from Google Play Console, Play Academy, and Android Developers docs shared in chat.  
 **Update rule:** append new items when more docs are reviewed; mark status as we ship.
 
-Last updated: 2026-08-20 (Open testing 4.0.10 listing + Data safety paste)
+Last updated: 2026-08-21 (Data safety still a Console paste; 4.0.11 on Cloud Run)
 
 ---
 
@@ -78,7 +78,7 @@ Last updated: 2026-08-20 (Open testing 4.0.10 listing + Data safety paste)
 | ID | Item | Source | Status | Notes |
 |----|------|--------|--------|-------|
 | P0-1 | Android vitals: crash & ANR after new AABs | Technical quality | Watching | Filter versionCodes 209–211; fix only if over bad-behavior thresholds |
-| P0-2 | Data safety form matches privacy (AI + third-party AI) | Policy clarification Jul 2026 | Next (manual Console paste **today**) | Live listing still says “No data collected” / “No account required” — false. Paste section below. |
+| P0-2 | Data safety form matches privacy (AI + third-party AI) | Policy clarification Jul 2026 | Next (manual Console paste) | Live listing still says “No data collected” / “No account required” — false. Paste **Play Console Data safety checklist** below. Code cannot submit this form. |
 | P0-3 | Content rating questionnaire complete | Content ratings clarification | Next | Confirm not “unrated” |
 
 ### P1 — Product / UX quality

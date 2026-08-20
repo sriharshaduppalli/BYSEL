@@ -87,6 +87,8 @@ fun ScannerScreen(
     onBack: () -> Unit,
     onOpenSymbol: (ScannerRow) -> Unit,
     onOpenPaperGym: () -> Unit,
+    onOpenOptionsGym: () -> Unit = onOpenPaperGym,
+    onOpenFuturesGym: () -> Unit = onOpenPaperGym,
 ) {
     val theme = LocalAppTheme.current
     val payload by viewModel.marketScanner.collectAsStateWithLifecycle()
@@ -164,7 +166,10 @@ fun ScannerScreen(
 
         when {
             selected == ScannerModeChip.FNO -> {
-                FnoComingSoonCard(onOpenPaperGym = onOpenPaperGym)
+                FnoPaperHubCard(
+                    onOpenOptionsGym = onOpenOptionsGym,
+                    onOpenFuturesGym = onOpenFuturesGym,
+                )
             }
             loading && payload == null -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -322,29 +327,41 @@ fun ScannerScreen(
 }
 
 @Composable
-private fun FnoComingSoonCard(onOpenPaperGym: () -> Unit) {
+private fun FnoPaperHubCard(
+    onOpenOptionsGym: () -> Unit,
+    onOpenFuturesGym: () -> Unit,
+) {
     val theme = LocalAppTheme.current
-    Card(
+    Column(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxSize()
             .padding(16.dp),
-        colors = byselCardColors(),
-        elevation = byselCardElevation(),
-        border = byselCardBorder(),
-        shape = RoundedCornerShape(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("F&O — coming soon", fontWeight = FontWeight.SemiBold, color = theme.text)
-            Text(
-                "Option chain, strategy builder, and payoff diagrams are not in this phase. " +
-                    "Use Swing for cash setups or the paper Trade gym to practice size and risk.",
-                fontSize = 13.sp,
-                color = theme.textSecondary,
-            )
-            FilledTonalButton(onClick = onOpenPaperGym) {
-                Text("Open paper Trade gym")
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = byselCardColors(),
+            elevation = byselCardElevation(),
+            border = byselCardBorder(),
+            shape = RoundedCornerShape(14.dp),
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("F&O paper gym is ready", fontWeight = FontWeight.SemiBold, color = theme.text)
+                Text(
+                    "This scanner tab does not rank F&O contracts yet. Use Trade → Options to read a chain, " +
+                        "or Trade → Futures to preview lot size and margin. Start with NIFTY or BANKNIFTY.",
+                    fontSize = 13.sp,
+                    color = theme.textSecondary,
+                    lineHeight = 18.sp,
+                )
             }
         }
+        com.bysel.trader.ui.components.FnoLiteracyPrimer(
+            mode = com.bysel.trader.ui.components.FnoLiteracyMode.SCANNER,
+            initiallyExpanded = true,
+            onOpenOptions = onOpenOptionsGym,
+            onOpenFutures = onOpenFuturesGym,
+        )
     }
 }
 

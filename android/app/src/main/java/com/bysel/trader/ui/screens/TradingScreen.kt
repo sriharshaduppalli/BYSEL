@@ -59,7 +59,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.bysel.trader.ui.components.appOutlinedTextFieldColors
 import com.bysel.trader.ui.components.filterDecimalInput
 import com.bysel.trader.ui.components.filterDigitsOnly
+import com.bysel.trader.ui.components.FnoLiteracyMode
+import com.bysel.trader.ui.components.FnoLiteracyPrimer
 import com.bysel.trader.ui.components.InfoChip
+import com.bysel.trader.ui.components.basisPlainEnglish
 import com.bysel.trader.ui.theme.AnimatedAmountText
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.theme.ScreenHeader
@@ -182,8 +185,8 @@ private data class TradeWorkspaceTab(
 private val TRADE_WORKSPACE_TABS = listOf(
     TradeWorkspaceTab("Spot", "Equities"),
     TradeWorkspaceTab("Advanced", "Triggers & baskets"),
-    TradeWorkspaceTab("Options", "Chain & Greeks"),
-    TradeWorkspaceTab("Futures", "Radar"),
+    TradeWorkspaceTab("Options", "Learn the chain"),
+    TradeWorkspaceTab("Futures", "Lots & margin"),
 )
 
 @Composable
@@ -1185,12 +1188,12 @@ private fun FuturesRadarScreen(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        "Paper F&O gym: NSE contracts when reachable, else synthetic. Preview lot risk, then place a paper ticket. No guaranteed P&L.",
+                        "Paper F&O gym: NSE contracts when reachable, else a teaching board. Preview lot risk, then place a paper ticket. No guaranteed P&L.",
                         color = LocalAppTheme.current.textSecondary,
                         fontSize = 12.sp,
                     )
                     Text(
-                        "IST session: cash 9:15–15:30 · from 3 Aug 2026 F&O cash ~15:15, CAS ~15:35, derivatives ~15:40.",
+                        "Cash shares 9:15–3:30 IST. F&O has extra closes after 3:15 (CAS ~3:35, derivatives ~3:40).",
                         color = LocalAppTheme.current.textSecondary,
                         fontSize = 11.sp,
                     )
@@ -1209,6 +1212,10 @@ private fun FuturesRadarScreen(
         }
 
         item {
+            FnoLiteracyPrimer(mode = FnoLiteracyMode.FUTURES)
+        }
+
+        item {
             com.bysel.trader.ui.components.InvestorTipsCard(
                 title = "F&O Tips",
                 topicLabel = if (investorTips.topic == "fno") investorTips.topicLabel else foTipsFallback.topicLabel,
@@ -1222,6 +1229,11 @@ private fun FuturesRadarScreen(
             Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Futures Contract Loader", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Try NIFTY, BANKNIFTY, RELIANCE, or TCS. Load contracts, pick an expiry, then Preview Buy/Sell.",
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 11.sp,
+                    )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1349,6 +1361,19 @@ private fun FuturesRadarScreen(
                             InfoChip(label = { Text("Basis ${formatCurrency(contract.basis)}", maxLines = 1) })
                             InfoChip(label = { Text("Mgn/Lot ${formatCurrency(contract.marginPerLot)}", maxLines = 1) })
                         }
+                        val notional = contract.lotSize * contract.last
+                        Text(
+                            "1 lot controls ${formatCurrency(notional)}. Margin is typical cash blocked — a move against you can lose more than margin.",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                        )
+                        Text(
+                            basisPlainEnglish(contract.basis, futuresContracts?.spot ?: 0.0),
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                        )
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1414,6 +1439,12 @@ private fun FuturesRadarScreen(
                         Text("Estimated Margin: ${formatCurrency(preview.estimatedMargin)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                         Text("Estimated Charges: ${formatCurrency(preview.estimatedCharges)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                         Text("Max Loss Buffer: ${formatCurrency(preview.maxLossBuffer)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        Text(
+                            "Notional is the value you control. Margin is paper cash typically blocked. A 1% move against you is about ${formatCurrency(preview.notionalValue * 0.01)}.",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                        )
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

@@ -204,9 +204,9 @@ object StockLiteracyCatalog {
             LiteracyCard(
                 title = "F&O — paper gym",
                 tag = "How to use",
-                summary = "Volatility + OI + bias. Learn OI, PCR, Max Pain, Thursday expiry, VIX, and Greeks here — " +
-                    "education and paper only, not live brokerage. No guaranteed returns.",
-                learnQuery = "What are OI, PCR, Max Pain, VIX and option Greeks for NSE F&O beginners?",
+                summary = "Futures = later buy/sell (levered). Options = paid right to buy (call) or sell (put). " +
+                    "Read lot, margin vs notional, PCR, and Greeks on Trade → Options / Futures. Paper only.",
+                learnQuery = "What are futures vs options, lot size, margin, PCR and Greeks for NSE beginners?",
             ),
             LiteracyCard(
                 title = "Best practice",

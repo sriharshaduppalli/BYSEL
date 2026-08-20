@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from html import unescape
 from threading import Lock
 from typing import Dict, List, Optional, Tuple
-from .market_data import _yf_ticker, INDIAN_STOCKS, fetch_quote, search_stocks
+from .market_data import _yf_ticker, INDIAN_STOCKS, fetch_quote, fetch_quote_history, search_stocks
 
 logger = logging.getLogger(__name__)
 
@@ -249,13 +249,17 @@ def predict_price(symbol: str) -> Dict:
     with confidence intervals.
     """
     try:
-        ticker = yf.Ticker(_yf_ticker(symbol))
-        hist = ticker.history(period="1y")
-
-        if hist.empty or len(hist) < 30:
+        candles = fetch_quote_history(symbol, period="1y", interval="1d")
+        closes = [float(bar["close"]) for bar in candles if bar.get("close")]
+        if len(closes) < 30:
+            ticker = yf.Ticker(_yf_ticker(symbol))
+            hist = ticker.history(period="1y")
+            if hist is not None and not hist.empty:
+                closes = hist["Close"].values.astype(float).tolist()
+        if len(closes) < 30:
             return {"error": f"Insufficient data for {symbol}", "predictions": []}
 
-        closes = hist["Close"].values.astype(float)
+        closes = np.asarray(closes, dtype=float)
         current_price = closes[-1]
 
         predictions = []
@@ -922,86 +926,10 @@ def get_stock_detail_fast(symbol: str) -> Dict:
 
 
 def get_market_headlines(symbols: Optional[List[str]] = None, limit: int = 5) -> Dict:
-    """Aggregate diversified market headlines with a hard time budget.
+    """Home/news feed. Delegates to market_news (hard timeout + stale cache)."""
+    from .market_news import get_market_headlines as _fast_headlines
 
-    Must stay under the Android client callTimeout (~25s) so Home never shows a
-    raw timeout next to the Home Layout controls.
-    """
-    import time
-    from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_COMPLETED
-
-    deadline = time.monotonic() + float(os.getenv("MARKET_NEWS_BUDGET_SECONDS", "12"))
-    requested_symbols = symbols or _MARKET_NEWS_DEFAULT_SYMBOLS
-
-    normalized_symbols: List[str] = []
-    seen_symbols: set[str] = set()
-    for raw_symbol in requested_symbols:
-        symbol = str(raw_symbol or "").strip().upper()
-        if not symbol or symbol in seen_symbols:
-            continue
-        seen_symbols.add(symbol)
-        normalized_symbols.append(symbol)
-        if len(normalized_symbols) >= _MARKET_NEWS_MAX_SYMBOLS:
-            break
-
-    aggregated: List[Dict] = []
-    seen_titles: set[str] = set()
-    per_symbol_limit = max(3, min(5, limit))
-
-    # Always seed with broad market headlines so the feed is never one megacap.
-    if time.monotonic() < deadline:
-        for headline in _fetch_market_overview_headlines(limit=4):
-            title_key = str(headline.get("title", "")).strip().lower()
-            if not title_key or title_key in seen_titles:
-                continue
-            seen_titles.add(title_key)
-            aggregated.append(headline)
-
-    def _safe_fetch(sym: str) -> List[Dict]:
-        try:
-            return _fetch_recent_headlines(sym, limit=per_symbol_limit)
-        except Exception as exc:
-            logger.warning("Market news fetch failed for %s: %s", sym, exc)
-            return []
-
-    remaining = max(0.5, deadline - time.monotonic())
-    with ThreadPoolExecutor(max_workers=min(8, max(2, len(normalized_symbols)))) as pool:
-        futures = {pool.submit(_safe_fetch, sym): sym for sym in normalized_symbols}
-        pending = set(futures.keys())
-        while pending and time.monotonic() < deadline:
-            done, pending = wait(
-                pending,
-                timeout=max(0.1, deadline - time.monotonic()),
-                return_when=FIRST_COMPLETED,
-            )
-            if not done:
-                break
-            for future in done:
-                try:
-                    headlines = future.result() or []
-                except Exception:
-                    headlines = []
-                for headline in headlines:
-                    title_key = str(headline.get("title", "")).strip().lower()
-                    if not title_key or title_key in seen_titles:
-                        continue
-                    seen_titles.add(title_key)
-                    aggregated.append(headline)
-        for future in pending:
-            future.cancel()
-
-    selected = _select_diversified_headlines(
-        aggregated,
-        limit=limit,
-        max_per_symbol=_MARKET_NEWS_MAX_PER_SYMBOL,
-        max_age_hours=_MARKET_NEWS_MAX_AGE_HOURS,
-    )
-
-    return {
-        "headlines": selected,
-        "symbolsConsidered": normalized_symbols,
-        "generatedAt": _utc_now_naive().isoformat(),
-    }
+    return _fast_headlines(symbols=symbols, limit=limit)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -1023,13 +951,17 @@ def analyze_stock(symbol: str) -> Dict:
     if cached:
         return cached
     try:
+        candles = fetch_quote_history(symbol, period="1y", interval="1d")
+        closes = [float(bar["close"]) for bar in candles if bar.get("close")]
         ticker = yf.Ticker(_yf_ticker(symbol))
-        hist = ticker.history(period="1y")
-
-        if hist.empty:
+        if len(closes) < 20:
+            hist = ticker.history(period="1y")
+            if hist is not None and not hist.empty:
+                closes = hist["Close"].values.astype(float).tolist()
+        if len(closes) < 20:
             return {"error": f"No data available for {symbol}"}
 
-        closes = hist["Close"].values.astype(float)
+        closes = np.asarray(closes, dtype=float)
         current = closes[-1]
 
         # Technical Analysis

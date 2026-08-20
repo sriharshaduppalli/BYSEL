@@ -124,6 +124,7 @@ from ..market_news import (
 )
 from ..ai_engine import (
     analyze_stock, predict_price, ai_assistant,
+    get_stock_detail_fast, get_best_stocks_to_buy,
     get_stop_loss_take_profit, calculate_drawdown_risk, calculate_relative_strength,
     calculate_trade_accuracy, get_sector_rotation_signals, get_earnings_calendar,
     advanced_stock_screener
@@ -2993,7 +2994,6 @@ async def ai_analyze_endpoint(symbol: str):
 async def ai_analyze_fast_endpoint(symbol: str):
     """Ultra-fast stock detail loading (<1s) with 20-second cache.
     Perfect for real-time price updates during market hours."""
-    from .ai_engine import get_stock_detail_fast
     result = get_stock_detail_fast(symbol.upper())
     if "error" in result and "predictions" not in result:
         raise HTTPException(status_code=404, detail=result["error"])
@@ -3014,7 +3014,6 @@ async def ai_predict_endpoint(symbol: str):
 async def ai_recommendations_endpoint(limit: int = 10):
     """Get best stocks to buy for different timeframes (day, month, 3-months)
     with predicted targets, confidence scores, and model accuracy metrics."""
-    from .ai_engine import get_best_stocks_to_buy
     result = await asyncio.to_thread(get_best_stocks_to_buy, limit)
     return result
 
@@ -3033,7 +3032,6 @@ async def ai_practice_ideas_endpoint(limit: int = 6):
 async def ai_trade_levels_endpoint(symbol: str):
     """Get risk-adjusted stop loss and take profit levels for a stock.
     Includes entry signals, position sizing, and risk:reward ratios."""
-    from .ai_engine import get_stop_loss_take_profit
     result = get_stop_loss_take_profit(symbol.upper())
     if "error" in result:
         raise HTTPException(status_code=404, detail=result.get("error", "Analysis failed"))
@@ -3044,7 +3042,6 @@ async def ai_trade_levels_endpoint(symbol: str):
 async def ai_drawdown_risk_endpoint(symbol: str):
     """Get historical drawdown risk, current distance from peak, and risk scoring.
     Helps users understand maximum downside potential."""
-    from .ai_engine import calculate_drawdown_risk
     result = calculate_drawdown_risk(symbol.upper())
     if "error" in result:
         raise HTTPException(status_code=404, detail=result.get("error", "Analysis failed"))
@@ -3055,7 +3052,6 @@ async def ai_drawdown_risk_endpoint(symbol: str):
 async def ai_relative_strength_endpoint(symbol: str):
     """Get relative strength vs sector and market.
     Compare stock performance to peers and benchmark."""
-    from .ai_engine import calculate_relative_strength
     result = calculate_relative_strength(symbol.upper())
     if "error" in result:
         raise HTTPException(status_code=404, detail=result.get("error", "Analysis failed"))
@@ -3066,7 +3062,7 @@ async def ai_relative_strength_endpoint(symbol: str):
 async def ai_trade_accuracy_endpoint(timeframe: str = "one_month"):
     """Get backtesting accuracy of ML recommendations from N days ago.
     Shows win rate, average profit, and Sharpe ratio."""
-    from .ai_engine import calculate_trade_accuracy
+    # calculate_trade_accuracy is imported at module top from ..ai_engine
     
     if timeframe not in ["one_day", "one_month", "three_months"]:
         timeframe = "one_month"
@@ -3079,7 +3075,6 @@ async def ai_trade_accuracy_endpoint(timeframe: str = "one_month"):
 async def sector_rotation_signals_endpoint():
     """Get sector rotation signals based on momentum, strength, and valuation.
     Identifies which sectors to accumulate, hold, or reduce."""
-    from .ai_engine import get_sector_rotation_signals
     result = get_sector_rotation_signals()
     return result
 
@@ -3088,7 +3083,7 @@ async def sector_rotation_signals_endpoint():
 async def earnings_calendar_endpoint(next_days: int = 30):
     """Get upcoming earnings calendar with pre-earnings volatility alerts.
     Helps avoid gap risk and identifies volatility trading opportunities."""
-    from .ai_engine import get_earnings_calendar
+    # get_earnings_calendar is imported at module top from ..ai_engine
     
     if next_days > 90:
         next_days = 90
@@ -3119,7 +3114,7 @@ async def advanced_screener_endpoint(filters: Dict = None):
         "risk_level": "LOW"
     }
     """
-    from .ai_engine import advanced_stock_screener
+    # advanced_stock_screener is imported at module top from ..ai_engine
     
     if filters is None:
         filters = {}

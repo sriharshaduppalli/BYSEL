@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.sp
 import com.bysel.trader.alerts.FcmTokenRegistrar
 import com.bysel.trader.data.WatchlistSymbols
 import com.bysel.trader.data.auth.AuthSessionManager
+import com.bysel.trader.data.api.RetrofitClient
 import com.bysel.trader.data.local.BYSELDatabase
 import com.bysel.trader.data.repository.AuthRepository
 import com.bysel.trader.data.repository.Result
@@ -91,14 +92,9 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalFoundationApi::class)
 class MainActivity : FragmentActivity() {
-    private var upiResultCallback: ((Boolean) -> Unit)? = null
     private lateinit var biometricAuthManager: BiometricAuthManager
     private var tradingViewModel: TradingViewModel? = null
     private var isAuthenticated = false
-
-
-
-    private lateinit var upiLauncher: androidx.activity.result.ActivityResultLauncher<android.content.Intent>
 
     /** Launcher shortcut / notification deep-link; updated from [onNewIntent] when already running. */
     private val pendingShortcutAction = mutableStateOf<String?>(null)
@@ -128,14 +124,6 @@ class MainActivity : FragmentActivity() {
         var keepSplashScreen = true
         splashScreen.setKeepOnScreenCondition { keepSplashScreen }
 
-        upiLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
-            val data = result.data
-            val response = data?.getStringExtra("response") ?: ""
-            val success = response.contains("SUCCESS", ignoreCase = true)
-            upiResultCallback?.invoke(success)
-            upiResultCallback = null
-        }
-
         AuthSessionManager.init(applicationContext)
 
         pendingShortcutAction.value = intent.getStringExtra(ShortcutActions.EXTRA_ACTION)
@@ -155,6 +143,14 @@ class MainActivity : FragmentActivity() {
             val shortcutAction by pendingShortcutAction
             val initialTab = remember(shortcutAction) {
                 ShortcutActions.tabForAction(shortcutAction)
+            }
+
+            // Fire /warmup as soon as splash is up. Do not keep the splash waiting on it.
+            LaunchedEffect(Unit) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    runCatching { RetrofitClient.warmApiService.warmup() }
+                        .onFailure { runCatching { RetrofitClient.warmApiService.healthCheck() } }
+                }
             }
 
             // Biometric unlock gate — cleared on background so returning requires unlock again.
@@ -271,11 +267,6 @@ class MainActivity : FragmentActivity() {
                     initialTab = initialTab,
                     pendingShortcutAction = shortcutAction,
                     onShortcutConsumed = { pendingShortcutAction.value = null },
-                    onUpiPay = { amount, upiPackageName ->
-                        launchUpiPayment(amount, upiPackageName) { success ->
-                            if (success) currentTradingViewModel.addFunds(amount)
-                        }
-                    },
                     onLogout = {
                         manualLogoutInProgress = true
                         scope.launch {
@@ -346,19 +337,6 @@ class MainActivity : FragmentActivity() {
         super.onStop()
     }
 
-    private fun launchUpiPayment(amount: Double, upiPackage: String, onResult: (Boolean) -> Unit) {
-        val upiUri = android.net.Uri.parse(
-            "upi://pay?pa=your-vpa@upi&pn=BYSEL&am=$amount&cu=INR"
-        )
-        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, upiUri)
-        intent.setPackage(upiPackage)
-        upiResultCallback = onResult
-        try {
-            upiLauncher.launch(intent)
-        } catch (e: Exception) {
-            onResult(false)
-        }
-    }
 }
 
 @Composable
@@ -428,7 +406,6 @@ private data class AiTradeRequest(
 fun BYSELApp(
     viewModel: TradingViewModel, 
     biometricAuthManager: BiometricAuthManager,
-    onUpiPay: (Double, String) -> Unit,
     onLogout: () -> Unit = {},
     onLogoutAllDevices: () -> Unit = {},
     initialTab: Int = 0,
@@ -569,6 +546,8 @@ fun BYSELApp(
     val aiLikelyColdStart by viewModel.aiLikelyColdStart.collectAsStateWithLifecycle()
     val portfolioHealth by viewModel.portfolioHealth.collectAsStateWithLifecycle()
     val healthLoading by viewModel.healthLoading.collectAsStateWithLifecycle()
+    val paperPortfolioRisk by viewModel.paperPortfolioRisk.collectAsStateWithLifecycle()
+    val marketScanner by viewModel.marketScanner.collectAsStateWithLifecycle()
     val marketHeatmap by viewModel.marketHeatmap.collectAsStateWithLifecycle()
     val heatmapLoading by viewModel.heatmapLoading.collectAsStateWithLifecycle()
     val signalLabBuckets by viewModel.signalLabBuckets.collectAsStateWithLifecycle()
@@ -580,6 +559,7 @@ fun BYSELApp(
     val walletBalance by viewModel.walletBalance.collectAsStateWithLifecycle()
     val marketStatus by viewModel.marketStatus.collectAsStateWithLifecycle()
     val lastQuoteUpdateAt by viewModel.lastQuoteUpdateAt.collectAsStateWithLifecycle()
+    val serverWakingHint by viewModel.serverWakingHint.collectAsStateWithLifecycle()
     val liveQuotesEnabled by viewModel.fastRefreshEnabled.collectAsStateWithLifecycle()
     val investorPortfolios by viewModel.investorPortfolios.collectAsStateWithLifecycle()
     val investorPortfoliosLoading by viewModel.investorPortfoliosLoading.collectAsStateWithLifecycle()
@@ -971,7 +951,10 @@ fun BYSELApp(
                         // Shown on every tab so a stale price is never mistaken for a live one.
                         MarketDataStatusBanner(
                             lastQuoteUpdateAt = lastQuoteUpdateAt,
-                            isMarketOpen = marketStatus?.isOpen
+                            isMarketOpen = marketStatus?.isOpen,
+                            serverWaking = serverWakingHint,
+                            liveRefreshInFlight = isLoading || quotesRefreshing || holdingsRefreshing,
+                            onRetryWake = { viewModel.retryWakeServer() },
                         )
                     Box(
                         modifier = Modifier
@@ -1121,8 +1104,22 @@ fun BYSELApp(
                                         error = portfolioError,
                                         portfolioHealth = portfolioHealth,
                                         healthLoading = healthLoading,
+                                        paperRisk = paperPortfolioRisk,
+                                        scannerScores = remember(marketScanner) {
+                                            marketScanner?.rows.orEmpty()
+                                                .mapNotNull { row ->
+                                                    val score = row.byselScore ?: row.overall.takeIf { it > 0 }
+                                                    val symbol = row.symbol.trim().uppercase()
+                                                    if (symbol.isEmpty() || score == null) null
+                                                    else symbol to score
+                                                }
+                                                .toMap()
+                                        },
                                         onRefresh = { viewModel.refreshPortfolio() },
-                                        onRefreshHealth = { viewModel.loadPortfolioHealth() },
+                                        onRefreshHealth = {
+                                            viewModel.loadPortfolioHealth()
+                                            viewModel.loadPaperPortfolioRisk()
+                                        },
                                         onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
                                         onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") },
                                         onErrorDismiss = { viewModel.clearPortfolioError() },
@@ -1175,6 +1172,7 @@ fun BYSELApp(
                                     onRiskLabClick = { selectedTab = 22 },
                                     onEarningsCalendarClick = { selectedTab = 23 },
                                     onTradeJournalClick = { selectedTab = 24 },
+                                    onOrderHistoryClick = { selectedTab = 29 },
                                     onWatchlistClick = { selectedTab = 25 },
                                     onMarketCalendarClick = { selectedTab = 26 },
                                 )
@@ -1197,7 +1195,18 @@ fun BYSELApp(
                                         viewModel.fetchAndSelectQuote(row.symbol)
                                         openStockDetailTab()
                                     },
-                                    onOpenPaperGym = { selectRootTab(2) },
+                                    onOpenPaperGym = {
+                                        viewModel.requestTradeWorkspace(2)
+                                        selectRootTab(2)
+                                    },
+                                    onOpenOptionsGym = {
+                                        viewModel.requestTradeWorkspace(2)
+                                        selectRootTab(2)
+                                    },
+                                    onOpenFuturesGym = {
+                                        viewModel.requestTradeWorkspace(3)
+                                        selectRootTab(2)
+                                    },
                                 )
                                 20 -> SignalLabScreen(
                                     quotes = quotes,
@@ -1238,6 +1247,10 @@ fun BYSELApp(
                                     onBack = { selectedTab = 5 }
                                 )
                                 24 -> com.bysel.trader.ui.screens.TradeJournalScreen(
+                                    viewModel = viewModel,
+                                    onBack = { selectedTab = 5 }
+                                )
+                                29 -> com.bysel.trader.ui.screens.OrderHistoryScreen(
                                     viewModel = viewModel,
                                     onBack = { selectedTab = 5 }
                                 )

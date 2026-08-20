@@ -97,8 +97,12 @@ fun SettingsScreen(
     var showLogoutAllDialog by remember { mutableStateOf(false) }
     var showDeleteAccountDialog by remember { mutableStateOf(false) }
     var deleteAccountPassword by remember { mutableStateOf("") }
+    var deleteAccountConfirmation by remember { mutableStateOf("") }
     var deleteAccountError by remember { mutableStateOf<String?>(null) }
     var deleteAccountLoading by remember { mutableStateOf(false) }
+    val otpOnlyAccount = remember {
+        AuthSessionManager.isOtpPlaceholderAccount()
+    }
     var openWebsite by remember { mutableStateOf(false) }
     var showIntervalDialog by remember { mutableStateOf(false) }
     var localHeatmapInterval by remember { mutableStateOf(heatmapInterval) }
@@ -328,6 +332,7 @@ fun SettingsScreen(
                 if (!deleteAccountLoading) {
                     showDeleteAccountDialog = false
                     deleteAccountPassword = ""
+                    deleteAccountConfirmation = ""
                     deleteAccountError = null
                 }
             },
@@ -342,19 +347,34 @@ fun SettingsScreen(
             text = {
                 Column {
                     Text(
-                        text = "This will permanently delete your account and all associated data. This action cannot be undone.",
+                        text = if (otpOnlyAccount) {
+                            "This permanently deletes your phone account and paper-trading data. Type DELETE to confirm. Phone-only accounts do not have a password."
+                        } else {
+                            "This will permanently delete your account and all associated data. This action cannot be undone."
+                        },
                         color = LocalAppTheme.current.textSecondary,
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
-                    OutlinedTextField(
-                        value = deleteAccountPassword,
-                        onValueChange = { deleteAccountPassword = it; deleteAccountError = null },
-                        label = { Text("Enter your password to confirm") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        isError = deleteAccountError != null
-                    )
+                    if (otpOnlyAccount) {
+                        OutlinedTextField(
+                            value = deleteAccountConfirmation,
+                            onValueChange = { deleteAccountConfirmation = it; deleteAccountError = null },
+                            label = { Text("Type DELETE to confirm") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            isError = deleteAccountError != null
+                        )
+                    } else {
+                        OutlinedTextField(
+                            value = deleteAccountPassword,
+                            onValueChange = { deleteAccountPassword = it; deleteAccountError = null },
+                            label = { Text("Enter your password to confirm") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            isError = deleteAccountError != null
+                        )
+                    }
                     if (deleteAccountError != null) {
                         Text(
                             text = deleteAccountError!!,
@@ -368,16 +388,25 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        if (deleteAccountPassword.isBlank()) {
+                        if (otpOnlyAccount) {
+                            if (!deleteAccountConfirmation.equals("DELETE", ignoreCase = true)) {
+                                deleteAccountError = "Type DELETE to confirm"
+                                return@TextButton
+                            }
+                        } else if (deleteAccountPassword.isBlank()) {
                             deleteAccountError = "Password is required"
                             return@TextButton
                         }
                         deleteAccountLoading = true
                         scope.launch {
-                            when (val result = authRepository.deleteAccount(deleteAccountPassword)) {
+                            when (val result = authRepository.deleteAccount(
+                                password = deleteAccountPassword.takeIf { !otpOnlyAccount },
+                                confirmation = deleteAccountConfirmation.takeIf { otpOnlyAccount },
+                            )) {
                                 is Result.Success -> {
                                     showDeleteAccountDialog = false
                                     deleteAccountPassword = ""
+                                    deleteAccountConfirmation = ""
                                     onLogout()
                                 }
                                 is Result.Error -> {
@@ -402,6 +431,7 @@ fun SettingsScreen(
                     onClick = {
                         showDeleteAccountDialog = false
                         deleteAccountPassword = ""
+                        deleteAccountConfirmation = ""
                         deleteAccountError = null
                     },
                     enabled = !deleteAccountLoading

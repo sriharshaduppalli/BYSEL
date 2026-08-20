@@ -872,6 +872,98 @@ def _safe_number(value: object, default: float = 0.0) -> float:
     return number
 
 
+def _parse_yahoo_v8_chart(data: Optional[dict]) -> List[dict]:
+    """Map Yahoo v8 chart JSON onto BYSEL candle dicts."""
+    results = ((data or {}).get("chart") or {}).get("result") or []
+    if not results or not isinstance(results[0], dict):
+        return []
+    node = results[0]
+    timestamps = node.get("timestamp") or []
+    quotes = ((node.get("indicators") or {}).get("quote") or [{}])
+    if not quotes or not isinstance(quotes[0], dict):
+        return []
+    quote = quotes[0]
+    opens = quote.get("open") or []
+    highs = quote.get("high") or []
+    lows = quote.get("low") or []
+    closes = quote.get("close") or []
+    volumes = quote.get("volume") or []
+
+    candles: List[dict] = []
+    seen_ts: set[int] = set()
+    for index, raw_ts in enumerate(timestamps):
+        try:
+            timestamp_ms = int(raw_ts) * 1000
+            close_p = float(closes[index])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if close_p <= 0 or timestamp_ms in seen_ts:
+            continue
+
+        def _bar(values: list, fallback: float) -> float:
+            try:
+                number = float(values[index])
+            except (TypeError, ValueError, IndexError):
+                return fallback
+            return number if number == number and number > 0 else fallback
+
+        open_p = _bar(opens, close_p)
+        high_p = _bar(highs, max(open_p, close_p))
+        low_p = _bar(lows, min(open_p, close_p))
+        if high_p < low_p:
+            continue
+        try:
+            volume = int(float(volumes[index] or 0))
+        except (TypeError, ValueError, IndexError):
+            volume = 0
+
+        seen_ts.add(timestamp_ms)
+        candles.append(
+            {
+                "timestamp": timestamp_ms,
+                "open": round(open_p, 4),
+                "high": round(high_p, 4),
+                "low": round(low_p, 4),
+                "close": round(close_p, 4),
+                "volume": volume,
+            }
+        )
+    candles.sort(key=lambda candle: candle["timestamp"])
+    return candles
+
+
+def _fetch_yahoo_v8_chart(yahoo_symbol: str, period: str, interval: str, timeout: float = 6.0) -> List[dict]:
+    """Daily/intraday OHLCV via Yahoo v8 chart REST (crumb-authed, then bare GET)."""
+    token = (yahoo_symbol or "").strip()
+    if not token:
+        return []
+    encoded = urllib.parse.quote(token, safe=".")
+    query = urllib.parse.urlencode({"range": period, "interval": interval, "events": "div,split"})
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json",
+    }
+    for host in ("query1", "query2"):
+        url = f"https://{host}.finance.yahoo.com/v8/finance/chart/{encoded}?{query}"
+        candles = _parse_yahoo_v8_chart(_yahoo_authed_json(url, timeout=timeout))
+        if candles:
+            return candles
+        try:
+            req = urllib.request.Request(url, headers=headers, method="GET")
+            with urllib.request.urlopen(req, timeout=max(1.5, float(timeout))) as resp:
+                data = _json.loads(resp.read().decode("utf-8"))
+            candles = _parse_yahoo_v8_chart(data)
+            if candles:
+                return candles
+        except Exception as exc:
+            logger.debug("yahoo v8 chart failed via %s %s/%s: %s", host, period, interval, exc)
+    return []
+
+
 def fetch_quote_history(symbol: str, period: str = "1mo", interval: str = "1d") -> List[dict]:
     """Fetch OHLCV candles from Yahoo Finance for a symbol and timeframe."""
     normalized_symbol = (symbol or "").strip().upper()
@@ -913,6 +1005,24 @@ def fetch_quote_history(symbol: str, period: str = "1mo", interval: str = "1d") 
         (normalized_period, normalized_interval),
         [(normalized_period, normalized_interval)],
     )
+
+    # Prefer Yahoo v8 chart REST (same crumb path as live v7 quotes). yfinance
+    # ticker.history() often returns empty from Cloud Run / europe-west1.
+    for try_period, try_interval in combo_attempts:
+        for yahoo in list(dict.fromkeys(candidates)):
+            v8_candles = _fetch_yahoo_v8_chart(yahoo, try_period, try_interval)
+            if v8_candles:
+                if (try_period, try_interval) != (normalized_period, normalized_interval):
+                    logger.info(
+                        "history v8 fallback %s: requested %s/%s → served %s/%s (%d bars)",
+                        normalized_symbol,
+                        normalized_period,
+                        normalized_interval,
+                        try_period,
+                        try_interval,
+                        len(v8_candles),
+                    )
+                return v8_candles
 
     hist = None
     used_period = normalized_period

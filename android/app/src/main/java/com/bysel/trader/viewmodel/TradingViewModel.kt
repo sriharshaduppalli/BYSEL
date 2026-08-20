@@ -14,6 +14,7 @@ import com.bysel.trader.data.CustomScannerFiltersStore
 import com.bysel.trader.data.models.*
 import com.bysel.trader.data.repository.Result
 import com.bysel.trader.data.repository.TradingRepository
+import com.bysel.trader.data.api.ServerReachability
 import com.bysel.trader.data.auth.AuthSessionManager
 import com.bysel.trader.data.auth.AuthTokenRefresher
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -142,6 +143,10 @@ class TradingViewModel(
 
     /** Alias of [tradeError] for Trade-tab internals. */
     private val _error = _tradeError
+
+    private val _serverWakingHint = MutableStateFlow(false)
+    val serverWakingHint: StateFlow<Boolean> = _serverWakingHint.asStateFlow()
+    private var serverWakeHintJob: Job? = null
     val error: StateFlow<String?> = _tradeError.asStateFlow()
 
     private val _lastOrderTraceId = MutableStateFlow<String?>(null)
@@ -239,6 +244,11 @@ class TradingViewModel(
     val portfolioHealth: StateFlow<PortfolioHealthScore?> = _portfolioHealth.asStateFlow()
     private val _healthLoading = MutableStateFlow(false)
     val healthLoading: StateFlow<Boolean> = _healthLoading.asStateFlow()
+
+    private val _paperPortfolioRisk = MutableStateFlow<PaperPortfolioRisk?>(null)
+    val paperPortfolioRisk: StateFlow<PaperPortfolioRisk?> = _paperPortfolioRisk.asStateFlow()
+    private val _paperRiskLoading = MutableStateFlow(false)
+    val paperRiskLoading: StateFlow<Boolean> = _paperRiskLoading.asStateFlow()
 
     private val _marketHeatmap = MutableStateFlow<MarketHeatmap?>(null)
     val marketHeatmap: StateFlow<MarketHeatmap?> = _marketHeatmap.asStateFlow()
@@ -410,7 +420,6 @@ class TradingViewModel(
     private val HEATMAP_REFRESH_DEBOUNCE = 1_200L
     private val HEATMAP_STALE_THRESHOLD = 12_000L
     private val RESUME_HEATMAP_DELAY = 500L
-    private val WARM_BACKEND_BUDGET_MS = 12_000L
     private val KEEPALIVE_INTERVAL_MS = 10 * 60_000L
     private val TRIGGER_AUTO_EVAL_INTERVAL = 30_000L
     private var lastForegroundWarmupAt = 0L
@@ -758,9 +767,9 @@ class TradingViewModel(
      * trading screen now loads it on first visit instead.
      */
     private fun scheduleInitialWarmup() {
+        warmBackendInBackground()
+        armServerWakeHint()
         viewModelScope.launch {
-            // Wake market host first (short timeout), then pull user-critical data.
-            launch { repository.warmMarketBackend() }
             kotlinx.coroutines.delay(INITIAL_STATUS_WARMUP_DELAY)
             refreshMarketStatus()
             refreshWallet()
@@ -770,6 +779,50 @@ class TradingViewModel(
         }
         // AI warm stays on the AI tab — same host, so an early AI /health
         // would compete with wallet/holdings during cold start.
+    }
+
+    private fun armServerWakeHint() {
+        if (ServerReachability.isLikelyWarm()) {
+            _serverWakingHint.value = false
+            return
+        }
+        if (serverWakeHintJob?.isActive == true) return
+        serverWakeHintJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(ServerReachability.WAKE_HINT_DELAY_MS)
+            val stillWaiting = _isLoading.value || _quotesRefreshing.value || _holdingsRefreshing.value
+            if (stillWaiting && ServerReachability.isLikelyColdStart()) {
+                _serverWakingHint.value = true
+            }
+        }
+    }
+
+    private fun clearServerWakeHint() {
+        serverWakeHintJob?.cancel()
+        serverWakeHintJob = null
+        _serverWakingHint.value = false
+    }
+
+    private fun warmBackendInBackground() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            ServerReachability.markWakeStarted()
+            var ok = repository.warmMarketBackend() is Result.Success
+            if (!ok) {
+                kotlinx.coroutines.delay(ServerReachability.WAKE_HINT_DELAY_MS)
+                ok = repository.warmMarketBackend() is Result.Success
+            }
+            if (ok) clearServerWakeHint()
+        }
+    }
+
+    fun retryWakeServer() {
+        _marketError.value = null
+        _portfolioError.value = null
+        _serverWakingHint.value = false
+        warmBackendInBackground()
+        refreshQuotes(force = true, showSpinner = true)
+        refreshHoldings()
+        refreshWallet()
+        armServerWakeHint()
     }
 
     private fun defaultAchievementsFromCode() = listOf(
@@ -862,6 +915,7 @@ class TradingViewModel(
                 }
 
                 _isLoading.value = _quotes.value.isEmpty()
+                armServerWakeHint()
                 repository.getQuotes(symbols).collect { result ->
                     when (result) {
                         is Result.Loading -> _isLoading.value = _quotes.value.isEmpty()
@@ -874,6 +928,7 @@ class TradingViewModel(
                                 overlayHoldingsFromQuotes(result.data)
                                 _isLoading.value = false
                                 markQuoteUpdate()
+                                clearServerWakeHint()
                                 syncSelectedQuoteFrom(_quotes.value)
                                 evaluateAlerts(result.data)
                                 maybeAutoEvaluateTriggers(_quotes.value.map { it.symbol })
@@ -960,6 +1015,7 @@ class TradingViewModel(
                             _holdings.value = result.data
                             overlayHoldingsFromQuotes(_quotes.value)
                             lastHoldingsRefreshAt = System.currentTimeMillis()
+                            if (ServerReachability.isLikelyWarm()) clearServerWakeHint()
                         }
                         is Result.Error -> {
                             if (_holdings.value.isEmpty()) {
@@ -984,6 +1040,7 @@ class TradingViewModel(
             showSpinner = true,
         )
         loadPortfolioHealth()
+        loadPaperPortfolioRisk()
     }
 
     fun loadInvestorPortfolios() {
@@ -1491,6 +1548,9 @@ class TradingViewModel(
         }
         lastForegroundWarmupAt = now
 
+        warmBackendInBackground()
+        armServerWakeHint()
+
         viewModelScope.launch {
             ensureWatchlistLoaded()
             // Instant local seed if process was killed / state empty.
@@ -1510,12 +1570,7 @@ class TradingViewModel(
                 AuthTokenRefresher.refreshIfNeeded()
             }
 
-            // Phase 1: wake host with a budget so user fetches are not starved forever.
-            kotlinx.coroutines.withTimeoutOrNull(WARM_BACKEND_BUDGET_MS) {
-                repository.warmMarketBackend()
-            }
-
-            // Phase 2: user-critical info first.
+            // User-critical fetches immediately. /warmup runs in the background.
             refreshMarketStatus()
             val walletStale = System.currentTimeMillis() - lastWalletRefreshAt > WALLET_STALE_THRESHOLD
             if (force || walletStale) {
@@ -1532,7 +1587,7 @@ class TradingViewModel(
                 refreshHoldings()
             }
 
-            // Phase 3: heavier market surfaces after user data is in flight.
+            // Heavier market surfaces after user data is in flight.
             kotlinx.coroutines.delay(RESUME_HEATMAP_DELAY)
             val heatmapStale = _marketHeatmap.value == null ||
                 System.currentTimeMillis() - lastHeatmapRefreshAt > HEATMAP_STALE_THRESHOLD
@@ -3050,6 +3105,21 @@ class TradingViewModel(
         }
     }
 
+    fun loadPaperPortfolioRisk() {
+        viewModelScope.launch {
+            val showSpinner = _paperPortfolioRisk.value == null
+            if (showSpinner) _paperRiskLoading.value = true
+            when (val r = repository.getPaperPortfolioRisk()) {
+                is Result.Success -> _paperPortfolioRisk.value = r.data
+                is Result.Error -> {
+                    // Keep last snapshot. Local holdings/quotes still drive the dashboard.
+                }
+                else -> {}
+            }
+            _paperRiskLoading.value = false
+        }
+    }
+
     fun loadMarketHeatmap(force: Boolean = false) {
         // After hours, freeze the last real snapshot so TQI doesn't drift on
         // keepalive / poll. Empty shells may still retry once to pick up persist.
@@ -3632,6 +3702,14 @@ class TradingViewModel(
             generatedAt = java.time.LocalDate.now().toString(),
             disclaimer = "Educational earnings dates — live calendar unavailable. Not official company guidance.",
         )
+    }
+
+    suspend fun fetchTradeHistory(): List<com.bysel.trader.data.api.TradeHistory> {
+        return try {
+            com.bysel.trader.data.api.RetrofitClient.apiService.getTradeHistory()
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
 
     suspend fun fetchJournalEntries(): List<Map<String, Any>> {

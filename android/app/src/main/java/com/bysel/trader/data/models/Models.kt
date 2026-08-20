@@ -436,6 +436,72 @@ data class PortfolioHealthScore(
     val lastUpdated: String = ""
 )
 
+/** Phase 1.3 paper risk snapshot — concentration / sector mix / Nifty illustration. */
+data class PaperPortfolioRisk(
+    val empty: Boolean = true,
+    val totalValue: Double = 0.0,
+    val totalInvested: Double = 0.0,
+    val totalPnl: Double = 0.0,
+    val dayPnl: Double = 0.0,
+    val dayPnlPercent: Double = 0.0,
+    val dayPnlAvailable: Boolean = false,
+    val byselScore: PaperByselScoreBlend = PaperByselScoreBlend(),
+    val concentration: PaperConcentration = PaperConcentration(),
+    val sectors: List<PaperSectorWeight> = emptyList(),
+    val sectorSpread: PaperSectorSpread = PaperSectorSpread(),
+    val whatIf: PaperWhatIf = PaperWhatIf(),
+    val volatility: PaperHistoryGap = PaperHistoryGap(),
+    val maxDrawdown: PaperHistoryGap = PaperHistoryGap(),
+    val disclaimer: String = "",
+    val importNote: String = "",
+    val message: String = "",
+    val holdingsCount: Int = 0,
+    val generatedAt: String = "",
+)
+
+data class PaperByselScoreBlend(
+    val valueWeighted: Int? = null,
+    val scoredCount: Int = 0,
+    val missingCount: Int = 0,
+    val coveredValuePct: Double = 0.0,
+    val note: String = "",
+)
+
+data class PaperConcentration(
+    val top1Pct: Double = 0.0,
+    val top1Symbol: String = "",
+    val top5Pct: Double = 0.0,
+    val gauge: Int = 0,
+    val gaugeLabel: String = "Largest name as % of book",
+    val gaugeHint: String = "Higher = more of the book in one name",
+)
+
+data class PaperSectorWeight(
+    val name: String = "",
+    val weightPct: Double = 0.0,
+)
+
+data class PaperSectorSpread(
+    val sectorCount: Int = 0,
+    val hhi: Double = 0.0,
+    val gauge: Int = 0,
+    val gaugeLabel: String = "Sector spread",
+    val gaugeHint: String = "Higher = more spread across sectors (1 − HHI)",
+)
+
+data class PaperWhatIf(
+    val beta: Double = 1.0,
+    val equityValue: Double = 0.0,
+    val niftyDown5: Double = 0.0,
+    val niftyDown10: Double = 0.0,
+    val label: String = "Illustration, not a forecast. Conservative beta = 1 on equity value.",
+)
+
+data class PaperHistoryGap(
+    val available: Boolean = false,
+    val note: String = "Needs more history",
+)
+
 data class HeatmapStock(
     val symbol: String = "",
     val name: String = "",
@@ -977,7 +1043,8 @@ data class FirebasePhoneAuthRequest(
 )
 
 data class DeleteAccountRequest(
-    val password: String
+    val password: String? = null,
+    val confirmation: String? = null,
 )
 
 data class AuthResponse(

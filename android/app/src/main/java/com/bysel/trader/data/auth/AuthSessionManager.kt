@@ -148,6 +148,16 @@ object AuthSessionManager {
 
     fun getCachedMobileNumber(): String? = prefs?.getString(KEY_MOBILE, null)
 
+    /** Phone OTP accounts get mobile_*@bysel.com and no password the user knows. */
+    fun isOtpPlaceholderAccount(
+        username: String? = getCachedUsername(),
+        email: String? = getCachedEmail(),
+    ): Boolean {
+        val user = username.orEmpty().lowercase()
+        val mail = email.orEmpty().lowercase()
+        return user.startsWith("mobile_") || mail.startsWith("mobile_")
+    }
+
     fun clearSession() {
         val sharedPrefs = prefs ?: return
         sharedPrefs.edit().clear().commit()

@@ -28,12 +28,12 @@ fun OnboardingScreen(onFinish: () -> Unit) {
             description = "Get instant answers, insights, and trade ideas from our AI."
         ),
         OnboardingPage(
-            title = "Demo Account",
-            description = "Practice trading with a free demo account."
+            title = "Paper practice wallet",
+            description = "Your wallet starts at ₹0. Add practice credit in Trade whenever you want — no real money, no UPI."
         ),
         OnboardingPage(
             title = "Seamless Experience",
-            description = "Personalize your settings and start trading!"
+            description = "Personalize your settings and start paper trading."
         )
     )
 

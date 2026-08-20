@@ -106,6 +106,7 @@ fun MoreScreen(
     onRiskLabClick: () -> Unit,
     onEarningsCalendarClick: () -> Unit,
     onTradeJournalClick: () -> Unit,
+    onOrderHistoryClick: () -> Unit = {},
     onWatchlistClick: () -> Unit,
     onMarketCalendarClick: () -> Unit,
 ) {
@@ -139,6 +140,13 @@ fun MoreScreen(
             subtitle = "Practice reviews and behavioral insights",
             gradientColors = listOf(Color(0xFF4A148C), Color(0xFF9C27B0)),
             onClick = onTradeJournalClick,
+        ),
+        MoreMenuEntry(
+            icon = Icons.Filled.ReceiptLong,
+            title = "Order history",
+            subtitle = "Paper fills — buy/sell time, qty, and price",
+            gradientColors = listOf(Color(0xFF37474F), Color(0xFF90A4AE)),
+            onClick = onOrderHistoryClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Bookmarks,
@@ -269,7 +277,7 @@ fun MoreScreen(
         MoreMenuEntry(
             icon = Icons.AutoMirrored.Filled.ShowChart,
             title = "Derivatives Intelligence",
-            subtitle = "Option chain, Greeks, and strategy risk",
+            subtitle = "Plain-English chain, recipes, and paper risk",
             gradientColors = listOf(Color(0xFF00838F), Color(0xFF4DD0E1)),
             onClick = onDerivativesClick,
         ),

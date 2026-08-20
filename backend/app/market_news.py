@@ -4,7 +4,8 @@ Never call yfinance on this path. Yahoo Ticker.get_news() has no timeout and
 ThreadPoolExecutor shutdown used to wait on hung workers — that is the 28s
 GET /market/news (and the blocked event-loop /wallet 32s).
 
-Hard budget is ~2.5s. Slow Google RSS → return stale cache (or empty).
+Hard budget is ~5s. Prefer Economic Times / Mint if Google RSS is slow
+from Cloud Run, then stale cache, then empty.
 """
 
 from __future__ import annotations
@@ -24,11 +25,21 @@ from xml.etree import ElementTree as ET
 
 logger = logging.getLogger(__name__)
 
-MARKET_NEWS_TIMEOUT_SECONDS = float(os.getenv("MARKET_NEWS_TIMEOUT_SECONDS", "2.5"))
-MARKET_NEWS_RSS_TIMEOUT_SECONDS = float(os.getenv("MARKET_NEWS_RSS_TIMEOUT_SECONDS", "1.0"))
+MARKET_NEWS_TIMEOUT_SECONDS = float(os.getenv("MARKET_NEWS_TIMEOUT_SECONDS", "5.0"))
+MARKET_NEWS_RSS_TIMEOUT_SECONDS = float(os.getenv("MARKET_NEWS_RSS_TIMEOUT_SECONDS", "2.5"))
 MARKET_NEWS_CACHE_TTL_SECONDS = int(os.getenv("MARKET_NEWS_CACHE_TTL_SECONDS", "90"))
 MARKET_NEWS_STALE_TTL_SECONDS = int(os.getenv("MARKET_NEWS_STALE_TTL_SECONDS", str(30 * 60)))
 MARKET_NEWS_MAX_SYMBOLS = 12
+_BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+# Google News from Cloud Run (europe-west1) often exceeds the old 1s budget.
+# These India market feeds are the first fill so Home is not empty.
+_FALLBACK_FEEDS = (
+    ("https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms", "Economic Times"),
+    ("https://www.livemint.com/rss/markets", "Mint"),
+)
 
 _DEFAULT_SYMBOLS = [
     "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK",
@@ -119,14 +130,23 @@ def empty_market_news(symbols: Optional[List[str]], limit: int) -> Dict:
 def _http_get(url: str, timeout: float) -> bytes:
     req = urllib.request.Request(
         url,
-        headers={"User-Agent": "Mozilla/5.0 (compatible; BYSEL/1.0)"},
+        headers={
+            "User-Agent": _BROWSER_UA,
+            "Accept": "application/rss+xml, application/xml, text/xml, */*",
+        },
         method="GET",
     )
     with urllib.request.urlopen(req, timeout=max(0.25, float(timeout))) as resp:
         return resp.read()
 
 
-def _parse_rss_items(xml_bytes: bytes, *, symbol: str, limit: int) -> List[Dict]:
+def _parse_rss_items(
+    xml_bytes: bytes,
+    *,
+    symbol: str,
+    limit: int,
+    default_source: str = "Google News",
+) -> List[Dict]:
     root = ET.fromstring(xml_bytes)
     items: List[Dict] = []
     seen: set[str] = set()
@@ -149,7 +169,7 @@ def _parse_rss_items(xml_bytes: bytes, *, symbol: str, limit: int) -> List[Dict]
         items.append({
             "symbol": symbol,
             "title": title,
-            "source": source or "Google News",
+            "source": source or default_source,
             "publishedAt": published_at.isoformat() if published_at else "",
             "publishedLabel": _age_label(published_at),
             "link": (node.findtext("link") or "").strip(),
@@ -171,8 +191,31 @@ def _google_rss_search(query: str, *, symbol: str, limit: int, timeout: float) -
         raw = _http_get(url, timeout=timeout)
         return _parse_rss_items(raw, symbol=symbol, limit=limit)
     except Exception as exc:
-        logger.debug("market_news.rss_failed symbol=%s reason=%s", symbol, exc)
+        logger.warning("market_news.google_rss_failed symbol=%s reason=%s", symbol, exc)
         return []
+
+
+def _fetch_fallback_feeds(limit: int, timeout: float) -> List[Dict]:
+    if timeout <= 0.05:
+        return []
+    per_feed = max(0.4, min(timeout, MARKET_NEWS_RSS_TIMEOUT_SECONDS))
+    items: List[Dict] = []
+    for url, source in _FALLBACK_FEEDS:
+        if len(items) >= limit:
+            break
+        try:
+            raw = _http_get(url, timeout=per_feed)
+            items.extend(
+                _parse_rss_items(
+                    raw,
+                    symbol="MARKET",
+                    limit=max(4, limit),
+                    default_source=source,
+                )
+            )
+        except Exception as exc:
+            logger.warning("market_news.fallback_rss_failed source=%s reason=%s", source, exc)
+    return items[:limit]
 
 
 def _company_name(symbol: str) -> str:
@@ -251,15 +294,21 @@ def _fetch_live_headlines(symbols: List[str], limit: int, deadline: float) -> Di
 
     remaining = deadline - time.monotonic()
     if remaining > 0.15:
+        _absorb(_fetch_fallback_feeds(limit=max(6, limit), timeout=min(MARKET_NEWS_RSS_TIMEOUT_SECONDS, remaining)))
+
+    remaining = deadline - time.monotonic()
+    if remaining > 0.4:
         _absorb(_fetch_overview(limit=4, timeout=min(MARKET_NEWS_RSS_TIMEOUT_SECONDS, remaining)))
 
     remaining = deadline - time.monotonic()
-    if remaining > 0.15 and symbols:
+    if remaining > 0.4 and symbols:
         per_symbol_limit = max(2, min(4, limit))
         rss_timeout = min(MARKET_NEWS_RSS_TIMEOUT_SECONDS, remaining)
+        # Cap per-request Google searches so europe-west1 latency cannot empty Home.
+        symbol_batch = list(symbols)[:4]
         futures = {
             _POOL.submit(_fetch_symbol_rss, symbol, per_symbol_limit, rss_timeout): symbol
-            for symbol in symbols
+            for symbol in symbol_batch
         }
         pending = set(futures)
         while pending and time.monotonic() < deadline:

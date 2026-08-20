@@ -52,8 +52,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import com.bysel.trader.data.models.*
+import com.bysel.trader.ui.components.FnoLiteracyMode
+import com.bysel.trader.ui.components.FnoLiteracyPrimer
 import com.bysel.trader.ui.components.InvestorTipsCard
+import com.bysel.trader.ui.components.atmIvPlainEnglish
+import com.bysel.trader.ui.components.callMoneyness
+import com.bysel.trader.ui.components.ivSkewPlainEnglish
 import com.bysel.trader.ui.components.localInvestorTips
+import com.bysel.trader.ui.components.pcrPlainEnglish
+import com.bysel.trader.ui.components.putMoneyness
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.theme.byselCardBorder
 import com.bysel.trader.ui.theme.byselCardColors
@@ -1759,6 +1766,7 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
     val optionChain by viewModel.optionChain.collectAsStateWithLifecycle()
@@ -1822,13 +1830,16 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
         }
         item {
             Text(
-                "Paper F&O gym: live NSE chain when reachable, else synthetic Black–Scholes. Educational only — no guaranteed P&L.",
+                "Paper F&O gym: live NSE chain when reachable, else a teaching chain. Educational only — no guaranteed P&L.",
                 color = LocalAppTheme.current.textSecondary,
                 fontSize = 12.sp,
             )
         }
         item {
-            ProductPaperBanner("IST session: cash 9:15–15:30 · from 3 Aug 2026 F&O cash ~15:15, CAS ~15:35, derivatives ~15:40. Paper practice, not live brokerage.")
+            FnoLiteracyPrimer(mode = FnoLiteracyMode.OPTIONS, initiallyExpanded = false)
+        }
+        item {
+            ProductPaperBanner("Cash shares 9:15–3:30 IST. F&O has extra closes after 3:15 (CAS ~3:35, derivatives ~3:40). Paper practice, not live brokerage.")
         }
         item { ActionBanner(viewModel) }
         item {
@@ -1848,6 +1859,11 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
             Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Option Chain", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Start with NIFTY. Expiry is when the option ends — weekly index options usually Thursday.",
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 11.sp,
+                    )
                     OutlinedTextField(
                         value = symbol,
                         onValueChange = { symbol = it.uppercase() },
@@ -1925,6 +1941,24 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        Text(
+                            pcrPlainEnglish(chain.pcr),
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                        )
+                        Text(
+                            atmIvPlainEnglish(chain.atmIv),
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                        )
+                        Text(
+                            ivSkewPlainEnglish(chain.ivSkew),
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                        )
                         chain.notes.take(2).forEach { note ->
                             Text(
                                 note,
@@ -1944,11 +1978,11 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
                                 val callIvPct = (contract.callIv ?: contract.impliedVolatility) * 100.0
                                 val putIvPct = (contract.putIv ?: contract.impliedVolatility) * 100.0
                                 Text(
-                                    "Strike ${String.format("%.0f", contract.strike)} · IV C ${String.format("%.1f", callIvPct)}% / P ${String.format("%.1f", putIvPct)}%",
+                                    "Strike ${String.format("%.0f", contract.strike)} · Call ${callMoneyness(chain.spot, contract.strike)} · Put ${putMoneyness(chain.spot, contract.strike)} · IV C ${String.format("%.1f", callIvPct)}% / P ${String.format("%.1f", putIvPct)}%",
                                     color = LocalAppTheme.current.text,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 12.sp,
-                                    maxLines = 1,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
@@ -1984,10 +2018,39 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Strategy Builder (paper)", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Illustrative risk preview — not a live order and P&L is not guaranteed.",
+                        "Tap a recipe to fill the legs, then Preview Risk. Illustrative only — not a live order.",
                         color = LocalAppTheme.current.textSecondary,
                         fontSize = 11.sp,
                     )
+                    val recipes = remember(optionChain, symbol) {
+                        optionStrategyRecipes(optionChain)
+                    }
+                    if (recipes.isNotEmpty()) {
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            recipes.forEach { recipe ->
+                                FilterChip(
+                                    selected = strategyLegsInput == recipe.legsText,
+                                    onClick = {
+                                        strategySpotInput = String.format("%.2f", recipe.spot)
+                                        strategyLegsInput = recipe.legsText
+                                    },
+                                    label = { Text(recipe.title, maxLines = 1) },
+                                )
+                            }
+                        }
+                        recipes.firstOrNull { it.legsText == strategyLegsInput }?.let { selected ->
+                            Text(
+                                selected.meaning,
+                                color = LocalAppTheme.current.textSecondary,
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp,
+                            )
+                        }
+                    }
                     OutlinedTextField(
                         value = strategySpotInput,
                         onValueChange = { strategySpotInput = it },
@@ -2023,6 +2086,12 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
                         Text("Max Loss: ₹${String.format("%.2f", preview.maxLoss)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                         Text("Margin Estimate: ₹${String.format("%.2f", preview.marginEstimate)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                         Text("Risk/Reward: ${String.format("%.2f", preview.riskRewardRatio)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        Text(
+                            "Max profit is the best case if the recipe works. Max loss is what you can lose if it does not. Margin is an estimate of cash typically blocked — not a broker SPAN quote.",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                        )
                         if (preview.breakevenPoints.isNotEmpty()) {
                             Text("Breakeven: ${preview.breakevenPoints.joinToString { String.format("%.2f", it) }}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                         }
@@ -2826,6 +2895,64 @@ private fun parseBasketLegs(rawInput: String): List<BasketOrderLegRequest> {
                 orderType = orderType,
             )
         }
+}
+
+private data class OptionStrategyRecipe(
+    val title: String,
+    val meaning: String,
+    val spot: Double,
+    val legsText: String,
+)
+
+private fun nearestAtmContract(chain: OptionChainResponse): OptionContract? {
+    return chain.contracts.minByOrNull { kotlin.math.abs(it.strike - chain.spot) }
+}
+
+private fun nextHigherContract(chain: OptionChainResponse, strike: Double): OptionContract? {
+    return chain.contracts.filter { it.strike > strike }.minByOrNull { it.strike }
+}
+
+private fun formatStrategyLegLine(
+    optionType: String,
+    side: String,
+    strike: Double,
+    premium: Double,
+): String {
+    return "$optionType:$side:${String.format("%.0f", strike)}:${String.format("%.1f", premium)}"
+}
+
+private fun optionStrategyRecipes(chain: OptionChainResponse?): List<OptionStrategyRecipe> {
+    val loaded = chain ?: return emptyList()
+    val atm = nearestAtmContract(loaded) ?: return emptyList()
+    val higher = nextHigherContract(loaded, atm.strike)
+    val recipes = mutableListOf(
+        OptionStrategyRecipe(
+            title = "Long call",
+            meaning = "Buy the ATM call. Helps if ${loaded.symbol} rises. Max loss is the premium you pay.",
+            spot = loaded.spot,
+            legsText = formatStrategyLegLine("CALL", "BUY", atm.strike, atm.callLtp),
+        ),
+        OptionStrategyRecipe(
+            title = "Long put",
+            meaning = "Buy the ATM put. Helps if ${loaded.symbol} falls, or as a hedge on shares you hold.",
+            spot = loaded.spot,
+            legsText = formatStrategyLegLine("PUT", "BUY", atm.strike, atm.putLtp),
+        ),
+    )
+    if (higher != null) {
+        recipes.add(
+            OptionStrategyRecipe(
+                title = "Bull call spread",
+                meaning = "Buy ATM call and sell a higher call. Cheaper than a naked call; profit is capped at the short strike.",
+                spot = loaded.spot,
+                legsText = listOf(
+                    formatStrategyLegLine("CALL", "BUY", atm.strike, atm.callLtp),
+                    formatStrategyLegLine("CALL", "SELL", higher.strike, higher.callLtp),
+                ).joinToString("\n"),
+            ),
+        )
+    }
+    return recipes
 }
 
 private fun parseStrategyLegs(rawInput: String): List<StrategyLeg> {

@@ -27,6 +27,7 @@ import android.util.Log
 import com.bysel.trader.util.CredentialHelper
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import retrofit2.HttpException
@@ -37,12 +38,41 @@ class AuthRepository(
     private val apiService: BYSELApiService = RetrofitClient.authApiService
 ) {
     suspend fun warmBackend() {
-        runCatching { apiService.healthCheck() }
+        runCatching { RetrofitClient.warmApiService.warmup() }
+            .onFailure { runCatching { RetrofitClient.warmApiService.healthCheck() } }
     }
 
     private fun normalizeLoginIdentifier(raw: String): String {
         val trimmed = raw.trim()
         return if (trimmed.contains("@")) trimmed.lowercase() else trimmed
+    }
+
+    private fun isTransientAuthFailure(exception: Exception): Boolean {
+        // Do not retry 429 — login lockout / attempt caps get worse if we hammer again.
+        if (exception is HttpException && exception.code() in setOf(502, 503, 504)) {
+            return true
+        }
+        val raw = exception.message.orEmpty()
+        return exception is java.net.SocketTimeoutException ||
+            exception is java.io.InterruptedIOException ||
+            raw.contains("timeout", ignoreCase = true) ||
+            raw.contains("timed out", ignoreCase = true)
+    }
+
+    private suspend fun <T> retryTransientAuth(block: suspend () -> T): T {
+        var lastError: Exception? = null
+        repeat(3) { attempt ->
+            try {
+                return block()
+            } catch (e: Exception) {
+                lastError = e
+                if (!isTransientAuthFailure(e) || attempt == 2) {
+                    throw e
+                }
+                delay(700L * (attempt + 1))
+            }
+        }
+        throw lastError ?: IllegalStateException("Auth retry exhausted")
     }
 
     private fun toAuthErrorMessage(exception: Exception, fallback: String): String {
@@ -53,7 +83,9 @@ class AuthRepository(
             rawMessage.contains("timeout", ignoreCase = true) ||
             rawMessage.contains("timed out", ignoreCase = true)
         ) {
-            return "Server is waking up. Wait a few seconds and try again — your password was not rejected."
+            return NetworkErrorMessages.timeoutCopy(
+                "Wait a few seconds and try again — your password was not rejected.",
+            )
         }
         if (
             exception is java.net.UnknownHostException ||
@@ -84,6 +116,8 @@ class AuthRepository(
                     }
                 }
                 429 -> detail ?: "Too many attempts. Please wait a minute and try again."
+                502, 503, 504 ->
+                    "BYSEL servers are busy. Wait a few seconds and try again — your password was not rejected."
                 else -> detail ?: (exception.message ?: fallback)
             }
         }
@@ -96,13 +130,15 @@ class AuthRepository(
         val normalizedEmail = email.trim().lowercase()
         val normalizedPassword = password.trim()
         return try {
-            val response = apiService.register(
-                RegisterRequest(
-                    username = normalizedUsername,
-                    email = normalizedEmail,
-                    password = normalizedPassword,
+            val response = retryTransientAuth {
+                apiService.register(
+                    RegisterRequest(
+                        username = normalizedUsername,
+                        email = normalizedEmail,
+                        password = normalizedPassword,
+                    )
                 )
-            )
+            }
             AuthSessionManager.saveSession(
                 accessToken = response.access_token,
                 refreshToken = response.refresh_token,
@@ -132,9 +168,11 @@ class AuthRepository(
             return Result.Error("Password is required")
         }
         return try {
-            val response = apiService.login(
-                LoginRequest(username = normalizedUsername, password = normalizedPassword)
-            )
+            val response = retryTransientAuth {
+                apiService.login(
+                    LoginRequest(username = normalizedUsername, password = normalizedPassword)
+                )
+            }
             AuthSessionManager.saveSession(
                 accessToken = response.access_token,
                 refreshToken = response.refresh_token,
@@ -320,9 +358,14 @@ class AuthRepository(
         }
     }
 
-    suspend fun deleteAccount(password: String): Result<Unit> {
+    suspend fun deleteAccount(password: String? = null, confirmation: String? = null): Result<Unit> {
         return try {
-            apiService.deleteAccount(DeleteAccountRequest(password = password))
+            apiService.deleteAccount(
+                DeleteAccountRequest(
+                    password = password?.takeIf { it.isNotBlank() },
+                    confirmation = confirmation?.takeIf { it.isNotBlank() },
+                )
+            )
             clearLocalIdentity()
             Result.Success(Unit)
         } catch (e: Exception) {
@@ -344,12 +387,14 @@ class AuthRepository(
         val normalizedMobile = mobileNumber.trim()
         val normalizedOtp = otp.trim()
         return try {
-            val response = apiService.verifyOTP(
-                VerifyOTPRequest(
-                    mobileNumber = normalizedMobile,
-                    otp = normalizedOtp
+            val response = retryTransientAuth {
+                apiService.verifyOTP(
+                    VerifyOTPRequest(
+                        mobileNumber = normalizedMobile,
+                        otp = normalizedOtp
+                    )
                 )
-            )
+            }
             AuthSessionManager.saveSession(
                 accessToken = response.access_token,
                 refreshToken = response.refresh_token,
@@ -375,9 +420,11 @@ class AuthRepository(
             return Result.Error("Empty authentication token")
         }
         return try {
-            val response = apiService.firebasePhoneAuth(
-                FirebasePhoneAuthRequest(firebaseIdToken = firebaseIdToken)
-            )
+            val response = retryTransientAuth {
+                apiService.firebasePhoneAuth(
+                    FirebasePhoneAuthRequest(firebaseIdToken = firebaseIdToken)
+                )
+            }
             AuthSessionManager.saveSession(
                 accessToken = response.access_token,
                 refreshToken = response.refresh_token,
