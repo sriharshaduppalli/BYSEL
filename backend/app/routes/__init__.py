@@ -116,8 +116,14 @@ from ..market_data import (
     search_stocks, get_symbols_with_names, get_stock_name, INDIAN_STOCKS,
     fetch_market_movers, get_stock_catalog,
 )
+from ..market_news import (
+    MARKET_NEWS_TIMEOUT_SECONDS,
+    empty_market_news,
+    get_market_headlines,
+    peek_stale_news,
+)
 from ..ai_engine import (
-    analyze_stock, predict_price, ai_assistant, get_market_headlines,
+    analyze_stock, predict_price, ai_assistant,
     get_stop_loss_take_profit, calculate_drawdown_risk, calculate_relative_strength,
     calculate_trade_accuracy, get_sector_rotation_signals, get_earnings_calendar,
     advanced_stock_screener
@@ -1836,7 +1842,7 @@ async def export_portfolio_endpoint(
 
 @router.get("/wallet", response_model=Wallet)
 async def get_wallet_endpoint(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    """Get current wallet balance for the authenticated user."""
+    """Cash/credits only. Never waits on Yahoo quotes."""
     return get_wallet(db, user.id)
 
 
@@ -1973,9 +1979,23 @@ async def market_news_endpoint(
     symbols: str = Query("", description="Optional comma-separated stock symbols"),
     limit: int = Query(10, ge=1, le=20),
 ):
-    """Get the latest market headlines across liquid NSE names (Yahoo + Google News)."""
+    """Latest headlines. Hard ~2.5s budget; stale cache if Google/Yahoo is slow."""
     requested_symbols = [value.strip().upper() for value in symbols.split(",") if value.strip()]
-    return get_market_headlines(symbols=requested_symbols or None, limit=limit)
+    timeout = max(0.8, float(MARKET_NEWS_TIMEOUT_SECONDS) + 0.15)
+    try:
+        payload = await asyncio.wait_for(
+            asyncio.to_thread(get_market_headlines, requested_symbols or None, limit),
+            timeout=timeout,
+        )
+        return payload
+    except asyncio.TimeoutError:
+        logger.warning(
+            "market_news_timeout symbols=%s limit=%s",
+            len(requested_symbols) or "default",
+            limit,
+        )
+        stale = peek_stale_news(requested_symbols or None, limit)
+        return stale or empty_market_news(requested_symbols or None, limit)
 
 
 @router.get("/market/movers", response_model=MarketMoversResponse)
@@ -2139,7 +2159,7 @@ _BACKGROUND_WARM_MIN_INTERVAL = 45.0
 
 
 def _kick_background_warmup(force: bool = False) -> bool:
-    """Non-blocking quote + ISM warm. Deduped so Render health pings stay cheap."""
+    """Non-blocking quote + listing warm. Never loads the 10k LLM catalog here."""
     global _last_background_warm_at
     now = time.time()
     if not force and (now - _last_background_warm_at) < _BACKGROUND_WARM_MIN_INTERVAL:
@@ -2158,10 +2178,10 @@ def _kick_background_warmup(force: bool = False) -> bool:
         except Exception as exc:
             logger.warning("warmup.heatmap_failed reason=%s", exc)
         try:
-            from ..llm_integration import llm_available
-            llm_available()
+            from ..stock_enricher import _kick_listing_warmup
+            _kick_listing_warmup()
         except Exception as exc:
-            logger.warning("warmup.llm_failed reason=%s", exc)
+            logger.warning("warmup.listings_failed reason=%s", exc)
         try:
             from ..alert_push import evaluate_active_alert_symbols
             evaluate_active_alert_symbols()
@@ -3139,6 +3159,54 @@ async def portfolio_health_endpoint(
             "sectorAllocation": {},
             "riskLevel": "none",
         }
+
+
+@router.get("/portfolio/risk")
+async def portfolio_risk_endpoint(user=Depends(get_current_user)):
+    """Phase 1.3 paper risk snapshot from current holdings + quotes.
+
+    Auth required. No Postgres. Does not invent 1Y drawdown or a correlation matrix.
+    Nifty −5%/−10% is a beta=1 illustration on equity value, not a forecast.
+    """
+    try:
+        holdings = await asyncio.to_thread(_holdings_in_thread, user.id)
+    except Exception as exc:
+        logger.error("portfolio_risk_endpoint_failed user_id=%s reason=%s", user.id, exc)
+        raise HTTPException(status_code=503, detail="Portfolio risk temporarily unavailable") from exc
+
+    def _compute():
+        from ..market_data import fetch_quotes
+        from ..portfolio_risk import compute_portfolio_risk_from_holdings
+
+        holdings_list = [
+            {
+                "symbol": h.symbol,
+                "qty": h.qty,
+                "avgPrice": h.avgPrice,
+                "last": h.last,
+                "pnl": h.pnl,
+            }
+            for h in holdings
+        ]
+        symbols = [row["symbol"] for row in holdings_list if row.get("symbol")]
+        quotes = []
+        if symbols:
+            try:
+                quotes = fetch_quotes(symbols) or []
+            except Exception as exc:
+                logger.warning("portfolio_risk quote batch failed reason=%s", exc)
+                quotes = []
+        return compute_portfolio_risk_from_holdings(holdings_list, quotes)
+
+    try:
+        return await asyncio.to_thread(_compute)
+    except Exception as exc:
+        logger.warning("portfolio_risk_compute_failed reason=%s", exc)
+        from ..portfolio_risk import empty_portfolio_risk
+
+        payload = empty_portfolio_risk()
+        payload["message"] = "Couldn't refresh risk snapshot. Your holdings are unchanged."
+        return payload
 
 
 # ==================== MARKET HEATMAP ====================

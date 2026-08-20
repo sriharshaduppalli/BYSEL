@@ -20,6 +20,22 @@ from typing import Dict, Optional, List
 logger = logging.getLogger(__name__)
 
 
+class _SuppressYfinanceDelisted(logging.Filter):
+    """Yahoo empty charts are rate-limits/blocks, not delistings of RELIANCE/TCS."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            msg = record.getMessage().lower()
+        except Exception:
+            return True
+        if "possibly delisted" in msg or "no price data found" in msg:
+            return False
+        return True
+
+
+logging.getLogger("yfinance").addFilter(_SuppressYfinanceDelisted())
+
+
 def _env_int(name: str, default: int, minimum: int = 1) -> int:
     raw_value = os.getenv(name)
     if raw_value is None:
@@ -1468,8 +1484,8 @@ def fetch_quote(symbol: str) -> dict:
     stale = _quote_cache.get_allow_stale(symbol, float(QUOTE_CACHE_STORAGE_SECONDS))
 
     try:
-        # Near-live last price: one v7 call (~4s). Never start with Ticker.history —
-        # that plus sequential fallback is the 40–50s open-hours hang.
+        # Near-live last price: one v7 call. Never Ticker.history / yf.download(period=2d)
+        # — empty Yahoo charts look like "possibly delisted" for live NSE names.
         yf_sym = _yf_ticker(symbol)
         v7 = (_fetch_yahoo_v7_quotes([yf_sym], timeout=float(QUOTE_V7_TIMEOUT)) or {}).get(yf_sym) or {}
         live = _quote_from_yahoo_v7(symbol, v7, stale=stale)
@@ -1480,99 +1496,7 @@ def fetch_quote(symbol: str) -> dict:
             return live
         if stale:
             return stale
-
-        ticker = yf.Ticker(yf_sym)
-        info = ticker.fast_info
-        hist = ticker.history(period="2d")
-
-        if hist.empty:
-            logger.warning(f"No history data for {symbol}")
-            return _empty_quote(symbol)
-
-        last_price = float(info.last_price) if hasattr(info, 'last_price') and info.last_price else float(hist['Close'].iloc[-1])
-        prev_close = float(info.previous_close) if hasattr(info, 'previous_close') and info.previous_close else (
-            float(hist['Close'].iloc[-2]) if len(hist) > 1 else last_price
-        )
-
-        pct_change = round(((last_price - prev_close) / prev_close) * 100, 2) if prev_close > 0 else 0.0
-
-        # Reuse PE/mcap from the last full fetch — ticker.info is too slow for live ticks.
-        if stale:
-            quote = dict(stale)
-            quote["last"] = round(last_price, 2)
-            quote["pctChange"] = pct_change
-            quote["open"] = round(_safe_number(hist["Open"].iloc[-1], last_price), 2)
-            quote["high"] = round(_safe_number(hist["High"].iloc[-1], last_price), 2)
-            quote["low"] = round(_safe_number(hist["Low"].iloc[-1], last_price), 2)
-            quote["previousClose"] = round(prev_close, 2)
-            quote["prevClose"] = round(prev_close, 2)
-            quote["volume"] = int(_safe_number(hist["Volume"].iloc[-1], 0.0))
-            quote["timestamp"] = int(datetime.utcnow().timestamp() * 1000)
-            quote = _overlay_fundamentals(quote, _get_cached_fundamentals(symbol))
-            _quote_cache.put(symbol, quote)
-            if _needs_fundamentals(quote):
-                _schedule_fundamentals_fill([symbol])
-            logger.info(f"Fetched live quote: {symbol} = ₹{last_price:.2f} ({pct_change:+.2f}%)")
-            return quote
-
-        # First paint: crumb-authed v7 for PE/EPS/yield. ticker.info stays off this path.
-        yf_sym = _yf_ticker(symbol)
-        fund = _merge_fundamentals(
-            _get_cached_fundamentals(symbol),
-            fundamentals_from_fast_info(info, last_price=last_price),
-        )
-        v7: dict = {}
-        if _needs_fundamentals(fund):
-            v7_rows = _fetch_yahoo_v7_quotes([yf_sym], timeout=3.5)
-            v7 = v7_rows.get(yf_sym) or {}
-            fund = _merge_fundamentals(fund, fundamentals_from_yahoo_quote(v7, last_price=last_price))
-        if not fund.get("targetMeanPrice"):
-            fund = _merge_fundamentals(fund, _fetch_yahoo_quote_summary(yf_sym, timeout=3.5))
-        if fund:
-            _put_fundamentals(symbol, fund)
-
-        day_high = _first_yahoo_number(v7, "regularMarketDayHigh") or float(hist["High"].iloc[-1])
-        day_low = _first_yahoo_number(v7, "regularMarketDayLow") or float(hist["Low"].iloc[-1])
-        open_price = _first_yahoo_number(v7, "regularMarketOpen") or float(hist["Open"].iloc[-1])
-        volume = int(
-            _first_yahoo_number(v7, "regularMarketVolume")
-            or _safe_number(hist["Volume"].iloc[-1], 0.0)
-        )
-        fifty_two_high = fund.get("fiftyTwoWeekHigh") or (last_price * 1.15)
-        fifty_two_low = fund.get("fiftyTwoWeekLow") or (last_price * 0.85)
-
-        quote = {
-            "symbol": symbol,
-            "last": round(last_price, 2),
-            "pctChange": pct_change,
-            "open": round(float(open_price), 2),
-            "high": round(float(day_high), 2),
-            "low": round(float(day_low), 2),
-            "previousClose": round(prev_close, 2),
-            "prevClose": round(prev_close, 2),
-            "volume": int(volume or 0),
-            "avgVolume": fund.get("avgVolume"),
-            "marketCap": fund.get("marketCap"),
-            "pe": fund.get("pe"),
-            "trailingPE": fund.get("trailingPE") or fund.get("pe"),
-            "eps": fund.get("eps"),
-            "dividendYield": fund.get("dividendYield"),
-            "fiftyTwoWeekHigh": round(float(fifty_two_high), 2),
-            "fiftyTwoWeekLow": round(float(fifty_two_low), 2),
-            "targetMeanPrice": fund.get("targetMeanPrice"),
-            "fiftyDayAverage": fund.get("fiftyDayAverage"),
-            "twoHundredDayAverage": fund.get("twoHundredDayAverage"),
-            "bid": fund.get("bid"),
-            "ask": fund.get("ask"),
-            "timestamp": int(datetime.utcnow().timestamp() * 1000),
-        }
-        quote = _overlay_fundamentals(quote, fund)
-
-        _quote_cache.put(symbol, quote)
-        if _needs_fundamentals(quote):
-            _schedule_fundamentals_fill([symbol])
-        logger.info(f"Fetched live quote: {symbol} = ₹{last_price:.2f} ({pct_change:+.2f}%)")
-        return quote
+        return _empty_quote(symbol)
 
     except Exception as e:
         logger.error(f"Error fetching quote for {symbol}: {e}")
@@ -1600,8 +1524,8 @@ def fetch_quotes(
     (heatmap / stream pass a short age while the market is open).
     If omitted, uses quote_max_age_seconds() (~5s open, ~3m closed).
     batch_size / yf_threads: heatmap still requests a larger batch; last prices
-    come from Yahoo v7 (one HTTP per ~40 tickers). yf.download is last-resort only.
-    individual_fallback: at most QUOTE_INDIVIDUAL_FALLBACK_MAX per-symbol calls.
+    come from Yahoo v7 (one HTTP per ~40 tickers). yf.download is never used here.
+    individual_fallback: at most QUOTE_INDIVIDUAL_FALLBACK_MAX per-symbol v7 calls.
     """
     if not symbols:
         return []
@@ -1670,17 +1594,8 @@ def _quotes_from_v7_batch(batch_symbols: List[str], timeout: Optional[float] = N
 
 
 def _fetch_batch_quotes(batch_symbols: List[str], *, yf_threads: bool = False) -> dict:
-    """Fetch a batch of last prices. Yahoo v7 first; yf.download only if v7 returns nothing."""
+    """Fetch a batch of last prices via Yahoo v7 only. Never yf.download(period=2d)."""
     results = _quotes_from_v7_batch(batch_symbols)
-    missing = [symbol for symbol in batch_symbols if symbol not in results]
-    if missing and not results:
-        results.update(
-            _fetch_batch_quotes_download(
-                missing,
-                yf_threads=True if yf_threads or len(missing) > 1 else False,
-                timeout=float(QUOTE_YF_DOWNLOAD_TIMEOUT),
-            )
-        )
     need_fund = [symbol for symbol, quote in results.items() if _needs_fundamentals(quote)]
     if need_fund:
         _schedule_fundamentals_fill(need_fund)
@@ -1693,9 +1608,15 @@ def _fetch_batch_quotes_download(
     yf_threads: bool = False,
     timeout: float = 8.0,
 ) -> dict:
-    """Last-resort yfinance download. Never the open-hours hot path."""
+    """Unused on quote/stream/movers/heatmap. Kept for tests; do not call from hot paths."""
     results = {}
-    
+    if not batch_symbols:
+        return results
+    # Cap leftover history to 0–2 symbols so a Yahoo block cannot walk 32 names.
+    batch_symbols = list(batch_symbols)[: max(0, min(2, int(QUOTE_INDIVIDUAL_FALLBACK_MAX)))]
+    if not batch_symbols:
+        return results
+
     try:
         yf_tickers = " ".join([_yf_ticker(s) for s in batch_symbols])
         data = yf.download(
@@ -1932,6 +1853,14 @@ def get_stock_catalog() -> Dict[str, tuple]:
         return catalog
 
 
+def get_stock_catalog_if_ready() -> Optional[Dict[str, tuple]]:
+    """Return the in-memory catalog only — never downloads NSE/BSE masters."""
+    with _SEARCH_CATALOG_LOCK:
+        if _SEARCH_CATALOG is not None and not _SEARCH_CATALOG_DIRTY:
+            return _SEARCH_CATALOG
+        return None
+
+
 def _movers_slice(payload: Dict[str, object], limit: int, *, cached: bool) -> Dict[str, object]:
     gainers = [
         row for row in (payload.get("gainers") or [])
@@ -1967,7 +1896,7 @@ def _compute_market_movers_payload() -> Dict[str, object]:
         if sym in INDIAN_STOCKS and sym not in _INDEX_SYMBOLS and not str(sym).startswith("^")
     ][:36]
 
-    quotes = fetch_quotes(universe)
+    quotes = fetch_quotes(universe, individual_fallback=False)
     usable = []
     for q in quotes or []:
         try:

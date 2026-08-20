@@ -330,10 +330,10 @@ async def slo_metrics_endpoint() -> dict:
 async def startup_event():
     logger.info("BYSEL Backend starting up...")
     try:
-        from .llm_integration import llm_available, _LLM_DATA, _LLM_PKG
+        from .llm_integration import _LLM_DATA, _LLM_PKG
         logger.info("LLM pkg: %s (exists=%s)", _LLM_PKG, _LLM_PKG.exists())
         logger.info("LLM data: %s (exists=%s)", _LLM_DATA, _LLM_DATA.exists())
-        logger.info("LLM available: %s", llm_available())
+        # Do not load the 10k catalog / assistant here — that blocked Uvicorn ready.
     except Exception as e:
         logger.error("LLM startup check failed: %s", e)
     try:

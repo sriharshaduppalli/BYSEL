@@ -457,7 +457,7 @@ def build_pretrade_estimate(
 
 
 def get_wallet(db: Session, user_id: int) -> Wallet:
-    """Get current wallet balance for a user. Creates wallet with ₹100,000 if first time."""
+    """Cash/credits only. Never fetches Yahoo quotes."""
     wallet = _wallet_for_user(db, user_id)
     return Wallet(balance=round(wallet.balance, 2))
 

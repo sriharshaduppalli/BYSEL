@@ -5,7 +5,9 @@ services:
     region: singapore
     rootDir: backend
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT --limit-concurrency 16 --timeout-keep-alive 5 --no-access-log
+    # 16 slots filled up with quote WebSockets + news/wallet. New /auth/login
+    # then got 503 and Play testers saw "login not working".
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT --limit-concurrency 100 --timeout-keep-alive 5 --no-access-log
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
@@ -54,8 +56,10 @@ services:
       # Never enable debug reset codes in production
       - key: AUTH_PASSWORD_RESET_DEBUG_RESPONSE
         value: "false"
-    # Free plan sleeps after ~15 min idle. Keepalive: hit GET /warmup every
-    # 10 min (UptimeRobot/cron) or upgrade this service off free. /health stays
-    # fast and only kicks a throttled background warm.
+    # Free plan sleeps after ~15 min idle. In-repo keepalive:
+    # .github/workflows/render-keepalive.yml hits GET /warmup every 12 min.
+    # /health stays fast and only kicks a throttled background warm.
+    # If you upgraded in the Render dashboard, set plan: starter here so a
+    # Blueprint apply does not put the service back to sleep.
     plan: free
     healthCheckPath: /health

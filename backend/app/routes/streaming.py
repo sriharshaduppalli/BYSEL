@@ -11,6 +11,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from ..market_data import (
     QUOTE_CACHE_STORAGE_SECONDS,
+    QUOTE_V7_TIMEOUT,
     fetch_quotes,
     get_default_symbols,
     quote_max_age_seconds,
@@ -319,7 +320,7 @@ async def stream_quotes(websocket: WebSocket):
             try:
                 quote_rows = await asyncio.wait_for(
                     asyncio.to_thread(_stream_fetch, symbols),
-                    timeout=6.0,
+                    timeout=max(2.0, float(QUOTE_V7_TIMEOUT) + 1.0),
                 )
             except asyncio.TimeoutError:
                 logger.warning(
@@ -327,9 +328,15 @@ async def stream_quotes(websocket: WebSocket):
                     stream_trace_id,
                     len(symbols),
                 )
-                quote_rows = await asyncio.to_thread(
-                    lambda: _stream_fetch(symbols, allow_stale=True)
-                )
+                try:
+                    quote_rows = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            lambda: _stream_fetch(symbols, allow_stale=True)
+                        ),
+                        timeout=1.5,
+                    )
+                except asyncio.TimeoutError:
+                    quote_rows = []
             sequence = _next_stream_sequence()
             payload = {
                 "type": "quotes",
