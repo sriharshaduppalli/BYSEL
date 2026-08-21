@@ -22,7 +22,17 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 logger = logging.getLogger(__name__)
 
 SCANNER_CACHE_TTL_SECONDS = int(os.getenv("SCANNER_CACHE_TTL_SECONDS", "600"))
-SCANNER_MODES = ("long_term", "swing", "high_quality", "momentum", "value", "custom")
+SCANNER_MODES = (
+    "long_term",
+    "swing",
+    "high_quality",
+    "momentum",
+    "value",
+    "custom",
+    "quality_screen",
+)
+QUALITY_SCREEN_MIN_PASSES = 4
+MCAP_MIN_INR = 500 * 10**7  # ₹500 crore
 BANK_LIKE_SECTORS = {"Banking", "NBFC", "Finance", "Insurance"}
 
 # NIFTY 50-style large-cap universe (codebase tickers; TATAMOTORS → TMPV).
@@ -75,6 +85,81 @@ EDUCATION_FILTERS = (
         "label": "Low promoter pledge",
         "applied": False,
         "status": "Not in Yahoo quotes — shown as —",
+    },
+)
+
+QUALITY_SCREEN_FILTERS = (
+    {
+        "id": "mcap",
+        "label": "MCap > ₹500 Cr",
+        "applied": True,
+        "status": "Yahoo marketCap in ₹",
+    },
+    {
+        "id": "peg",
+        "label": "PEG < 1",
+        "applied": True,
+        "status": "Yahoo pegRatio when present",
+    },
+    {
+        "id": "pe_vs_sector",
+        "label": "PE < sector PE",
+        "applied": True,
+        "status": "NSE pdSectorPe when present; else median PE in this batch",
+    },
+    {
+        "id": "roe",
+        "label": "ROE > 20%",
+        "applied": True,
+        "status": "Yahoo trailing ROE — not 5-year average",
+    },
+    {
+        "id": "roce",
+        "label": "ROCE (5Y avg) > 15%",
+        "applied": True,
+        "status": "Yahoo statements: 5Y avg when 5 years exist; else latest/N-year avg",
+    },
+    {
+        "id": "promoter",
+        "label": "Promoter holding > 50%",
+        "applied": True,
+        "status": "NSE shareholding when the filing is available",
+    },
+    {
+        "id": "sales",
+        "label": "Sales growth > 15%",
+        "applied": True,
+        "status": "Yahoo 3Y CAGR when 4 annual rows exist; else TTM YoY",
+    },
+    {
+        "id": "profit",
+        "label": "Profit growth > 15%",
+        "applied": True,
+        "status": "Yahoo 5Y CAGR when history exists; else available-year CAGR or TTM YoY",
+    },
+    {
+        "id": "pledge",
+        "label": "Pledged % < 1",
+        "applied": True,
+        "status": "NSE shareholding when the filing is available",
+    },
+    {
+        "id": "opm",
+        "label": "OPM > 15%",
+        "applied": True,
+        "status": "Yahoo operatingMargins when present",
+    },
+    {
+        "id": "ps",
+        "label": "Price to Sales < 7",
+        "applied": True,
+        "status": "Yahoo trailing P/S when present",
+    },
+    {
+        "id": "ev_ebitda",
+        "label": "EV/EBITDA < 20",
+        "applied": True,
+        "status": "Yahoo enterpriseToEbitda when present",
     },
 )
 
@@ -1285,6 +1370,15 @@ def normalize_quote_row(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     rsi = _optional_metric(raw, "rsi", "rsi14")
     pb = _optional_metric(raw, "pb", "priceToBook")
     ev_ebitda = _optional_metric(raw, "evEbitda", "enterpriseToEbitda")
+    price_to_sales = _optional_metric(raw, "priceToSales", "priceToSalesTrailing12Months")
+    revenue_growth = normalize_roe_pct(_first_present(raw, "revenueGrowth", "salesGrowth"))
+    if raw.get("revenueGrowth") in (None, "") and raw.get("salesGrowth") in (None, ""):
+        revenue_growth = None
+    earnings_growth = normalize_roe_pct(_first_present(raw, "earningsGrowth", "profitGrowth"))
+    if raw.get("earningsGrowth") in (None, "") and raw.get("profitGrowth") in (None, ""):
+        earnings_growth = None
+    opm_raw = _first_present(raw, "operatingMargins", "marginPct", "margin")
+    opm = normalize_roe_pct(opm_raw) if opm_raw not in (None, "") else None
     interest_coverage = _optional_metric(raw, "interestCoverage")
     sales_cagr = _optional_metric(raw, "salesCagr")
     profit_cagr = _optional_metric(raw, "profitCagr")
@@ -1322,6 +1416,9 @@ def normalize_quote_row(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "peg": peg,
         "pb": pb,
         "evEbitda": ev_ebitda,
+        "priceToSales": price_to_sales,
+        "revenueGrowth": revenue_growth,
+        "earningsGrowth": earnings_growth,
         "interestCoverage": interest_coverage,
         "salesCagr": sales_cagr,
         "profitCagr": profit_cagr,
@@ -1331,7 +1428,13 @@ def normalize_quote_row(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "fcf": fcf,
         "hhhl": _optional_metric(raw, "hhhl"),
         "pledge": _optional_metric(raw, "pledge"),
-        "marginPct": _optional_metric(raw, "marginPct", "margin"),
+        "promoter": _optional_metric(raw, "promoter"),
+        "nseSectorPe": _optional_metric(raw, "nseSectorPe"),
+        "salesCagrYears": _safe_int(raw.get("salesCagrYears")),
+        "profitCagrYears": _safe_int(raw.get("profitCagrYears")),
+        "roceAvg": _optional_metric(raw, "roceAvg"),
+        "roceAvgYears": _safe_int(raw.get("roceAvgYears")),
+        "marginPct": opm if opm is not None else _optional_metric(raw, "marginPct", "margin"),
         "rsi": rsi,
         "fiftyTwoWeekHigh": _optional_metric(raw, "fiftyTwoWeekHigh"),
         "fiftyTwoWeekLow": _optional_metric(raw, "fiftyTwoWeekLow"),
@@ -1379,6 +1482,192 @@ def scanner_universe() -> List[str]:
     return symbols
 
 
+def _screen_check(
+    rule_id: str,
+    label: str,
+    *,
+    applied: bool,
+    value: Optional[float],
+    passed: Optional[bool],
+    note: str,
+) -> Dict[str, Any]:
+    if not applied:
+        status = "skip"
+    elif value is None or passed is None:
+        status = "skip"
+    elif passed:
+        status = "pass"
+    else:
+        status = "fail"
+    return {
+        "id": rule_id,
+        "label": label,
+        "status": status,
+        "applied": applied,
+        "value": round(value, 2) if isinstance(value, (int, float)) else None,
+        "note": note,
+    }
+
+
+def evaluate_quality_screen(
+    row: Dict[str, Any],
+    sector_pe: Optional[float] = None,
+) -> Dict[str, Any]:
+    """Popular textbook checklist. Missing Yahoo fields are skipped, never invented."""
+    mcap = _safe_float(row.get("marketCap"))
+    peg = _safe_float(row.get("peg"))
+    pe = _safe_float(row.get("pe"))
+    roe = _safe_float(row.get("roe"))
+    sales_cagr = _safe_float(row.get("salesCagr"))
+    sales_ttm = _safe_float(row.get("revenueGrowth"))
+    sales = sales_cagr if sales_cagr is not None else sales_ttm
+    profit_cagr = _safe_float(row.get("profitCagr"))
+    profit_ttm = _safe_float(row.get("earningsGrowth"))
+    profit = profit_cagr if profit_cagr is not None else profit_ttm
+    opm = _safe_float(row.get("marginPct"))
+    ps = _safe_float(row.get("priceToSales"))
+    ev_ebitda = _safe_float(row.get("evEbitda"))
+    roce_avg = _safe_float(row.get("roceAvg"))
+    roce_latest = _safe_float(row.get("roce"))
+    roce = roce_avg if roce_avg is not None else roce_latest
+    roce_years = _safe_int(row.get("roceAvgYears"))
+    promoter = _safe_float(row.get("promoter"))
+    pledge = _safe_float(row.get("pledge"))
+    nse_sector_pe = _safe_float(row.get("nseSectorPe"))
+    industry_pe = nse_sector_pe if nse_sector_pe is not None else sector_pe
+    sales_years = _safe_int(row.get("salesCagrYears"))
+    profit_years = _safe_int(row.get("profitCagrYears"))
+
+    checks = [
+        _screen_check(
+            "mcap",
+            "MCap > ₹500 Cr",
+            applied=True,
+            value=(mcap / 10**7) if mcap is not None else None,
+            passed=(mcap > MCAP_MIN_INR) if mcap is not None else None,
+            note="Yahoo marketCap in ₹",
+        ),
+        _screen_check(
+            "peg",
+            "PEG < 1",
+            applied=True,
+            value=peg,
+            passed=(peg < 1) if peg is not None else None,
+            note="Yahoo pegRatio when present",
+        ),
+        _screen_check(
+            "pe_vs_sector",
+            "PE < sector PE",
+            applied=True,
+            value=pe,
+            passed=(pe < industry_pe) if pe is not None and industry_pe is not None else None,
+            note=(
+                "NSE sector PE"
+                if nse_sector_pe is not None
+                else "Sector median in this batch, not official industry PE"
+            ),
+        ),
+        _screen_check(
+            "roe",
+            "ROE > 20%",
+            applied=True,
+            value=roe,
+            passed=(roe > 20) if roe is not None else None,
+            note="Yahoo trailing ROE — not 5-year average",
+        ),
+        _screen_check(
+            "roce",
+            "ROCE (5Y avg) > 15%" if (roce_years or 0) >= 5 else "ROCE > 15%",
+            applied=True,
+            value=roce,
+            passed=(roce > 15) if roce is not None else None,
+            note=(
+                f"Yahoo statements — {roce_years}-year average"
+                if roce_avg is not None and roce_years
+                else "Yahoo statements — latest year, not 5-year average"
+                if roce_latest is not None
+                else "Yahoo statements when enough years exist"
+            ),
+        ),
+        _screen_check(
+            "promoter",
+            "Promoter holding > 50%",
+            applied=True,
+            value=promoter,
+            passed=(promoter > 50) if promoter is not None else None,
+            note="NSE shareholding when the filing is available",
+        ),
+        _screen_check(
+            "sales",
+            "Sales growth > 15%",
+            applied=True,
+            value=sales,
+            passed=(sales > 15) if sales is not None else None,
+            note=(
+                f"Yahoo {sales_years}Y sales CAGR"
+                if sales_cagr is not None and sales_years
+                else "Yahoo TTM YoY — not 3-year CAGR"
+            ),
+        ),
+        _screen_check(
+            "profit",
+            "Profit growth > 15%",
+            applied=True,
+            value=profit,
+            passed=(profit > 15) if profit is not None else None,
+            note=(
+                f"Yahoo {profit_years}Y profit CAGR"
+                if profit_cagr is not None and profit_years
+                else "Yahoo TTM YoY — not 5-year CAGR"
+            ),
+        ),
+        _screen_check(
+            "pledge",
+            "Pledged % < 1",
+            applied=True,
+            value=pledge,
+            passed=(pledge < 1) if pledge is not None else None,
+            note="NSE shareholding when the filing is available",
+        ),
+        _screen_check(
+            "opm",
+            "OPM > 15%",
+            applied=True,
+            value=opm,
+            passed=(opm > 15) if opm is not None else None,
+            note="Yahoo operatingMargins when present",
+        ),
+        _screen_check(
+            "ps",
+            "Price to Sales < 7",
+            applied=True,
+            value=ps,
+            passed=(ps < 7) if ps is not None else None,
+            note="Yahoo trailing P/S when present",
+        ),
+        _screen_check(
+            "ev_ebitda",
+            "EV/EBITDA < 20",
+            applied=True,
+            value=ev_ebitda,
+            passed=(ev_ebitda < 20) if ev_ebitda is not None else None,
+            note="Yahoo enterpriseToEbitda when present",
+        ),
+    ]
+    passed = sum(1 for item in checks if item["status"] == "pass")
+    failed = sum(1 for item in checks if item["status"] == "fail")
+    skipped = sum(1 for item in checks if item["status"] == "skip")
+    matches = failed == 0 and passed >= QUALITY_SCREEN_MIN_PASSES
+    return {
+        "checks": checks,
+        "passed": passed,
+        "failed": failed,
+        "skipped": skipped,
+        "matches": matches,
+        "summary": f"{passed} passed · {failed} failed · {skipped} skipped",
+    }
+
+
 def _education(mode: str) -> Dict[str, Any]:
     if mode == "swing":
         title = "Swing — today's setups"
@@ -1413,10 +1702,30 @@ def _education(mode: str) -> Dict[str, Any]:
             "This is not a 40-filter builder."
         )
         risk_note = "Heuristic rank by BYSEL Score. Not a buy list. Unusual volume is flagged only at >2× average."
+    elif mode == "quality_screen":
+        title = "Quality screen — popular textbook checklist"
+        summary = (
+            "Often shared as a 'multibagger formula'. It is a filter, not a forecast — "
+            "passing these checks does not mean a stock will multiply. "
+            "Yahoo statement history fills 3Y sales CAGR, multi-year profit CAGR, and ROCE when enough years exist. "
+            "NSE shareholding fills promoter % and pledge when the filing is available. "
+            "Sector PE prefers NSE pdSectorPe, else the median PE in this batch. "
+            "A missing year or filing stays —; we do not scrape Screener.in. "
+            f"A name is listed only if it fails none of the Yahoo-backed checks and passes at least {QUALITY_SCREEN_MIN_PASSES}."
+        )
+        risk_note = (
+            "Paper practice shortlist only. Not a buy list and not a multibagger prediction."
+        )
+    if mode == "quality_screen":
+        filters = list(QUALITY_SCREEN_FILTERS)
+    elif mode == "custom":
+        filters = list(CUSTOM_EDUCATION_FILTERS)
+    else:
+        filters = list(EDUCATION_FILTERS)
     return {
         "title": title,
         "summary": summary,
-        "filters": list(CUSTOM_EDUCATION_FILTERS if mode == "custom" else EDUCATION_FILTERS),
+        "filters": filters,
         "scoreGuide": FORMULA_NOTE + (
             " Labels: 80–100 High conviction setup (education); 65–79 Attractive on these factors; "
             "50–64 Neutral; 35–49 Caution; <35 Weak on these factors. "
@@ -1457,12 +1766,14 @@ def build_scanner_payload(
     sector_pe = _sector_pe_map(rows)
     scored: List[Dict[str, Any]] = []
     for row in rows:
+        sector_median = sector_pe.get(str(row.get("sector") or "Other"))
         scores = score_row(
             row,
             mode_key,
-            sector_pe.get(str(row.get("sector") or "Other")),
+            sector_median,
             nifty_change=nifty_change,
         )
+        quality_screen = evaluate_quality_screen(row, sector_median)
         scored.append({
             "symbol": row["symbol"],
             "name": row["name"],
@@ -1500,15 +1811,27 @@ def build_scanner_payload(
                 "twoHundredDayAverage": row.get("twoHundredDayAverage"),
                 "volumeRatio": row.get("volumeRatio"),
                 "sector": row.get("sector"),
-                "sectorPe": sector_pe.get(str(row.get("sector") or "Other")),
+                "sectorPe": sector_median,
                 "pledge": row.get("pledge"),
+                "promoter": row.get("promoter"),
                 "marginPct": row.get("marginPct"),
+                "marketCap": row.get("marketCap"),
+                "priceToSales": row.get("priceToSales"),
+                "evEbitda": row.get("evEbitda"),
+                "revenueGrowth": row.get("revenueGrowth"),
+                "earningsGrowth": row.get("earningsGrowth"),
+                "salesCagr": row.get("salesCagr"),
+                "profitCagr": row.get("profitCagr"),
+                "nseSectorPe": row.get("nseSectorPe"),
+                "roceAvg": row.get("roceAvg"),
             },
+            "qualityScreen": quality_screen,
             "missing": scores["missing"],
             "anomalies": scores.get("anomalies") or [],
         })
 
-    def _rank(item: Dict[str, Any]) -> Tuple[int, str]:
+    def _rank(item: Dict[str, Any]) -> Tuple[int, int, str]:
+        screen = item.get("qualityScreen") or {}
         if mode_key == "high_quality":
             key = item.get("quality")
         elif mode_key == "momentum":
@@ -1517,9 +1840,15 @@ def build_scanner_payload(
             key = item.get("valuation")
         elif mode_key == "custom":
             key = item.get("byselScore")
+        elif mode_key == "quality_screen":
+            key = item.get("byselScore")
         else:
             key = item.get("overall")
-        return (-int(key or 0), str(item.get("symbol") or ""))
+        return (
+            -int(screen.get("passed") or 0) if mode_key == "quality_screen" else 0,
+            -int(key or 0),
+            str(item.get("symbol") or ""),
+        )
 
     scored.sort(key=_rank)
     if mode_key == "swing":
@@ -1528,6 +1857,9 @@ def build_scanner_payload(
         shortlist = with_setup[:cap]
     elif mode_key == "custom":
         shortlist = scored[: min(max(int(limit), 5), 40)]
+    elif mode_key == "quality_screen":
+        matched = [item for item in scored if (item.get("qualityScreen") or {}).get("matches")]
+        shortlist = matched[:limit]
     else:
         shortlist = scored[:limit]
 
@@ -1577,6 +1909,26 @@ def get_market_scanner(
             yf_threads=True,
             individual_fallback=False,
         ) or []
+        try:
+            from .quality_fundamentals import cached_nse_quality, schedule_nse_quality_fill
+
+            merged_quotes: List[Dict[str, Any]] = []
+            for quote in quotes:
+                if not isinstance(quote, dict):
+                    continue
+                extra = cached_nse_quality(str(quote.get("symbol") or ""))
+                if extra:
+                    row = dict(quote)
+                    for key, value in extra.items():
+                        if value not in (None, "") and row.get(key) in (None, "", 0, 0.0):
+                            row[key] = value
+                    merged_quotes.append(row)
+                else:
+                    merged_quotes.append(quote)
+            quotes = merged_quotes
+            schedule_nse_quality_fill(symbols, limit=12)
+        except Exception as exc:
+            logger.debug("scanner.nse_quality_overlay_failed reason=%s", exc)
     except TypeError:
         try:
             from .market_data import fetch_quotes

@@ -744,6 +744,34 @@ class ScannerMetrics(BaseModel):
     sectorPe: Optional[float] = None
     pledge: Optional[float] = None
     marginPct: Optional[float] = None
+    marketCap: Optional[int] = None
+    priceToSales: Optional[float] = None
+    evEbitda: Optional[float] = None
+    revenueGrowth: Optional[float] = None
+    earningsGrowth: Optional[float] = None
+    salesCagr: Optional[float] = None
+    profitCagr: Optional[float] = None
+    nseSectorPe: Optional[float] = None
+    roceAvg: Optional[float] = None
+    promoter: Optional[float] = None
+
+
+class QualityScreenCheck(BaseModel):
+    id: str = ""
+    label: str = ""
+    status: str = "skip"
+    applied: bool = False
+    value: Optional[float] = None
+    note: str = ""
+
+
+class QualityScreenResult(BaseModel):
+    checks: List[QualityScreenCheck] = []
+    passed: int = 0
+    failed: int = 0
+    skipped: int = 0
+    matches: bool = False
+    summary: str = ""
 
 
 class ScannerAnomaly(BaseModel):
@@ -795,6 +823,7 @@ class ScannerRow(BaseModel):
     setup: Optional[ScannerPracticeSetup] = None
     why: str = ""
     metrics: ScannerMetrics = ScannerMetrics()
+    qualityScreen: Optional[QualityScreenResult] = None
     missing: List[str] = []
     anomalies: List[ScannerAnomaly] = []
 

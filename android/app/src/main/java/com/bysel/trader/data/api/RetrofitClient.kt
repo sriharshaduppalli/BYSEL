@@ -116,12 +116,31 @@ object RetrofitClient {
 
     private val gson by lazy { SafeGsonFactory.create() }
 
-    private val retrofit: Retrofit by lazy {
-        Retrofit.Builder()
-            .baseUrl(BASE_URL)
-            .client(httpClient)
-            .addConverterFactory(GsonConverterFactory.create(gson))
-            .build()
+    @Volatile
+    private var retrofitInstance: Retrofit? = null
+
+    @Volatile
+    private var apiServiceInstance: BYSELApiService? = null
+
+    private fun mainRetrofit(): Retrofit {
+        retrofitInstance?.let { return it }
+        synchronized(this) {
+            retrofitInstance?.let { return it }
+            return Retrofit.Builder()
+                .baseUrl(BASE_URL)
+                .client(httpClient)
+                .addConverterFactory(GsonConverterFactory.create(gson))
+                .build()
+                .also { retrofitInstance = it }
+        }
+    }
+
+    /** Drop a poisoned Retrofit 2.10 service-method cache so Scanner can retry. */
+    fun rebuildMainApiService() {
+        synchronized(this) {
+            apiServiceInstance = null
+            retrofitInstance = null
+        }
     }
 
     private val aiRetrofit: Retrofit by lazy {
@@ -148,9 +167,14 @@ object RetrofitClient {
             .build()
     }
 
-    val apiService: BYSELApiService by lazy {
-        retrofit.create(BYSELApiService::class.java)
-    }
+    val apiService: BYSELApiService
+        get() {
+            apiServiceInstance?.let { return it }
+            synchronized(this) {
+                apiServiceInstance?.let { return it }
+                return mainRetrofit().create(BYSELApiService::class.java).also { apiServiceInstance = it }
+            }
+        }
 
     val aiApiService: BYSELApiService by lazy {
         aiRetrofit.create(BYSELApiService::class.java)

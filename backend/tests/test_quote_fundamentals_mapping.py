@@ -72,6 +72,40 @@ def test_yahoo_v7_payload_maps_pe_eps_yield_bid_ask():
     assert mapped["marketCap"] == 18_600_000_000_000
 
 
+def test_yahoo_quotesummary_maps_quality_screen_fields():
+    mapped = fundamentals_from_yahoo_quote(
+        {
+            "quoteSummary": {
+                "result": [
+                    {
+                        "defaultKeyStatistics": {
+                            "pegRatio": {"raw": 0.82},
+                            "enterpriseToEbitda": {"raw": 14.4},
+                        },
+                        "financialData": {
+                            "returnOnEquity": {"raw": 0.246},
+                            "operatingMargins": {"raw": 0.188},
+                            "revenueGrowth": {"raw": 0.17},
+                            "earningsGrowth": {"raw": 0.21},
+                        },
+                        "summaryDetail": {
+                            "priceToSalesTrailing12Months": {"raw": 4.6},
+                        },
+                    }
+                ]
+            }
+        },
+        last_price=1500.0,
+    )
+    assert mapped["peg"] == 0.82
+    assert mapped["roe"] == 24.6
+    assert mapped["evEbitda"] == 14.4
+    assert mapped["priceToSales"] == 4.6
+    assert mapped["operatingMargins"] == 18.8
+    assert mapped["revenueGrowth"] == 17.0
+    assert mapped["earningsGrowth"] == 21.0
+
+
 def test_yahoo_quotesummary_payload_maps_nested_raw_fields():
     mapped = fundamentals_from_yahoo_quote(YAHOO_QUOTESUMMARY, last_price=3120.0)
     assert mapped["trailingPE"] == 28.4

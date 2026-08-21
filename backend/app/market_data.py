@@ -1138,6 +1138,29 @@ def _first_yahoo_number(raw: dict, *keys: str) -> Optional[float]:
     return None
 
 
+def _yahoo_ratio_as_pct(value: Optional[float]) -> Optional[float]:
+    """Yahoo ROE / margins / growth are usually 0.18; keep already-percent values."""
+    if value is None:
+        return None
+    number = float(value)
+    if number != number:
+        return None
+    if abs(number) <= 1.5:
+        return round(number * 100.0, 2)
+    return round(number, 2)
+
+
+def _needs_quality_fundamentals(quote: Optional[dict]) -> bool:
+    if not quote:
+        return True
+    has_snapshot = any(
+        quote.get(key) not in (None, 0, 0.0)
+        for key in _QUALITY_FUND_KEYS
+    )
+    has_statements = bool(quote.get("statementsChecked")) or quote.get("salesCagr") not in (None, 0, 0.0)
+    return not (has_snapshot and has_statements)
+
+
 def _flatten_yahoo_quote(raw: dict) -> dict:
     """Merge quoteSummary modules / v7 quote / ticker.info into one keyspace."""
     if not isinstance(raw, dict):
@@ -1155,7 +1178,17 @@ def _flatten_yahoo_quote(raw: dict) -> dict:
             for key, value in nested.items():
                 flat.setdefault(key, value)
     for key, value in raw.items():
-        if key in {"summaryDetail", "defaultKeyStatistics", "financialData", "price", "quoteSummary"}:
+        if key in {
+            "summaryDetail",
+            "defaultKeyStatistics",
+            "financialData",
+            "price",
+            "quoteSummary",
+            "incomeStatementHistory",
+            "incomeStatementHistoryQuarterly",
+            "balanceSheetHistory",
+            "balanceSheetHistoryQuarterly",
+        }:
             continue
         flat.setdefault(key, value)
     return flat
@@ -1175,6 +1208,36 @@ _FUNDAMENTAL_QUOTE_KEYS = (
     "fiftyTwoWeekLow",
     "fiftyDayAverage",
     "twoHundredDayAverage",
+    "peg",
+    "pegRatio",
+    "roe",
+    "returnOnEquity",
+    "evEbitda",
+    "enterpriseToEbitda",
+    "priceToSales",
+    "operatingMargins",
+    "marginPct",
+    "revenueGrowth",
+    "earningsGrowth",
+    "salesCagr",
+    "profitCagr",
+    "salesCagrYears",
+    "profitCagrYears",
+    "roce",
+    "roceAvg",
+    "roceAvgYears",
+    "promoter",
+    "pledge",
+    "nseSectorPe",
+    "statementsChecked",
+    "shareholdingChecked",
+)
+_QUALITY_FUND_KEYS = (
+    "peg",
+    "roe",
+    "operatingMargins",
+    "priceToSales",
+    "evEbitda",
 )
 # avgVolume / 52w can arrive from fast_info; valuation still needs a Yahoo crumb call.
 _VALUATION_QUOTE_KEYS = (
@@ -1220,6 +1283,17 @@ def fundamentals_from_yahoo_quote(raw: dict, last_price: float = 0.0) -> dict:
     week52_low = _first_yahoo_number(flat, "fiftyTwoWeekLow")
     fifty_day = _first_yahoo_number(flat, "fiftyDayAverage")
     two_hundred = _first_yahoo_number(flat, "twoHundredDayAverage")
+    peg = _first_yahoo_number(flat, "pegRatio", "peg")
+    roe = _yahoo_ratio_as_pct(_first_yahoo_number(flat, "returnOnEquity", "roe"))
+    ev_ebitda = _first_yahoo_number(flat, "enterpriseToEbitda", "evEbitda")
+    price_to_sales = _first_yahoo_number(flat, "priceToSalesTrailing12Months", "priceToSales")
+    operating_margins = _yahoo_ratio_as_pct(
+        _first_yahoo_number(flat, "operatingMargins", "operatingMargin")
+    )
+    revenue_growth = _yahoo_ratio_as_pct(_first_yahoo_number(flat, "revenueGrowth"))
+    earnings_growth = _yahoo_ratio_as_pct(
+        _first_yahoo_number(flat, "earningsGrowth", "earningsQuarterlyGrowth")
+    )
     dividend = _normalize_dividend_yield_pct(
         raw_yield=_first_yahoo_number(flat, "dividendYield", "trailingAnnualDividendYield"),
         dividend_rate=_first_yahoo_number(flat, "dividendRate", "trailingAnnualDividendRate"),
@@ -1255,6 +1329,26 @@ def fundamentals_from_yahoo_quote(raw: dict, last_price: float = 0.0) -> dict:
         out["fiftyDayAverage"] = round(float(fifty_day), 2)
     if two_hundred is not None and two_hundred > 0:
         out["twoHundredDayAverage"] = round(float(two_hundred), 2)
+    if peg is not None and peg > 0:
+        peg_out = round(float(peg), 2)
+        out["peg"] = peg_out
+        out["pegRatio"] = peg_out
+    if roe is not None:
+        out["roe"] = roe
+        out["returnOnEquity"] = roe
+    if ev_ebitda is not None and ev_ebitda > 0:
+        ev_out = round(float(ev_ebitda), 2)
+        out["evEbitda"] = ev_out
+        out["enterpriseToEbitda"] = ev_out
+    if price_to_sales is not None and price_to_sales > 0:
+        out["priceToSales"] = round(float(price_to_sales), 2)
+    if operating_margins is not None:
+        out["operatingMargins"] = operating_margins
+        out["marginPct"] = operating_margins
+    if revenue_growth is not None:
+        out["revenueGrowth"] = revenue_growth
+    if earnings_growth is not None:
+        out["earningsGrowth"] = earnings_growth
     return out
 
 
@@ -1477,7 +1571,16 @@ def _quote_from_yahoo_v7(symbol: str, v7: dict, stale: Optional[dict] = None) ->
             "timestamp": int(datetime.utcnow().timestamp() * 1000),
         }
     )
-    return _overlay_fundamentals(quote, fund or _get_cached_fundamentals(symbol))
+    filled = _overlay_fundamentals(quote, fund or _get_cached_fundamentals(symbol))
+    try:
+        from .quality_fundamentals import cached_nse_quality
+
+        extra = cached_nse_quality(symbol)
+        if extra:
+            filled = _overlay_fundamentals(filled, extra)
+    except Exception:
+        pass
+    return filled
 
 
 def _fetch_yahoo_quote_summary(yf_symbol: str, timeout: float = 4.0) -> dict:
@@ -1489,11 +1592,17 @@ def _fetch_yahoo_quote_summary(yf_symbol: str, timeout: float = 4.0) -> dict:
     for host in ("query1", "query2"):
         url = (
             f"https://{host}.finance.yahoo.com/v10/finance/quoteSummary/{encoded}"
-            "?modules=summaryDetail,defaultKeyStatistics,financialData"
+            "?modules=summaryDetail,defaultKeyStatistics,financialData,"
+            "incomeStatementHistory,balanceSheetHistory"
         )
         data = _yahoo_authed_json(url, timeout=timeout)
         if data.get("quoteSummary"):
-            mapped = fundamentals_from_yahoo_quote(data)
+            from .quality_fundamentals import statements_from_yahoo_quote
+
+            mapped = _merge_fundamentals(
+                fundamentals_from_yahoo_quote(data),
+                statements_from_yahoo_quote(data),
+            )
             if mapped:
                 return mapped
     return {}
@@ -1520,7 +1629,7 @@ def _fill_fundamentals_batch(symbols: List[str]) -> None:
         for yf_sym, raw in rows.items():
             last = _safe_number(raw.get("regularMarketPrice") or raw.get("regularMarketPreviousClose"))
             fund = fundamentals_from_yahoo_quote(raw, last_price=last)
-            if not fund.get("targetMeanPrice"):
+            if not fund.get("targetMeanPrice") or _needs_quality_fundamentals(fund):
                 extra = _fetch_yahoo_quote_summary(yf_sym, timeout=4.0)
                 fund = _merge_fundamentals(fund, extra)
             if not fund:
@@ -1543,6 +1652,12 @@ def _fill_fundamentals_batch(symbols: List[str]) -> None:
                 continue
             _put_fundamentals(symbol, extra)
             _quote_cache.patch(symbol, extra)
+        try:
+            from .quality_fundamentals import schedule_nse_quality_fill
+
+            schedule_nse_quality_fill(symbols, limit=12)
+        except Exception as exc:
+            logger.debug("nse quality schedule failed: %s", exc)
     except Exception as exc:
         logger.debug("fundamentals fill failed: %s", exc)
     finally:
@@ -1563,7 +1678,11 @@ def _schedule_fundamentals_fill(symbols: List[str]) -> None:
             cached = _fundamentals_cache.get(key)
             if cached:
                 stamp, payload = cached
-                if (now - stamp) < float(FUNDAMENTALS_CACHE_TTL_SECONDS) and not _needs_fundamentals(payload):
+                if (
+                    (now - stamp) < float(FUNDAMENTALS_CACHE_TTL_SECONDS)
+                    and not _needs_fundamentals(payload)
+                    and not _needs_quality_fundamentals(payload)
+                ):
                     continue
             _fundamentals_inflight.add(key)
             pending.append(key)

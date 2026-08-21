@@ -402,9 +402,9 @@ interface BYSELApiService {
 
     @GET("/market/scanner")
     suspend fun getMarketScanner(
-        @Query("mode") mode: String = "long_term",
-        @Query("limit") limit: Int = 30,
-        @Query("forceRefresh") forceRefresh: Boolean = false,
+        @Query("mode") mode: String,
+        @Query("limit") limit: Int,
+        @Query("forceRefresh") forceRefresh: Boolean,
     ): ScannerResponse
 
     @GET("/market/scanner/xray/{symbol}")

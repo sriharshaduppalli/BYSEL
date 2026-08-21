@@ -131,7 +131,7 @@ from ..ai_engine import (
 )
 from ..portfolio_scorer import calculate_portfolio_health
 from ..market_heatmap import SECTOR_STOCKS, get_market_heatmap, get_sector_detail
-from ..market_scanner import get_market_scanner, get_score_history, get_symbol_xray
+from ..market_scanner import SCANNER_MODES, get_market_scanner, get_score_history, get_symbol_xray
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -2189,6 +2189,11 @@ def _kick_background_warmup(force: bool = False) -> bool:
             evaluate_active_alert_symbols()
         except Exception as exc:
             logger.warning("warmup.alerts_failed reason=%s", exc)
+        try:
+            from ..market_scanner import get_market_scanner
+            get_market_scanner("long_term", limit=30, force_refresh=False)
+        except Exception as exc:
+            logger.warning("warmup.scanner_failed reason=%s", exc)
 
     threading.Thread(target=_warm, name="bysel-warmup", daemon=True).start()
     return True
@@ -3259,7 +3264,10 @@ async def signal_lab_buckets_endpoint(
 
 @router.get("/market/scanner", response_model=ScannerResponse)
 async def market_scanner_endpoint(
-    mode: str = Query("long_term", description="long_term, swing, high_quality, momentum, value, custom"),
+    mode: str = Query(
+        "long_term",
+        description="long_term, swing, high_quality, momentum, value, custom, quality_screen",
+    ),
     limit: int = Query(30, ge=5, le=40),
     forceRefresh: bool = Query(False),
 ):
@@ -3269,8 +3277,11 @@ async def market_scanner_endpoint(
     Missing Yahoo fields stay null and are skipped in the weighted blend.
     """
     normalized = (mode or "long_term").strip().lower()
-    if normalized not in ("long_term", "swing", "high_quality", "momentum", "value", "custom"):
-        raise HTTPException(status_code=400, detail="mode must be long_term, swing, high_quality, momentum, value, or custom")
+    if normalized not in SCANNER_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail="mode must be long_term, swing, high_quality, momentum, value, custom, or quality_screen",
+        )
     return await asyncio.to_thread(get_market_scanner, normalized, limit, forceRefresh)
 
 

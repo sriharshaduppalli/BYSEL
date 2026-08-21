@@ -8,6 +8,7 @@ from app.market_scanner import (
     build_scanner_payload,
     color_band,
     detect_anomalies,
+    evaluate_quality_screen,
     renormalized_score,
     score_quality,
     score_row,
@@ -272,6 +273,80 @@ def test_custom_payload_sorts_by_score_and_keeps_anomalies():
     assert "pledging" in anomaly_ids
     assert all("buy" not in (row.get("scoreLabel") or "").lower() for row in payload["rows"])
     assert high.get("setup") is None
+
+
+def test_quality_screen_skips_missing_and_does_not_invent_promoter():
+    thin = evaluate_quality_screen(
+        {"marketCap": 8_000_000_000, "pe": 18.0},
+        sector_pe=22.0,
+    )
+    by_id = {item["id"]: item for item in thin["checks"]}
+    assert by_id["mcap"]["status"] == "pass"
+    assert by_id["pe_vs_sector"]["status"] == "pass"
+    assert by_id["roce"]["status"] == "skip"
+    assert by_id["promoter"]["status"] == "skip"
+    assert by_id["pledge"]["status"] == "skip"
+    assert thin["matches"] is False
+    assert thin["passed"] == 2
+
+    rich = evaluate_quality_screen(
+        {
+            "marketCap": 12_000_000_000,
+            "peg": 0.8,
+            "pe": 16.0,
+            "roe": 24.0,
+            "revenueGrowth": 18.0,
+            "earningsGrowth": 21.0,
+            "marginPct": 19.0,
+            "priceToSales": 4.2,
+            "evEbitda": 12.0,
+        },
+        sector_pe=20.0,
+    )
+    assert rich["failed"] == 0
+    assert rich["passed"] >= 4
+    assert rich["matches"] is True
+    assert all(item["status"] != "pass" for item in rich["checks"] if item["id"] in {"roce", "promoter", "pledge"})
+
+
+def test_quality_screen_payload_drops_fails_and_keeps_honest_copy():
+    quotes = [
+        {
+            "symbol": "PASSER",
+            "name": "Passer Ltd",
+            "last": 410.0,
+            "pctChange": 0.4,
+            "marketCap": 9_000_000_000,
+            "trailingPE": 14.0,
+            "peg": 0.7,
+            "roe": 26.0,
+            "revenueGrowth": 0.22,
+            "earningsGrowth": 0.18,
+            "operatingMargins": 0.21,
+            "priceToSales": 3.5,
+            "enterpriseToEbitda": 11.0,
+        },
+        {
+            "symbol": "FAILER",
+            "name": "Failer Ltd",
+            "last": 90.0,
+            "pctChange": -0.2,
+            "marketCap": 1_000_000_000,
+            "trailingPE": 40.0,
+            "peg": 2.4,
+            "roe": 8.0,
+        },
+    ]
+    payload = build_scanner_payload(quotes, mode="quality_screen", limit=10)
+    assert payload["mode"] == "quality_screen"
+    assert payload["education"]["title"].startswith("Quality screen")
+    assert "not a forecast" in payload["education"]["summary"]
+    symbols = [row["symbol"] for row in payload["rows"]]
+    assert "PASSER" in symbols
+    assert "FAILER" not in symbols
+    passer = payload["rows"][0]
+    assert passer["qualityScreen"]["matches"] is True
+    assert "multibagger prediction" in payload["education"]["riskNote"]
 
 
 def test_score_row_does_not_invent_promoter_or_related_party_anomalies():

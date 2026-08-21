@@ -471,6 +471,7 @@ class TradingViewModel(
     private var quotesRefreshJob: Job? = null
     private var holdingsRefreshJob: Job? = null
     private var heatmapJob: Job? = null
+    private var scannerJob: Job? = null
     private var keepaliveJob: Job? = null
     private var quoteWatchdogJob: Job? = null
     private var liveRefreshIntervalMs = 5_000L
@@ -3315,7 +3316,7 @@ class TradingViewModel(
 
     fun loadMarketScanner(mode: String = "long_term", force: Boolean = false) {
         val normalized = when (mode) {
-            "swing", "high_quality", "momentum", "value", "custom" -> mode
+            "swing", "high_quality", "momentum", "value", "custom", "quality_screen" -> mode
             else -> "long_term"
         }
         val now = System.currentTimeMillis()
@@ -3327,7 +3328,8 @@ class TradingViewModel(
         ) {
             return
         }
-        viewModelScope.launch {
+        scannerJob?.cancel()
+        scannerJob = viewModelScope.launch {
             _scannerLoading.value = true
             _scannerError.value = null
             when (val result = repository.getMarketScanner(mode = normalized, forceRefresh = force)) {

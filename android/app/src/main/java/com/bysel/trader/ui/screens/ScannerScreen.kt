@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bysel.trader.data.CustomScannerFilters
 import com.bysel.trader.data.WatchlistSymbols
+import com.bysel.trader.data.models.QualityScreenResult
 import com.bysel.trader.data.models.ScannerAnomaly
 import com.bysel.trader.data.models.ScannerPillar
 import com.bysel.trader.data.models.ScannerRow
@@ -71,6 +72,7 @@ private enum class ScannerModeChip(val apiMode: String, val title: String) {
     HIGH_QUALITY("high_quality", "High Quality"),
     MOMENTUM("momentum", "Momentum"),
     VALUE("value", "Value"),
+    QUALITY_SCREEN("quality_screen", "Quality screen"),
     CUSTOM("custom", "Custom"),
     FNO("fno", "F&O"),
 }
@@ -320,6 +322,8 @@ fun ScannerScreen(
                                         "No paper swing setups in this batch from the fields we have."
                                     ScannerModeChip.CUSTOM ->
                                         "No names match these chips from fields we have. Clear a chip or wait for RSI/DMA/PE on the quote."
+                                    ScannerModeChip.QUALITY_SCREEN ->
+                                        "No name in this NIFTY 50 + watchlist batch passed enough Yahoo-backed checks. Skipped 5-year / promoter / pledge rules do not fail a name. Refresh after quoteSummary fills PEG, ROE, OPM."
                                     else ->
                                         "No quoted names in this batch. Pull to refresh after quotes warm."
                                 },
@@ -354,7 +358,11 @@ fun ScannerScreen(
                                 onWatchlist = { viewModel.addToWatchlist(row.symbol) },
                             )
                         } else {
-                            LongTermScannerRow(row = row, onClick = { onOpenSymbol(row) })
+                            LongTermScannerRow(
+                                row = row,
+                                showQualityScreen = selected == ScannerModeChip.QUALITY_SCREEN,
+                                onClick = { onOpenSymbol(row) },
+                            )
                         }
                     }
                 }
@@ -403,7 +411,11 @@ private fun FnoPaperHubCard(
 }
 
 @Composable
-private fun LongTermScannerRow(row: ScannerRow, onClick: () -> Unit) {
+private fun LongTermScannerRow(
+    row: ScannerRow,
+    onClick: () -> Unit,
+    showQualityScreen: Boolean = false,
+) {
     val theme = LocalAppTheme.current
     Card(
         modifier = Modifier
@@ -433,6 +445,9 @@ private fun LongTermScannerRow(row: ScannerRow, onClick: () -> Unit) {
             }
             ByselScoreStrip(row = row, compact = true)
             AnomalyBadgeRow(row.detectedAnomalies())
+            if (showQualityScreen) {
+                QualityScreenChecklist(row.qualityScreen)
+            }
             Text(
                 row.why.ifBlank { "Limited Yahoo fields — scores use only what we have." },
                 fontSize = 12.sp,
@@ -845,6 +860,47 @@ private fun ChipGroup(title: String, content: @Composable () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             content()
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun QualityScreenChecklist(result: QualityScreenResult?) {
+    if (result == null) return
+    val theme = LocalAppTheme.current
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            result.summary.ifBlank { "${result.passed} passed · ${result.failed} failed · ${result.skipped} skipped" },
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            color = theme.text,
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            result.checks.forEach { check ->
+                val tint = when (check.status) {
+                    "pass" -> theme.positive
+                    "fail" -> theme.negative
+                    else -> theme.textSecondary
+                }
+                val mark = when (check.status) {
+                    "pass" -> "✓"
+                    "fail" -> "✗"
+                    else -> "—"
+                }
+                Text(
+                    "$mark ${check.label}",
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(tint.copy(alpha = 0.12f))
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                    fontSize = 10.sp,
+                    color = tint,
+                )
+            }
         }
     }
 }

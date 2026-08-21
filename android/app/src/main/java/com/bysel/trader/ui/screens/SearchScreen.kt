@@ -101,7 +101,7 @@ fun SearchScreen(
         listOf(
             SearchJump("Trade", 2, listOf("trade", "spot", "wallet", "paper")),
             SearchJump("Heatmap", 4, listOf("heatmap", "sector", "breadth", "tqi")),
-            SearchJump("Scanner", 28, listOf("scanner", "discover", "screener", "bysel")),
+            SearchJump("Scanner", 28, listOf("scanner", "discover", "screener", "bysel", "quality", "multibagger", "peg")),
             SearchJump("Signal Lab", 20, listOf("signal", "screener", "breakout")),
             SearchJump("Watchlist", 25, listOf("watchlist", "watch")),
             SearchJump("AI", 1, listOf("ai", "assistant", "chat", "coach")),

@@ -213,7 +213,16 @@ async def trace_context_middleware(request: Request, call_next):
     response.headers[TRACE_HEADER] = trace_id
     response.headers[PROCESS_TIME_HEADER] = f"{duration_ms:.1f}"
 
-    if duration_ms >= SLOW_REQUEST_THRESHOLD_MS:
+    if response.status_code >= 500:
+        logger.error(
+            "http.5xx trace_id=%s method=%s path=%s status=%s duration_ms=%.1f",
+            trace_id,
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+        )
+    elif duration_ms >= SLOW_REQUEST_THRESHOLD_MS:
         logger.warning(
             "Slow request trace_id=%s method=%s path=%s status=%s duration_ms=%.1f",
             trace_id,

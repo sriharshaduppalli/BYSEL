@@ -44,7 +44,8 @@ open class TradingRepository(private val database: BYSELDatabase) {
             database.holdingDao().clearAll()
             database.holdingDao().insertHoldings(holdings)
         }
-    private val apiService: BYSELApiService = RetrofitClient.apiService
+    private val apiService: BYSELApiService
+        get() = RetrofitClient.apiService
     private val aiApiService: BYSELApiService = RetrofitClient.aiApiService
     private val warmApiService: BYSELApiService = RetrofitClient.warmApiService
     private val liveMarketDataClient = LiveMarketDataClient(apiService)
@@ -844,17 +845,40 @@ open class TradingRepository(private val database: BYSELDatabase) {
     ): Result<ScannerResponse> {
         return try {
             val normalizedMode = when (mode) {
-                "swing", "high_quality", "momentum", "value", "custom" -> mode
+                "swing", "high_quality", "momentum", "value", "custom", "quality_screen" -> mode
                 else -> "long_term"
             }
-            val response = apiService.getMarketScanner(
-                mode = normalizedMode,
-                limit = if (normalizedMode == "custom") 40 else limit.coerceIn(5, 40),
-                forceRefresh = forceRefresh,
-            )
+            val pageSize = if (normalizedMode == "custom") 40 else limit.coerceIn(5, 40)
+            val response = try {
+                apiService.getMarketScanner(
+                    mode = normalizedMode,
+                    limit = pageSize,
+                    forceRefresh = forceRefresh,
+                )
+            } catch (first: ClassCastException) {
+                // Retrofit 2.10 can leave a lock Object in the method cache after a
+                // failed first parse; Retry then shows "Object cannot be cast to ServiceMethod".
+                RetrofitClient.rebuildMainApiService()
+                apiService.getMarketScanner(
+                    mode = normalizedMode,
+                    limit = pageSize,
+                    forceRefresh = forceRefresh,
+                )
+            }
             Result.Success(response)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Result.Error(e.message ?: "Unknown error")
+            val raw = e.message.orEmpty()
+            val friendly = if (
+                e is ClassCastException ||
+                raw.contains("ServiceMethod", ignoreCase = true)
+            ) {
+                "Scanner failed to start. Close BYSEL fully and open Scanner again."
+            } else {
+                raw.ifBlank { "Scanner unavailable. Retry in a moment." }
+            }
+            Result.Error(friendly)
         }
     }
 

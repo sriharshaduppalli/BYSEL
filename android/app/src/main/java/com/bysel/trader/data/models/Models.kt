@@ -1229,6 +1229,29 @@ data class ScannerMetrics(
     @SerializedName("sectorPe") val sectorPe: Double? = null,
     @SerializedName("pledge") val pledge: Double? = null,
     @SerializedName("marginPct") val marginPct: Double? = null,
+    @SerializedName("marketCap") val marketCap: Long? = null,
+    @SerializedName("priceToSales") val priceToSales: Double? = null,
+    @SerializedName("evEbitda") val evEbitda: Double? = null,
+    @SerializedName("revenueGrowth") val revenueGrowth: Double? = null,
+    @SerializedName("earningsGrowth") val earningsGrowth: Double? = null,
+)
+
+data class QualityScreenCheck(
+    @SerializedName("id") val id: String = "",
+    @SerializedName("label") val label: String = "",
+    @SerializedName("status") val status: String = "skip",
+    @SerializedName("applied") val applied: Boolean = false,
+    @SerializedName("value") val value: Double? = null,
+    @SerializedName("note") val note: String = "",
+)
+
+data class QualityScreenResult(
+    @SerializedName("checks") val checks: List<QualityScreenCheck> = emptyList(),
+    @SerializedName("passed") val passed: Int = 0,
+    @SerializedName("failed") val failed: Int = 0,
+    @SerializedName("skipped") val skipped: Int = 0,
+    @SerializedName("matches") val matches: Boolean = false,
+    @SerializedName("summary") val summary: String = "",
 )
 
 data class ScannerAnomaly(
@@ -1308,6 +1331,7 @@ data class ScannerRow(
     @SerializedName("setup") val setup: ScannerPracticeSetup? = null,
     @SerializedName("why") val why: String = "",
     @SerializedName("metrics") val metrics: ScannerMetrics = ScannerMetrics(),
+    @SerializedName("qualityScreen") val qualityScreen: QualityScreenResult? = null,
     @SerializedName("missing") val missing: List<String> = emptyList(),
     @SerializedName("anomalies") val anomalies: List<ScannerAnomaly> = emptyList(),
 ) {
