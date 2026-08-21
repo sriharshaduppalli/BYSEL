@@ -61,9 +61,8 @@ jobs:
           # Keep ACME HTTP-01 challenge paths reachable for SSL issuance/renewal.
           RewriteRule ^\.well-known/acme-challenge/ - [L]
 
-          # Enforce HTTPS once a trusted certificate is installed.
-          RewriteCond %{HTTPS} !=on
-          RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+          # Do not force HTTPS while GoDaddy still serves a self-signed cert.
+          # Re-enable the HTTPS 301 only after AutoSSL / Let's Encrypt is valid.
 
           # Serve existing files and directories directly.
           RewriteCond %{REQUEST_FILENAME} -f [OR]
