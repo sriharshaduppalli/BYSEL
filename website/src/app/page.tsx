@@ -27,9 +27,9 @@ const FEATURE_CARDS = [
     copy: "Paper fills still work after 3:30 PM IST using last session prices, so evenings and weekends stay useful for drills.",
   },
   {
-    kicker: "AI Stock Assistant",
-    title: "Ask, analyze, then act",
-    copy: "Chat about NSE stocks with grounded answers. Buy and Set Alert actions sit on AI replies so you can paper-trade in flow.",
+    kicker: "AI assistant",
+    title: "Ask about a snapshot",
+    copy: "Plain-language help on a quote snapshot. Answers are educational — not a recommendation to buy or sell.",
   },
   {
     kicker: "Live Heatmap",
@@ -74,12 +74,12 @@ export default function Home() {
       <section className="hero-wrap">
         <div className="site-container hero-grid">
           <div data-animate>
-            <span className="eyebrow">BYSEL Trader</span>
-            <h1 className="page-title">Idea → paper trade → review. Indian-market practice that builds process.</h1>
+            <span className="eyebrow">www.byseltrader.com</span>
+            <h1 className="page-title">Indian market education and paper practice. Account required. Not live trading.</h1>
             <p className="lead">
-              Try the live AI demo and sector heatmap here — then open Android for Practice Ideas, instant
-              practice credit, after-hours paper fills, and the daily review habit. Create an account once;
-              you stay signed in for everyday practice.
+              BYSEL is the official paper-practice app for NSE / BSE learners. Try the snapshot assistant and
+              sector heatmap here, then open Android for watchlists, Scanner / BYSEL Score, and a simulated
+              wallet. This is not a broker and not investment advice.
             </p>
 
             <div className="btn-row">
@@ -165,17 +165,17 @@ export default function Home() {
                 </div>
               ))}
               <div className="info-row">
-                <p className="info-title">AI Buy / Set Alert</p>
+                <p className="info-title">Scanner / BYSEL Score</p>
                 <p className="info-copy">
-                  Act on chat replies with paper orders and price alerts — not available in this web preview.
+                  Compare names for education. Scores are not a buy list and missing fields stay as —.
                 </p>
               </div>
             </div>
 
             <div className="btn-row" style={{ marginTop: "0.9rem", alignItems: "center" }}>
               <Image
-                src="/ic_launcher.png"
-                alt="BYSEL Trader app icon"
+                src="/bysel-logo.svg"
+                alt="BYSEL app icon"
                 width={48}
                 height={48}
                 style={{ borderRadius: 12 }}
@@ -243,9 +243,9 @@ export default function Home() {
 
       <section className="section-wrap" style={{ paddingTop: "0.5rem" }}>
         <div className="site-container" style={{ textAlign: "center" }}>
-          <Image src="/ic_launcher.png" alt="BYSEL app icon" width={72} height={72} priority />
+          <Image src="/bysel-logo.svg" alt="BYSEL app icon" width={72} height={72} priority />
           <p className="mini-muted" style={{ marginTop: "0.7rem" }}>
-            BYSEL Trader · Simulation-first learning for smarter participation in Indian markets.
+            www.byseltrader.com · Paper practice only. Past market data does not predict future results.
           </p>
         </div>
       </section>

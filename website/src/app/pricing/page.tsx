@@ -6,14 +6,14 @@ const PLANS = [
   {
     label: "Starter",
     price: "Free",
-    note: "Closed testing & early access",
+    note: "Open testing on Google Play",
     items: [
-      "Practice Ideas with Paper Buy & Alert @ SL",
-      "Today's Practice habit loop (Idea → Review)",
-      "Instant practice credit (no UPI required)",
-      "After-hours paper fills at last session prices",
-      "Sector heatmap + AI assistant with Buy / Alert",
-      "Email/password or phone OTP — stay signed in",
+      "Account required (email + password or phone OTP)",
+      "Watchlist, heatmap, and paper holdings",
+      "Scanner / BYSEL Score — education, not a buy list",
+      "AI snapshot help in plain language",
+      "Price alerts and after-hours frozen tape",
+      "No live brokerage, UPI payouts, or ASBA IPOs",
     ],
     cta: "Get the App",
     href: PLAY_STORE_URL,
@@ -78,7 +78,7 @@ const FAQ = [
   {
     question: "Where do I download the app?",
     answer:
-      "Android builds are distributed via Google Play for package com.bysel.trader. Public listing depends on Play Console production approval / closed testing access.",
+      "Android builds are on Google Play Open testing for package com.bysel.trader. Official site: www.byseltrader.com.",
   },
 ];
 

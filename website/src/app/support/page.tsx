@@ -46,6 +46,11 @@ const FAQ = [
     question: "Where can I report bugs?",
     answer: "Use in-app feedback or email support@byseltrader.com with screenshots and the app version number.",
   },
+  {
+    question: "Sign-in says server error. Is my password wrong?",
+    answer:
+      "Usually not. Wait a minute and try the same account again — that is a host wake on Cloud Run, not a wrong password. Official site: www.byseltrader.com.",
+  },
 ];
 
 export default function Support() {

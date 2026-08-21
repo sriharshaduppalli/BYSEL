@@ -25,24 +25,26 @@ const monoFont = IBM_Plex_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.byseltrader.com"),
   title: {
-    default: "BYSEL Trader | AI Paper Trading for Indian Markets",
-    template: "%s | BYSEL Trader",
+    default: "BYSEL | Indian market education and paper practice",
+    template: "%s | BYSEL",
   },
   description:
-    "BYSEL Trader: Practice Ideas, Idea → Trade → Review habit loop, instant practice credit, after-hours paper fills, AI coaching, and NSE heatmap. Sign in once with email or OTP and stay signed in. Educational simulation — not a SEBI-registered broker.",
+    "BYSEL is a paper-practice and market-education app for Indian stocks (NSE / BSE). Account required. Not live trading and not a stock broker. Official site: www.byseltrader.com",
   keywords: [
     "BYSEL",
+    "byseltrader.com",
     "paper trading",
     "practice ideas",
     "stock simulator",
     "indian stock market app",
-    "ai trading assistant",
     "NSE heatmap",
     "after hours paper trading",
-    "byseltrader",
   ],
+  alternates: {
+    canonical: "https://www.byseltrader.com",
+  },
   icons: {
-    icon: "/ic_launcher.png",
+    icon: "/bysel-logo.svg",
   },
 };
 
@@ -67,9 +69,13 @@ export default function RootLayout({
           <footer className="site-footer">
             <div className="site-container footer-grid">
               <div>
-                <p className="footer-title">BYSEL Trader</p>
+                <p className="footer-title">BYSEL</p>
                 <p className="mini-muted">
-                  Build execution discipline with live context, structured AI feedback, and a simulator designed for Indian market behavior.
+                  Official site{" "}
+                  <a className="footer-link" href="https://www.byseltrader.com">
+                    www.byseltrader.com
+                  </a>
+                  . Paper practice for Indian markets. Account required. Not live brokerage.
                 </p>
               </div>
 

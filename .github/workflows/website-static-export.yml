@@ -35,6 +35,8 @@ jobs:
         run: npm run lint
 
       - name: Build static export
+        env:
+          NEXT_PUBLIC_BYSEL_API_URL: https://bysel-services-746069024823.europe-west1.run.app
         run: npm run build
 
       - name: Archive export output

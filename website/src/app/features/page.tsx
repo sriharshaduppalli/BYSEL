@@ -25,8 +25,8 @@ const CORE_MODULES = [
   },
   {
     kicker: "AI",
-    title: "Stock Assistant Chat",
-    copy: "Ask prices, buy/sell bias, valuation, and comparisons. Replies can include Entry / Target / Stop-Loss with Buy and Set Alert buttons.",
+    title: "Snapshot assistant",
+    copy: "Ask about a quote snapshot in plain language. Answers and BYSEL Score are educational — not a buy or sell call.",
   },
   {
     kicker: "Heatmap",
@@ -137,8 +137,8 @@ export default function Features() {
                 </p>
               </div>
               <div className="info-row">
-                <p className="info-title">AI that can act (in paper)</p>
-                <p className="info-copy">Buy / Set Alert from chat responses, with confirmation before paper orders execute.</p>
+                <p className="info-title">Scanner, not a broker</p>
+                <p className="info-copy">BYSEL Score compares names for education. It is not a Strong Buy and not live order routing.</p>
               </div>
               <div className="info-row">
                 <p className="info-title">Educational stance</p>

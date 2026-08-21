@@ -1,11 +1,15 @@
 export default function SEOHead() {
   return (
     <>
-      <title>BYSEL - Stock Trading Simulator</title>
-      <meta name="description" content="BYSEL is a modern stock trading simulator with AI Assistant, portfolio optimization, live market heatmap, and advanced analytics." />
-      <meta name="keywords" content="BYSEL, stock trading, simulator, AI assistant, portfolio, analytics, markets, fintech" />
-      <meta name="theme-color" content="#7C4DFF" />
-      <link rel="icon" href="/ic_launcher.png" />
+      <title>BYSEL | Indian market education and paper practice</title>
+      <meta
+        name="description"
+        content="Official site www.byseltrader.com. Paper-practice app for Indian stocks. Account required. Not live trading."
+      />
+      <meta name="keywords" content="BYSEL, byseltrader.com, paper trading, NSE, BSE, market education" />
+      <meta name="theme-color" content="#0e636f" />
+      <link rel="icon" href="/bysel-logo.svg" />
+      <link rel="canonical" href="https://www.byseltrader.com/" />
     </>
   );
 }

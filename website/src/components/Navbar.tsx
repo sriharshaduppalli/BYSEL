@@ -33,10 +33,10 @@ export default function Navbar() {
       <nav className="site-container">
         <div className="top-nav-row">
           <Link href="/" className="brand-mark" onClick={closeMenu}>
-            <Image src="/ic_launcher.png" alt="BYSEL logo" width={42} height={42} priority />
+            <Image src="/bysel-logo.svg" alt="BYSEL logo" width={42} height={42} priority />
             <span>
-              <span className="brand-title">BYSEL Trader</span>
-              <span className="brand-tag">AI-first market simulator</span>
+              <span className="brand-title">BYSEL</span>
+              <span className="brand-tag">www.byseltrader.com</span>
             </span>
           </Link>
 

@@ -7,10 +7,10 @@ import { AI_ASK_URL } from "../lib/api";
 const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.bysel.trader";
 
 const SUGGESTIONS = [
-  "What is the price of RELIANCE?",
-  "Is TCS a buy for swing?",
-  "Compare INFY vs TCS",
-  "Nifty outlook today",
+  "What does this RELIANCE snapshot show?",
+  "Compare INFY vs TCS as education",
+  "What is BYSEL Score?",
+  "Is this live trading?",
 ];
 
 const MAX_TURNS = 6;
@@ -36,7 +36,7 @@ export default function AiTryDemo() {
       id: "welcome",
       role: "assistant",
       content:
-        "Hi — try a quick NSE question here. Practice Ideas, Paper Buy, and habit review live in the Android app.",
+        "Hi — ask about an NSE snapshot here. Answers are educational, not a buy or sell call. Paper practice lives in the Android app.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -116,7 +116,7 @@ export default function AiTryDemo() {
         assistantNote =
           "Browser blocked the request (CORS). The marketing site origin is not allowed on the API yet.";
         tip =
-          "On Render → bysel-backend → Environment, set BYSEL_ALLOWED_ORIGINS to include https://byseltrader.com and https://www.byseltrader.com, then restart.";
+          "Cloud Run already allows https://www.byseltrader.com. If this persists, wait a minute and retry — that is a host wake, not a wrong question.";
       }
 
       setMessages((prev) => [
@@ -146,7 +146,7 @@ export default function AiTryDemo() {
         <span className="status-chip live">Live demo</span>
       </div>
       <p className="mini-muted">
-        Web preview of the same backend the app uses. Paper Buy / Alerts require the Android app.
+        Same Cloud Run backend as the Android app. Educational answers only — not a recommendation to buy or sell.
       </p>
 
       <div className="ai-demo-thread" ref={listRef}>
