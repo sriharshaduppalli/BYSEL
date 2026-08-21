@@ -984,14 +984,14 @@ fun DashboardContent(
                 when (widget) {
                     "portfolio" -> if (portfolioPinned) {
                         item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
                     .padding(vertical = 4.dp)
                     .bringIntoViewRequester(portfolioWidgetRequester),
                 colors = byselCardColors(),
                 elevation = byselCardElevation(),
-                shape = RoundedCornerShape(16.dp),
+                                shape = RoundedCornerShape(16.dp),
                 border = BorderStroke(2.dp, LocalAppTheme.current.primary)
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
@@ -1120,15 +1120,15 @@ fun DashboardContent(
         if (!newsPinned) {
             item {
                 Box(modifier = Modifier.bringIntoViewRequester(newsRequester)) {
-                    NewsWidget(
-                        isPinned = false,
-                        headlines = marketNews,
-                        trackedSymbols = newsSymbols,
-                        isLoading = newsLoading,
-                        error = newsError,
-                        onPinClick = { dashboardViewModel.toggleNewsPin() },
+                NewsWidget(
+                    isPinned = false,
+                    headlines = marketNews,
+                    trackedSymbols = newsSymbols,
+                    isLoading = newsLoading,
+                    error = newsError,
+                    onPinClick = { dashboardViewModel.toggleNewsPin() },
                         onRefresh = { dashboardViewModel.refreshMarketNews(newsRefreshSymbols) },
-                    )
+                )
                 }
                 Spacer(modifier = Modifier.height(20.dp))
             }
@@ -1278,6 +1278,7 @@ fun DashboardContent(
                 remote = intradayTips,
                 local = localSession,
                 fallback = buildLocalIntradayTips(marketStatus),
+                limit = 4,
             )
             IntradayTipsSection(
                 phaseLabel = tipsPayload.phaseLabel,
@@ -1307,6 +1308,7 @@ fun DashboardContent(
                     watchlistSize = watchlistSymbols.size,
                     topic = investorTipTopic,
                 ),
+                limit = 4,
             )
             InvestorTipsCard(
                 title = "Investor habits",
@@ -1323,7 +1325,7 @@ fun DashboardContent(
                 sampleSize = mergedInvestor.sampleSize,
             )
         }
-
+        
         item {
             Spacer(modifier = Modifier.height(100.dp))
         }
@@ -1431,13 +1433,13 @@ private fun DashboardHeroCard(
 ) {
     val theme = LocalAppTheme.current
 
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
                 elevation = byselCardElevation(),
                 border = byselCardBorder(),
-                shape = RoundedCornerShape(24.dp),
-            ) {
+        shape = RoundedCornerShape(24.dp),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -2181,7 +2183,7 @@ private fun IntradayTipsSection(
                 color = theme.primary,
             )
         } else {
-            tips.take(3).forEach { tip ->
+            tips.take(4).forEach { tip ->
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2236,7 +2238,7 @@ private fun IntradayTipsSection(
                 text = note,
                 fontSize = 10.sp,
                 color = theme.textSecondary,
-                maxLines = 2,
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
         }

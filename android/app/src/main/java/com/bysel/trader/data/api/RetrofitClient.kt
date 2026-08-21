@@ -50,12 +50,13 @@ object RetrofitClient {
 
         val builder = OkHttpClient.Builder()
             .addInterceptor(RequestMetadataInterceptor())
+            .addInterceptor(ServerReachabilityInterceptor())
             .addInterceptor(AuthInterceptor())
             .authenticator(TokenRefreshAuthenticator())
             .addInterceptor(HttpLoggingInterceptor().apply {
                 level = loggingLevel
             })
-            // Paid Render is always-on. Quotes/heatmap must fail in ~15s, never sit 45–60s.
+            // Keep the 15s quote budget. Do not stretch — wake the host in the background instead.
             .callTimeout(15, TimeUnit.SECONDS)
             .connectTimeout(8, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
@@ -88,8 +89,8 @@ object RetrofitClient {
     /**
      * Dedicated client for auth endpoints.
      *
-     * Render free-tier cold starts often exceed the shared 25s callTimeout, which
-     * surfaces as "timeout" on Login/Register even when credentials are valid.
+     * Remaining cold-start headroom for Login/Register. Do not use this client
+     * for /warmup — that belongs on [warmHttpClient].
      */
     val authHttpClient: OkHttpClient by lazy {
         httpClient.newBuilder()

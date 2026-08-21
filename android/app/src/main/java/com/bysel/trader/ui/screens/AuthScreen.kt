@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.repository.AuthRepository
 import com.bysel.trader.data.repository.Result
 import com.bysel.trader.data.auth.AuthSessionManager
+import com.bysel.trader.data.api.ServerReachability
 import com.bysel.trader.ui.components.byselAutofill
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.util.CredentialHelper
@@ -111,10 +112,20 @@ fun AuthScreen(
     val activity = LocalContext.current as? Activity
     val context = LocalContext.current
 
-    // Wake Render free-tier before the user taps Login (avoids false "timeout" on cold start).
+    // Wake the host before the user taps Login (background; does not block the form).
     LaunchedEffect(Unit) {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             runCatching { authRepository.warmBackend() }
+        }
+    }
+
+    LaunchedEffect(loading) {
+        if (!loading) return@LaunchedEffect
+        delay(2_500)
+        if (loading && message.isNullOrBlank()) {
+            val cold = ServerReachability.isLikelyColdStart()
+            message = if (cold) "Waking server…" else "Still connecting…"
+            messageIsError = false
         }
     }
 

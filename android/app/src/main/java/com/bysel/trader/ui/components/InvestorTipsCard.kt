@@ -107,7 +107,7 @@ fun InvestorTipsCard(
                 color = theme.primary,
             )
         } else {
-            tips.take(if (compact) 2 else 3).forEach { tip ->
+            tips.take(if (compact) 3 else 4).forEach { tip ->
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -131,7 +131,7 @@ fun InvestorTipsCard(
                         fontSize = 11.sp,
                         color = theme.textSecondary,
                         lineHeight = 15.sp,
-                        maxLines = if (compact) 2 else 4,
+                        maxLines = if (compact) 3 else 4,
                         softWrap = true,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -163,7 +163,7 @@ fun InvestorTipsCard(
                 text = note,
                 fontSize = 10.sp,
                 color = theme.textSecondary,
-                maxLines = 2,
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
         }

@@ -648,8 +648,10 @@ def _illustrative_risk_payload(
         "monteCarloP95": 12.4,
         "riskLevel": "Medium",
         "demoBasket": True,
+        "illustrative": True,
         "disclaimer": (
-            f"Illustrative educational metrics ({', '.join(sym_list)}). {reason}"
+            f"Illustrative sample numbers — not computed from live history "
+            f"({', '.join(sym_list)}). {reason}"
         ),
     }
 
@@ -734,10 +736,11 @@ def _build_risk_payload_from_returns(
         "monteCarloP95": round(mc_95th * 100, 2),
         "riskLevel": "Low" if var_95 > -0.01 else "Medium" if var_95 > -0.025 else "High",
         "demoBasket": used_demo,
+        "illustrative": used_demo,
         "disclaimer": (
-            "Educational demo basket (RELIANCE/TCS/INFY) — not your live paper portfolio."
+            "Educational demo basket (RELIANCE/TCS/INFY) — not your paper portfolio."
             if used_demo
-            else "Computed on the symbols you provided (paper portfolio when supplied by the app)."
+            else "Computed from Yahoo daily history on the names you supplied. Educational only — not a SEBI risk report."
         ),
     }
 

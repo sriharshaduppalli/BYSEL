@@ -547,6 +547,8 @@ fun BYSELApp(
     val portfolioHealth by viewModel.portfolioHealth.collectAsStateWithLifecycle()
     val healthLoading by viewModel.healthLoading.collectAsStateWithLifecycle()
     val paperPortfolioRisk by viewModel.paperPortfolioRisk.collectAsStateWithLifecycle()
+    val importedBook by viewModel.importedBook.collectAsStateWithLifecycle()
+    val importMessage by viewModel.importMessage.collectAsStateWithLifecycle()
     val marketScanner by viewModel.marketScanner.collectAsStateWithLifecycle()
     val marketHeatmap by viewModel.marketHeatmap.collectAsStateWithLifecycle()
     val heatmapLoading by viewModel.heatmapLoading.collectAsStateWithLifecycle()
@@ -580,6 +582,16 @@ fun BYSELApp(
             duration = SnackbarDuration.Short,
         )
         viewModel.clearProductActionMessage()
+    }
+
+    LaunchedEffect(importMessage) {
+        val message = importMessage?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(
+            message = message,
+            withDismissAction = true,
+            duration = SnackbarDuration.Short,
+        )
+        viewModel.clearImportMessage()
     }
 
     // Tell the system when Home is usable (TTFD) — cached wallet/holdings/quotes count.
@@ -1105,6 +1117,13 @@ fun BYSELApp(
                                         portfolioHealth = portfolioHealth,
                                         healthLoading = healthLoading,
                                         paperRisk = paperPortfolioRisk,
+                                        importedBook = importedBook,
+                                        onImportCsv = { text, name -> viewModel.importHoldingsCsv(text, name) },
+                                        onClearImport = { viewModel.clearImportedBook() },
+                                        onOpenImportedSymbol = { symbol ->
+                                            viewModel.fetchAndSelectQuote(symbol)
+                                            openStockDetailTab()
+                                        },
                                         scannerScores = remember(marketScanner) {
                                             marketScanner?.rows.orEmpty()
                                                 .mapNotNull { row ->
@@ -1135,6 +1154,10 @@ fun BYSELApp(
                                         onStockClick = { symbol ->
                                             viewModel.fetchAndSelectQuote(symbol)
                                             openStockDetailTab()
+                                        },
+                                        onSectorClick = { sectorName, symbols ->
+                                            viewModel.setScannerSectorFocus(sectorName, symbols)
+                                            selectedTab = 28
                                         },
                                     )
                                 }

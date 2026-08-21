@@ -208,7 +208,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun refreshIntradayTips(limit: Int = 3, advanceShare: Double? = lastAdvanceShare) {
+    fun refreshIntradayTips(limit: Int = 4, advanceShare: Double? = lastAdvanceShare) {
         lastAdvanceShare = advanceShare
         viewModelScope.launch {
             _intradayTipsLoading.value = true
@@ -235,7 +235,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         refreshInvestorTips(topic = normalized)
     }
 
-    fun refreshInvestorTips(topic: String = _investorTipTopic.value, limit: Int = 3) {
+    fun refreshInvestorTips(topic: String = _investorTipTopic.value, limit: Int = 4) {
         val normalized = topic.trim().lowercase().ifBlank { "long_term" }
         _investorTipTopic.value = normalized
         viewModelScope.launch {

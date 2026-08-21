@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,6 +42,9 @@ private const val STALE_AFTER_MS = 45_000L
 fun MarketDataStatusBanner(
     lastQuoteUpdateAt: Long,
     isMarketOpen: Boolean?,
+    serverWaking: Boolean = false,
+    liveRefreshInFlight: Boolean = false,
+    onRetryWake: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     // Ticks only while this banner is composed; drives the "Xs ago" age readout.
@@ -54,35 +58,40 @@ fun MarketDataStatusBanner(
 
     val ageMs = if (lastQuoteUpdateAt <= 0L) Long.MAX_VALUE else now - lastQuoteUpdateAt
     val isStale = ageMs > STALE_AFTER_MS
+    val neverLoaded = lastQuoteUpdateAt <= 0L
 
     // When the exchange is shut, last traded prices are correct rather than degraded,
     // so there is nothing to warn about.
     val marketClosed = isMarketOpen == false
-    val visible = isStale && !marketClosed
+    val hideWhileFirstFetch = neverLoaded && liveRefreshInFlight && !serverWaking
+    val visible = serverWaking || (isStale && !marketClosed && !hideWhileFirstFetch)
 
     AnimatedVisibility(
         visible = visible,
         enter = expandVertically(),
         exit = shrinkVertically(),
     ) {
-        val neverLoaded = lastQuoteUpdateAt <= 0L
-        val accent = if (neverLoaded) Color(0xFFE53935) else Color(0xFFFF8F00)
-        val message = if (neverLoaded) {
-            "Live prices unavailable — check your connection before trading"
-        } else {
-            "Prices may be delayed — last updated ${formatAge(ageMs)} ago"
+        val accent = when {
+            serverWaking -> Color(0xFFFF8F00)
+            neverLoaded -> Color(0xFFE53935)
+            else -> Color(0xFFFF8F00)
+        }
+        val message = when {
+            serverWaking -> "Waking server…"
+            neverLoaded -> "Live prices unavailable — check your connection before trading"
+            else -> "Prices may be delayed — last updated ${formatAge(ageMs)} ago"
         }
 
         Row(
             modifier = modifier
                 .fillMaxWidth()
                 .background(accent.copy(alpha = 0.16f))
-                .padding(horizontal = 16.dp, vertical = 6.dp),
+                .padding(horizontal = 16.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Icon(
-                imageVector = if (neverLoaded) Icons.Filled.CloudOff else Icons.Filled.Schedule,
+                imageVector = if (neverLoaded && !serverWaking) Icons.Filled.CloudOff else Icons.Filled.Schedule,
                 contentDescription = null,
                 tint = accent,
                 modifier = Modifier.size(14.dp),
@@ -92,7 +101,13 @@ fun MarketDataStatusBanner(
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
                 color = accent,
+                modifier = Modifier.weight(1f),
             )
+            if (serverWaking && onRetryWake != null) {
+                TextButton(onClick = onRetryWake) {
+                    Text("Retry", fontSize = 11.sp, color = accent, fontWeight = FontWeight.SemiBold)
+                }
+            }
         }
     }
 }

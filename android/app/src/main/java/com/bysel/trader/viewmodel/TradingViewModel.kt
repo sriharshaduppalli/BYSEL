@@ -11,6 +11,9 @@ import com.bysel.trader.data.WatchlistStore
 import com.bysel.trader.data.WatchlistSymbols
 import com.bysel.trader.data.CustomScannerFilters
 import com.bysel.trader.data.CustomScannerFiltersStore
+import com.bysel.trader.data.importbook.CasCsvParser
+import com.bysel.trader.data.importbook.ImportedBook
+import com.bysel.trader.data.importbook.ImportedBookStore
 import com.bysel.trader.data.models.*
 import com.bysel.trader.data.repository.Result
 import com.bysel.trader.data.repository.TradingRepository
@@ -101,6 +104,24 @@ class TradingViewModel(
 
     private val _holdings = MutableStateFlow<List<Holding>>(emptyList())
     val holdings: StateFlow<List<Holding>> = _holdings.asStateFlow()
+
+    private val _importedBook = MutableStateFlow<ImportedBook?>(null)
+    val importedBook: StateFlow<ImportedBook?> = _importedBook.asStateFlow()
+
+    private val _importMessage = MutableStateFlow<String?>(null)
+    val importMessage: StateFlow<String?> = _importMessage.asStateFlow()
+    fun clearImportMessage() { _importMessage.value = null }
+
+    data class ScannerSectorFocus(val sector: String, val symbols: List<String>)
+    private val _scannerSectorFocus = MutableStateFlow<ScannerSectorFocus?>(null)
+    val scannerSectorFocus: StateFlow<ScannerSectorFocus?> = _scannerSectorFocus.asStateFlow()
+    fun setScannerSectorFocus(sector: String, symbols: List<String>) {
+        _scannerSectorFocus.value = ScannerSectorFocus(
+            sector = sector,
+            symbols = symbols.map { it.trim().uppercase() }.filter { it.isNotBlank() }.distinct(),
+        )
+    }
+    fun clearScannerSectorFocus() { _scannerSectorFocus.value = null }
 
     private val _alerts = MutableStateFlow<List<Alert>>(emptyList())
     val alerts: StateFlow<List<Alert>> = _alerts.asStateFlow()
@@ -306,6 +327,17 @@ class TradingViewModel(
     private val _productActionMessage = MutableStateFlow<String?>(null)
     val productActionMessage: StateFlow<String?> = _productActionMessage.asStateFlow()
 
+    data class PaperFoDrill(
+        val kind: String,
+        val title: String,
+        val detail: String,
+        val symbol: String,
+        val atMs: Long = System.currentTimeMillis(),
+    )
+
+    private val _lastPaperFoDrill = MutableStateFlow<PaperFoDrill?>(null)
+    val lastPaperFoDrill: StateFlow<PaperFoDrill?> = _lastPaperFoDrill.asStateFlow()
+
     /** Options / Futures form notices — never shown on Spot My list or the app-wide snackbar. */
     private val _derivativesError = MutableStateFlow<String?>(null)
     val derivativesError: StateFlow<String?> = _derivativesError.asStateFlow()
@@ -417,7 +449,7 @@ class TradingViewModel(
     private val QUOTE_SPINNER_TIMEOUT_MS = 12_000L
     private val ALL_QUOTES_WARMUP_INTERVAL = 10 * 60_000L
     private val SIGNAL_LAB_REFRESH_DEBOUNCE = 15_000L
-    private val HEATMAP_REFRESH_DEBOUNCE = 1_200L
+    private val HEATMAP_REFRESH_DEBOUNCE = 4_500L
     private val HEATMAP_STALE_THRESHOLD = 12_000L
     private val RESUME_HEATMAP_DELAY = 500L
     private val KEEPALIVE_INTERVAL_MS = 10 * 60_000L
@@ -454,7 +486,8 @@ class TradingViewModel(
     private val indexSymbols = listOf("NIFTY50", "SENSEX", "BANKNIFTY")
 
     private fun trackedSymbols(additional: List<String> = emptyList()): List<String> {
-        return (indexSymbols + defaultSymbols + _watchlist.value + _holdings.value.map { it.symbol } + additional)
+        return (indexSymbols + defaultSymbols + _watchlist.value + _holdings.value.map { it.symbol } +
+            _importedBook.value?.rows.orEmpty().map { it.symbol } + additional)
             .map { it.trim().uppercase() }
             .filter { it.isNotBlank() }
             .distinct()
@@ -661,6 +694,7 @@ class TradingViewModel(
             lastGood = emptyList(),
         )
         _watchlist.value = restoredWatchlist
+        _importedBook.value = ImportedBookStore.read(getApplication())
         if (restoredWatchlist.isNotEmpty()) {
             persistWatchlist(restoredWatchlist, allowEmpty = false)
         }
@@ -2163,7 +2197,7 @@ class TradingViewModel(
         _futuresTicketPreview.value = null
     }
 
-    fun loadInvestorTips(topic: String, limit: Int = 2) {
+    fun loadInvestorTips(topic: String, limit: Int = 4) {
         val normalized = topic.trim().lowercase().ifBlank { "long_term" }
         _investorTips.value = com.bysel.trader.ui.components.localInvestorTips(normalized, limit)
         viewModelScope.launch {
@@ -2176,23 +2210,93 @@ class TradingViewModel(
         }
     }
 
-    /** One-tap paper place from Futures Radar preview (routes through Advanced order path). */
+    /**
+     * Save a futures preview as a journaled paper drill.
+     * Does **not** buy/sell the cash underlying (lot × lotSize would fake a huge equity fill).
+     */
     fun placeFuturesTicketFromPreview() {
         val preview = _futuresTicketPreview.value
         if (preview == null) {
             _derivativesError.value = "Preview a futures ticket first"
             return
         }
-        placeAdvancedOrder(
-            symbol = preview.symbol,
-            quantity = preview.quantity,
+        val notional = preview.notionalValue
+        val onePct = notional * 0.01
+        val note = buildString {
+            append("${preview.side} ${preview.lots} lot(s) ${preview.contractSymbol}")
+            append(" · lot ${preview.lotSize} · notional ₹${notional.toLong()}")
+            append(" · typical margin ₹${preview.estimatedMargin.toLong()}")
+            append(" · 1% move ≈ ₹${onePct.toLong()}")
+            append(" | paper_fo=futures | not a cash share fill")
+        }
+        logPaperFoDrill(
+            kind = "FUTURES",
+            symbol = preview.contractSymbol.ifBlank { preview.symbol },
             side = preview.side,
-            orderType = "MARKET",
-            validity = "DAY",
-            limitPrice = null,
-            triggerPrice = null,
-            tag = "FUT:${preview.contractSymbol}",
+            qty = preview.lots.coerceAtLeast(1),
+            price = preview.referencePrice.coerceAtLeast(0.0),
+            note = note,
+            title = "${preview.side} ${preview.lots} lot ${preview.contractSymbol}",
+            detail = "Notional ₹${notional.toLong()} · margin ₹${preview.estimatedMargin.toLong()} is educational — no cash shares booked.",
         )
+    }
+
+    fun logOptionsRecipeDrill(preview: StrategyPreviewResponse, legsText: String) {
+        val note = buildString {
+            append("Recipe ${preview.symbol}")
+            append(" · max loss ₹${preview.maxLoss.toLong()}")
+            append(" · max profit ₹${preview.maxProfit.toLong()}")
+            append(" · margin est ₹${preview.marginEstimate.toLong()}")
+            if (legsText.isNotBlank()) append(" · legs ${legsText.replace('\n', ';')}")
+            append(" | paper_fo=options | preview only")
+        }
+        logPaperFoDrill(
+            kind = "OPTIONS",
+            symbol = preview.symbol,
+            side = "BUY",
+            qty = 1,
+            price = preview.marginEstimate.coerceAtLeast(0.0),
+            note = note,
+            title = "Options recipe · ${preview.symbol}",
+            detail = "Max loss ₹${preview.maxLoss.toLong()} · margin ₹${preview.marginEstimate.toLong()} — journaled drill, not an option fill.",
+        )
+    }
+
+    private fun logPaperFoDrill(
+        kind: String,
+        symbol: String,
+        side: String,
+        qty: Int,
+        price: Double,
+        note: String,
+        title: String,
+        detail: String,
+    ) {
+        _lastPaperFoDrill.value = PaperFoDrill(
+            kind = kind,
+            title = title,
+            detail = detail,
+            symbol = symbol,
+        )
+        viewModelScope.launch {
+            try {
+                com.bysel.trader.data.api.RetrofitClient.apiService.logTrade(
+                    mapOf(
+                        "symbol" to symbol.uppercase(),
+                        "side" to side.uppercase(),
+                        "qty" to qty.coerceAtLeast(1),
+                        "price" to price.coerceAtLeast(0.0),
+                        "userNote" to note,
+                    )
+                )
+                _derivativesError.value = null
+                _productActionMessage.value =
+                    "$title saved to the journal. No cash shares were bought or sold."
+            } catch (_: Exception) {
+                _productActionMessage.value =
+                    "$title kept on this device. Journal sync failed — open Trade Journal later."
+            }
+        }
     }
 
     fun addFamilyMember(
@@ -3008,78 +3112,53 @@ class TradingViewModel(
         askAi(query)
     }
 
-    // --- Analysis / predictions ---
-    fun analyzeStock(symbol: String) {
-        viewModelScope.launch {
-            // Build contextual analyze prompt including holdings and wallet
-            val holdingsSummary = _holdings.value.joinToString(separator = ";") { h ->
-                "${h.symbol}:${h.qty}@${h.last}"
-            }
-            val wallet = _walletBalance.value
-            val portfolio = _portfolioHealth.value
-
-            // include recent history for symbol in analysis
-            val recentHistory = if (_selectedQuote.value?.symbol == symbol) _quoteHistory.value else emptyList()
-            val prompt = PromptBuilder.buildPrompt("analyze_stock:symbol=$symbol,wallet=$wallet", holdingsSummary, wallet, portfolio?.overallScore, _selectedQuote.value, recentHistory)
-
-            when (val r = repository.aiAsk(prompt, buildConversationHistory())) {
-                is Result.Success -> {
-                    // Try to map returned data to StockAnalysis if available
-                    val resp = r.data
-                    val dataMap = resp.data
-                    if (dataMap is Map<*, *>) {
-                        try {
-                            val map = dataMap as Map<*, *>
-                            val symbolS = map["symbol"] as? String ?: symbol
-                            val nameS = map["name"] as? String ?: ""
-                            val currentPrice = (map["currentPrice"] as? Number)?.toDouble() ?: 0.0
-                            val sector = map["sector"] as? String ?: ""
-                            val industry = map["industry"] as? String ?: ""
-                            val score = (map["score"] as? Number)?.toInt() ?: 0
-                            val sbAny = map["scoreBreakdown"] as? Map<*, *>
-                            val scoreBreakdown = sbAny?.mapNotNull { (k, v) ->
-                                if (k is String && v is Number) k to v.toInt() else null
-                            }?.toMap() ?: emptyMap()
-
-                            val sa = StockAnalysis(
-                                symbol = symbolS,
-                                name = nameS,
-                                currentPrice = currentPrice,
-                                sector = sector,
-                                industry = industry,
-                                score = score,
-                                scoreBreakdown = scoreBreakdown,
-                                signal = map["signal"] as? String ?: "",
-                                summary = map["summary"] as? String ?: ""
-                            )
-                            _stockAnalysis.value = sa
-                        } catch (e: Exception) {
-                            _error.value = "AI response parsing error"
-                        }
-                    } else {
-                        _error.value = "No analysis data returned"
-                    }
-                }
-                is Result.Error -> _error.value = r.message
-                else -> {}
-            }
-        }
-    }
-
-    // lightweight placeholders for types referenced earlier
+    // --- Analysis / predictions (real /ai/analyze and /ai/predict, not chat) ---
     private val _stockAnalysis = MutableStateFlow<StockAnalysis?>(null)
     val stockAnalysis: StateFlow<StockAnalysis?> = _stockAnalysis.asStateFlow()
 
     private val _stockPrediction = MutableStateFlow<StockPredictionResponse?>(null)
     val stockPrediction: StateFlow<StockPredictionResponse?> = _stockPrediction.asStateFlow()
 
-    fun predictStock(symbol: String) {
+    private val _stockResearchLoading = MutableStateFlow(false)
+    val stockResearchLoading: StateFlow<Boolean> = _stockResearchLoading.asStateFlow()
+
+    private val _stockResearchError = MutableStateFlow<String?>(null)
+    val stockResearchError: StateFlow<String?> = _stockResearchError.asStateFlow()
+
+    fun clearStockResearch() {
+        _stockAnalysis.value = null
+        _stockPrediction.value = null
+        _stockResearchError.value = null
+        _stockResearchLoading.value = false
+    }
+
+    fun analyzeStock(symbol: String) {
+        val clean = symbol.trim().uppercase()
+        if (clean.isEmpty()) return
         viewModelScope.launch {
-            when (val r = repository.aiPredict(symbol)) {
-                is Result.Success -> _stockPrediction.value = r.data
-                is Result.Error -> _error.value = r.message
+            _stockResearchLoading.value = true
+            _stockResearchError.value = null
+            when (val r = repository.aiAnalyze(clean)) {
+                is Result.Success -> _stockAnalysis.value = r.data
+                is Result.Error -> _stockResearchError.value = r.message
                 else -> {}
             }
+            _stockResearchLoading.value = false
+        }
+    }
+
+    fun predictStock(symbol: String) {
+        val clean = symbol.trim().uppercase()
+        if (clean.isEmpty()) return
+        viewModelScope.launch {
+            _stockResearchLoading.value = true
+            _stockResearchError.value = null
+            when (val r = repository.aiPredict(clean)) {
+                is Result.Success -> _stockPrediction.value = r.data
+                is Result.Error -> _stockResearchError.value = r.message
+                else -> {}
+            }
+            _stockResearchLoading.value = false
         }
     }
 
@@ -3103,6 +3182,43 @@ class TradingViewModel(
             }
             _healthLoading.value = false
         }
+    }
+
+    fun importHoldingsCsv(text: String, fileName: String = "") {
+        viewModelScope.launch {
+            if (_symbolCatalog.value.isEmpty()) {
+                ensureSymbolCatalogLoaded()
+            }
+            val nameMap = _symbolCatalog.value.associate { row ->
+                CasCsvParser.normalizeName(row.name) to row.symbol.trim().uppercase()
+            }.filterKeys { it.isNotBlank() }
+            val parsed = CasCsvParser.parse(text, fileName, nameMap)
+            if (parsed.error != null && parsed.book.rows.isEmpty()) {
+                _importMessage.value = parsed.error
+                return@launch
+            }
+            val book = parsed.book
+            _importedBook.value = book
+            ImportedBookStore.write(getApplication(), book)
+            val skipNote = if (book.skipped.isNotEmpty()) {
+                " ${book.skipped.size} row(s) skipped."
+            } else {
+                ""
+            }
+            _importMessage.value = "${book.sourceLabel}: ${book.rows.size} names imported (read-only).$skipNote"
+            refreshQuotes(force = true, showSpinner = false)
+            if (_fastRefreshEnabled.value && MarketSession.isOpen()) {
+                startFastRefresh(symbols = trackedSymbols())
+            }
+            loadPaperPortfolioRisk()
+        }
+    }
+
+    fun clearImportedBook() {
+        _importedBook.value = null
+        ImportedBookStore.clear(getApplication())
+        _importMessage.value = "Imported book cleared."
+        loadPaperPortfolioRisk()
     }
 
     fun loadPaperPortfolioRisk() {
@@ -3632,6 +3748,7 @@ class TradingViewModel(
             correlationMatrix = corr,
             riskLevel = "Medium",
             demoBasket = true,
+            illustrative = true,
             disclaimer = "Illustrative educational metrics — live risk service unavailable. Not your paper portfolio.",
         )
     }

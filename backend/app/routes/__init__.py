@@ -1890,6 +1890,7 @@ def _habit_activity_for_user(
                 goals=raw.get("goals") or [],
                 alert_count=int(raw.get("alert_count") or 0),
                 wallet_balance=raw.get("wallet_balance"),
+                journal_entries=raw.get("journal") or [],
                 topic=topic,
             )
         return score_session_habits(
@@ -1904,7 +1905,7 @@ def _habit_activity_for_user(
 
 @router.get("/market/intraday-tips", response_model=IntradayTipsResponse)
 async def market_intraday_tips_endpoint(
-    limit: int = Query(3, ge=1, le=6),
+    limit: int = Query(4, ge=1, le=8),
     advanceShare: Optional[float] = Query(
         None,
         ge=0.0,
@@ -1949,7 +1950,7 @@ async def market_investor_tips_endpoint(
         "long_term",
         description="long_term | mutual_funds | ipo | fno | sgb",
     ),
-    limit: int = Query(3, ge=1, le=8),
+    limit: int = Query(4, ge=1, le=8),
     db: Session = Depends(get_db),
     user=Depends(get_optional_current_user),
 ):

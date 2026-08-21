@@ -37,6 +37,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -59,6 +60,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.bysel.trader.ui.components.appOutlinedTextFieldColors
 import com.bysel.trader.ui.components.filterDecimalInput
 import com.bysel.trader.ui.components.filterDigitsOnly
+import com.bysel.trader.ui.components.PaperPositionSizeHelper
 import com.bysel.trader.ui.components.FnoLiteracyMode
 import com.bysel.trader.ui.components.FnoLiteracyPrimer
 import com.bysel.trader.ui.components.InfoChip
@@ -91,7 +93,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.saveable.rememberSaveable
 import kotlin.math.abs
-import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 private fun formatVolume(v: Long?): String {
@@ -105,16 +106,9 @@ private fun formatVolume(v: Long?): String {
 
 private fun formatCurrency(value: Double): String = formatInr(value)
 
-private data class WatchlistInsight(
-    val quote: Quote,
-    val momentum: String,
-    val risk: String,
-    val confidence: Int,
-    val rationale: String,
-    val flags: List<String>
-)
-
-private fun computeWatchlistInsight(quote: Quote): WatchlistInsight {
+/** Tape facts from the quote — not a buy/sell signal or model score. */
+private fun tapeFlagsForQuote(quote: Quote): List<String> {
+    val flags = mutableListOf<String>()
     val spreadPct = if (quote.bid != null && quote.ask != null && quote.last > 0.0) {
         ((quote.ask - quote.bid) / quote.last) * 100.0
     } else {
@@ -130,51 +124,12 @@ private fun computeWatchlistInsight(quote: Quote): WatchlistInsight {
     } else {
         null
     }
-
-    val momentum = when {
-        quote.pctChange >= 1.25 -> "Bullish"
-        quote.pctChange <= -1.25 -> "Bearish"
-        else -> "Sideways"
-    }
-
-    var riskScore = 0
-    if (intradayRangePct >= 3.5) riskScore += 2 else if (intradayRangePct >= 2.0) riskScore += 1
-    if (abs(quote.pctChange) >= 3.0) riskScore += 2 else if (abs(quote.pctChange) >= 1.5) riskScore += 1
-    if (spreadPct >= 0.45) riskScore += 2 else if (spreadPct >= 0.2) riskScore += 1
-
-    val risk = when {
-        riskScore >= 4 -> "High"
-        riskScore >= 2 -> "Medium"
-        else -> "Low"
-    }
-
-    val confidenceRaw = 58 +
-        (abs(quote.pctChange) * 6.0).roundToInt() +
-        (if ((volumeRatio ?: 0.0) >= 1.4) 8 else 0) -
-        (if (spreadPct >= 0.45) 8 else 0)
-    val confidence = confidenceRaw.coerceIn(35, 92)
-
-    val rationale = when (momentum) {
-        "Bullish" -> "Strength with ${formatSignedPct(quote.pctChange)} move${if (volumeRatio != null) " and ${String.format("%.1f", volumeRatio)}x volume" else ""}."
-        "Bearish" -> "Pressure with ${formatSignedPct(quote.pctChange)} decline; protect downside before averaging."
-        else -> "Range-bound action; prefer staged entries near support levels."
-    }
-
-    val flags = mutableListOf<String>()
     if (abs(quote.pctChange) >= 2.0) flags.add("Move ${formatSignedPct(quote.pctChange)}")
     if (intradayRangePct >= 3.0) flags.add("Range ${String.format("%.1f", intradayRangePct)}%")
     if (volumeRatio != null && volumeRatio >= 1.5) flags.add("${String.format("%.1f", volumeRatio)}x vol")
     if (spreadPct >= 0.35) flags.add("Wide spread")
-    if (flags.isEmpty()) flags.add("Stable")
-
-    return WatchlistInsight(
-        quote = quote,
-        momentum = momentum,
-        risk = risk,
-        confidence = confidence,
-        rationale = rationale,
-        flags = flags
-    )
+    if (flags.isEmpty()) flags.add("Quiet tape")
+    return flags
 }
 
 private data class TradeWorkspaceTab(
@@ -397,6 +352,11 @@ fun TradingScreen(
             }
         }
 
+        TradePracticeBlotter(
+            viewModel = viewModel,
+            onOpenSymbol = { openTradeSheet(it) },
+        )
+
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -424,7 +384,10 @@ fun TradingScreen(
                         onOpenDerivativesWorkspace = { selectedWorkspaceIndex = 2 },
                         viewModel = viewModel,
                     )
-                    1 -> AdvancedOrdersScreen(viewModel)
+                    1 -> AdvancedOrdersScreen(
+                        viewModel = viewModel,
+                        preferredSymbol = selectedQuote?.symbol ?: activeTradeSymbol,
+                    )
                     2 -> DerivativesIntelligenceScreen(viewModel)
                     else -> FuturesRadarScreen(
                         viewModel = viewModel,
@@ -518,13 +481,6 @@ private fun SpotTradingWorkspace(
             ageSec < 600L -> Color(0xFFFFC107)
             else -> LocalAppTheme.current.negative
         }
-    }
-    val watchlistInsights = remember(activeWatchlistSymbols, liveQuotes) {
-        activeWatchlistSymbols
-            .mapNotNull { symbol ->
-                WatchlistSymbols.findQuote(liveQuotes, symbol)?.let { computeWatchlistInsight(it) }
-            }
-            .sortedByDescending { it.confidence }
     }
     val watchlistListState = rememberLazyListState()
     val liveBoardListState = rememberLazyListState()
@@ -903,50 +859,6 @@ private fun SpotTradingWorkspace(
                             .padding(horizontal = 8.dp),
                         contentPadding = PaddingValues(bottom = 24.dp),
                     ) {
-                        if (watchlistInsights.isNotEmpty()) {
-                            item(key = "watchlist_signals_header") {
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                                    colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
-                                    shape = RoundedCornerShape(10.dp),
-                                ) {
-                                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                                        Text(
-                                            text = "Watchlist signals",
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = LocalAppTheme.current.text,
-                                        )
-                                        Text(
-                                            text = "${watchlistInsights.size} ranked · scroll for all",
-                                            fontSize = 11.sp,
-                                            color = LocalAppTheme.current.textSecondary,
-                                        )
-                                    }
-                                }
-                            }
-                            items(
-                                items = watchlistInsights,
-                                key = { "signal_${it.quote.symbol}" },
-                            ) { insight ->
-                                WatchlistInsightRow(
-                                    insight = insight,
-                                    onOpenTrade = { onSelectQuote(insight.quote) },
-                                    modifier = Modifier.padding(horizontal = 8.dp),
-                                )
-                            }
-                            item(key = "watchlist_quotes_header") {
-                                Text(
-                                    text = "Tracked quotes",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = LocalAppTheme.current.textSecondary,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                )
-                            }
-                        }
                         items(watchlistQuotes, key = { it.symbol }) { quote ->
                             val swipeDismissState = rememberSwipeToDismissBoxState(
                                 confirmValueChange = { value ->
@@ -1180,15 +1092,15 @@ private fun FuturesRadarScreen(
             Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "Futures Radar",
+                        "Futures desk",
                         color = LocalAppTheme.current.text,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 24.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        "Paper F&O gym: NSE contracts when reachable, else a teaching board. Preview lot risk, then place a paper ticket. No guaranteed P&L.",
+                        "Preview lot risk on a teaching board. Save a journaled drill — this does not buy the cash stock. No guaranteed P&L.",
                         color = LocalAppTheme.current.textSecondary,
                         fontSize = 12.sp,
                     )
@@ -1440,7 +1352,7 @@ private fun FuturesRadarScreen(
                         Text("Estimated Charges: ${formatCurrency(preview.estimatedCharges)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                         Text("Max Loss Buffer: ${formatCurrency(preview.maxLossBuffer)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                         Text(
-                            "Notional is the value you control. Margin is paper cash typically blocked. A 1% move against you is about ${formatCurrency(preview.notionalValue * 0.01)}.",
+                            "Notional is the value 1 lot controls. Margin is typical cash blocked on a live broker — BYSEL does not block it or book ${preview.quantity} cash shares. A 1% move is about ${formatCurrency(preview.notionalValue * 0.01)}.",
                             color = LocalAppTheme.current.textSecondary,
                             fontSize = 11.sp,
                             lineHeight = 15.sp,
@@ -1453,7 +1365,7 @@ private fun FuturesRadarScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Button(onClick = { viewModel.placeFuturesTicketFromPreview() }) {
-                                Text("Place Ticket", maxLines = 1)
+                                Text("Save paper drill", maxLines = 1)
                             }
                             OutlinedButton(onClick = onOpenAdvanced) { Text("Advanced", maxLines = 1) }
                             OutlinedButton(onClick = onOpenOptions) { Text("Open Options", maxLines = 1) }
@@ -1466,12 +1378,104 @@ private fun FuturesRadarScreen(
 }
 
 @Composable
+private fun TradePracticeBlotter(
+    viewModel: TradingViewModel,
+    onOpenSymbol: (String) -> Unit,
+) {
+    val holdings by viewModel.holdings.collectAsStateWithLifecycle()
+    val lastFill by viewModel.lastExecutedOrder.collectAsStateWithLifecycle()
+    val foDrill by viewModel.lastPaperFoDrill.collectAsStateWithLifecycle()
+    if (holdings.isEmpty() && lastFill == null && foDrill == null) return
+    val theme = LocalAppTheme.current
+    val fill = lastFill?.takeIf { it.order.symbol.isNotBlank() }
+    val headline = when {
+        foDrill != null -> foDrill!!.title
+        fill != null -> {
+            val px = fill.executedPrice ?: 0.0
+            val pxLabel = if (px > 0) " @ ${formatCurrency(px)}" else ""
+            "Last fill ${fill.order.side} ${fill.order.qty} ${fill.order.symbol}$pxLabel"
+        }
+        else -> "${holdings.size} open paper name${if (holdings.size == 1) "" else "s"}"
+    }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        colors = CardDefaults.cardColors(containerColor = theme.card),
+        shape = RoundedCornerShape(10.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = "Paper desk",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = theme.primary,
+            )
+            Text(
+                text = headline,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = theme.text,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            foDrill?.detail?.let { detail ->
+                Text(
+                    text = detail,
+                    fontSize = 10.sp,
+                    color = theme.textSecondary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (holdings.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .exclusiveHorizontalScroll(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    holdings.take(6).forEach { holding ->
+                        AssistChip(
+                            onClick = { onOpenSymbol(holding.symbol) },
+                            label = {
+                                Text(
+                                    "${holding.symbol} ${holding.qty}",
+                                    maxLines = 1,
+                                    fontSize = 11.sp,
+                                )
+                            },
+                        )
+                    }
+                    fill?.order?.symbol?.let { symbol ->
+                        if (holdings.none { it.symbol.equals(symbol, ignoreCase = true) }) {
+                            AssistChip(
+                                onClick = { onOpenSymbol(symbol) },
+                                label = { Text("Last $symbol", maxLines = 1, fontSize = 11.sp) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
 fun TradingQuoteCard(
     quote: Quote,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     val theme = LocalAppTheme.current
+    val tapeFlags = remember(quote.symbol, quote.pctChange, quote.volume, quote.avgVolume, quote.bid, quote.ask, quote.dayHigh, quote.dayLow, quote.last) {
+        tapeFlagsForQuote(quote)
+    }
     Card(
         onClick = onClick,
         modifier = modifier
@@ -1536,6 +1540,28 @@ fun TradingQuoteCard(
                 }
             }
 
+            if (tapeFlags.isNotEmpty()) {
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    tapeFlags.forEach { flag ->
+                        Text(
+                            text = flag,
+                            fontSize = 10.sp,
+                            color = theme.textSecondary,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(theme.surface.copy(alpha = 0.85f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
+                }
+            }
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1557,99 +1583,6 @@ fun TradingQuoteCard(
                     height = 40.dp,
                 ) {
                     Text("Sell", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun WatchlistInsightRow(
-    insight: WatchlistInsight,
-    onOpenTrade: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.surface),
-        shape = RoundedCornerShape(8.dp)
-    ) {
-        Column(modifier = Modifier.padding(10.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = insight.quote.symbol,
-                        fontWeight = FontWeight.Bold,
-                        color = LocalAppTheme.current.text
-                    )
-                    StockNotesIcon(symbol = insight.quote.symbol)
-                }
-                Text(
-                    text = "Conf ${insight.confidence}",
-                    fontSize = 11.sp,
-                    color = LocalAppTheme.current.textSecondary
-                )
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = insight.momentum,
-                    fontSize = 12.sp,
-                    color = when (insight.momentum) {
-                        "Bullish" -> LocalAppTheme.current.positive
-                        "Bearish" -> LocalAppTheme.current.negative
-                        else -> LocalAppTheme.current.textSecondary
-                    }
-                )
-                Text(
-                    text = "Risk ${insight.risk}",
-                    fontSize = 12.sp,
-                    color = when (insight.risk) {
-                        "High" -> LocalAppTheme.current.negative
-                        "Medium" -> Color(0xFFFFB300)
-                        else -> LocalAppTheme.current.positive
-                    }
-                )
-                Text(
-                    text = formatSignedPct(insight.quote.pctChange),
-                    fontSize = 12.sp,
-                    color = if (insight.quote.pctChange >= 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
-                )
-            }
-
-            Text(
-                text = insight.rationale,
-                fontSize = 12.sp,
-                color = LocalAppTheme.current.textSecondary,
-                modifier = Modifier.padding(top = 6.dp)
-            )
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = insight.flags.take(2).joinToString(" • "),
-                    fontSize = 11.sp,
-                    color = LocalAppTheme.current.textSecondary
-                )
-                TextButton(onClick = onOpenTrade) {
-                    Text("Trade")
                 }
             }
         }
@@ -2303,6 +2236,12 @@ private fun TradeBottomSheetContent(
                 )
             }
         }
+        PaperPositionSizeHelper(
+            walletBalance = walletBalance,
+            entryPrice = localExecutionPrice,
+            onApplyQty = { quantity = it.toString() },
+            modifier = Modifier.padding(bottom = 14.dp),
+        )
 
         if (qty > 0) {
             // Charges breakdown card

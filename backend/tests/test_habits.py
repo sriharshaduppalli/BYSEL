@@ -193,3 +193,94 @@ def test_wilder_rsi_none_when_short_and_not_fake_50():
     rsi = wilder_rsi(closes)
     assert rsi is not None
     assert rsi > 70
+
+
+def test_size_outlier_and_revenge_and_closed_loops():
+    now = _ist(2026, 8, 14, 16, 0)
+    trades = []
+    for day in range(5):
+        when = _ist(2026, 8, 10 + day, 11, 0)
+        trades.append(_trade("INFY", "BUY", when, qty=1, price=100))
+    trades.append(_trade("INFY", "BUY", _ist(2026, 8, 12, 11, 10), qty=12, price=100))
+    trades.append(_trade("INFY", "BUY", _ist(2026, 8, 13, 11, 10), qty=12, price=100))
+    scored = score_session_habits(trades, now=now)
+    assert "size_outlier" in {h["id"] for h in scored["habits"]}
+    assert "median" in next(h for h in scored["habits"] if h["id"] == "size_outlier")["body"].lower()
+
+    revenge_trades = [_trade("TCS", "BUY", _ist(2026, 8, 9, 14, 0), qty=1, price=100)]
+    for day in (10, 11, 12):
+        revenge_trades.append(_trade("TCS", "SELL", _ist(2026, 8, day, 11, 0), qty=1, price=90))
+        revenge_trades.append(_trade("TCS", "BUY", _ist(2026, 8, day, 14, 0), qty=1, price=95))
+    revenge = score_session_habits(revenge_trades, now=now)
+    ids = {h["id"] for h in revenge["habits"]}
+    assert "revenge_reentry" in ids
+    assert "closed_loops_red" in ids
+    assert revenge["stats"]["matchedLoops"] >= 3
+
+
+def test_journal_stop_skipped():
+    now = _ist(2026, 8, 14, 16, 0)
+    trades = [_trade("WIPRO", "BUY", _ist(2026, 8, 10 + i, 11, 0)) for i in range(5)]
+    journal = [
+        {"side": "BUY", "userNote": "Set SL: no | Followed plan: no | source=practice_ideas"}
+        for _ in range(3)
+    ]
+    scored = score_session_habits(trades, journal_entries=journal, now=now)
+    assert "review_sl_weak" in {h["id"] for h in scored["habits"]}
+
+
+def test_investor_topic_tabs_use_paper_book():
+    now = _ist(2026, 8, 14, 16, 0)
+    trades = [_trade("HDFCBANK", "BUY", _ist(2026, 8, 10 + i, 11, 0)) for i in range(5)]
+    mf = score_investor_habits(trades, topic="mutual_funds", now=now)
+    assert "mf_vs_churn" in {h["id"] for h in mf["habits"]}
+    ipo = score_investor_habits(trades, topic="ipo", now=now)
+    assert "ipo_vs_book" in {h["id"] for h in ipo["habits"]}
+    sgb = score_investor_habits(trades, topic="sgb", now=now)
+    assert "sgb_vs_equity" in {h["id"] for h in sgb["habits"]}
+
+    late = []
+    for i in range(5):
+        late.append(_trade("NIFTY", "BUY", _ist(2026, 8, 10 + i, 15, 5)))
+    fno = score_investor_habits(late, topic="fno", now=now)
+    ids = {h["id"] for h in fno["habits"]}
+    assert "fno_size_check" in ids
+    assert "fno_late_tape" in ids
+
+
+def test_book_underwater_and_cash_drag():
+    now = _ist(2026, 8, 14, 12, 0)
+    holdings = [
+        {"symbol": "TCS", "qty": 10, "last": 3500, "avgPrice": 4000},
+        {"symbol": "INFY", "qty": 5, "last": 1400, "avgPrice": 1600},
+    ]
+    scored = score_investor_habits(
+        [],
+        holdings=holdings,
+        wallet_balance=200_000,
+        topic="long_term",
+        now=now,
+    )
+    ids = {h["id"] for h in scored["habits"]}
+    assert "book_underwater" in ids
+    assert "cash_drag" in ids
+    assert "live broker" in next(h for h in scored["habits"] if h["id"] == "book_underwater")["body"].lower()
+
+
+def test_merge_wider_card_keeps_three_paper_slots():
+    paper = [
+        {"id": "open_cluster", "title": "P1", "body": "b", "category": "session", "source": "paper"},
+        {"id": "single_name", "title": "P2", "body": "b", "category": "risk", "source": "paper"},
+        {"id": "revenge_reentry", "title": "P3", "body": "b", "category": "psychology", "source": "paper"},
+    ]
+    edu = [
+        {"id": "fh_patience", "title": "E1", "body": "b", "category": "session", "source": "session"},
+        {"id": "fh_stop", "title": "E2", "body": "b", "category": "process", "source": "session"},
+    ]
+    merged = merge_habit_tips(paper, edu, limit=4, has_enough_data=True)
+    assert [t["id"] for t in merged] == [
+        "open_cluster",
+        "single_name",
+        "revenge_reentry",
+        "fh_patience",
+    ]

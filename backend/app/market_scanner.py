@@ -1766,6 +1766,28 @@ def get_score_history(symbol: str, days: int = 90) -> Dict[str, Any]:
         db.close()
 
 
+def cached_bysel_score_map() -> Dict[str, int]:
+    """In-memory scanner scores only — no Yahoo hop, no Postgres requirement."""
+    out: Dict[str, int] = {}
+    with _CACHE_LOCK:
+        payloads = [payload for _ts, payload in _SCANNER_CACHE.values()]
+    for payload in payloads:
+        for row in payload.get("rows") or []:
+            if not isinstance(row, dict):
+                continue
+            symbol = str(row.get("symbol") or "").strip().upper()
+            raw = row.get("byselScore")
+            if raw is None:
+                raw = row.get("bysel_score")
+            if not symbol or raw is None:
+                continue
+            try:
+                out[symbol] = int(raw)
+            except (TypeError, ValueError):
+                continue
+    return out
+
+
 def clear_scanner_cache() -> None:
     with _CACHE_LOCK:
         _SCANNER_CACHE.clear()

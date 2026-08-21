@@ -35,7 +35,7 @@ class CandleLiteracyDetectorTest {
             candle(100, 101, 99, 100),
             candle(100, 100.5, 96, 97),
             candle(97, 97.2, 94, 95.5),
-            candle(95.2, 97.4, 92.0, 97.1), // long lower wick after dip
+            candle(95.0, 96.2, 91.0, 96.0), // body > doji, long lower wick after dip
         )
         val lessons = CandleLiteracyDetector.detectRecent(bars)
         assertTrue(lessons.any { it.name.equals("Hammer", ignoreCase = true) })
@@ -62,9 +62,9 @@ class CandleLiteracyDetectorTest {
         assertTrue(blob.contains("ROE", ignoreCase = true))
         assertTrue(blob.contains("Interest coverage", ignoreCase = true))
         assertTrue(blob.contains("PEG", ignoreCase = true))
-        assertTrue(blob.contains("Thursday", ignoreCase = true))
         assertTrue(blob.contains("promoter pledging", ignoreCase = true))
-        assertTrue(blob.contains("Max Pain", ignoreCase = true))
+        assertTrue(blob.contains("lot", ignoreCase = true))
+        assertTrue(blob.contains("margin", ignoreCase = true))
         assertTrue(cards.any { it.title.contains("Long-term", ignoreCase = true) })
         assertTrue(cards.any { it.title.contains("Swing", ignoreCase = true) })
         assertTrue(cards.any { it.title.contains("F&O", ignoreCase = true) })

@@ -289,7 +289,7 @@ def _rotate(tips: list[dict[str, str]], seed: int, count: int) -> list[dict[str,
 
 def build_intraday_tips(
     *,
-    limit: int = 3,
+    limit: int = 4,
     advance_share: Optional[float] = None,
     is_holiday: bool = False,
     now: datetime | None = None,

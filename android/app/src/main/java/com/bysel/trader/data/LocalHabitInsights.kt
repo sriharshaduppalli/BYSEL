@@ -147,6 +147,54 @@ object LocalHabitInsights {
                 evidence = "Practice loop done · $key topic",
             )
         }
+        if (key == "fno" && habit.tradeDone) {
+            tips += investorTip(
+                id = "local_fno_vs_spot",
+                title = "Spot paper fill vs the F&O tab",
+                body = "Today's paper ticket is a cash-style drill. Futures and options use lots, " +
+                    "expiry clocks, and max-loss sizing — do not copy this quantity into a contract.",
+                category = "risk",
+                evidence = "Paper fill today · F&O topic",
+            )
+        }
+        if (key == "ipo" && holdings.isNotEmpty()) {
+            tips += investorTip(
+                id = "local_ipo_vs_book",
+                title = "IPO explorer vs an open paper book",
+                body = "You have ${holdings.size} open paper name(s). BYSEL IPO apply is practice ASBA only — " +
+                    "listing hype should not resize the equity book.",
+                category = "process",
+                evidence = "${holdings.size} paper holdings · IPO topic",
+            )
+        }
+        if (key == "sgb") {
+            val goldish = holdings.any { holding ->
+                val token = holding.symbol.uppercase()
+                token.contains("GOLD") || token.contains("SGB") || token.contains("SILVER")
+            }
+            if (!goldish && (habit.tradeDone || holdings.isNotEmpty())) {
+                tips += investorTip(
+                    id = "local_sgb_vs_equity",
+                    title = "SGB card vs equity paper activity",
+                    body = "The paper book has no gold/SGB name. SGB is a multi-year sleeve — " +
+                        "do not treat today's stock drill as a gold allocation.",
+                    category = "process",
+                    evidence = "0 gold/SGB holdings · SGB topic",
+                )
+            }
+        }
+        val underwater = holdings.filter { it.last > 0 && it.avgPrice > 0 && it.last < it.avgPrice * 0.97 }
+        if (key == "long_term" && underwater.size >= 2) {
+            val names = underwater.take(3).joinToString(", ") { it.symbol }
+            tips += investorTip(
+                id = "local_book_underwater",
+                title = "More than one paper name is below cost",
+                body = "${underwater.size} open paper names sit below average cost ($names). " +
+                    "Marks use last vs avg on the device book — not a live broker P&L.",
+                category = "risk",
+                evidence = "${underwater.size} paper names below avg cost",
+            )
+        }
         return tips
     }
 
@@ -154,13 +202,13 @@ object LocalHabitInsights {
         remote: IntradayTipsResponse?,
         local: List<IntradayTip>,
         fallback: IntradayTipsResponse,
-        limit: Int = 3,
+        limit: Int = 4,
     ): IntradayTipsResponse {
         val base = remote ?: fallback
-        val remoteHasPaper = base.tips.any { it.source.equals("paper", ignoreCase = true) }
-        val extras = if (remoteHasPaper) emptyList() else local
+        val remotePaper = base.tips.filter { it.source.equals("paper", ignoreCase = true) }
+        val remoteEdu = base.tips.filter { !it.source.equals("paper", ignoreCase = true) }
         val seen = linkedSetOf<String>()
-        val merged = (extras + base.tips).filter { tip ->
+        val merged = (remotePaper + local + remoteEdu).filter { tip ->
             tip.id.isNotBlank() && seen.add(tip.id)
         }.take(limit)
         return base.copy(tips = merged)
@@ -169,12 +217,12 @@ object LocalHabitInsights {
     fun mergeInvestor(
         remote: InvestorTipsResponse,
         local: List<InvestorTip>,
-        limit: Int = 3,
+        limit: Int = 4,
     ): InvestorTipsResponse {
-        val remoteHasPaper = remote.tips.any { it.source.equals("paper", ignoreCase = true) }
-        val extras = if (remoteHasPaper) emptyList() else local
+        val remotePaper = remote.tips.filter { it.source.equals("paper", ignoreCase = true) }
+        val remoteEdu = remote.tips.filter { !it.source.equals("paper", ignoreCase = true) }
         val seen = linkedSetOf<String>()
-        val merged = (extras + remote.tips).filter { tip ->
+        val merged = (remotePaper + local + remoteEdu).filter { tip ->
             tip.id.isNotBlank() && seen.add(tip.id)
         }.take(limit)
         return remote.copy(tips = merged)

@@ -203,7 +203,365 @@ def _holding_dicts(holdings: Iterable[Any]) -> list[dict[str, Any]]:
         except (TypeError, ValueError):
             avg = last
         value = qty * (last if last > 0 else avg)
-        out.append({"symbol": symbol, "qty": qty, "value": value})
+        pnl = None
+        if last > 0 and avg > 0:
+            pnl = (last - avg) * qty
+        out.append({
+            "symbol": symbol,
+            "qty": qty,
+            "value": value,
+            "last": last,
+            "avg": avg,
+            "pnl": pnl,
+        })
+    return out
+
+
+def _qty_price(row: dict[str, Any]) -> tuple[int, float]:
+    try:
+        qty = int(row.get("qty") or row.get("quantity") or 0)
+    except (TypeError, ValueError):
+        qty = 0
+    try:
+        price = float(row.get("price") or 0)
+        if price <= 0 and row.get("total") and qty > 0:
+            price = float(row["total"]) / qty
+    except (TypeError, ValueError):
+        price = 0.0
+    return qty, price
+
+
+def _matched_round_trip_stats(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """FIFO match buy→sell using recorded prices only. Never invents a mark."""
+    lots: dict[str, list[list[float]]] = defaultdict(list)
+    matched = 0
+    wins = 0
+    realized = 0.0
+    skipped = 0
+    ordered = sorted(
+        rows,
+        key=lambda row: row.get("_ist") or datetime.min.replace(tzinfo=timezone.utc),
+    )
+    for row in ordered:
+        qty, price = _qty_price(row)
+        if qty <= 0:
+            continue
+        symbol = row["symbol"]
+        if row["side"] == "BUY":
+            if price <= 0:
+                skipped += qty
+                continue
+            lots[symbol].append([float(qty), price])
+            continue
+        if row["side"] != "SELL":
+            continue
+        if price <= 0:
+            skipped += qty
+            continue
+        remaining = float(qty)
+        while remaining > 0 and lots[symbol]:
+            lot_qty, lot_price = lots[symbol][0]
+            take = min(remaining, lot_qty)
+            realized += (price - lot_price) * take
+            matched += 1
+            if price > lot_price:
+                wins += 1
+            lot_qty -= take
+            remaining -= take
+            if lot_qty <= 1e-9:
+                lots[symbol].pop(0)
+            else:
+                lots[symbol][0][0] = lot_qty
+        if remaining > 0:
+            skipped += int(remaining)
+    return {
+        "matched": matched,
+        "wins": wins,
+        "realized": round(realized, 2),
+        "skipped": skipped,
+        "winRate": round(wins / matched, 3) if matched else None,
+    }
+
+
+def _closed_loop_habit(rows: list[dict[str, Any]]) -> tuple[Optional[dict[str, str]], dict[str, Any]]:
+    stats = _matched_round_trip_stats(rows)
+    matched = int(stats.get("matched") or 0)
+    if matched < SOFT_PATTERN_TRADES:
+        return None, stats
+    win_rate = stats.get("winRate")
+    realized = float(stats.get("realized") or 0.0)
+    skipped = int(stats.get("skipped") or 0)
+    skip_note = (
+        f" {skipped} units skipped (missing price)." if skipped else ""
+    )
+    if win_rate is not None and win_rate <= 0.40:
+        pct = int(round(100.0 * win_rate))
+        return (
+            _habit(
+                "closed_loops_red",
+                "Closed paper loops are mostly red",
+                (
+                    f"{stats['wins']} of {matched} matched buy→sell pairs (FIFO, recorded prices only) "
+                    f"were green — about {pct}%.{skip_note} "
+                    "This is practice-book math, not a broker P&L. Tighten size or skip until the thesis is written."
+                ),
+                category="risk",
+                evidence=f"{stats['wins']}/{matched} green closed loops",
+            ),
+            stats,
+        )
+    if realized < 0:
+        return (
+            _habit(
+                "closed_loops_loss",
+                "Matched paper exits are below cost",
+                (
+                    f"{matched} closed paper loops (FIFO, recorded prices only) sum to "
+                    f"₹{int(realized):,} realized.{skip_note} "
+                    "Use it as a process flag — not as a live-brokerage statement."
+                ),
+                category="risk",
+                evidence=f"{matched} matched loops · ₹{int(realized):,}",
+            ),
+            stats,
+        )
+    return None, stats
+
+
+def _size_outlier_habit(rows: list[dict[str, Any]]) -> Optional[dict[str, str]]:
+    notionals: list[float] = []
+    for row in rows:
+        qty, price = _qty_price(row)
+        if qty > 0 and price > 0:
+            notionals.append(qty * price)
+    if len(notionals) < MIN_PATTERN_TRADES:
+        return None
+    ordered = sorted(notionals)
+    mid = ordered[len(ordered) // 2]
+    if mid <= 0:
+        return None
+    oversized = [n for n in notionals if n >= mid * 3.0]
+    if len(oversized) < 2:
+        return None
+    return _habit(
+        "size_outlier",
+        "A few paper tickets dwarf the rest",
+        (
+            f"{len(oversized)} of {len(notionals)} paper fills were at least 3× your median ticket "
+            f"(median ≈ ₹{int(mid):,}). Size jumps usually mean revenge or FOMO — "
+            "keep the next ticket near the median until the thesis is written."
+        ),
+        category="risk",
+        evidence=f"{len(oversized)} tickets ≥ 3× median ₹{int(mid):,}",
+    )
+
+
+def _revenge_habit(rows: list[dict[str, Any]]) -> Optional[dict[str, str]]:
+    by_key: dict[tuple[str, str], list[tuple[datetime, str]]] = defaultdict(list)
+    for row in rows:
+        when = row.get("_ist")
+        if when is None or row["side"] not in {"BUY", "SELL"}:
+            continue
+        by_key[(when.strftime("%Y-%m-%d"), row["symbol"])].append((when, row["side"]))
+    revenge = 0
+    for events in by_key.values():
+        events.sort(key=lambda item: item[0])
+        sold = False
+        for _, side in events:
+            if side == "SELL":
+                sold = True
+            elif side == "BUY" and sold:
+                revenge += 1
+                break
+    if revenge < 2:
+        return None
+    return _habit(
+        "revenge_reentry",
+        "Same-name re-entry after a same-day exit",
+        (
+            f"{revenge} IST days show a paper sell in a name and a buy back in the same name later that day. "
+            "That is often a revenge loop. Wait for a new thesis, not the same print."
+        ),
+        category="psychology",
+        evidence=f"{revenge} same-day re-entries",
+    )
+
+
+def _parse_review_flags(note: str, context: dict[str, Any]) -> tuple[Optional[bool], Optional[bool]]:
+    sl = context.get("setSl")
+    plan = context.get("followedPlan")
+    if sl is None and "set sl: yes" in note:
+        sl = True
+    elif sl is None and "set sl: no" in note:
+        sl = False
+    if plan is None and "followed plan: yes" in note:
+        plan = True
+    elif plan is None and "followed plan: no" in note:
+        plan = False
+    sl_flag = bool(sl) if isinstance(sl, bool) else None
+    plan_flag = bool(plan) if isinstance(plan, bool) else None
+    return sl_flag, plan_flag
+
+
+def _journal_discipline_habit(journal_entries: Optional[Iterable[Any]]) -> Optional[dict[str, str]]:
+    sl_yes = sl_no = plan_yes = plan_no = 0
+    for raw in journal_entries or []:
+        if hasattr(raw, "user_note") or hasattr(raw, "side"):
+            note = str(getattr(raw, "user_note", "") or "").lower()
+            ctx = {}
+            try:
+                import json
+
+                raw_ctx = getattr(raw, "context_json", None)
+                if raw_ctx:
+                    ctx = json.loads(raw_ctx) if isinstance(raw_ctx, str) else dict(raw_ctx)
+            except Exception:
+                ctx = {}
+        elif isinstance(raw, dict):
+            note = str(raw.get("userNote") or raw.get("user_note") or "").lower()
+            ctx = raw.get("context") or {}
+        else:
+            continue
+        sl_flag, plan_flag = _parse_review_flags(note, ctx if isinstance(ctx, dict) else {})
+        if sl_flag is True:
+            sl_yes += 1
+        elif sl_flag is False:
+            sl_no += 1
+        if plan_flag is True:
+            plan_yes += 1
+        elif plan_flag is False:
+            plan_no += 1
+    reviews = sl_yes + sl_no
+    if reviews < SOFT_PATTERN_TRADES:
+        return None
+    sl_pct = int(round(100.0 * sl_yes / reviews))
+    if sl_yes / reviews < 0.50:
+        return _habit(
+            "review_sl_weak",
+            "Reviews show stops skipped",
+            (
+                f"{sl_yes} of {reviews} journaled practice reviews marked a stop. "
+                f"That is {sl_pct}%. A paper ticket without an invalidation is just a guess."
+            ),
+            category="risk",
+            evidence=f"SL marked {sl_yes}/{reviews} reviews",
+        )
+    plan_reviews = plan_yes + plan_no
+    if plan_reviews >= SOFT_PATTERN_TRADES and plan_no / plan_reviews >= 0.40:
+        return _habit(
+            "review_plan_skip",
+            "Reviews tagged as off-plan",
+            (
+                f"{plan_no} of {plan_reviews} practice reviews said the plan was not followed. "
+                "Grade the process, not the P&L — the next ticket should reuse the written level."
+            ),
+            category="psychology",
+            evidence=f"Plan skipped {plan_no}/{plan_reviews} reviews",
+        )
+    return None
+
+
+_GOLD_HINTS = ("GOLD", "SGB", "SILVER")
+
+
+def _is_goldish(symbol: str) -> bool:
+    token = (symbol or "").upper()
+    return any(hint in token for hint in _GOLD_HINTS)
+
+
+def _topic_specific_habits(
+    topic: str,
+    rows: list[dict[str, Any]],
+    book: list[dict[str, Any]],
+    *,
+    sample: int,
+) -> list[dict[str, str]]:
+    key = (topic or "long_term").strip().lower()
+    out: list[dict[str, str]] = []
+    if key == "mutual_funds" and sample >= MIN_PATTERN_TRADES:
+        out.append(
+            _habit(
+                "mf_vs_churn",
+                "Equity paper churn on the MF tab",
+                (
+                    f"{sample} paper equity fills in {LOOKBACK_DAYS} days while you are reading mutual-fund habits. "
+                    "Fund SIPs and stock tickets use different size rules — do not copy today's lot into a SIP."
+                ),
+                category="process",
+                evidence=f"{sample} equity paper fills · MF topic",
+            )
+        )
+    if key == "ipo" and sample >= MIN_PATTERN_TRADES:
+        out.append(
+            _habit(
+                "ipo_vs_book",
+                "IPO explorer vs an active paper book",
+                (
+                    f"You have {sample} paper fills and {len(book)} open paper names. "
+                    "BYSEL IPO apply is practice ASBA only — listing hype should not resize the equity book."
+                ),
+                category="process",
+                evidence=f"{sample} fills · {len(book)} holdings · IPO topic",
+            )
+        )
+    if key == "sgb":
+        gold_names = [h["symbol"] for h in book if _is_goldish(h["symbol"])]
+        if sample >= SOFT_PATTERN_TRADES and not gold_names:
+            out.append(
+                _habit(
+                    "sgb_vs_equity",
+                    "SGB card vs equity paper activity",
+                    (
+                        f"{sample} recent paper fills are equity-style, and the paper book has no gold/SGB name. "
+                        "SGB is a multi-year sleeve — do not treat today's stock drill as a gold allocation."
+                    ),
+                    category="process",
+                    evidence=f"{sample} equity fills · 0 gold/SGB holdings",
+                )
+            )
+    if key == "fno" and sample >= MIN_PATTERN_TRADES:
+        late = 0
+        for row in rows:
+            when = row.get("_ist")
+            if when is None:
+                continue
+            bucket = session_bucket(when)
+            if bucket in {"closing_window", "after_hours", "weekend"}:
+                late += 1
+        if late >= 2:
+            out.append(
+                _habit(
+                    "fno_late_tape",
+                    "F&O practice piled into the late tape",
+                    (
+                        f"{late} of {sample} paper fills were after 14:45 IST or off-session. "
+                        "Options lose theta into expiry; futures M2M does not wait. "
+                        "Late size has less time to be a process drill."
+                    ),
+                    category="session",
+                    evidence=f"{late}/{sample} late or off-session fills · F&O topic",
+                )
+            )
+    if key == "long_term" and book:
+        underwater = [
+            h for h in book
+            if h.get("pnl") is not None and float(h["pnl"]) < 0 and h.get("avg") and h.get("last")
+        ]
+        if len(underwater) >= 2:
+            names = ", ".join(h["symbol"] for h in underwater[:3])
+            out.append(
+                _habit(
+                    "book_underwater",
+                    "More than one paper name is below cost",
+                    (
+                        f"{len(underwater)} open paper names sit below average cost ({names}). "
+                        "Marks use last vs avg on the book — not a live broker P&L. "
+                        "Decide hold vs exit from the thesis, not from the red number."
+                    ),
+                    category="risk",
+                    evidence=f"{len(underwater)} paper names below avg cost",
+                )
+            )
     return out
 
 
@@ -428,6 +786,19 @@ def score_session_habits(
     if chase:
         habits.append(chase)
 
+    size_habit = _size_outlier_habit(rows)
+    if size_habit:
+        habits.append(size_habit)
+    revenge = _revenge_habit(rows)
+    if revenge:
+        habits.append(revenge)
+    closed_habit, closed_stats = _closed_loop_habit(rows)
+    if closed_habit:
+        habits.append(closed_habit)
+    discipline = _journal_discipline_habit(journal_entries)
+    if discipline:
+        habits.append(discipline)
+
     if sample >= MIN_PATTERN_TRADES and not habits:
         spread = ", ".join(
             f"{label.replace('_', ' ')} {buckets[label]}"
@@ -449,12 +820,20 @@ def score_session_habits(
         )
 
     has_enough = sample >= MIN_PATTERN_TRADES
+    top_window = ""
+    if buckets:
+        label, count = buckets.most_common(1)[0]
+        if count:
+            top_window = f" · top window {label.replace('_', ' ')} ({count})"
+    matched_n = int(closed_stats.get("matched") or 0)
+    matched_bit = f" · {matched_n} closed loops" if matched_n else ""
     return {
-        "habits": habits[:4],
+        "habits": habits[:6],
         "sampleSize": sample,
         "hasEnoughData": has_enough,
         "paperNote": (
-            f"Based on {sample} paper fills in the last {LOOKBACK_DAYS} days (IST session windows). "
+            f"Based on {sample} paper fills in {LOOKBACK_DAYS}d (IST): "
+            f"{buys} buys · {sells} sells · {sl_like} SL/triggers{top_window}{matched_bit}. "
             "Educational — not a live-brokerage report."
         ),
         "stats": {
@@ -463,6 +842,8 @@ def score_session_habits(
             "sells": sells,
             "buckets": dict(buckets),
             "stopLike": sl_like,
+            "matchedLoops": matched_n,
+            "closedWinRate": closed_stats.get("winRate"),
         },
     }
 
@@ -538,6 +919,7 @@ def score_investor_habits(
     goals: Optional[Iterable[Any]] = None,
     alert_count: int = 0,
     wallet_balance: Optional[float] = None,
+    journal_entries: Optional[Iterable[Any]] = None,
     topic: str = "long_term",
     now: Optional[datetime] = None,
 ) -> dict[str, Any]:
@@ -636,6 +1018,54 @@ def score_investor_habits(
                     evidence=f"{sample} paper fills · F&O topic selected",
                 )
             )
+        closed_habit, closed_stats = _closed_loop_habit(rows)
+        if closed_habit:
+            habits.append(closed_habit)
+        size_habit = _size_outlier_habit(rows)
+        if size_habit:
+            habits.append(size_habit)
+        revenge = _revenge_habit(rows)
+        if revenge:
+            habits.append(revenge)
+    else:
+        closed_stats = _matched_round_trip_stats(rows)
+        topic_key = (topic or "long_term").strip().lower()
+
+    habits.extend(_topic_specific_habits(topic_key, rows, book, sample=sample))
+    discipline = _journal_discipline_habit(journal_entries)
+    if discipline:
+        habits.append(discipline)
+
+    if wallet_balance is not None and wallet_balance > 0 and book_value > 0:
+        idle = wallet_balance / (wallet_balance + book_value)
+        if idle >= 0.70:
+            habits.append(
+                _habit(
+                    "cash_drag",
+                    "Most practice cash is idle",
+                    (
+                        f"About {int(idle * 100)}% of paper capital is sitting in the wallet "
+                        f"(₹{int(wallet_balance):,} cash vs ₹{int(book_value):,} in names). "
+                        "Idle cash is fine for a drill — just don't treat unused wallet as a live SIP."
+                    ),
+                    category="process",
+                    evidence=f"wallet ₹{int(wallet_balance):,} · book ₹{int(book_value):,}",
+                )
+            )
+
+    if alert_count >= 5 and sample < SOFT_PATTERN_TRADES:
+        habits.append(
+            _habit(
+                "idle_alerts",
+                "Alerts without paper fills",
+                (
+                    f"{alert_count} active price alerts and only {sample} paper fills in {LOOKBACK_DAYS} days. "
+                    "Alerts are useful only if a hit still goes through Idea → ticket → review."
+                ),
+                category="process",
+                evidence=f"{alert_count} alerts · {sample} fills",
+            )
+        )
 
     risk_habit = _risk_profile_habit(goals, book, sample)
     if risk_habit:
@@ -662,18 +1092,35 @@ def score_investor_habits(
         habits.append(_not_enough_investor_habit(sample, len(book)))
         has_enough = False
 
+    # Dedup by id in case topic + generic cues overlap.
+    seen: set[str] = set()
+    unique: list[dict[str, str]] = []
+    for habit in habits:
+        hid = str(habit.get("id") or "")
+        if not hid or hid in seen:
+            continue
+        seen.add(hid)
+        unique.append(habit)
+
+    trips = _same_day_round_trips(rows) if rows else 0
+    matched_n = int(closed_stats.get("matched") or 0)
+    trip_bit = f" · {trips} same-day round trips" if trips else ""
+    loop_bit = f" · {matched_n} closed loops" if matched_n else ""
     return {
-        "habits": habits[:4],
+        "habits": unique[:6],
         "sampleSize": sample,
         "hasEnoughData": has_enough,
         "paperNote": (
-            f"Based on {sample} paper fills and {len(book)} paper holdings "
-            f"(last {LOOKBACK_DAYS} days, IST). Not your live demat."
+            f"Based on {sample} paper fills · {len(book)} paper holdings"
+            f"{trip_bit}{loop_bit} ({LOOKBACK_DAYS}d IST). Not your live demat."
         ),
         "stats": {
             "sample": sample,
             "holdings": len(book),
-            "roundTrips": _same_day_round_trips(rows) if rows else 0,
+            "roundTrips": trips,
+            "matchedLoops": matched_n,
+            "closedWinRate": closed_stats.get("winRate"),
+            "bookValue": round(book_value, 2),
         },
     }
 
@@ -758,7 +1205,7 @@ def merge_habit_tips(
     has_enough_data: bool,
     not_enough: Optional[dict[str, str]] = None,
 ) -> list[dict[str, str]]:
-    """Prefer 1–2 paper-backed habits, then session/topic education. Dedup by id."""
+    """Prefer paper-backed habits (up to 3), then session/topic education. Dedup by id."""
     limit = max(1, min(int(limit), 8))
     out: list[dict[str, str]] = []
     seen: set[str] = set()
@@ -772,7 +1219,8 @@ def merge_habit_tips(
         seen.add(tip_id)
         out.append(tip)
 
-    paper_slots = 2 if limit >= 3 else 1
+    # Leave one education slot when we have room; fill more paper when the card is wider.
+    paper_slots = min(3, limit - 1) if limit >= 3 else 1
     paper = list(personalized or [])
     if paper:
         for tip in paper[:paper_slots]:
@@ -799,11 +1247,17 @@ def activity_from_db(db: Any, user_id: int) -> dict[str, Any]:
         WalletModel,
     )
 
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=LOOKBACK_DAYS)
+    orders_q = db.query(OrderModel).filter(OrderModel.user_id == user_id)
+    journal_q = db.query(TradeJournalModel).filter(TradeJournalModel.user_id == user_id)
+    if hasattr(OrderModel, "created_at"):
+        orders_q = orders_q.filter(OrderModel.created_at >= cutoff)
+    if hasattr(TradeJournalModel, "created_at"):
+        journal_q = journal_q.filter(TradeJournalModel.created_at >= cutoff)
     orders = (
-        db.query(OrderModel)
-        .filter(OrderModel.user_id == user_id)
+        orders_q
         .order_by(OrderModel.created_at.desc())
-        .limit(80)
+        .limit(200)
         .all()
     )
     holdings = (
@@ -817,10 +1271,9 @@ def activity_from_db(db: Any, user_id: int) -> dict[str, Any]:
         .all()
     )
     journal = (
-        db.query(TradeJournalModel)
-        .filter(TradeJournalModel.user_id == user_id)
+        journal_q
         .order_by(TradeJournalModel.created_at.desc())
-        .limit(50)
+        .limit(80)
         .all()
     )
     trigger_count = (

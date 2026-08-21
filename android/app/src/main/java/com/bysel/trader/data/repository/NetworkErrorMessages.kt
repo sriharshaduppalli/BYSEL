@@ -1,5 +1,6 @@
 package com.bysel.trader.data.repository
 
+import com.bysel.trader.data.api.ServerReachability
 import retrofit2.HttpException
 import java.net.ConnectException
 import java.net.NoRouteToHostException
@@ -38,13 +39,13 @@ object NetworkErrorMessages {
             isRateLimited(e) || httpCode == 429 ->
                 "$fallback Server is busy (too many requests)."
             isTimeout(e, raw) ->
-                "Server is waking up. Tap to retry — this is not an offline problem."
+                timeoutCopy("Tap to retry — this is not an offline problem.")
             isConnectFailure(e, raw) ->
-                "Server is waking up. Tap to retry."
+                connectCopy()
             httpCode == 401 || httpCode == 403 ->
                 "$fallback Sign-in may have expired."
             isServerError(httpCode, raw) ->
-                "Server is waking up. Tap to retry."
+                serverErrorCopy()
             isExplicitOffline(e) ->
                 "No internet connection. Check your network and retry."
             raw.startsWith("HTTP ", ignoreCase = true) -> fallback
@@ -61,13 +62,13 @@ object NetworkErrorMessages {
             isRateLimited(e) || httpCode == 429 ->
                 "Couldn't load portfolio — tap to retry. Server is busy (too many requests)."
             isTimeout(e, raw) ->
-                "Server is waking up. Tap to retry — this is not an offline problem."
+                timeoutCopy("Tap to retry — this is not an offline problem.")
             isConnectFailure(e, raw) ->
-                "Server is waking up. Tap to retry."
+                connectCopy()
             httpCode == 401 || httpCode == 403 ->
                 "Couldn't load portfolio — tap to retry. Sign-in may have expired."
             isServerError(httpCode, raw) ->
-                "Server is waking up. Tap to retry."
+                serverErrorCopy()
             isExplicitOffline(e) ->
                 "No internet connection. Check your network and retry."
             else -> forException(e, "Couldn't load portfolio — tap to retry")
@@ -87,6 +88,30 @@ object NetworkErrorMessages {
             isExplicitOffline(e) ->
                 "No internet connection. Showing last saved data when available."
             else -> forException(e, fallback)
+        }
+    }
+
+    fun timeoutCopy(suffix: String): String {
+        return if (ServerReachability.isLikelyWarm()) {
+            "Server took too long. $suffix"
+        } else {
+            "Server is waking up. $suffix"
+        }
+    }
+
+    fun connectCopy(): String {
+        return if (ServerReachability.isLikelyWarm()) {
+            "Cannot reach BYSEL servers. Check your internet and tap to retry."
+        } else {
+            "Server is waking up. Tap to retry."
+        }
+    }
+
+    fun serverErrorCopy(): String {
+        return if (ServerReachability.isLikelyColdStart()) {
+            "Server is waking up. Tap to retry."
+        } else {
+            "Server is temporarily unavailable. Tap to retry."
         }
     }
 

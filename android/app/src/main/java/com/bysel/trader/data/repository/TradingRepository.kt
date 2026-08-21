@@ -1,4 +1,4 @@
-﻿package com.bysel.trader.data.repository
+package com.bysel.trader.data.repository
 
 import com.bysel.trader.data.api.BYSELApiService
 import com.bysel.trader.data.api.PortfolioSummary
@@ -96,17 +96,24 @@ open class TradingRepository(private val database: BYSELDatabase) {
 
     fun streamLiveQuotes(symbols: List<String>): Flow<Result<List<Quote>>> = flow {
         emit(Result.Loading)
+        var lastDbWriteAt = 0L
+        suspend fun persistIfDue(quotes: List<Quote>) {
+            val now = System.currentTimeMillis()
+            if (now - lastDbWriteAt < 3_000L) return
+            lastDbWriteAt = now
+            database.quoteDao().insertQuotes(quotes)
+        }
         try {
             liveMarketDataClient.streamQuotes(symbols).collect { quotes ->
                 if (quotes.isNotEmpty()) {
-                    database.quoteDao().insertQuotes(quotes)
+                    persistIfDue(quotes)
                     emit(Result.Success(quotes))
                 }
             }
         } catch (_: Exception) {
             liveMarketDataClient.pollQuotes(symbols).collect { quotes ->
                 if (quotes.isNotEmpty()) {
-                    database.quoteDao().insertQuotes(quotes)
+                    persistIfDue(quotes)
                     emit(Result.Success(quotes))
                 }
             }
@@ -439,7 +446,7 @@ open class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
-    suspend fun getIntradayTips(limit: Int = 3, advanceShare: Double? = null): Result<IntradayTipsResponse> {
+    suspend fun getIntradayTips(limit: Int = 4, advanceShare: Double? = null): Result<IntradayTipsResponse> {
         return try {
             val response = apiService.getIntradayTips(limit = limit, advanceShare = advanceShare)
             Result.Success(response)
@@ -448,7 +455,7 @@ open class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
-    suspend fun getInvestorTips(topic: String = "long_term", limit: Int = 3): Result<InvestorTipsResponse> {
+    suspend fun getInvestorTips(topic: String = "long_term", limit: Int = 4): Result<InvestorTipsResponse> {
         return try {
             val response = apiService.getInvestorTips(topic = topic, limit = limit)
             Result.Success(response)
@@ -517,7 +524,7 @@ open class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
-    /** Cheap market-API wake (Render free tier) — does not touch the AI service. */
+    /** Cheap market-API wake — does not wait on Yahoo quotes. */
     suspend fun warmMarketBackend(): Result<Unit> {
         return try {
             // Prefer /warmup (DB ping + background quote seed); fall back to /health.
@@ -638,6 +645,15 @@ open class TradingRepository(private val database: BYSELDatabase) {
         return try {
             val health = callWithRateLimitRetry { apiService.getPortfolioHealth() }
             Result.Success(health)
+        } catch (e: Exception) {
+            Result.Error(NetworkErrorMessages.forHoldings(e))
+        }
+    }
+
+    suspend fun getPaperPortfolioRisk(): Result<PaperPortfolioRisk> {
+        return try {
+            val risk = callWithRateLimitRetry { apiService.getPaperPortfolioRisk() }
+            Result.Success(risk)
         } catch (e: Exception) {
             Result.Error(NetworkErrorMessages.forHoldings(e))
         }
@@ -804,10 +820,10 @@ open class TradingRepository(private val database: BYSELDatabase) {
             if (!wakeOnFailure) {
                 return Result.Error(
                     first.message
-                        ?: "Heatmap unavailable — server may be waking up. Retry in a moment."
+                        ?: "Heatmap unavailable. Retry in a moment."
                 )
             }
-            // Render free tier may be asleep; wake market /health then retry once.
+            // If the host is asleep, a short wake ping then one heatmap retry.
             return try {
                 warmMarketBackend()
                 Result.Success(apiService.getMarketHeatmap())
@@ -815,7 +831,7 @@ open class TradingRepository(private val database: BYSELDatabase) {
                 Result.Error(
                     second.message
                         ?: first.message
-                        ?: "Heatmap unavailable — server may be waking up. Retry in a moment."
+                        ?: "Heatmap unavailable. Retry in a moment."
                 )
             }
         }

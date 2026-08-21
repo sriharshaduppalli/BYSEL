@@ -1,7 +1,9 @@
 package com.bysel.trader.data.repository
 
+import com.bysel.trader.data.api.ServerReachability
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import java.net.ConnectException
 import java.net.NoRouteToHostException
@@ -9,6 +11,11 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 
 class NetworkErrorMessagesTest {
+
+    @Before
+    fun resetReachability() {
+        ServerReachability.resetForTests()
+    }
 
     @Test
     fun unknownHostIsOffline() {
@@ -26,7 +33,25 @@ class NetworkErrorMessagesTest {
     fun timeoutIsNotOffline() {
         val msg = NetworkErrorMessages.forHoldings(SocketTimeoutException("timeout"))
         assertFalse(msg.contains("No internet", ignoreCase = true))
-        assertTrue(msg.contains("waking up", ignoreCase = true))
+        assertTrue(msg.contains("waking up", ignoreCase = true) || msg.contains("too long", ignoreCase = true))
+        assertTrue(msg.contains("retry", ignoreCase = true))
+    }
+
+    @Test
+    fun timeoutIsNotLabeledColdStartWhenHostAlreadyWarm() {
+        ServerReachability.markSuccess(400)
+        val msg = NetworkErrorMessages.forHoldings(SocketTimeoutException("timeout"))
+        assertFalse(msg.contains("waking up", ignoreCase = true))
+        assertTrue(msg.contains("too long", ignoreCase = true))
+    }
+
+    @Test
+    fun http5xxIsNotLabeledColdStartWhenHostAlreadyWarm() {
+        ServerReachability.markSuccess(500)
+        val msg = NetworkErrorMessages.forHoldings(RuntimeException("HTTP 503"))
+        assertFalse(msg.contains("No internet", ignoreCase = true))
+        assertFalse(msg.contains("waking up", ignoreCase = true))
+        assertTrue(msg.contains("unavailable", ignoreCase = true) || msg.contains("retry", ignoreCase = true))
     }
 
     @Test

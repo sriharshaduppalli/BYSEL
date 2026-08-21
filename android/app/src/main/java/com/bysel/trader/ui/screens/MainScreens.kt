@@ -2,6 +2,7 @@ package com.bysel.trader.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,19 +21,25 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bysel.trader.data.importbook.ImportedBook
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.Holding
+import com.bysel.trader.data.models.PaperPortfolioRisk
 import com.bysel.trader.data.models.PortfolioHealthScore
+import com.bysel.trader.portfolio.PaperPortfolioRiskMath
 import com.bysel.trader.ui.components.QuoteCard
 import com.bysel.trader.ui.components.StockNotesIcon
 import com.bysel.trader.ui.components.LoadingScreen
@@ -56,6 +63,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.bysel.trader.ui.components.PortfolioSortMode
 import com.bysel.trader.ui.components.sortedByPortfolioMode
+import com.bysel.trader.ui.format.formatInr
 import com.bysel.trader.ui.format.formatSignedPct
 
 @Composable
@@ -304,6 +312,12 @@ fun PortfolioScreen(
     error: String?,
     portfolioHealth: PortfolioHealthScore?,
     healthLoading: Boolean,
+    paperRisk: PaperPortfolioRisk? = null,
+    scannerScores: Map<String, Int> = emptyMap(),
+    importedBook: ImportedBook? = null,
+    onImportCsv: (String, String) -> Unit = { _, _ -> },
+    onClearImport: () -> Unit = {},
+    onOpenImportedSymbol: (String) -> Unit = {},
     onRefresh: () -> Unit,
     onRefreshHealth: () -> Unit,
     onBuy: (String, Int) -> Unit,
@@ -311,13 +325,45 @@ fun PortfolioScreen(
     onErrorDismiss: () -> Unit,
     onNavigateToTrade: () -> Unit
 ) {
-    LaunchedEffect(holdings) {
-        if (holdings.isNotEmpty() && portfolioHealth == null) {
+    val hasImported = importedBook?.rows?.isNotEmpty() == true
+    LaunchedEffect(holdings.isNotEmpty(), hasImported) {
+        if ((holdings.isNotEmpty() || hasImported) && (portfolioHealth == null || paperRisk == null)) {
             onRefreshHealth()
         }
     }
 
+    val context = LocalContext.current
+    val csvPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val name = uri.lastPathSegment?.substringAfterLast('/').orEmpty()
+        val text = runCatching {
+            context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+        }.getOrNull()
+        if (text.isNullOrBlank()) return@rememberLauncherForActivityResult
+        onImportCsv(text, name)
+    }
+
     val quoteBySymbol = remember(quotes) { quotes.associateBy { it.symbol.uppercase() } }
+    val importedHoldings = remember(importedBook, quotes) {
+        PaperPortfolioRiskMath.importedAsHoldings(importedBook?.rows.orEmpty(), quotes)
+    }
+    val (riskHoldings, importOverlap) = remember(holdings, importedHoldings) {
+        PaperPortfolioRiskMath.mergePaperAndImported(holdings, importedHoldings)
+    }
+    val localRisk = remember(riskHoldings, quotes, scannerScores, portfolioHealth, importedBook, importOverlap) {
+        PaperPortfolioRiskMath.fromHoldings(
+            holdings = riskHoldings,
+            quotes = quotes,
+            scores = scannerScores,
+            health = portfolioHealth,
+            importNote = PaperPortfolioRiskMath.importNoteFor(importedBook, importOverlap),
+        )
+    }
+    val riskSnapshot = remember(localRisk, paperRisk, hasImported) {
+        if (hasImported) localRisk else PaperPortfolioRiskMath.preferRemote(localRisk, paperRisk)
+    }
     var sortModeName by rememberSaveable { mutableStateOf(PortfolioSortMode.VALUE.name) }
     val sortMode = remember(sortModeName) {
         runCatching { PortfolioSortMode.valueOf(sortModeName) }.getOrDefault(PortfolioSortMode.VALUE)
@@ -511,7 +557,7 @@ fun PortfolioScreen(
                 )
             }
 
-            if (holdings.isEmpty() && isLoading) {
+            if (holdings.isEmpty() && !hasImported && isLoading) {
                 // Without this the first load flashes "No holdings yet" at users who do
                 // in fact hold stock, because holdings are empty until the call returns.
                 PortfolioSkeletonLoader(
@@ -519,7 +565,7 @@ fun PortfolioScreen(
                         .weight(1f)
                         .fillMaxWidth(),
                 )
-            } else if (holdings.isEmpty()) {
+            } else if (holdings.isEmpty() && !hasImported) {
                 val loadFailed = !error.isNullOrBlank()
                 Box(
                     modifier = Modifier
@@ -551,7 +597,7 @@ fun PortfolioScreen(
                             text = if (loadFailed) {
                                 error ?: "Tap Refresh to retry."
                             } else {
-                                "Start trading to build your portfolio"
+                                "Start paper trading, or import a broker CSV / CAS extract (read-only)."
                             },
                             fontSize = 12.sp,
                             color = LocalAppTheme.current.textSecondary,
@@ -564,6 +610,14 @@ fun PortfolioScreen(
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Text("Start Trading")
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = {
+                                csvPicker.launch(arrayOf("text/*", "text/csv", "text/comma-separated-values", "application/vnd.ms-excel"))
+                            }
+                        ) {
+                            Text("Import CSV / CAS")
                         }
                     }
                 }
@@ -581,6 +635,28 @@ fun PortfolioScreen(
                             .fillMaxSize()
                             .padding(horizontal = 8.dp)
                     ) {
+                    item {
+                        PortfolioRiskDashboardCard(risk = riskSnapshot)
+                    }
+                    item {
+                        ImportedBookCard(
+                            book = importedBook,
+                            quotes = quoteBySymbol,
+                            onImport = {
+                                csvPicker.launch(
+                                    arrayOf(
+                                        "text/*",
+                                        "text/csv",
+                                        "text/comma-separated-values",
+                                        "application/vnd.ms-excel",
+                                    )
+                                )
+                            },
+                            onClear = onClearImport,
+                            onOpenSymbol = onOpenImportedSymbol,
+                        )
+                    }
+
                     // Portfolio Health Score Card
                     if (portfolioHealth != null || healthLoading) {
                         item {
@@ -974,6 +1050,57 @@ fun PortfolioHealthCard(
                     lineHeight = 15.sp
                 )
 
+                val buckets = healthScoreBuckets(health)
+                if (buckets.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "Why this score",
+                        color = LocalAppTheme.current.text,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    buckets.forEach { bucket ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                bucket.title,
+                                color = LocalAppTheme.current.text,
+                                fontSize = 11.sp,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                "${bucket.score}/${bucket.maxScore}",
+                                color = LocalAppTheme.current.textSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                        LinearProgressIndicator(
+                            progress = { (bucket.score / bucket.maxScore.toFloat()).coerceIn(0f, 1f) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp)),
+                            color = scoreColor,
+                            trackColor = LocalAppTheme.current.mutedSurface,
+                        )
+                        if (bucket.details.isNotBlank()) {
+                            Text(
+                                bucket.details,
+                                color = LocalAppTheme.current.textSecondary,
+                                fontSize = 10.sp,
+                                lineHeight = 14.sp,
+                                modifier = Modifier.padding(bottom = 6.dp, top = 2.dp),
+                            )
+                        } else {
+                            Spacer(modifier = Modifier.height(6.dp))
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // Summary
@@ -1038,6 +1165,89 @@ fun PortfolioHealthCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ImportedBookCard(
+    book: ImportedBook?,
+    quotes: Map<String, Quote>,
+    onImport: () -> Unit,
+    onClear: () -> Unit,
+    onOpenSymbol: (String) -> Unit,
+) {
+    val theme = LocalAppTheme.current
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Imported book", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = theme.text)
+            Text(
+                if (book == null || book.rows.isEmpty()) {
+                    "Read-only overlay from a broker CSV or CAS extract. Live last price when NSE is open. Not your paper wallet."
+                } else {
+                    "${book.sourceLabel} · ${book.rows.size} names. Read-only — live marks when the session is open."
+                },
+                fontSize = 11.sp,
+                color = theme.textSecondary,
+                lineHeight = 15.sp,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onImport) { Text("Import CSV") }
+                if (book?.rows?.isNotEmpty() == true) {
+                    TextButton(onClick = onClear) { Text("Clear") }
+                }
+            }
+            book?.rows.orEmpty().take(12).forEach { row ->
+                val quote = quotes[row.symbol]
+                val last = quote?.last?.takeIf { it > 0 } ?: row.lastMark
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenSymbol(row.symbol) },
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(row.symbol, color = theme.text, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    Text(
+                        "${row.qty} × ${if (last > 0) formatInr(last) else "—"}",
+                        color = theme.textSecondary,
+                        fontSize = 12.sp,
+                    )
+                }
+            }
+            if ((book?.rows?.size ?: 0) > 12) {
+                Text("+${book!!.rows.size - 12} more", fontSize = 11.sp, color = theme.textSecondary)
+            }
+        }
+    }
+}
+
+private data class HealthScoreBucket(
+    val title: String,
+    val score: Int,
+    val maxScore: Int,
+    val details: String,
+)
+
+private fun healthScoreBuckets(health: PortfolioHealthScore): List<HealthScoreBucket> {
+    val labels = listOf(
+        "diversification" to "Diversification",
+        "risk" to "Risk spread",
+        "quality" to "Name quality",
+        "balance" to "Balance",
+    )
+    return labels.mapNotNull { (key, title) ->
+        val raw = health.breakdown[key] ?: return@mapNotNull null
+        val score = (raw["score"] as? Number)?.toInt() ?: return@mapNotNull null
+        val maxScore = (raw["maxScore"] as? Number)?.toInt()?.takeIf { it > 0 } ?: 25
+        val details = raw["details"]?.toString().orEmpty()
+        HealthScoreBucket(title, score, maxScore, details)
     }
 }
 

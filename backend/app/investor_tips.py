@@ -361,7 +361,7 @@ def normalize_topic(topic: str) -> str:
 def build_investor_tips(
     topic: str = "long_term",
     *,
-    limit: int = 3,
+    limit: int = 4,
     now: Optional[datetime] = None,
     activity: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:

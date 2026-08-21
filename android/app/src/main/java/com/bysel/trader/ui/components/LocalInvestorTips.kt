@@ -53,7 +53,7 @@ private val LOCAL_BANKS: Map<String, List<InvestorTip>> = mapOf(
     ),
 )
 
-fun localInvestorTips(topic: String, limit: Int = 3): InvestorTipsResponse {
+fun localInvestorTips(topic: String, limit: Int = 4): InvestorTipsResponse {
     val key = when (topic.trim().lowercase().replace("-", "_")) {
         "mf", "mutual_fund", "mutual_funds", "funds" -> "mutual_funds"
         "ipos", "ipo", "listing" -> "ipo"

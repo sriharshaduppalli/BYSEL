@@ -18,7 +18,10 @@ DISCLAIMER = (
     "Educational paper metrics — not investment advice and not a forecast. "
     "BYSEL Score is value-weighted from names that already have a score; missing names are skipped."
 )
-IMPORT_NOTE = "Broker CSV / CAS import coming soon."
+IMPORT_NOTE = (
+    "Import a broker CSV or CAS extract on Portfolio — read-only. "
+    "Marks use live quotes when the session is open."
+)
 WHAT_IF_LABEL = (
     "Illustration, not a forecast. Conservative beta = 1 on equity value "
     "(cash ignored). Actual names move differently from Nifty."

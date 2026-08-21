@@ -40,9 +40,9 @@ def _sync_instrument_master() -> Path:
     target = _ENTERPRISE / "instrument_master.json"
     _ENTERPRISE.mkdir(parents=True, exist_ok=True)
     try:
-        from .market_data import INDIAN_STOCKS, get_stock_catalog
+        from .market_data import INDIAN_STOCKS, get_stock_catalog_if_ready
 
-        catalog = get_stock_catalog()
+        catalog = get_stock_catalog_if_ready() or dict(INDIAN_STOCKS)
         try:
             from .stock_enricher import lookup_bse_listing
         except Exception:

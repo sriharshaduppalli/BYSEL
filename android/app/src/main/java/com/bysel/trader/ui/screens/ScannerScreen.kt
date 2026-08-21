@@ -96,6 +96,7 @@ fun ScannerScreen(
     val error by viewModel.scannerError.collectAsStateWithLifecycle()
     val watchlist by viewModel.watchlist.collectAsStateWithLifecycle()
     val customFilters by viewModel.customScannerFilters.collectAsStateWithLifecycle()
+    val sectorFocus by viewModel.scannerSectorFocus.collectAsStateWithLifecycle()
     var selectedKey by rememberSaveable { mutableStateOf(ScannerModeChip.LONG_TERM.name) }
     var setupFilterKey by rememberSaveable { mutableStateOf(SwingSetupFilter.ALL.name) }
     val selected = runCatching { ScannerModeChip.valueOf(selectedKey) }
@@ -188,26 +189,45 @@ fun ScannerScreen(
             else -> {
                 val education = payload?.education
                 val rawRows = payload?.rows.orEmpty()
+                val focusSymbols = sectorFocus?.symbols.orEmpty().toSet()
+                val focusedRaw = if (focusSymbols.isEmpty()) {
+                    rawRows
+                } else {
+                    rawRows.filter { it.symbol.trim().uppercase() in focusSymbols }
+                }
                 val rows = when (selected) {
                     ScannerModeChip.SWING -> {
                         val typed = when (setupFilter) {
-                            SwingSetupFilter.ALL -> rawRows
-                            else -> rawRows.filter {
+                            SwingSetupFilter.ALL -> focusedRaw
+                            else -> focusedRaw.filter {
                                 it.setup?.displayType.equals(setupFilter.key, ignoreCase = true)
                             }
                         }
                         typed.take(15)
                     }
-                    ScannerModeChip.CUSTOM -> rawRows
+                    ScannerModeChip.CUSTOM -> focusedRaw
                         .filter { it.matchesCustom(customFilters) }
                         .sortedByDescending { it.displayScore }
-                    else -> rawRows
+                    else -> focusedRaw
                 }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    if (sectorFocus != null) {
+                        item {
+                            FilterChip(
+                                selected = true,
+                                onClick = { viewModel.clearScannerSectorFocus() },
+                                label = {
+                                    Text(
+                                        "${sectorFocus?.sector} · ${focusSymbols.size} heatmap names  ·  tap to clear"
+                                    )
+                                },
+                            )
+                        }
+                    }
                     item {
                         Card(
                             colors = byselCardColors(),
@@ -304,6 +324,23 @@ fun ScannerScreen(
                                         "No quoted names in this batch. Pull to refresh after quotes warm."
                                 },
                                 color = theme.textSecondary,
+                            )
+                        }
+                    }
+
+                    if (rows.isEmpty() && focusSymbols.isNotEmpty()) {
+                        item {
+                            Text(
+                                "Those heatmap names are not in this scanner bucket yet. Open a name for live quote + score when available.",
+                                fontSize = 12.sp,
+                                color = theme.textSecondary,
+                            )
+                        }
+                        items(focusSymbols.toList(), key = { it }) { symbol ->
+                            FilterChip(
+                                selected = false,
+                                onClick = { onOpenSymbol(ScannerRow(symbol = symbol)) },
+                                label = { Text(symbol) },
                             )
                         }
                     }
@@ -670,6 +707,20 @@ private fun ScoreHistoryStrip(history: ScoreHistoryResponse?, symbol: String) {
                 color = theme.textSecondary,
             )
         } else {
+            val latest = points.last()
+            val previous = points[points.lastIndex - 1]
+            val latestScore = latest.byselScore
+            val previousScore = previous.byselScore
+            if (latestScore != null && previousScore != null) {
+                val delta = latestScore - previousScore
+                val deltaLabel = if (delta > 0) "+$delta" else "$delta"
+                Text(
+                    "Changed $deltaLabel since ${previous.date} (education only — not a forecast).",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = if (delta >= 0) theme.positive else theme.negative,
+                )
+            }
             val window = history?.days ?: 90
             Text("$window-day snapshots (education only)", fontSize = 11.sp, color = theme.textSecondary)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

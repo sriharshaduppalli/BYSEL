@@ -286,6 +286,29 @@ def test_fetch_batch_quotes_uses_v7_not_download(monkeypatch):
     assert download_calls["n"] == 0
 
 
+def test_fetch_batch_quotes_skips_download_when_v7_empty(monkeypatch):
+    from app import market_data
+
+    market_data._quote_cache.clear()
+    download_calls = {"n": 0}
+
+    monkeypatch.setattr(market_data, "_quotes_from_v7_batch", lambda *_a, **_k: {})
+    monkeypatch.setattr(
+        market_data,
+        "_fetch_batch_quotes_download",
+        lambda *_a, **_k: download_calls.__setitem__("n", download_calls["n"] + 1) or {},
+    )
+    monkeypatch.setattr(market_data, "fetch_quote", lambda _symbol: {"symbol": _symbol, "last": 0.0})
+
+    quotes = market_data.fetch_quotes(
+        ["RELIANCE", "TCS", "INFY"],
+        max_age_seconds=5,
+        individual_fallback=False,
+    )
+    assert quotes == []
+    assert download_calls["n"] == 0
+
+
 def test_fetch_quotes_caps_individual_history_fallback(monkeypatch):
     from app import market_data
 

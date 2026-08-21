@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -142,7 +143,7 @@ fun MoreScreen(
             onClick = onTradeJournalClick,
         ),
         MoreMenuEntry(
-            icon = Icons.Filled.ReceiptLong,
+            icon = Icons.Filled.Receipt,
             title = "Order history",
             subtitle = "Paper fills — buy/sell time, qty, and price",
             gradientColors = listOf(Color(0xFF37474F), Color(0xFF90A4AE)),

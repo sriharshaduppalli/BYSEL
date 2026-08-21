@@ -77,8 +77,25 @@ class LocalHabitInsightsTest {
         val local = listOf(
             IntradayTip("local_unused_today", "Unused", "body", "process", "paper"),
         )
-        val merged = LocalHabitInsights.mergeSession(remote, local, remote)
+        val merged = LocalHabitInsights.mergeSession(remote, local, remote, limit = 4)
         assertEquals("open_cluster", merged.tips.first().id)
-        assertTrue(merged.tips.none { it.id == "local_unused_today" })
+        assertTrue(merged.tips.any { it.id == "local_unused_today" })
+        assertTrue(merged.tips.any { it.id == "fh_patience" })
+    }
+
+    @Test
+    fun fnoTabFlagsSpotFill() {
+        val tips = LocalHabitInsights.investorHabits(
+            habit = PracticeHabitStore.DayState(
+                dateKey = "2026-08-15",
+                ideaSeen = true,
+                tradedSymbol = "TCS",
+            ),
+            progress = PracticeHabitStore.Progress(),
+            holdings = emptyList(),
+            watchlistSize = 2,
+            topic = "fno",
+        )
+        assertTrue(tips.any { it.id == "local_fno_vs_spot" })
     }
 }

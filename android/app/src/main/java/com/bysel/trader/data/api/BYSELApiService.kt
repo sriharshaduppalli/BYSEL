@@ -384,6 +384,9 @@ interface BYSELApiService {
     @GET("/portfolio/health")
     suspend fun getPortfolioHealth(): PortfolioHealthScore
 
+    @GET("/portfolio/risk")
+    suspend fun getPaperPortfolioRisk(): PaperPortfolioRisk
+
     // ==================== MARKET HEATMAP ====================
     @GET("/market/heatmap")
     suspend fun getMarketHeatmap(): MarketHeatmap
@@ -588,8 +591,10 @@ data class PortfolioRiskResponse(
     val correlationMatrix: List<List<Double>> = emptyList(),
     val riskLevel: String? = null,
     val demoBasket: Boolean = false,
+    val illustrative: Boolean = false,
     val disclaimer: String? = null,
 ) {
+    val isSample: Boolean get() = illustrative || demoBasket
     fun resolvedMetrics(): PortfolioRiskMetrics = metrics ?: PortfolioRiskMetrics(
         var95 = var95 ?: 0.0,
         var99 = var99 ?: 0.0,

@@ -129,6 +129,7 @@ fun HeatmapScreen(
     onRefresh: () -> Unit,
     onForceRefresh: () -> Unit = onRefresh,
     onStockClick: (String) -> Unit,
+    onSectorClick: (String, List<String>) -> Unit = { _, _ -> },
     heatmapInterval: Int = 5_000,
     isActive: Boolean = true,
 ) {
@@ -180,11 +181,9 @@ fun HeatmapScreen(
         while (true) {
             kotlinx.coroutines.delay(pollMs)
             val live = MarketSession.isOpen()
-            val waitingForSemiconductor = heatmap?.sectors?.none {
-                it.name.equals("Semiconductor", ignoreCase = true)
-            } != false
             marketOpen = live
-            if (live || waitingForSemiconductor) {
+            // After hours: one snapshot is enough. Polling every few seconds was a lag source.
+            if (live || heatmap == null) {
                 // Silent poll — spinner only on first load / pull-to-refresh.
                 onRefresh()
             }
@@ -244,7 +243,7 @@ fun HeatmapScreen(
                     }
 
                     items(heatmap.sectors, key = { it.name }) { sector ->
-                        SectorHeatmapCard(sector, onStockClick)
+                        SectorHeatmapCard(sector, onStockClick, onSectorClick)
                     }
                 }
             }
@@ -751,7 +750,11 @@ private fun heatmapIntensityFill(intensity: String, theme: AppTheme): Color = wh
 }
 
 @Composable
-private fun SectorHeatmapCard(sector: HeatmapSector, onStockClick: (String) -> Unit) {
+private fun SectorHeatmapCard(
+    sector: HeatmapSector,
+    onStockClick: (String) -> Unit,
+    onSectorClick: (String, List<String>) -> Unit,
+) {
     val theme = LocalAppTheme.current
     val sectorColor = heatmapIntensityFill(sector.intensity, theme)
 
@@ -764,7 +767,11 @@ private fun SectorHeatmapCard(sector: HeatmapSector, onStockClick: (String) -> U
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        onSectorClick(sector.name, sector.stocks.map { it.symbol })
+                    },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -776,12 +783,19 @@ private fun SectorHeatmapCard(sector: HeatmapSector, onStockClick: (String) -> U
                             .background(sectorColor)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        sector.name,
-                        color = LocalAppTheme.current.text,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
-                    )
+                    Column {
+                        Text(
+                            sector.name,
+                            color = LocalAppTheme.current.text,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                        Text(
+                            "Tap sector for scored names",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 10.sp,
+                        )
+                    }
                 }
                 Text(
                     "${String.format("%+.2f", sector.avgChange)}%",

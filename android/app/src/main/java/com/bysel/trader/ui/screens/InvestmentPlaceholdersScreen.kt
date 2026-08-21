@@ -1392,7 +1392,10 @@ private fun IpoApplyDialog(
 }
 
 @Composable
-fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
+fun AdvancedOrdersScreen(
+    viewModel: TradingViewModel,
+    preferredSymbol: String? = null,
+) {
     val loading by viewModel.advancedLoading.collectAsStateWithLifecycle()
     val advancedResponse by viewModel.advancedOrderResponse.collectAsStateWithLifecycle()
     val triggerOrders by viewModel.triggerOrders.collectAsStateWithLifecycle()
@@ -1401,7 +1404,7 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
     val preTradeEstimate by viewModel.preTradeEstimate.collectAsStateWithLifecycle()
     val preTradeSignal by viewModel.copilotPreTradeSignal.collectAsStateWithLifecycle()
 
-    var symbol by remember { mutableStateOf("RELIANCE") }
+    var symbol by remember { mutableStateOf(preferredSymbol?.trim()?.uppercase()?.takeIf { it.isNotBlank() } ?: "RELIANCE") }
     var quantityInput by remember { mutableStateOf("1") }
     var side by remember { mutableStateOf("BUY") }
     var orderType by remember { mutableStateOf("MARKET") }
@@ -1413,6 +1416,11 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
 
     var basketName by remember { mutableStateOf("Momentum Basket") }
     var basketLegsInput by remember { mutableStateOf("RELIANCE:1:BUY\nTCS:1:BUY") }
+
+    LaunchedEffect(preferredSymbol) {
+        val next = preferredSymbol?.trim()?.uppercase().orEmpty()
+        if (next.isNotBlank()) symbol = next
+    }
 
     LaunchedEffect(Unit) {
         viewModel.clearPreTradeCopilotSignal()
@@ -1498,10 +1506,10 @@ fun AdvancedOrdersScreen(viewModel: TradingViewModel) {
     ) {
         item {
             Text(
-                "Advanced Orders",
+                "Triggers & baskets",
                 color = LocalAppTheme.current.text,
-                fontWeight = FontWeight.Bold,
-                fontSize = 24.sp
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 16.sp
             )
         }
         item { ActionBanner(viewModel) }
@@ -1820,10 +1828,10 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
     ) {
         item {
             Text(
-                "Options Chain & Greeks",
+                "Options desk",
                 color = LocalAppTheme.current.text,
-                fontWeight = FontWeight.Bold,
-                fontSize = 24.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 16.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -2098,6 +2106,17 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
                         preview.notes.take(4).forEach {
                             Text("• $it", color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
                         }
+                        Button(
+                            onClick = { viewModel.logOptionsRecipeDrill(preview, strategyLegsInput) },
+                            modifier = Modifier.padding(top = 6.dp),
+                        ) {
+                            Text("Save paper recipe", maxLines = 1)
+                        }
+                        Text(
+                            "Writes a journal drill only — no option fill and no cash shares.",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 10.sp,
+                        )
                     }
                 }
             }

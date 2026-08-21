@@ -33,6 +33,25 @@ class RiskEarningsResponseParsingTest {
         assertEquals(1.1, parsed.resolvedMonteCarloMedian(), 0.001)
         assertEquals("Medium", parsed.riskLevel)
         assertEquals(2, parsed.symbols.size)
+        assertEquals(false, parsed.isSample)
+    }
+
+    @Test
+    fun portfolioRisk_marksIllustrativeSamplePayload() {
+        val json = """
+            {
+              "symbols": ["RELIANCE", "TCS", "INFY"],
+              "var95": -1.8,
+              "demoBasket": true,
+              "illustrative": true,
+              "disclaimer": "Illustrative sample numbers"
+            }
+        """.trimIndent()
+
+        val parsed = gson.fromJson(json, PortfolioRiskResponse::class.java)
+        assertTrue(parsed.isSample)
+        assertTrue(parsed.illustrative)
+        assertTrue(parsed.demoBasket)
     }
 
     @Test

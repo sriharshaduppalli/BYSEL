@@ -68,7 +68,7 @@ fun RiskLabScreen(
             Spacer(modifier = Modifier.width(4.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("Risk Lab", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = appTheme.text)
-                Text("Portfolio VaR & Monte Carlo", fontSize = 12.sp, color = appTheme.textSecondary)
+                Text("Educational VaR lab — not a live risk engine", fontSize = 12.sp, color = appTheme.textSecondary)
             }
             IconButton(onClick = { load() }, enabled = !isLoading) {
                 Icon(Icons.Filled.Refresh, contentDescription = "Refresh", tint = appTheme.primary)
@@ -131,34 +131,48 @@ private fun RiskLabContent(
     val mcMedian = data.resolvedMonteCarloMedian()
     val mcP95 = data.resolvedMonteCarloP95()
     val riskLevel = data.riskLevel?.takeIf { it.isNotBlank() }
+    val sampleNumbers = data.isSample
 
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        if (data.demoBasket || !data.disclaimer.isNullOrBlank()) {
-            item {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFFFF9800).copy(alpha = 0.14f)
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            text = if (data.demoBasket) "Demo basket (not your paper portfolio)" else "Risk Lab note",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFFE65100),
-                        )
-                        Text(
-                            text = data.disclaimer?.takeIf { it.isNotBlank() }
-                                ?: "Educational demo basket (RELIANCE/TCS/INFY).",
-                            fontSize = 11.sp,
-                            color = appTheme.textSecondary,
-                            modifier = Modifier.padding(top = 4.dp),
-                        )
+        item {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = if (sampleNumbers) {
+                        Color(0xFFFF9800).copy(alpha = 0.18f)
+                    } else {
+                        appTheme.primary.copy(alpha = 0.10f)
                     }
+                ),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = when {
+                            sampleNumbers && data.demoBasket ->
+                                "Sample numbers — not your paper book"
+                            sampleNumbers ->
+                                "Illustrative sample — history was unavailable"
+                            else ->
+                                "Computed from Yahoo daily history"
+                        },
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (sampleNumbers) Color(0xFFE65100) else appTheme.primary,
+                    )
+                    Text(
+                        text = data.disclaimer?.takeIf { it.isNotBlank() }
+                            ?: if (sampleNumbers) {
+                                "These VaR / Monte Carlo figures are fixed educational samples. They are not live risk on your holdings."
+                            } else {
+                                "Educational only — not a SEBI risk report or a forecast."
+                            },
+                        fontSize = 11.sp,
+                        color = appTheme.textSecondary,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
             }
         }
@@ -189,11 +203,18 @@ private fun RiskLabContent(
         }
 
         item {
-            RiskSectionCard(title = "Value at Risk (1-Day)", appTheme = appTheme) {
+            RiskSectionCard(
+                title = if (sampleNumbers) "Illustrative VaR (sample, 1-day)" else "Value at Risk (1-day)",
+                appTheme = appTheme,
+            ) {
                 RiskRow("VaR 95%", formatSignedPct(metrics.var95), Color(0xFFFF7043))
                 RiskRow("VaR 99%", formatSignedPct(metrics.var99), Color(0xFFE53935))
                 Text(
-                    "With 95% confidence, daily loss is modeled near $var95Pct%",
+                    if (sampleNumbers) {
+                        "Sample figure only — not a modelled loss on your paper book."
+                    } else {
+                        "With 95% confidence, daily loss is modeled near $var95Pct% from Yahoo history."
+                    },
                     fontSize = 11.sp,
                     color = appTheme.textSecondary,
                     modifier = Modifier.padding(top = 4.dp),
@@ -202,7 +223,10 @@ private fun RiskLabContent(
         }
 
         item {
-            RiskSectionCard(title = "Portfolio Performance", appTheme = appTheme) {
+            RiskSectionCard(
+                title = if (sampleNumbers) "Illustrative performance (sample)" else "Portfolio performance",
+                appTheme = appTheme,
+            ) {
                 RiskRow(
                     "Annualised Return",
                     formatSignedPct(metrics.annualizedReturn),
@@ -219,7 +243,14 @@ private fun RiskLabContent(
         }
 
         item {
-            RiskSectionCard(title = "Monte Carlo (500 simulations, 30-day)", appTheme = appTheme) {
+            RiskSectionCard(
+                title = if (sampleNumbers) {
+                    "Illustrative Monte Carlo (sample)"
+                } else {
+                    "Monte Carlo (500 simulations, 30-day)"
+                },
+                appTheme = appTheme,
+            ) {
                 RiskRow("Best Case (P95)", formatSignedPct(mcP95), Color(0xFF4CAF50))
                 RiskRow(
                     "Median Outcome",

@@ -316,7 +316,10 @@ def predict_price(symbol: str) -> Dict:
             "signal": signal,
             "modelAccuracy": _estimate_accuracy(closes),
             "lastUpdated": datetime.utcnow().isoformat(),
-            "disclaimer": "AI predictions are for informational purposes only. Not financial advice.",
+            "disclaimer": (
+                "Educational ensemble (linear trend 40% + smoothing 35% + momentum 25%). "
+                "Not a forecast and not financial advice. modelAccuracy is a short directional backtest, not live accuracy."
+            ),
         }
 
     except Exception as e:
@@ -1059,7 +1062,10 @@ def analyze_stock(symbol: str) -> Dict:
                 "headlines": recent_headlines,
             },
             "modelAccuracy": prediction.get("modelAccuracy", 0),
-            "disclaimer": "AI analysis is for educational purposes only. Not financial advice. Always do your own research.",
+            "disclaimer": (
+                "Educational snapshot from available Yahoo fields plus a simple ensemble. "
+                "Not a forecast, not a Buy/Sell/Hold rating, and not financial advice."
+            ),
             "lastUpdated": datetime.utcnow().isoformat(),
         }
         _cache_analysis(symbol, result)

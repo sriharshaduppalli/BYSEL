@@ -70,7 +70,11 @@ import com.bysel.trader.data.models.HistoryCandle
 import com.bysel.trader.data.models.MarketNewsHeadline
 import com.bysel.trader.data.models.PreTradeEstimateResponse
 import com.bysel.trader.data.models.Quote
+import com.bysel.trader.data.models.PricePrediction
+import com.bysel.trader.data.models.StockAnalysis
+import com.bysel.trader.data.models.StockPredictionResponse
 import com.bysel.trader.ui.components.appOutlinedTextFieldColors
+import com.bysel.trader.ui.components.PaperPositionSizeHelper
 import com.bysel.trader.ui.components.StockLiteracyCatalog
 import com.bysel.trader.ui.components.PriceHistoryChart
 import com.bysel.trader.ui.components.InfoChip
@@ -130,6 +134,11 @@ fun StockDetailScreen(
     val scannerXrayRow by viewModel.selectedScannerRow.collectAsStateWithLifecycle()
     val symbolXray by viewModel.symbolXray.collectAsStateWithLifecycle()
     val scoreHistory by viewModel.scoreHistory.collectAsStateWithLifecycle()
+    val walletBalance by viewModel.walletBalance.collectAsStateWithLifecycle()
+    val stockAnalysis by viewModel.stockAnalysis.collectAsStateWithLifecycle()
+    val stockPrediction by viewModel.stockPrediction.collectAsStateWithLifecycle()
+    val stockResearchLoading by viewModel.stockResearchLoading.collectAsStateWithLifecycle()
+    val stockResearchError by viewModel.stockResearchError.collectAsStateWithLifecycle()
 
     if (quote == null) {
         Box(
@@ -309,6 +318,7 @@ fun StockDetailScreen(
     }
 
     LaunchedEffect(quote.symbol, viewModel) {
+        viewModel.clearStockResearch()
         viewModel.startFastRefresh(symbols = listOf(quote.symbol))
         viewModel.loadSymbolXray(quote.symbol)
         viewModel.loadScoreHistory(quote.symbol, days = 90)
@@ -425,6 +435,18 @@ fun StockDetailScreen(
                 }
             }
 
+            item {
+                StockResearchCard(
+                    symbol = quote.symbol,
+                    analysis = stockAnalysis?.takeIf { it.symbol.equals(quote.symbol, ignoreCase = true) },
+                    prediction = stockPrediction?.takeIf { it.symbol.equals(quote.symbol, ignoreCase = true) },
+                    loading = stockResearchLoading,
+                    error = stockResearchError,
+                    onAnalyze = { viewModel.analyzeStock(quote.symbol) },
+                    onPredict = { viewModel.predictStock(quote.symbol) },
+                )
+            }
+
             // Chart first — AI "View chart" and stock opens should show candles immediately.
             item {
                 SectionHeader(
@@ -478,6 +500,11 @@ fun StockDetailScreen(
                     onPreviewSideChange = { previewSide = it },
                     estimate = estimateForView,
                     signal = signalForView,
+                    walletBalance = walletBalance,
+                    entryPrice = quote.last,
+                    onApplySizedQty = { nextQty ->
+                        quantityText = nextQty.toString()
+                    },
                 )
             }
 
@@ -493,13 +520,15 @@ fun StockDetailScreen(
                 item {
                     SectionHeader(
                         title = "AI Intelligence",
-                        subtitle = "One-tap AI-powered analysis, price predictions, and risk assessment.",
+                        subtitle = "Analyze and ensemble preview on this name — educational, not a forecast.",
                     )
                 }
                 item {
                     AiQuickActionsRow(
                         symbol = quote.symbol,
                         onAiQuery = onAiQuery,
+                        onAnalyze = { viewModel.analyzeStock(quote.symbol) },
+                        onPredict = { viewModel.predictStock(quote.symbol) },
                     )
                 }
             }
@@ -700,6 +729,9 @@ private fun TradeSetupCard(
     onPreviewSideChange: (String) -> Unit,
     estimate: PreTradeEstimateResponse?,
     signal: CopilotSignal?,
+    walletBalance: Double,
+    entryPrice: Double,
+    onApplySizedQty: (Int) -> Unit,
 ) {
     val theme = LocalAppTheme.current
     val signalAccent = when {
@@ -758,6 +790,12 @@ private fun TradeSetupCard(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 colors = appOutlinedTextFieldColors(containerColor = theme.surface),
+            )
+
+            PaperPositionSizeHelper(
+                walletBalance = walletBalance,
+                entryPrice = entryPrice,
+                onApplyQty = onApplySizedQty,
             )
 
             signal?.let {
@@ -1601,6 +1639,131 @@ private fun TextButtonLike(text: String, onClick: () -> Unit) {
     }
 }
 
+@Composable
+private fun StockResearchCard(
+    symbol: String,
+    analysis: StockAnalysis?,
+    prediction: StockPredictionResponse?,
+    loading: Boolean,
+    error: String?,
+    onAnalyze: () -> Unit,
+    onPredict: () -> Unit,
+) {
+    val theme = LocalAppTheme.current
+    Card(
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
+        shape = RoundedCornerShape(14.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("Research (educational)", fontWeight = FontWeight.SemiBold, color = theme.text)
+            Text(
+                "Analyze uses available Yahoo fields. Ensemble is linear trend 40% + smoothing 35% + momentum 25% — not a forecast.",
+                fontSize = 11.sp,
+                color = theme.textSecondary,
+                lineHeight = 15.sp,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilledTonalButton(onClick = onAnalyze, enabled = !loading, modifier = Modifier.weight(1f)) {
+                    Text("Analyze $symbol")
+                }
+                OutlinedButton(onClick = onPredict, enabled = !loading, modifier = Modifier.weight(1f)) {
+                    Text("Ensemble")
+                }
+            }
+            if (loading) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = theme.primary)
+                    Text("Loading research…", fontSize = 12.sp, color = theme.textSecondary)
+                }
+            }
+            error?.let {
+                Text(it, fontSize = 12.sp, color = theme.negative)
+            }
+            analysis?.let { row ->
+                Text(row.summary.ifBlank { "No summary in this snapshot." }, fontSize = 13.sp, color = theme.text)
+                if (row.scoreBreakdown.isNotEmpty()) {
+                    row.scoreBreakdown.entries.take(4).forEach { (key, value) ->
+                        DetailLineItem(label = key.replaceFirstChar { it.uppercase() }, value = value.toString())
+                    }
+                }
+                if (row.signal.isNotBlank()) {
+                    Text(
+                        educationalStanceLabel(row.signal),
+                        fontSize = 12.sp,
+                        color = theme.textSecondary,
+                    )
+                }
+                Text(
+                    row.disclaimer.ifBlank {
+                        "Educational snapshot. Not a Buy/Sell/Hold rating."
+                    },
+                    fontSize = 11.sp,
+                    color = theme.textSecondary,
+                )
+            }
+            prediction?.let { row ->
+                Text("Ensemble preview", fontWeight = FontWeight.Medium, color = theme.text)
+                row.predictions.take(3).forEach { point ->
+                    EnsembleHorizonRow(point)
+                }
+                if (row.modelAccuracy > 0) {
+                    Text(
+                        "Directional backtest fit ${row.modelAccuracy.toInt()}% — capped educational score, not live accuracy.",
+                        fontSize = 11.sp,
+                        color = theme.textSecondary,
+                    )
+                }
+                Text(
+                    row.disclaimer.ifBlank {
+                        "Educational ensemble — not a forecast."
+                    },
+                    fontSize = 11.sp,
+                    color = theme.textSecondary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EnsembleHorizonRow(point: PricePrediction) {
+    val theme = LocalAppTheme.current
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            point.horizon.ifBlank { "${point.days}d" },
+            modifier = Modifier.weight(1f),
+            fontSize = 12.sp,
+            color = theme.text,
+        )
+        Text(
+            formatInr(point.predictedPrice),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            color = theme.text,
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            formatSignedPct(point.changePercent),
+            fontSize = 12.sp,
+            color = if (point.changePercent >= 0) theme.positive else theme.negative,
+        )
+    }
+}
+
+private fun educationalStanceLabel(signal: String): String {
+    val lean = when (signal.trim().uppercase()) {
+        "STRONG_BUY", "BUY", "UP_LEAN", "SLIGHT_UP" -> "constructive"
+        "STRONG_SELL", "SELL", "DOWN_LEAN" -> "cautious"
+        else -> "mixed"
+    }
+    return "Tape lean: $lean — not a recommendation."
+}
+
 private fun formatCurrency(value: Double): String = formatInr(value)
 
 private fun formatSignedPercent(value: Double): String = formatSignedPct(value)
@@ -1613,14 +1776,20 @@ private fun formatCompactNumber(value: Double): String = formatInrCompact(value)
 private fun AiQuickActionsRow(
     symbol: String,
     onAiQuery: (String) -> Unit,
+    onAnalyze: () -> Unit,
+    onPredict: () -> Unit,
 ) {
     val theme = LocalAppTheme.current
-    data class AiAction(val emoji: String, val label: String, val query: String)
+    data class AiAction(val emoji: String, val label: String, val onClick: () -> Unit)
     val actions = listOf(
-        AiAction("🤖", "Full Analysis", "Analyze $symbol with entry price, target price, and stop-loss levels"),
-        AiAction("📈", "Price Prediction", "Predict $symbol price target for next 1 month with confidence and risk-reward"),
-        AiAction("⚡", "Quick Signal", "Should I buy or sell $symbol right now? Give entry, target, stop-loss"),
-        AiAction("🛡️", "Risk Check", "What are the key risks for $symbol and what is the downside from current price?"),
+        AiAction("🤖", "Analyze", onAnalyze),
+        AiAction("📈", "Ensemble", onPredict),
+        AiAction("🛡️", "Risk check") {
+            onAiQuery("What are the key risks for $symbol from available Yahoo fields? Educational only — no buy or sell.")
+        },
+        AiAction("📓", "Practice note") {
+            onAiQuery("Help me write a paper-journal setup for $symbol: thesis, invalidation, and what I will measure. No buy or sell advice.")
+        },
     )
 
     Card(
@@ -1637,7 +1806,7 @@ private fun AiQuickActionsRow(
             ) {
                 actions.take(2).forEach { action ->
                     Button(
-                        onClick = { onAiQuery(action.query) },
+                        onClick = action.onClick,
                         modifier = Modifier.weight(1f).height(44.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = theme.primary.copy(alpha = 0.12f),
@@ -1656,7 +1825,7 @@ private fun AiQuickActionsRow(
             ) {
                 actions.drop(2).forEach { action ->
                     Button(
-                        onClick = { onAiQuery(action.query) },
+                        onClick = action.onClick,
                         modifier = Modifier.weight(1f).height(44.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = theme.primary.copy(alpha = 0.12f),
