@@ -135,6 +135,8 @@ object OnDeviceLlmManager {
 
     fun buildPrompt(query: String, stockContext: String?): String {
         val ctx = if (!stockContext.isNullOrBlank()) "$stockContext\n\n" else ""
-        return "<start_of_turn>user\n${ctx}You are BYSEL AI, an expert Indian stock market analyst. Answer concisely.\n\nQuestion: $query<end_of_turn>\n<start_of_turn>model\n"
+        return "<start_of_turn>user\n${ctx}You are BYSEL AI for Indian market education and paper practice. " +
+            "NSE official rules, lots, holidays, and circulars live on https://www.nseindia.com/ — do not invent them. " +
+            "NSE Learn is literacy, not a buy/sell tip. Answer concisely.\n\nQuestion: $query<end_of_turn>\n<start_of_turn>model\n"
     }
 }

@@ -2157,6 +2157,24 @@ _TERM_ANSWERS: dict[str, str] = {
         "**Common mistake:** Sharing OTP/password or trading via unregistered ‘tips’ channels.\n"
         "_Educational summary — not a legal opinion._"
     ),
+    "nseindia": (
+        "**NSE official site (https://www.nseindia.com/)**\n\n"
+        "NSE is the official source for Indian listed-equity and most index F&O **rules and "
+        "reference data**: quotes, option chain, lot sizes, expiries, holidays, price bands, "
+        "and circulars.\n\n"
+        "**How to use it (literacy, not a scrape):**\n"
+        "• **Get Quote** — last / OHLC / volume / corporate actions for a symbol\n"
+        "• **Option chain** — strikes, OI, IV (index or stock F&O)\n"
+        "• **Holidays / timings** — confirm the session calendar (cash vs F&O can differ)\n"
+        "• **Circulars** — lot-size or settlement changes; do not invent a circular number\n"
+        "• **Learn / NCFM** — investor education and certifications — **not** buy/sell tips\n\n"
+        "BYSEL paper practice is educational. We do **not** crawl or train weights on "
+        "nseindia.com. For any live lot, holiday, or rule, open the NSE page and verify.\n\n"
+        "**If you asked for ‘NSE strategies’:** official education is **process and risk** "
+        "(know the product, size the book, journal the plan). It is not a secret system "
+        "and not a SEBI research call.\n\n"
+        "_Educational map — confirm current figures on nseindia.com._"
+    ),
 }
 
 # Aliases
@@ -2664,6 +2682,22 @@ _TERM_ANSWERS["emergency corpus"] = _TERM_ANSWERS["emergency fund"]
 _TERM_ANSWERS["know your fund"] = _TERM_ANSWERS["personal finance review"]
 _TERM_ANSWERS["financial planning"] = _TERM_ANSWERS["personal finance"]
 _TERM_ANSWERS["financial plan"] = _TERM_ANSWERS["personal finance review"]
+_TERM_ANSWERS["nseindia.com"] = _TERM_ANSWERS["nseindia"]
+_TERM_ANSWERS["www.nseindia.com"] = _TERM_ANSWERS["nseindia"]
+_TERM_ANSWERS["nse website"] = _TERM_ANSWERS["nseindia"]
+_TERM_ANSWERS["nse official"] = _TERM_ANSWERS["nseindia"]
+_TERM_ANSWERS["official nse"] = _TERM_ANSWERS["nseindia"]
+_TERM_ANSWERS["nse learn"] = _TERM_ANSWERS["nseindia"]
+_TERM_ANSWERS["nse education"] = _TERM_ANSWERS["nseindia"]
+_TERM_ANSWERS["nse circulars"] = _TERM_ANSWERS["nseindia"]
+_TERM_ANSWERS["nse strategies"] = _TERM_ANSWERS["nseindia"]
+_TERM_ANSWERS["nse strategy"] = _TERM_ANSWERS["nseindia"]
+_TERM_ANSWERS["nse option chain"] = _TERM_ANSWERS["nseindia"]
+_TERM_ANSWERS["nse get quote"] = _TERM_ANSWERS["nseindia"]
+_TERM_ANSWERS["nse holidays"] = _TERM_ANSWERS["nseindia"]
+_TERM_ANSWERS["nse circular"] = _TERM_ANSWERS["nseindia"]
+_TERM_ANSWERS["nse lot size"] = _TERM_ANSWERS["nseindia"]
+_TERM_ANSWERS["official option chain"] = _TERM_ANSWERS["nseindia"]
 
 
 def get_education_answer(query: str) -> Optional[str]:
@@ -2738,6 +2772,8 @@ def get_education_answer(query: str) -> Optional[str]:
             r"15-15-15|15–15–15|151515|1 crore sip|crorepati sip|"
             r"3-6-9|3–6–9|369 rule|three six nine|rule of money|"
             # Retail mechanics — allow without forcing "what is"
+            r"nseindia|nse website|official nse|nse learn|nse circular|"
+            r"nse holidays|nse get quote|nse option chain|nse lot size|"
             r"\bdemat\b|\bipo\b|\basba\b|\bgtt\b|brokerage|trading charges|"
             r"\bstcg\b|\bltcg\b|capital gains|tax on (equity|shares|profit)|"
             r"\bfii\b|\bdii\b|fii/?dii|"

@@ -57,6 +57,25 @@ object WatchlistSymbols {
         return normalizedIncoming
     }
 
+    /**
+     * Same-user restore: keep [primary] order and append any extra names from [extra].
+     * A stale shorter snapshot must never drop names that the other store still has.
+     */
+    fun unionPreserveOrder(primary: List<String>, extra: List<String>): List<String> {
+        val first = normalizeAll(primary)
+        val second = normalizeAll(extra)
+        if (first.isEmpty()) return second
+        if (second.isEmpty()) return first
+        val seen = first.toMutableSet()
+        val out = first.toMutableList()
+        for (symbol in second) {
+            if (seen.add(symbol)) {
+                out.add(symbol)
+            }
+        }
+        return out
+    }
+
     fun aliases(symbol: String): Set<String> {
         val normalized = normalize(symbol)
         if (normalized.isBlank()) return emptySet()

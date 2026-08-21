@@ -872,7 +872,9 @@ open class TradingRepository(private val database: BYSELDatabase) {
             val raw = e.message.orEmpty()
             val friendly = if (
                 e is ClassCastException ||
-                raw.contains("ServiceMethod", ignoreCase = true)
+                e is IllegalArgumentException ||
+                raw.contains("ServiceMethod", ignoreCase = true) ||
+                raw.contains("Unable to create converter", ignoreCase = true)
             ) {
                 "Scanner failed to start. Close BYSEL fully and open Scanner again."
             } else {

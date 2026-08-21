@@ -53,6 +53,24 @@ class WatchlistSymbolsTest {
     }
 
     @Test
+    fun unionKeepsPrimaryOrderAndRecoversMissingNames() {
+        val merged = WatchlistSymbols.unionPreserveOrder(
+            primary = listOf("RELIANCE", "TCS"),
+            extra = listOf("INFY", "tcs.ns", "WIPRO"),
+        )
+        assertEquals(listOf("RELIANCE", "TCS", "INFY", "WIPRO"), merged)
+    }
+
+    @Test
+    fun unionDoesNotLetAShorterSnapshotWin() {
+        val merged = WatchlistSymbols.unionPreserveOrder(
+            primary = listOf("RELIANCE", "TCS", "INFY"),
+            extra = listOf("INFY"),
+        )
+        assertEquals(listOf("RELIANCE", "TCS", "INFY"), merged)
+    }
+
+    @Test
     fun findQuoteMatchesNsAlias() {
         val quotes = listOf(Quote(symbol = "RELIANCE.NS", last = 1400.0, pctChange = 1.2))
         val found = WatchlistSymbols.findQuote(quotes, "RELIANCE")

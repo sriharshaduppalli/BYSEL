@@ -7,6 +7,7 @@ market-mechanics, and analysis queries stay grounded without a remote model.
 from __future__ import annotations
 
 from .knowledge_base import KnowledgeItem
+from .nse_official_literacy import nse_official_literacy_items
 
 
 def builtin_knowledge_items() -> list[KnowledgeItem]:
@@ -1440,4 +1441,6 @@ def builtin_knowledge_items() -> list[KnowledgeItem]:
             "source": "bysel_builtin_v2",
         },
     ]
-    return [KnowledgeItem(**item) for item in raw]
+    items = [KnowledgeItem(**item) for item in raw]
+    items.extend(nse_official_literacy_items())
+    return items

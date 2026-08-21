@@ -1325,7 +1325,7 @@ data class ScannerRow(
     @SerializedName("colorBand") val colorBand: String = "none",
     @SerializedName("convictionLabel") val convictionLabel: String = "",
     @SerializedName(value = "scoreLabel", alternate = ["score_label"]) val scoreLabel: String = "",
-    @SerializedName(value = "aiSummary", alternate = ["ai_summary", "explanation", "why"]) val aiSummary: String = "",
+    @SerializedName(value = "aiSummary", alternate = ["ai_summary", "explanation"]) val aiSummary: String = "",
     @SerializedName("stance") val stance: List<String> = emptyList(),
     @SerializedName("pillars") val pillars: ScannerPillars? = null,
     @SerializedName("setup") val setup: ScannerPracticeSetup? = null,

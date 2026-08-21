@@ -178,7 +178,9 @@ fun TradingScreen(
     }
     val liveQuotes by viewModel.quotes.collectAsStateWithLifecycle()
     val watchlistSymbols by viewModel.watchlist.collectAsStateWithLifecycle()
+    val holdings by viewModel.holdings.collectAsStateWithLifecycle()
     val selectedQuote by viewModel.selectedQuote.collectAsStateWithLifecycle()
+    var tradeSheetQuote by remember { mutableStateOf<Quote?>(null) }
     // AI Trade Coach Dialog
     val tradeCoachTip by viewModel.tradeCoachTip.collectAsStateWithLifecycle()
     if (tradeCoachTip != null) {
@@ -202,7 +204,6 @@ fun TradingScreen(
         }
     }
     var selectedWorkspaceIndex by remember { mutableIntStateOf(0) }
-    var activeTradeSymbol by remember { mutableStateOf<String?>(null) }
     val pendingTradeWorkspace by viewModel.pendingTradeWorkspace.collectAsStateWithLifecycle()
     LaunchedEffect(pendingTradeWorkspace) {
         val index = pendingTradeWorkspace ?: return@LaunchedEffect
@@ -211,36 +212,46 @@ fun TradingScreen(
     }
 
     fun openTradeSheet(quote: Quote) {
-        activeTradeSymbol = quote.symbol.uppercase()
-        viewModel.setSelectedQuote(quote)
+        tradeSheetQuote = quote
+        viewModel.selectQuoteForTrade(quote)
     }
 
     fun openTradeSheet(symbol: String) {
-        val normalizedSymbol = symbol.trim().uppercase()
+        val normalizedSymbol = WatchlistSymbols.normalize(symbol)
         if (normalizedSymbol.isBlank()) {
             return
         }
-
-        activeTradeSymbol = normalizedSymbol
-        val existingQuote = liveQuotes.firstOrNull { it.symbol.equals(normalizedSymbol, ignoreCase = true) }
-        if (existingQuote != null) {
-            viewModel.setSelectedQuote(existingQuote)
-        } else {
-            viewModel.fetchAndSelectQuote(normalizedSymbol)
+        val live = WatchlistSymbols.findQuote(liveQuotes, normalizedSymbol)
+        val holding = holdings.firstOrNull { WatchlistSymbols.matches(it.symbol, normalizedSymbol) }
+        val seedPrice = when {
+            live != null && live.last > 0.0 -> live.last
+            holding != null && holding.last > 0.0 -> holding.last
+            holding != null && holding.avgPrice > 0.0 -> holding.avgPrice
+            else -> 0.0
         }
+        val seed = live?.takeIf { it.last > 0.0 } ?: Quote(
+            symbol = normalizedSymbol,
+            last = seedPrice,
+            pctChange = live?.pctChange ?: 0.0,
+        )
+        tradeSheetQuote = seed
+        viewModel.selectQuoteForTrade(seed)
     }
 
-    if (activeTradeSymbol != null && selectedQuote?.symbol?.equals(activeTradeSymbol, ignoreCase = true) == true) {
+    val sheetQuote = tradeSheetQuote?.let { seed ->
+        selectedQuote?.takeIf { WatchlistSymbols.matches(it.symbol, seed.symbol) } ?: seed
+    }
+    if (sheetQuote != null) {
         TradeBottomSheet(
-            quote = selectedQuote!!,
+            quote = sheetQuote,
             walletBalance = walletBalance,
             marketStatus = marketStatus,
             onDismiss = {
-                activeTradeSymbol = null
+                tradeSheetQuote = null
                 viewModel.clearPreTradeCopilotSignal()
             },
-            onBuy = { qty -> onBuy(selectedQuote!!.symbol, qty) },
-            onSell = { qty -> onSell(selectedQuote!!.symbol, qty) },
+            onBuy = { qty -> onBuy(sheetQuote.symbol, qty) },
+            onSell = { qty -> onSell(sheetQuote.symbol, qty) },
             onTraceSupportLookup = onTraceSupportLookup,
             viewModel = viewModel,
         )
@@ -386,7 +397,7 @@ fun TradingScreen(
                     )
                     1 -> AdvancedOrdersScreen(
                         viewModel = viewModel,
-                        preferredSymbol = selectedQuote?.symbol ?: activeTradeSymbol,
+                        preferredSymbol = selectedQuote?.symbol ?: tradeSheetQuote?.symbol,
                     )
                     2 -> DerivativesIntelligenceScreen(viewModel)
                     else -> FuturesRadarScreen(
@@ -433,7 +444,7 @@ private fun SpotTradingWorkspace(
         }
     }
     val activeWatchlistSymbols = remember(watchlistSymbols) {
-        watchlistSymbols.map { it.trim().uppercase() }.filter { it.isNotBlank() }.distinct()
+        WatchlistSymbols.normalizeAll(watchlistSymbols)
     }
     val symbolCatalog by viewModel.symbolCatalog.collectAsStateWithLifecycle()
     val symbolCatalogLoading by viewModel.symbolCatalogLoading.collectAsStateWithLifecycle()
@@ -857,7 +868,7 @@ private fun SpotTradingWorkspace(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(horizontal = 8.dp),
-                        contentPadding = PaddingValues(bottom = 24.dp),
+                        contentPadding = PaddingValues(bottom = 96.dp),
                     ) {
                         items(watchlistQuotes, key = { it.symbol }) { quote ->
                             val swipeDismissState = rememberSwipeToDismissBoxState(
@@ -900,11 +911,7 @@ private fun SpotTradingWorkspace(
                         if (watchlistQuotes.isEmpty() && missingWatchlistSymbols.isEmpty()) {
                             item(key = "watchlist_sort_empty") {
                                 Text(
-                                    text = when (sortMode) {
-                                        WatchlistSortMode.GAINERS -> "None of your names are up this session. Try Top move."
-                                        WatchlistSortMode.LOSERS -> "None of your names are down this session. Try Top move."
-                                        else -> "Nothing to show for this sort."
-                                    },
+                                    text = "Quotes are still loading for your saved list.",
                                     fontSize = 13.sp,
                                     color = LocalAppTheme.current.textSecondary,
                                     modifier = Modifier.padding(16.dp),
@@ -969,7 +976,8 @@ private fun SpotTradingWorkspace(
                     state = liveBoardListState,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 8.dp)
+                        .padding(horizontal = 8.dp),
+                    contentPadding = PaddingValues(bottom = 96.dp),
                 ) {
                     items(
                         count = pagingItems.itemCount,
@@ -1377,6 +1385,7 @@ private fun FuturesRadarScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TradePracticeBlotter(
     viewModel: TradingViewModel,
@@ -1432,12 +1441,10 @@ private fun TradePracticeBlotter(
                 )
             }
             if (holdings.isNotEmpty()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .exclusiveHorizontalScroll(),
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     holdings.take(6).forEach { holding ->
                         AssistChip(
@@ -1452,7 +1459,7 @@ private fun TradePracticeBlotter(
                         )
                     }
                     fill?.order?.symbol?.let { symbol ->
-                        if (holdings.none { it.symbol.equals(symbol, ignoreCase = true) }) {
+                        if (holdings.none { WatchlistSymbols.matches(it.symbol, symbol) }) {
                             AssistChip(
                                 onClick = { onOpenSymbol(symbol) },
                                 label = { Text("Last $symbol", maxLines = 1, fontSize = 11.sp) },
@@ -1515,30 +1522,26 @@ fun TradingQuoteCard(
                     )
                 }
 
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    modifier = Modifier.weight(1f, fill = false),
-                ) {
-                    Text(
-                        text = "${if (quote.pctChange > 0) "+" else ""}${String.format("%.2f", quote.pctChange)}%",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = animatedChangeColor(quote.pctChange),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "O ₹${String.format("%.2f", quote.open ?: quote.prevClose ?: quote.last)} · " +
-                            "H/L ₹${String.format("%.2f", quote.dayHigh ?: quote.last)}/${String.format("%.2f", quote.dayLow ?: quote.last)} · " +
-                            "Vol ${formatVolume(quote.volume)}",
-                        fontSize = 11.sp,
-                        color = LocalAppTheme.current.textSecondary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                    )
-                }
+                Text(
+                    text = "${if (quote.pctChange > 0) "+" else ""}${String.format("%.2f", quote.pctChange)}%",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = animatedChangeColor(quote.pctChange),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
+            Text(
+                text = "O ₹${String.format("%.2f", quote.open ?: quote.prevClose ?: quote.last)} · " +
+                    "H/L ₹${String.format("%.2f", quote.dayHigh ?: quote.last)}/${String.format("%.2f", quote.dayLow ?: quote.last)} · " +
+                    "Vol ${formatVolume(quote.volume)}",
+                fontSize = 11.sp,
+                color = LocalAppTheme.current.textSecondary,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
 
             if (tapeFlags.isNotEmpty()) {
                 FlowRow(
@@ -2095,7 +2098,7 @@ private fun TradeBottomSheetContent(
                     color = LocalAppTheme.current.text
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                if (history.isNotEmpty()) {
+                if (history.size >= 2) {
                     PriceHistoryChart(
                         history = history.takeLast(30),
                         modifier = Modifier

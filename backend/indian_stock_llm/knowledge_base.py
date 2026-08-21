@@ -52,6 +52,8 @@ INTENT_TAG_PRIORS = {
         "beginner", "education", "nse", "bse", "sebi", "demat", "ipo", "settlement",
         "depository", "nsdl", "cdsl", "participants", "mistakes", "kyc",
         "technical", "candlestick", "fibonacci", "volume", "pivot",
+        "nseindia", "circular", "holiday", "ncfm", "lot",
+        "option chain", "asm", "cas", "pre-open", "indices",
     },
     "general_query": {"stocks", "symbols", "nse", "bse", "terms"},
 }

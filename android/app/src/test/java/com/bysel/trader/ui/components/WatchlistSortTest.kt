@@ -34,15 +34,15 @@ class WatchlistSortTest {
     }
 
     @Test
-    fun gainersOnlyIncludeNamesThatAreUp() {
+    fun gainersRankUpNamesFirstButKeepTheFullList() {
         val ordered = sample.sortedByWatchlistMode(WatchlistSortMode.GAINERS).map { it.symbol }
-        assertEquals(listOf("INFY", "RELIANCE"), ordered)
+        assertEquals(listOf("INFY", "RELIANCE", "HDFCBANK", "WIPRO", "TCS"), ordered)
     }
 
     @Test
-    fun losersOnlyIncludeNamesThatAreDownMostNegativeFirst() {
+    fun losersRankDownNamesFirstButKeepTheFullList() {
         val ordered = sample.sortedByWatchlistMode(WatchlistSortMode.LOSERS).map { it.symbol }
-        assertEquals(listOf("TCS", "WIPRO"), ordered)
+        assertEquals(listOf("TCS", "WIPRO", "HDFCBANK", "RELIANCE", "INFY"), ordered)
     }
 
     @Test

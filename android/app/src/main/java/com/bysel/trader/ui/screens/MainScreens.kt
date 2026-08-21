@@ -173,26 +173,14 @@ fun WatchlistScreen(
                         verticalArrangement = Arrangement.Center,
                     ) {
                         Text(
-                            text = when {
-                                quotes.isNotEmpty() && sortMode == WatchlistSortMode.GAINERS ->
-                                    "No gainers this session"
-                                quotes.isNotEmpty() && sortMode == WatchlistSortMode.LOSERS ->
-                                    "No losers this session"
-                                else -> "No tracked symbols yet"
-                            },
+                            text = "No tracked symbols yet",
                             fontWeight = FontWeight.Bold,
                             color = LocalAppTheme.current.text,
                             fontSize = 16.sp,
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = when {
-                                quotes.isNotEmpty() && sortMode == WatchlistSortMode.GAINERS ->
-                                    "None of these names are up. Try Top move or Losers."
-                                quotes.isNotEmpty() && sortMode == WatchlistSortMode.LOSERS ->
-                                    "None of these names are down. Try Top move or Gainers."
-                                else -> "Search the full NSE listed universe, tap Watch, then open Trade → My list."
-                            },
+                            text = "Search the full NSE listed universe, tap Watch, then open Trade → My list.",
                             color = LocalAppTheme.current.textSecondary,
                             fontSize = 13.sp,
                         )
@@ -201,7 +189,8 @@ fun WatchlistScreen(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(horizontal = 8.dp)
+                            .padding(horizontal = 8.dp),
+                        contentPadding = PaddingValues(bottom = 96.dp),
                     ) {
                         items(items = sortedQuotes, key = { it.symbol }) { quote ->
                             UpgradedQuoteCard(quote) { onQuoteClick(quote) }

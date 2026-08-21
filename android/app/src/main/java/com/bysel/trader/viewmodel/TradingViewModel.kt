@@ -532,20 +532,28 @@ class TradingViewModel(
     /** Reload disk into memory without ever replacing a non-empty list with empty. */
     fun ensureWatchlistLoaded() {
         val lastGood = _watchlist.value
-        val loaded = WatchlistStore.readSync(
+        val fromPrefs = WatchlistStore.readSync(
             context = watchlistAppContext(),
             userId = currentWatchlistUserId(),
             lastGood = lastGood,
         )
+        val loaded = WatchlistSymbols.unionPreserveOrder(fromPrefs, lastGood)
         if (loaded != lastGood) {
             _watchlist.value = loaded
         }
-        if (loaded.isNotEmpty()) {
-            viewModelScope.launch {
+        watchlistOwnerKey = WatchlistSymbols.userKey(currentWatchlistUserId())
+        viewModelScope.launch {
+            val fromDataStore = WatchlistStore.readDataStore(
+                watchlistAppContext(),
+                currentWatchlistUserId(),
+            )
+            val merged = WatchlistSymbols.unionPreserveOrder(_watchlist.value, fromDataStore)
+            if (merged.isNotEmpty() && merged != _watchlist.value) {
+                persistWatchlist(merged, allowEmpty = false)
+            } else if (loaded.isNotEmpty()) {
                 WatchlistStore.writeDataStore(watchlistAppContext(), currentWatchlistUserId(), loaded)
             }
         }
-        watchlistOwnerKey = WatchlistSymbols.userKey(currentWatchlistUserId())
     }
 
     fun retryWatchlistQuotes() {
@@ -597,7 +605,7 @@ class TradingViewModel(
 
     private fun syncSelectedQuoteFrom(quotes: List<Quote>) {
         val current = _selectedQuote.value ?: return
-        val refreshed = quotes.firstOrNull { it.symbol.equals(current.symbol, ignoreCase = true) } ?: return
+        val refreshed = WatchlistSymbols.findQuote(quotes, current.symbol) ?: return
         _selectedQuote.value = refreshed.withSnapshotFrom(current)
     }
 
@@ -701,7 +709,7 @@ class TradingViewModel(
         }
         viewModelScope.launch {
             val fromDataStore = WatchlistStore.readDataStore(watchlistAppContext(), currentWatchlistUserId())
-            val merged = WatchlistSymbols.coalesce(fromDataStore, _watchlist.value, allowEmpty = false)
+            val merged = WatchlistSymbols.unionPreserveOrder(_watchlist.value, fromDataStore)
             if (merged.isNotEmpty() && merged != _watchlist.value) {
                 persistWatchlist(merged, allowEmpty = false)
             }
@@ -753,14 +761,13 @@ class TradingViewModel(
         val normalized = WatchlistSymbols.normalize(symbol)
         if (normalized.isBlank()) return
 
-        val current = WatchlistSymbols.coalesce(
-            incoming = WatchlistStore.readSync(
+        val current = WatchlistSymbols.unionPreserveOrder(
+            WatchlistStore.readSync(
                 watchlistAppContext(),
                 currentWatchlistUserId(),
                 lastGood = _watchlist.value,
             ),
-            lastGood = _watchlist.value,
-            allowEmpty = false,
+            _watchlist.value,
         ).toMutableList()
         if (current.none { WatchlistSymbols.matches(it, normalized) }) {
             current.add(normalized)
@@ -773,14 +780,13 @@ class TradingViewModel(
         val normalized = WatchlistSymbols.normalize(symbol)
         if (normalized.isBlank()) return
 
-        val current = WatchlistSymbols.coalesce(
-            incoming = WatchlistStore.readSync(
+        val current = WatchlistSymbols.unionPreserveOrder(
+            WatchlistStore.readSync(
                 watchlistAppContext(),
                 currentWatchlistUserId(),
                 lastGood = _watchlist.value,
             ),
-            lastGood = _watchlist.value,
-            allowEmpty = false,
+            _watchlist.value,
         )
         val updated = current.filterNot { WatchlistSymbols.matches(it, normalized) }
         if (updated.size != current.size) {
@@ -1254,6 +1260,30 @@ class TradingViewModel(
     fun setSelectedQuote(quote: Quote) {
         _selectedQuote.value = quote
         loadStockDetailContext(quote.symbol)
+    }
+
+    /**
+     * Open a paper ticket without going through Stock Detail.
+     * Never clears [selectedQuote] — a null flash disposes the Trade sheet and can crash.
+     */
+    fun selectQuoteForTrade(quote: Quote) {
+        val seed = quote.copy(symbol = WatchlistSymbols.normalize(quote.symbol).ifBlank { quote.symbol })
+        _selectedQuote.value = seed
+        loadStockDetailContext(seed.symbol)
+        viewModelScope.launch {
+            when (val result = repository.getQuote(seed.symbol)) {
+                is Result.Success -> {
+                    val current = _selectedQuote.value ?: return@launch
+                    if (!WatchlistSymbols.matches(current.symbol, seed.symbol)) return@launch
+                    val fresh = result.data.withSnapshotFrom(current)
+                    _selectedQuote.value = fresh
+                    _quotes.value = mergeQuotesWithExisting(listOf(fresh))
+                }
+                else -> {
+                    // Keep the seed quote so the ticket stays open.
+                }
+            }
+        }
     }
 
     /** Symbol currently being opened for Stock Detail (AI Chart / search). */
