@@ -740,7 +740,7 @@ def _build_risk_payload_from_returns(
         "disclaimer": (
             "Educational demo basket (RELIANCE/TCS/INFY) — not your paper portfolio."
             if used_demo
-            else "Computed from Yahoo daily history on the names you supplied. Educational only — not a SEBI risk report."
+            else "Computed from daily market history on the names you supplied. Educational only — not a SEBI risk report."
         ),
     }
 

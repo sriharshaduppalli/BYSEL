@@ -147,6 +147,7 @@ NSE OFFICIAL SOURCE (https://www.nseindia.com/):
 
 IMPORTANT — USER-FACING RESPONSE ONLY:
 - Do NOT include any internal system metadata in your response
+- Do NOT name market-data vendors. Say "available market data" or "live quotes".
 - Do NOT mention: "Intent detected", "category", "latency mode", "model backend", "confidence score", "alternatives", "data refresh", "data lineage", "stale feeds", "partial feeds", "resolved entity", or any other internal NLP/system information
 - Do NOT start your response with any metadata or system fields
 - Only provide analysis and investment advice to the user
@@ -1250,7 +1251,18 @@ def _strip_internal_metadata(text: str) -> str:
 
     result = "\n".join(filtered_lines).strip()
     # If everything was stripped, return original (safety)
-    return result if result else text
+    return redact_vendor_names_for_display(result if result else text)
+
+
+def redact_vendor_names_for_display(text: str) -> str:
+    """Keep vendor names out of user-visible copy."""
+    if not text:
+        return text
+    out = re.sub(r"(?i)Yahoo\s+Finance", "market data", text)
+    out = re.sub(r"(?i)NSE/Yahoo", "live market", out)
+    out = re.sub(r"(?i)\bYahoo\b", "market data", out)
+    out = re.sub(r"(?i)from available market data fields", "from available fields", out)
+    return out
 
 
 # ---------------------------------------------------------------------------

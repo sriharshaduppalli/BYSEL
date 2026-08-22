@@ -1063,7 +1063,7 @@ def analyze_stock(symbol: str) -> Dict:
             },
             "modelAccuracy": prediction.get("modelAccuracy", 0),
             "disclaimer": (
-                "Educational snapshot from available Yahoo fields plus a simple ensemble. "
+                "Educational snapshot from available market fields plus a simple ensemble. "
                 "Not a forecast, not a Buy/Sell/Hold rating, and not financial advice."
             ),
             "lastUpdated": datetime.utcnow().isoformat(),

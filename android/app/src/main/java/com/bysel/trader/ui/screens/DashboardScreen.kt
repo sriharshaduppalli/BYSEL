@@ -874,7 +874,7 @@ fun DashboardContent(
                                 )
                             }
                             item {
-                                LazyRow(modifier = Modifier.exclusiveHorizontalScroll(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                LazyRow(modifier = Modifier.exclusiveHorizontalScroll(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     items(focusQuotes.take(4), key = { it.symbol }) { quote ->
                                         HomeQuoteBoardCard(
                                             quote = quote,
@@ -957,7 +957,7 @@ fun DashboardContent(
                                 )
                             }
                             item {
-                                LazyRow(modifier = Modifier.exclusiveHorizontalScroll(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                LazyRow(modifier = Modifier.exclusiveHorizontalScroll(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     items(focusQuotes.take(4), key = { it.symbol }) { quote ->
                                         HomeQuoteBoardCard(
                                             quote = quote,
@@ -1795,68 +1795,61 @@ private fun HomeQuoteBoardCard(
 ) {
     Card(
         modifier = Modifier
-            .width(220.dp)
-            .padding(vertical = 4.dp)
+            .width(148.dp)
             .clickable { onOpen() },
         colors = byselCardColors(),
         elevation = byselCardElevation(),
         border = byselCardBorder(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(12.dp),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = quote.symbol,
-                        color = LocalAppTheme.current.text,
-                        fontWeight = FontWeight.Bold,
-                        lineHeight = 20.sp,
-                        maxLines = 2,
-                        softWrap = true,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = "₹${String.format("%.2f", quote.last)}",
-                        color = LocalAppTheme.current.textSecondary,
-                        fontSize = 12.sp,
-                        maxLines = 2,
-                        softWrap = true,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                IconButton(onClick = onPinClick) {
-                    Icon(
-                        imageVector = if (isPinned) Icons.Default.Star else Icons.Default.StarBorder,
-                        contentDescription = if (isPinned) "Unpin" else "Pin",
-                        tint = if (isPinned) LocalAppTheme.current.primary else LocalAppTheme.current.textSecondary,
-                    )
-                }
+                Text(
+                    text = quote.symbol,
+                    color = LocalAppTheme.current.text,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    imageVector = if (isPinned) Icons.Default.Star else Icons.Default.StarBorder,
+                    contentDescription = if (isPinned) "Unpin" else "Pin",
+                    tint = if (isPinned) LocalAppTheme.current.primary else LocalAppTheme.current.textSecondary,
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clickable(onClick = onPinClick),
+                )
             }
-
+            Text(
+                text = "₹${String.format("%.2f", quote.last)}",
+                color = LocalAppTheme.current.textSecondary,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Text(
                 text = formatSignedPercent(quote.pctChange),
-                fontSize = 18.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = if (quote.pctChange >= 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative,
             )
-            Text(
-                text = if (quote.effectiveVolume() > 0L) {
-                    "Volume ${formatCompactVolume(quote.effectiveVolume())}"
-                } else {
-                    "Open stock context and decide fast"
-                },
-                color = LocalAppTheme.current.textSecondary,
-                fontSize = 12.sp,
-            )
-            TextButton(onClick = onOpen, contentPadding = PaddingValues(0.dp)) {
-                Text("Open stock context")
+            if (quote.effectiveVolume() > 0L) {
+                Text(
+                    text = "Vol ${formatCompactVolume(quote.effectiveVolume())}",
+                    color = LocalAppTheme.current.textSecondary,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }

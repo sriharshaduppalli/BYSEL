@@ -60,31 +60,31 @@ EDUCATION_FILTERS = (
         "id": "roce",
         "label": "ROCE > 15%",
         "applied": False,
-        "status": "Yahoo quotes do not include ROCE — shown as —",
+        "status": "Not available on this snapshot — shown as —",
     },
     {
         "id": "roe",
         "label": "ROE > 15%",
         "applied": True,
-        "status": "Used when Yahoo has returnOnEquity; otherwise —",
+        "status": "Used when ROE is on the quote; otherwise —",
     },
     {
         "id": "de",
         "label": "D/E < 1",
         "applied": True,
-        "status": "Used when Yahoo has debtToEquity (non-banks); otherwise —",
+        "status": "Used when D/E is on the quote (non-banks); otherwise —",
     },
     {
         "id": "peg",
         "label": "PEG < 1.5",
         "applied": True,
-        "status": "Used when Yahoo has pegRatio; otherwise —",
+        "status": "Used when PEG is on the quote; otherwise —",
     },
     {
         "id": "pledge",
         "label": "Low promoter pledge",
         "applied": False,
-        "status": "Not in Yahoo quotes — shown as —",
+        "status": "Not on this snapshot — shown as —",
     },
 )
 
@@ -93,13 +93,13 @@ QUALITY_SCREEN_FILTERS = (
         "id": "mcap",
         "label": "MCap > ₹500 Cr",
         "applied": True,
-        "status": "Yahoo marketCap in ₹",
+        "status": "Market cap in ₹",
     },
     {
         "id": "peg",
         "label": "PEG < 1",
         "applied": True,
-        "status": "Yahoo pegRatio when present",
+        "status": "PEG when present",
     },
     {
         "id": "pe_vs_sector",
@@ -111,13 +111,13 @@ QUALITY_SCREEN_FILTERS = (
         "id": "roe",
         "label": "ROE > 20%",
         "applied": True,
-        "status": "Yahoo trailing ROE — not 5-year average",
+        "status": "Trailing ROE — not 5-year average",
     },
     {
         "id": "roce",
         "label": "ROCE (5Y avg) > 15%",
         "applied": True,
-        "status": "Yahoo statements: 5Y avg when 5 years exist; else latest/N-year avg",
+        "status": "Statements: 5Y avg when 5 years exist; else latest/N-year avg",
     },
     {
         "id": "promoter",
@@ -129,13 +129,13 @@ QUALITY_SCREEN_FILTERS = (
         "id": "sales",
         "label": "Sales growth > 15%",
         "applied": True,
-        "status": "Yahoo 3Y CAGR when 4 annual rows exist; else TTM YoY",
+        "status": "3Y CAGR when 4 annual rows exist; else TTM YoY",
     },
     {
         "id": "profit",
         "label": "Profit growth > 15%",
         "applied": True,
-        "status": "Yahoo 5Y CAGR when history exists; else available-year CAGR or TTM YoY",
+        "status": "5Y CAGR when history exists; else available-year CAGR or TTM YoY",
     },
     {
         "id": "pledge",
@@ -147,19 +147,19 @@ QUALITY_SCREEN_FILTERS = (
         "id": "opm",
         "label": "OPM > 15%",
         "applied": True,
-        "status": "Yahoo operatingMargins when present",
+        "status": "Operating margin when present",
     },
     {
         "id": "ps",
         "label": "Price to Sales < 7",
         "applied": True,
-        "status": "Yahoo trailing P/S when present",
+        "status": "Trailing P/S when present",
     },
     {
         "id": "ev_ebitda",
         "label": "EV/EBITDA < 20",
         "applied": True,
-        "status": "Yahoo enterpriseToEbitda when present",
+        "status": "EV/EBITDA when present",
     },
 )
 
@@ -246,7 +246,7 @@ FORMULA_NOTE = (
     "BYSEL Score = Quality×0.35 + Valuation×0.25 + Trend×0.20 + Momentum×0.20. "
     "Missing pillars and missing sub-metrics are skipped and remaining weights "
     "are renormalized. ROCE, pledge, delivery, MACD, 5yr PE median, and HH/HL "
-    "are not invented from Yahoo quotes."
+    "are not invented when missing."
 )
 METRIC_LABELS = {
     "roce": "ROCE",
@@ -289,7 +289,63 @@ TREND_METRIC_WEIGHTS = dict(TREND_WEIGHTS)
 MOMENTUM_METRIC_WEIGHTS = dict(MOMENTUM_WEIGHTS)
 
 _CACHE_LOCK = threading.Lock()
+_BUILD_LOCK = threading.Lock()
 _SCANNER_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+
+
+def _limit_for_mode(mode: str, requested_limit: int) -> int:
+    if mode == "custom":
+        return 40
+    return min(max(int(requested_limit or 30), 5), 40)
+
+
+def _cached_scanner_payload(cache_key: str, now: float) -> Optional[Dict[str, Any]]:
+    with _CACHE_LOCK:
+        cached = _SCANNER_CACHE.get(cache_key)
+        if cached is None:
+            mode = cache_key.split(":", 1)[0]
+            cached = _SCANNER_CACHE.get(mode)
+    if cached and (now - cached[0]) < SCANNER_CACHE_TTL_SECONDS:
+        payload = dict(cached[1])
+        payload["cached"] = True
+        return payload
+    return None
+
+
+def _store_all_mode_payloads(
+    quotes: Sequence[Dict[str, Any]],
+    *,
+    requested_limit: int,
+    universe_size: int,
+) -> Dict[str, Dict[str, Any]]:
+    """Score once per mode from the same quotes so tab switches stay cache-hot."""
+    now = time.time()
+    stored: Dict[str, Dict[str, Any]] = {}
+    with _CACHE_LOCK:
+        for mode in SCANNER_MODES:
+            mode_limit = _limit_for_mode(mode, requested_limit)
+            payload = build_scanner_payload(
+                quotes,
+                mode=mode,
+                limit=mode_limit,
+                universe_size=universe_size,
+            )
+            snapshot = dict(payload)
+            stored[mode] = snapshot
+            _SCANNER_CACHE[mode] = (now, snapshot)
+            _SCANNER_CACHE[f"{mode}:{mode_limit}"] = (now, snapshot)
+            if mode_limit != requested_limit:
+                _SCANNER_CACHE[f"{mode}:{requested_limit}"] = (now, snapshot)
+    return stored
+
+
+def _with_by_mode(payload: Dict[str, Any], stored: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    out = dict(payload)
+    out["byMode"] = {
+        mode: list(item.get("rows") or [])
+        for mode, item in stored.items()
+    }
+    return out
 
 
 def _safe_float(value: Any) -> Optional[float]:
@@ -1151,7 +1207,7 @@ def explain_score(
     """2–4 sentence educational summary. Not investment advice."""
     if bysel is None:
         return (
-            "Insufficient Yahoo fields to compute a BYSEL Score — pillars stay as —. "
+            "Insufficient fields to compute a BYSEL Score — pillars stay as —. "
             "Missing metrics are skipped rather than invented. "
             "This is an educational readout, not investment advice."
         )
@@ -1161,7 +1217,7 @@ def explain_score(
     m_bit = next((n for n in m_notes if not n.endswith("—")), "momentum incomplete")
     sentences = [
         (
-            f"BYSEL Score is {bysel}/100 from available Yahoo fields: "
+            f"BYSEL Score is {bysel}/100 from available fields: "
             f"{_fmt_pillar('Quality', quality, q_bit)}, "
             f"{_fmt_pillar('Valuation', valuation, v_bit)}, "
             f"{_fmt_pillar('Trend', trend, t_bit)}, "
@@ -1545,7 +1601,7 @@ def evaluate_quality_screen(
             applied=True,
             value=(mcap / 10**7) if mcap is not None else None,
             passed=(mcap > MCAP_MIN_INR) if mcap is not None else None,
-            note="Yahoo marketCap in ₹",
+            note="Market cap in ₹",
         ),
         _screen_check(
             "peg",
@@ -1553,7 +1609,7 @@ def evaluate_quality_screen(
             applied=True,
             value=peg,
             passed=(peg < 1) if peg is not None else None,
-            note="Yahoo pegRatio when present",
+            note="PEG when present",
         ),
         _screen_check(
             "pe_vs_sector",
@@ -1573,7 +1629,7 @@ def evaluate_quality_screen(
             applied=True,
             value=roe,
             passed=(roe > 20) if roe is not None else None,
-            note="Yahoo trailing ROE — not 5-year average",
+            note="Trailing ROE — not 5-year average",
         ),
         _screen_check(
             "roce",
@@ -1582,11 +1638,11 @@ def evaluate_quality_screen(
             value=roce,
             passed=(roce > 15) if roce is not None else None,
             note=(
-                f"Yahoo statements — {roce_years}-year average"
+                f"Statements — {roce_years}-year average"
                 if roce_avg is not None and roce_years
-                else "Yahoo statements — latest year, not 5-year average"
+                else "Statements — latest year, not 5-year average"
                 if roce_latest is not None
-                else "Yahoo statements when enough years exist"
+                else "Statements when enough years exist"
             ),
         ),
         _screen_check(
@@ -1604,9 +1660,9 @@ def evaluate_quality_screen(
             value=sales,
             passed=(sales > 15) if sales is not None else None,
             note=(
-                f"Yahoo {sales_years}Y sales CAGR"
+                f"{sales_years}Y sales CAGR"
                 if sales_cagr is not None and sales_years
-                else "Yahoo TTM YoY — not 3-year CAGR"
+                else "TTM YoY — not 3-year CAGR"
             ),
         ),
         _screen_check(
@@ -1616,9 +1672,9 @@ def evaluate_quality_screen(
             value=profit,
             passed=(profit > 15) if profit is not None else None,
             note=(
-                f"Yahoo {profit_years}Y profit CAGR"
+                f"{profit_years}Y profit CAGR"
                 if profit_cagr is not None and profit_years
-                else "Yahoo TTM YoY — not 5-year CAGR"
+                else "TTM YoY — not 5-year CAGR"
             ),
         ),
         _screen_check(
@@ -1635,7 +1691,7 @@ def evaluate_quality_screen(
             applied=True,
             value=opm,
             passed=(opm > 15) if opm is not None else None,
-            note="Yahoo operatingMargins when present",
+            note="Operating margin when present",
         ),
         _screen_check(
             "ps",
@@ -1643,7 +1699,7 @@ def evaluate_quality_screen(
             applied=True,
             value=ps,
             passed=(ps < 7) if ps is not None else None,
-            note="Yahoo trailing P/S when present",
+            note="Trailing P/S when present",
         ),
         _screen_check(
             "ev_ebitda",
@@ -1651,7 +1707,7 @@ def evaluate_quality_screen(
             applied=True,
             value=ev_ebitda,
             passed=(ev_ebitda < 20) if ev_ebitda is not None else None,
-            note="Yahoo enterpriseToEbitda when present",
+            note="EV/EBITDA when present",
         ),
     ]
     passed = sum(1 for item in checks if item["status"] == "pass")
@@ -1681,7 +1737,7 @@ def _education(mode: str) -> Dict[str, Any]:
         title = "Long-term — quality + fair value"
         summary = (
             "Ranks on BYSEL Score. Textbook screens (ROCE>15, ROE>15, D/E<1, PEG<1.5) "
-            "are shown for education; we apply only filters we can compute from Yahoo."
+            "are shown for education; we apply only filters we can compute from available fields."
         )
         risk_note = "Heuristic rank, not a buy list. Missing ROCE/pledge/delivery stay as —."
     if mode == "high_quality":
@@ -1689,14 +1745,14 @@ def _education(mode: str) -> Dict[str, Any]:
         summary = "Sorted by the Quality pillar from available ROE/ROCE/D/E only. Missing metrics are skipped."
     elif mode == "momentum":
         title = "Momentum"
-        summary = "Sorted by the Momentum pillar (RSI/volume/ROC when present). MACD stays — on Yahoo quotes."
+        summary = "Sorted by the Momentum pillar (RSI/volume/ROC when present). MACD stays — when missing."
     elif mode == "value":
         title = "Value"
         summary = "Sorted by the Valuation pillar (PE vs sector-ish / PEG when present)."
     elif mode == "custom":
         title = "Custom — chips we can actually apply"
         summary = (
-            "Filter the scored universe with fields Yahoo already gives us: "
+            "Filter the scored universe with fields we already have: "
             "min BYSEL score, RSI, price vs 50/200 DMA, volume vs average, PE max, and day change. "
             "Missing RSI/DMA/PE skips that name instead of inventing a value. "
             "This is not a 40-filter builder."
@@ -1707,11 +1763,11 @@ def _education(mode: str) -> Dict[str, Any]:
         summary = (
             "Often shared as a 'multibagger formula'. It is a filter, not a forecast — "
             "passing these checks does not mean a stock will multiply. "
-            "Yahoo statement history fills 3Y sales CAGR, multi-year profit CAGR, and ROCE when enough years exist. "
+            "Statement history fills 3Y sales CAGR, multi-year profit CAGR, and ROCE when enough years exist. "
             "NSE shareholding fills promoter % and pledge when the filing is available. "
             "Sector PE prefers NSE pdSectorPe, else the median PE in this batch. "
             "A missing year or filing stays —; we do not scrape Screener.in. "
-            f"A name is listed only if it fails none of the Yahoo-backed checks and passes at least {QUALITY_SCREEN_MIN_PASSES}."
+            f"A name is listed only if it fails none of the available checks and passes at least {QUALITY_SCREEN_MIN_PASSES}."
         )
         risk_note = (
             "Paper practice shortlist only. Not a buy list and not a multibagger prediction."
@@ -1736,7 +1792,7 @@ def _education(mode: str) -> Dict[str, Any]:
         "dataLimits": (
             "Universe is NIFTY 50 plus the default watchlist catalog "
             "(and a few heatmap movers if that cache is already warm). "
-            "Yahoo rarely has ROCE, promoter pledge, or RSI on the quote snapshot."
+            "ROCE, promoter pledge, or RSI are often missing on the quote snapshot."
         ),
     }
 
@@ -1890,71 +1946,94 @@ def get_market_scanner(
     now = time.time()
 
     if not force_refresh:
-        with _CACHE_LOCK:
-            cached = _SCANNER_CACHE.get(cache_key)
-        if cached and (now - cached[0]) < SCANNER_CACHE_TTL_SECONDS:
-            payload = dict(cached[1])
-            payload["cached"] = True
-            return payload
+        cached = _cached_scanner_payload(cache_key, now)
+        if cached:
+            stored: Dict[str, Dict[str, Any]] = {}
+            with _CACHE_LOCK:
+                for sibling in SCANNER_MODES:
+                    item = _SCANNER_CACHE.get(sibling) or _SCANNER_CACHE.get(
+                        f"{sibling}:{_limit_for_mode(sibling, limit)}"
+                    )
+                    if item:
+                        stored[sibling] = item[1]
+            return _with_by_mode(cached, stored)
 
-    symbols = scanner_universe()
-    quotes: List[Dict[str, Any]] = []
-    try:
-        from .market_data import fetch_quotes
+    with _BUILD_LOCK:
+        now = time.time()
+        if not force_refresh:
+            cached = _cached_scanner_payload(cache_key, now)
+            if cached:
+                stored = {}
+                with _CACHE_LOCK:
+                    for sibling in SCANNER_MODES:
+                        item = _SCANNER_CACHE.get(sibling) or _SCANNER_CACHE.get(
+                            f"{sibling}:{_limit_for_mode(sibling, limit)}"
+                        )
+                        if item:
+                            stored[sibling] = item[1]
+                return _with_by_mode(cached, stored)
 
-        quotes = fetch_quotes(
-            symbols,
-            max_age_seconds=180,
-            batch_size=max(50, len(symbols)),
-            yf_threads=True,
-            individual_fallback=False,
-        ) or []
-        try:
-            from .quality_fundamentals import cached_nse_quality, schedule_nse_quality_fill
-
-            merged_quotes: List[Dict[str, Any]] = []
-            for quote in quotes:
-                if not isinstance(quote, dict):
-                    continue
-                extra = cached_nse_quality(str(quote.get("symbol") or ""))
-                if extra:
-                    row = dict(quote)
-                    for key, value in extra.items():
-                        if value not in (None, "") and row.get(key) in (None, "", 0, 0.0):
-                            row[key] = value
-                    merged_quotes.append(row)
-                else:
-                    merged_quotes.append(quote)
-            quotes = merged_quotes
-            schedule_nse_quality_fill(symbols, limit=12)
-        except Exception as exc:
-            logger.debug("scanner.nse_quality_overlay_failed reason=%s", exc)
-    except TypeError:
+        symbols = scanner_universe()
+        quotes: List[Dict[str, Any]] = []
         try:
             from .market_data import fetch_quotes
 
-            quotes = fetch_quotes(symbols) or []
+            quotes = fetch_quotes(
+                symbols,
+                max_age_seconds=180,
+                batch_size=max(50, len(symbols)),
+                yf_threads=True,
+                individual_fallback=False,
+            ) or []
+            try:
+                from .quality_fundamentals import cached_nse_quality, schedule_nse_quality_fill
+
+                merged_quotes: List[Dict[str, Any]] = []
+                for quote in quotes:
+                    if not isinstance(quote, dict):
+                        continue
+                    extra = cached_nse_quality(str(quote.get("symbol") or ""))
+                    if extra:
+                        row = dict(quote)
+                        for key, value in extra.items():
+                            if value not in (None, "") and row.get(key) in (None, "", 0, 0.0):
+                                row[key] = value
+                        merged_quotes.append(row)
+                    else:
+                        merged_quotes.append(quote)
+                quotes = merged_quotes
+                schedule_nse_quality_fill(symbols, limit=12)
+            except Exception as exc:
+                logger.debug("scanner.nse_quality_overlay_failed reason=%s", exc)
+        except TypeError:
+            try:
+                from .market_data import fetch_quotes
+
+                quotes = fetch_quotes(symbols) or []
+            except Exception as exc:
+                logger.warning("scanner.quotes_failed reason=%s", exc)
+                quotes = []
         except Exception as exc:
             logger.warning("scanner.quotes_failed reason=%s", exc)
             quotes = []
-    except Exception as exc:
-        logger.warning("scanner.quotes_failed reason=%s", exc)
-        quotes = []
 
-    payload = build_scanner_payload(
-        quotes,
-        mode=mode_key,
-        limit=limit,
-        universe_size=len(symbols),
-    )
-    try:
-        persist_daily_score_snapshots(payload.get("rows") or [])
-    except Exception as exc:
-        logger.warning("scanner.snapshot_persist_failed reason=%s", exc)
-    with _CACHE_LOCK:
-        _SCANNER_CACHE[cache_key] = (time.time(), dict(payload))
-    payload["cached"] = False
-    return payload
+        stored = _store_all_mode_payloads(
+            quotes,
+            requested_limit=limit,
+            universe_size=len(symbols),
+        )
+        payload = dict(stored.get(mode_key) or build_scanner_payload(
+            quotes,
+            mode=mode_key,
+            limit=limit,
+            universe_size=len(symbols),
+        ))
+        try:
+            persist_daily_score_snapshots(payload.get("rows") or [])
+        except Exception as exc:
+            logger.warning("scanner.snapshot_persist_failed reason=%s", exc)
+        payload["cached"] = False
+        return _with_by_mode(payload, stored)
 
 
 def persist_daily_score_snapshots(rows: Sequence[Dict[str, Any]]) -> None:

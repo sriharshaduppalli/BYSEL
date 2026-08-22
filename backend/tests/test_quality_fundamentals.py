@@ -105,8 +105,10 @@ def test_quality_screen_applies_statement_and_nse_fields():
     by_id = {item["id"]: item for item in result["checks"]}
     assert by_id["pe_vs_sector"]["status"] == "pass"
     assert "NSE" in by_id["pe_vs_sector"]["note"]
-    assert by_id["sales"]["note"].startswith("Yahoo 3Y")
-    assert by_id["profit"]["note"].startswith("Yahoo 5Y")
+    assert "Yahoo" not in by_id["sales"]["note"]
+    assert "Yahoo" not in by_id["profit"]["note"]
+    assert "sales CAGR" in by_id["sales"]["note"] or "TTM" in by_id["sales"]["note"]
+    assert "profit CAGR" in by_id["profit"]["note"] or "TTM" in by_id["profit"]["note"]
     assert by_id["roce"]["status"] == "pass"
     assert by_id["promoter"]["status"] == "pass"
     assert by_id["pledge"]["status"] == "pass"

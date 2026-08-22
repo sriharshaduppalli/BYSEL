@@ -2306,6 +2306,10 @@ async def ai_ask_endpoint(
         # Only strip metadata from fallback LLM responses, not Groq
         if source != "groq" and answer:
             answer = _strip_internal_metadata(answer)
+        elif answer:
+            from ..groq_llm import redact_vendor_names_for_display
+
+            answer = redact_vendor_names_for_display(answer)
 
         user_response = {
             "answer": answer,
@@ -3274,7 +3278,7 @@ async def market_scanner_endpoint(
     """Hybrid scanner shortlist with BYSEL Score pillars.
 
     Universe is NIFTY 50 + the default watchlist catalog (not a full NSE crawl).
-    Missing Yahoo fields stay null and are skipped in the weighted blend.
+    Missing fields stay null and are skipped in the weighted blend.
     """
     normalized = (mode or "long_term").strip().lower()
     if normalized not in SCANNER_MODES:

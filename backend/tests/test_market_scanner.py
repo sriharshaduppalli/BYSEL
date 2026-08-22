@@ -1,4 +1,5 @@
 from app.market_scanner import (
+    SCANNER_MODES,
     band_cagr,
     band_de,
     band_interest_coverage,
@@ -6,9 +7,11 @@ from app.market_scanner import (
     band_roe,
     band_rsi,
     build_scanner_payload,
+    clear_scanner_cache,
     color_band,
     detect_anomalies,
     evaluate_quality_screen,
+    get_market_scanner,
     renormalized_score,
     score_quality,
     score_row,
@@ -366,6 +369,56 @@ def test_score_row_does_not_invent_promoter_or_related_party_anomalies():
     assert "promoter_selling" not in ids
     assert "related_party" not in ids
     assert "unusual_volume" not in ids
+
+
+def test_get_market_scanner_warms_sibling_modes(monkeypatch):
+    clear_scanner_cache()
+    quotes = [
+        {
+            "symbol": "TCS",
+            "last": 3500.0,
+            "pctChange": 0.4,
+            "trailingPE": 22.0,
+            "roe": 28.0,
+            "fiftyDayAverage": 3400.0,
+            "twoHundredDayAverage": 3100.0,
+            "rsi": 58.0,
+            "volume": 2_000_000,
+            "avgVolume": 1_000_000,
+        },
+        {
+            "symbol": "INFY",
+            "last": 1500.0,
+            "pctChange": -0.2,
+            "trailingPE": 26.0,
+            "roe": 24.0,
+            "fiftyDayAverage": 1480.0,
+            "twoHundredDayAverage": 1400.0,
+            "rsi": 47.0,
+            "volume": 1_500_000,
+            "avgVolume": 1_200_000,
+        },
+    ]
+    calls = {"n": 0}
+
+    def fake_fetch(*_args, **_kwargs):
+        calls["n"] += 1
+        return quotes
+
+    monkeypatch.setattr("app.market_data.fetch_quotes", fake_fetch)
+    first = get_market_scanner("long_term", limit=10, force_refresh=True)
+    assert first["mode"] == "long_term"
+    assert set(first["byMode"]) == set(SCANNER_MODES)
+    assert calls["n"] == 1
+
+    monkeypatch.setattr(
+        "app.market_data.fetch_quotes",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("cache miss")),
+    )
+    swing = get_market_scanner("swing", limit=10, force_refresh=False)
+    assert swing["cached"] is True
+    assert swing["mode"] == "swing"
+    assert "swing" in swing["byMode"]
 
 
 def test_daily_snapshot_roundtrip_without_migration():

@@ -152,7 +152,7 @@ def builtin_knowledge_items() -> list[KnowledgeItem]:
             "content": (
                 "NSE and BSE are India's primary equity exchanges. Most liquid stocks trade on NSE with "
                 "symbols like RELIANCE, TCS, INFY. BSE uses scrip codes; both map to the same ISIN. "
-                "BYSEL quotes typically use NSE Yahoo tickers (SYMBOL.NS)."
+                "BYSEL quotes typically use NSE symbols (for example RELIANCE, TCS)."
             ),
             "tags": ["nse", "bse", "exchange", "isin", "symbols", "stocks"],
             "source": "bysel_builtin_v1",
@@ -435,7 +435,7 @@ def builtin_knowledge_items() -> list[KnowledgeItem]:
             "title": "Reading Indian stock symbols",
             "content": (
                 "NSE equity symbols are usually uppercase tickers (RELIANCE, HDFCBANK). Prefer exact symbols in "
-                "queries for BYSEL. Yahoo mapping appends .NS for NSE and .BO for many BSE codes. "
+                "queries for BYSEL. NSE names are the usual tickers; BSE uses scrip codes. "
                 "Indices use special tickers (NIFTY50, SENSEX, BANKNIFTY). Always verify company name when "
                 "symbols look similar (e.g. HDFCBANK vs HDFCLIFE)."
             ),

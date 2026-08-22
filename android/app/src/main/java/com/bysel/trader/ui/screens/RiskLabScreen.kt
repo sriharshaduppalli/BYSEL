@@ -156,7 +156,7 @@ private fun RiskLabContent(
                             sampleNumbers ->
                                 "Illustrative sample — history was unavailable"
                             else ->
-                                "Computed from Yahoo daily history"
+                                "Computed from daily market history"
                         },
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
@@ -213,7 +213,7 @@ private fun RiskLabContent(
                     if (sampleNumbers) {
                         "Sample figure only — not a modelled loss on your paper book."
                     } else {
-                        "With 95% confidence, daily loss is modeled near $var95Pct% from Yahoo history."
+                        "With 95% confidence, daily loss is modeled near $var95Pct% from daily market history."
                     },
                     fontSize = 11.sp,
                     color = appTheme.textSecondary,

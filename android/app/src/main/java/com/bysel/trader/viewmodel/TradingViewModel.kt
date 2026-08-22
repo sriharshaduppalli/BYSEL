@@ -67,6 +67,16 @@ class TradingViewModel(
 
         /** Keep Add-to-watchlist responsive; full /symbols can wait on cold start. */
         private const val CATALOG_LOAD_TIMEOUT_MS = 15_000L
+        private const val SCANNER_CLIENT_TTL_MS = 60_000L
+        private val SCANNER_MODES = listOf(
+            "long_term",
+            "swing",
+            "high_quality",
+            "momentum",
+            "value",
+            "custom",
+            "quality_screen",
+        )
 
         val TRACE_ID_PATTERN =
             Regex("(?i)(?:trace(?:\\s*id)?|traceId)\\s*[:=]\\s*([A-Za-z0-9._-]+)")
@@ -283,6 +293,8 @@ class TradingViewModel(
 
     private val _marketScanner = MutableStateFlow<ScannerResponse?>(null)
     val marketScanner: StateFlow<ScannerResponse?> = _marketScanner.asStateFlow()
+    private val _scannerByMode = MutableStateFlow<Map<String, ScannerResponse>>(emptyMap())
+    val scannerByMode: StateFlow<Map<String, ScannerResponse>> = _scannerByMode.asStateFlow()
     private val _scannerLoading = MutableStateFlow(false)
     val scannerLoading: StateFlow<Boolean> = _scannerLoading.asStateFlow()
     private val _scannerError = MutableStateFlow<String?>(null)
@@ -298,6 +310,8 @@ class TradingViewModel(
     private var customFiltersLoaded = false
     private var lastScannerRefreshAt = 0L
     private var lastScannerMode: String = "long_term"
+    private val scannerFetchedAt = mutableMapOf<String, Long>()
+    private val scannerJobs = mutableMapOf<String, Job>()
 
     // Phase 1 products
     private val _mutualFunds = MutableStateFlow<List<MutualFund>>(emptyList())
@@ -471,7 +485,6 @@ class TradingViewModel(
     private var quotesRefreshJob: Job? = null
     private var holdingsRefreshJob: Job? = null
     private var heatmapJob: Job? = null
-    private var scannerJob: Job? = null
     private var keepaliveJob: Job? = null
     private var quoteWatchdogJob: Job? = null
     private var liveRefreshIntervalMs = 5_000L
@@ -3345,38 +3358,87 @@ class TradingViewModel(
     }
 
     fun loadMarketScanner(mode: String = "long_term", force: Boolean = false) {
-        val normalized = when (mode) {
-            "swing", "high_quality", "momentum", "value", "custom", "quality_screen" -> mode
-            else -> "long_term"
+        val normalized = normalizeScannerMode(mode)
+        lastScannerMode = normalized
+        val cached = _scannerByMode.value[normalized]
+        if (cached != null) {
+            _marketScanner.value = cached
+            _scannerError.value = null
         }
-        val now = System.currentTimeMillis()
-        if (
-            !force &&
-            _marketScanner.value != null &&
-            lastScannerMode == normalized &&
-            (now - lastScannerRefreshAt) < 60_000L
-        ) {
+        val fetchedAt = scannerFetchedAt[normalized] ?: 0L
+        val fresh = !force &&
+            cached != null &&
+            (System.currentTimeMillis() - fetchedAt) < SCANNER_CLIENT_TTL_MS
+        if (fresh) {
+            prefetchScannerModes(except = normalized)
             return
         }
-        scannerJob?.cancel()
-        scannerJob = viewModelScope.launch {
-            _scannerLoading.value = true
-            _scannerError.value = null
-            when (val result = repository.getMarketScanner(mode = normalized, forceRefresh = force)) {
-                is Result.Success -> {
-                    _marketScanner.value = result.data
-                    lastScannerRefreshAt = System.currentTimeMillis()
-                    lastScannerMode = normalized
-                }
-                is Result.Error -> {
-                    if (_marketScanner.value == null) {
-                        _scannerError.value = result.message ?: "Scanner unavailable"
-                    }
-                }
-                else -> {}
-            }
-            _scannerLoading.value = false
+        fetchScannerMode(normalized, force = force, visible = true)
+    }
+
+    private fun normalizeScannerMode(mode: String): String {
+        return if (mode in SCANNER_MODES) mode else "long_term"
+    }
+
+    private fun prefetchScannerModes(except: String) {
+        val now = System.currentTimeMillis()
+        for (mode in SCANNER_MODES) {
+            if (mode == except) continue
+            val cached = _scannerByMode.value[mode]
+            val fetchedAt = scannerFetchedAt[mode] ?: 0L
+            if (cached != null && (now - fetchedAt) < SCANNER_CLIENT_TTL_MS) continue
+            if (scannerJobs[mode]?.isActive == true) continue
+            fetchScannerMode(mode, force = false, visible = false)
         }
+    }
+
+    private fun fetchScannerMode(mode: String, force: Boolean, visible: Boolean) {
+        scannerJobs[mode]?.cancel()
+        scannerJobs[mode] = viewModelScope.launch {
+            val hasCache = _scannerByMode.value[mode] != null
+            if (visible && !hasCache && lastScannerMode == mode) {
+                _scannerLoading.value = true
+                _scannerError.value = null
+            }
+            try {
+                when (val result = repository.getMarketScanner(mode = mode, forceRefresh = force)) {
+                    is Result.Success -> {
+                        rememberScannerPayloads(result.data, fallbackMode = mode)
+                    }
+                    is Result.Error -> {
+                        if (visible && lastScannerMode == mode && _scannerByMode.value[mode] == null) {
+                            _scannerError.value = result.message ?: "Scanner unavailable"
+                        }
+                    }
+                    else -> {}
+                }
+            } finally {
+                if (visible && lastScannerMode == mode) {
+                    _scannerLoading.value = false
+                }
+            }
+        }
+    }
+
+    private fun rememberScannerPayloads(payload: ScannerResponse, fallbackMode: String) {
+        val now = System.currentTimeMillis()
+        val next = _scannerByMode.value.toMutableMap()
+        next[fallbackMode] = payload
+        scannerFetchedAt[fallbackMode] = now
+        payload.byMode.forEach { (mode, rows) ->
+            val key = normalizeScannerMode(mode)
+            next[key] = payload.copy(mode = key, rows = rows, byMode = emptyMap())
+            scannerFetchedAt[key] = now
+        }
+        _scannerByMode.value = next
+        val selected = next[lastScannerMode]
+        if (selected != null) {
+            _marketScanner.value = selected
+            lastScannerRefreshAt = now
+        } else if (_marketScanner.value == null) {
+            _marketScanner.value = payload
+        }
+        prefetchScannerModes(except = lastScannerMode)
     }
 
     fun ensureCustomScannerFiltersLoaded() {

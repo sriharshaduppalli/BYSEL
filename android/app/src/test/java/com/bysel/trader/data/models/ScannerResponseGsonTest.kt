@@ -18,6 +18,11 @@ class ScannerResponseGsonTest {
               "mode": "long_term",
               "generatedAt": "2026-08-21T00:00:00Z",
               "education": {"title": "Scanner", "filters": []},
+              "byMode": {
+                "swing": [
+                  {"symbol": "INFY", "name": "Infosys", "last": 1500.0, "byselScore": 71}
+                ]
+              },
               "rows": [
                 {
                   "symbol": "RELIANCE",
@@ -40,6 +45,8 @@ class ScannerResponseGsonTest {
             """.trimIndent(),
         )
         assertEquals("long_term", parsed.mode)
+        assertEquals(1, parsed.byMode["swing"]?.size)
+        assertEquals("INFY", parsed.byMode["swing"]?.first()?.symbol)
         assertEquals(1, parsed.rows.size)
         assertEquals("RELIANCE", parsed.rows[0].symbol)
         assertEquals("Quality held", parsed.rows[0].aiSummary)

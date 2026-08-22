@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 
 class QuoteBase(BaseModel):
@@ -840,6 +840,7 @@ class ScannerResponse(BaseModel):
     education: ScannerEducation
     rows: List[ScannerRow] = []
     cached: bool = False
+    byMode: Dict[str, List[ScannerRow]] = {}
 
 
 class ScoreHistoryPoint(BaseModel):

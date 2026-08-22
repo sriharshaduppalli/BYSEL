@@ -222,7 +222,7 @@ class PandasTaIndicatorCalculator:
             lows = list(frame["low"])
             closes = list(frame["close"])
             volumes = list(frame.get("volume") or [0.0] * len(closes))
-            source_label = f"live NSE/Yahoo history for {symbol}"
+            source_label = f"live market history for {symbol}"
         else:
             return (
                 "Indicator unavailable: name a symbol (e.g. RSI of RELIANCE) "

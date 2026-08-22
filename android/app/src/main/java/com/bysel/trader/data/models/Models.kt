@@ -1386,6 +1386,7 @@ data class ScannerResponse(
     @SerializedName("education") val education: ScannerEducation = ScannerEducation(),
     @SerializedName("rows") val rows: List<ScannerRow> = emptyList(),
     @SerializedName("cached") val cached: Boolean = false,
+    @SerializedName("byMode") val byMode: Map<String, List<ScannerRow>> = emptyMap(),
 )
 
 // ==================== ENHANCED AI ANALYSIS MODELS (LEVEL 2) ====================

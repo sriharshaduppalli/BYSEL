@@ -1662,7 +1662,7 @@ private fun StockResearchCard(
         ) {
             Text("Research (educational)", fontWeight = FontWeight.SemiBold, color = theme.text)
             Text(
-                "Analyze uses available Yahoo fields. Ensemble is linear trend 40% + smoothing 35% + momentum 25% — not a forecast.",
+                "Analyze uses available market fields. Ensemble is linear trend 40% + smoothing 35% + momentum 25% — not a forecast.",
                 fontSize = 11.sp,
                 color = theme.textSecondary,
                 lineHeight = 15.sp,
@@ -1785,7 +1785,7 @@ private fun AiQuickActionsRow(
         AiAction("🤖", "Analyze", onAnalyze),
         AiAction("📈", "Ensemble", onPredict),
         AiAction("🛡️", "Risk check") {
-            onAiQuery("What are the key risks for $symbol from available Yahoo fields? Educational only — no buy or sell.")
+            onAiQuery("What are the key risks for $symbol from available market fields? Educational only — no buy or sell.")
         },
         AiAction("📓", "Practice note") {
             onAiQuery("Help me write a paper-journal setup for $symbol: thesis, invalidation, and what I will measure. No buy or sell advice.")

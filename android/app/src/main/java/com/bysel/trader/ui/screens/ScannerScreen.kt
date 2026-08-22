@@ -53,11 +53,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bysel.trader.data.CustomScannerFilters
 import com.bysel.trader.data.WatchlistSymbols
-import com.bysel.trader.data.models.QualityScreenResult
 import com.bysel.trader.data.models.ScannerAnomaly
 import com.bysel.trader.data.models.ScannerPillar
 import com.bysel.trader.data.models.ScannerRow
 import com.bysel.trader.data.models.ScoreHistoryResponse
+import com.bysel.trader.ui.format.formatSignedPct
 import com.bysel.trader.ui.theme.AppTheme
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.theme.byselCardBorder
@@ -93,7 +93,7 @@ fun ScannerScreen(
     onOpenFuturesGym: () -> Unit = onOpenPaperGym,
 ) {
     val theme = LocalAppTheme.current
-    val payload by viewModel.marketScanner.collectAsStateWithLifecycle()
+    val scannerByMode by viewModel.scannerByMode.collectAsStateWithLifecycle()
     val loading by viewModel.scannerLoading.collectAsStateWithLifecycle()
     val error by viewModel.scannerError.collectAsStateWithLifecycle()
     val watchlist by viewModel.watchlist.collectAsStateWithLifecycle()
@@ -105,6 +105,7 @@ fun ScannerScreen(
         .getOrDefault(ScannerModeChip.LONG_TERM)
     val setupFilter = runCatching { SwingSetupFilter.valueOf(setupFilterKey) }
         .getOrDefault(SwingSetupFilter.ALL)
+    val payload = scannerByMode[selected.apiMode]
 
     LaunchedEffect(Unit) {
         viewModel.ensureCustomScannerFiltersLoaded()
@@ -189,7 +190,6 @@ fun ScannerScreen(
                 }
             }
             else -> {
-                val education = payload?.education
                 val rawRows = payload?.rows.orEmpty()
                 val focusSymbols = sectorFocus?.symbols.orEmpty().toSet()
                 val focusedRaw = if (focusSymbols.isEmpty()) {
@@ -230,57 +230,6 @@ fun ScannerScreen(
                             )
                         }
                     }
-                    item {
-                        Card(
-                            colors = byselCardColors(),
-                            elevation = byselCardElevation(),
-                            border = byselCardBorder(),
-                            shape = RoundedCornerShape(14.dp),
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(
-                                    education?.title ?: if (selected == ScannerModeChip.SWING) {
-                                        "Swing — today's setups"
-                                    } else {
-                                        "Long-term — quality + fair value"
-                                    },
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = theme.text,
-                                )
-                                Text(
-                                    education?.summary
-                                        ?: "Heuristic shortlist from NIFTY 50. Missing Yahoo fields stay as —.",
-                                    fontSize = 13.sp,
-                                    color = theme.textSecondary,
-                                )
-                                education?.filters.orEmpty().forEach { filter ->
-                                    Text(
-                                        "${filter.label} · ${if (filter.applied) "applied when we have data" else "education only"} — ${filter.status}",
-                                        fontSize = 11.sp,
-                                        color = theme.textSecondary,
-                                    )
-                                }
-                                Text(
-                                    education?.scoreGuide ?: "",
-                                    fontSize = 12.sp,
-                                    color = theme.textSecondary,
-                                )
-                                Text(
-                                    education?.riskNote ?: "",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = theme.text,
-                                )
-                                Text(
-                                    education?.disclaimer
-                                        ?: "Not investment advice. Paper practice only. BYSEL is not a broker.",
-                                    fontSize = 11.sp,
-                                    color = theme.textSecondary,
-                                )
-                            }
-                        }
-                    }
-
                     if (selected == ScannerModeChip.CUSTOM) {
                         item {
                             CustomFilterChips(
@@ -318,14 +267,10 @@ fun ScannerScreen(
                         item {
                             Text(
                                 when (selected) {
-                                    ScannerModeChip.SWING ->
-                                        "No paper swing setups in this batch from the fields we have."
                                     ScannerModeChip.CUSTOM ->
-                                        "No names match these chips from fields we have. Clear a chip or wait for RSI/DMA/PE on the quote."
-                                    ScannerModeChip.QUALITY_SCREEN ->
-                                        "No name in this NIFTY 50 + watchlist batch passed enough Yahoo-backed checks. Skipped 5-year / promoter / pledge rules do not fail a name. Refresh after quoteSummary fills PEG, ROE, OPM."
+                                        "No names match these chips. Clear a chip or refresh."
                                     else ->
-                                        "No quoted names in this batch. Pull to refresh after quotes warm."
+                                        "No names in this list yet. Refresh to try again."
                                 },
                                 color = theme.textSecondary,
                             )
@@ -350,20 +295,20 @@ fun ScannerScreen(
                     }
 
                     items(rows, key = { it.symbol }) { row ->
-                        if (selected == ScannerModeChip.SWING) {
-                            SwingSetupCard(
-                                row = row,
-                                watched = watchlist.any { WatchlistSymbols.matches(it, row.symbol) },
-                                onClick = { onOpenSymbol(row) },
-                                onWatchlist = { viewModel.addToWatchlist(row.symbol) },
-                            )
-                        } else {
-                            LongTermScannerRow(
-                                row = row,
-                                showQualityScreen = selected == ScannerModeChip.QUALITY_SCREEN,
-                                onClick = { onOpenSymbol(row) },
-                            )
-                        }
+                        val watched = watchlist.any { WatchlistSymbols.matches(it, row.symbol) }
+                        ScannerStockRow(
+                            row = row,
+                            mode = selected,
+                            watched = watched,
+                            onClick = { onOpenSymbol(row) },
+                            onWatchlist = {
+                                if (watched) {
+                                    viewModel.removeFromWatchlist(row.symbol)
+                                } else {
+                                    viewModel.addToWatchlist(row.symbol)
+                                }
+                            },
+                        )
                     }
                 }
             }
@@ -410,13 +355,18 @@ private fun FnoPaperHubCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun LongTermScannerRow(
+private fun ScannerStockRow(
     row: ScannerRow,
+    mode: ScannerModeChip,
+    watched: Boolean,
     onClick: () -> Unit,
-    showQualityScreen: Boolean = false,
+    onWatchlist: () -> Unit,
 ) {
     val theme = LocalAppTheme.current
+    val setup = row.setup
+    val nameLine = row.displayNameLine()
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -430,31 +380,71 @@ private fun LongTermScannerRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(row.symbol, fontWeight = FontWeight.SemiBold, color = theme.text)
+                    if (nameLine.isNotBlank()) {
+                        Text(
+                            nameLine,
+                            fontSize = 12.sp,
+                            color = theme.textSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(formatLast(row.last), fontSize = 13.sp, color = theme.text)
+                        Text(
+                            formatSignedPct(row.pctChange),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (row.pctChange >= 0) theme.positive else theme.negative,
+                        )
+                    }
+                }
+                if (mode == ScannerModeChip.SWING && setup != null) {
                     Text(
-                        formatLast(row.last),
-                        fontSize = 13.sp,
-                        color = if (row.pctChange >= 0) theme.positive else theme.negative,
+                        setup.displayType.replaceFirstChar { ch ->
+                            if (ch.isLowerCase()) ch.titlecase(Locale.US) else ch.toString()
+                        },
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = theme.text,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(theme.primary.copy(alpha = 0.14f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
                     )
                 }
                 Text(
                     "${row.displayScore}",
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 22.sp,
+                    modifier = Modifier.padding(start = 8.dp),
                     color = scoreBandColor(row.byselScore ?: row.overall, theme),
                 )
+                IconButton(onClick = onWatchlist) {
+                    Icon(
+                        imageVector = if (watched) Icons.Filled.Star else Icons.Filled.StarBorder,
+                        contentDescription = if (watched) "On watchlist" else "Add to watchlist",
+                        tint = if (watched) Color(0xFFFFD54F) else theme.textSecondary,
+                    )
+                }
             }
             ByselScoreStrip(row = row, compact = true)
-            AnomalyBadgeRow(row.detectedAnomalies())
-            if (showQualityScreen) {
-                QualityScreenChecklist(row.qualityScreen)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                row.tabFacts(mode).forEach { fact ->
+                    Text(
+                        fact,
+                        fontSize = 11.sp,
+                        color = theme.text,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(theme.primary.copy(alpha = 0.10f))
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                    )
+                }
             }
-            Text(
-                row.why.ifBlank { "Limited Yahoo fields — scores use only what we have." },
-                fontSize = 12.sp,
-                color = theme.textSecondary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
     }
 }
@@ -466,113 +456,36 @@ fun SwingSetupCard(
     onClick: () -> Unit,
     onWatchlist: () -> Unit,
 ) {
-    val theme = LocalAppTheme.current
-    val setup = row.setup
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        colors = byselCardColors(),
-        elevation = byselCardElevation(),
-        border = byselCardBorder(),
-        shape = RoundedCornerShape(14.dp),
-    ) {
-        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(row.symbol, fontWeight = FontWeight.SemiBold, color = theme.text)
-                    Text(
-                        setup?.title ?: row.why.ifBlank { "No clear setup from available fields" },
-                        fontSize = 12.sp,
-                        color = theme.textSecondary,
-                    )
-                }
-                    Text(
-                    setup?.displayType?.replaceFirstChar { ch ->
-                        if (ch.isLowerCase()) ch.titlecase(Locale.US) else ch.toString()
-                    } ?: "Setup",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = theme.text,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(theme.primary.copy(alpha = 0.14f))
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                )
-                IconButton(onClick = onWatchlist) {
-                    Icon(
-                        imageVector = if (watched) Icons.Filled.Star else Icons.Filled.StarBorder,
-                        contentDescription = if (watched) "On watchlist" else "Add to watchlist",
-                        tint = if (watched) Color(0xFFFFD54F) else theme.textSecondary,
-                    )
-                }
-            }
-            ByselScoreStrip(row = row, compact = true)
-            AnomalyBadgeRow(row.detectedAnomalies())
-            if (setup != null) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PracticeLevel("Entry zone", setup.entry)
-                    PracticeLevel("SL", setup.stop)
-                    PracticeLevel("T1", setup.displayT1)
-                    PracticeLevel("T2", setup.t2)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        setup.riskReward?.let { "R:R ${String.format(Locale.US, "%.1f", it)}" } ?: "R:R —",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = theme.text,
-                    )
-                    Text(
-                        "Momentum ${setup.momentumScore ?: row.momentum ?: "—"}",
-                        fontSize = 12.sp,
-                        color = theme.textSecondary,
-                    )
-                }
-                Text(setup.note, fontSize = 11.sp, color = theme.textSecondary)
-                Text(
-                    setup.winRateNote.ifBlank { "Historical win rate n/a until we have journal data" },
-                    fontSize = 11.sp,
-                    color = theme.textSecondary,
-                )
-            }
-            Text(
-                "Paper — not advice. Practice levels only.",
-                fontSize = 11.sp,
-                color = theme.textSecondary,
-            )
-        }
-    }
-}
-
-@Composable
-private fun PracticeLevel(label: String, value: Double?) {
-    val theme = LocalAppTheme.current
-    Column {
-        Text(label, fontSize = 10.sp, color = theme.textSecondary)
-        Text(value?.let { formatLast(it) } ?: "—", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = theme.text)
-    }
+    ScannerStockRow(
+        row = row,
+        mode = ScannerModeChip.SWING,
+        watched = watched,
+        onClick = onClick,
+        onWatchlist = onWatchlist,
+    )
 }
 
 @Composable
 fun ByselScoreStrip(row: ScannerRow, compact: Boolean = false) {
     val theme = LocalAppTheme.current
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "${row.displayScore}",
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = if (compact) 20.sp else 28.sp,
-                color = scoreBandColor(row.byselScore ?: row.overall, theme),
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-                row.convictionLabel.ifBlank { row.stance.firstOrNull().orEmpty() },
-                fontSize = 12.sp,
-                color = theme.text,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+        if (!compact) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "${row.displayScore}",
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 28.sp,
+                    color = scoreBandColor(row.byselScore ?: row.overall, theme),
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    row.convictionLabel.ifBlank { row.stance.firstOrNull().orEmpty() },
+                    fontSize = 12.sp,
+                    color = theme.text,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             ScorePill("Q", row.quality, theme)
@@ -611,7 +524,7 @@ fun ByselExplainabilityCard(
             ByselScoreStrip(row = row, compact = false)
             Text(
                 row.displaySummary.ifBlank {
-                    "Educational readout from available Yahoo fields only. Not investment advice."
+                    "Educational readout from available fields only. Not investment advice."
                 },
                 fontSize = 13.sp,
                 color = theme.text,
@@ -789,6 +702,62 @@ fun scoreBandColor(score: Int?, theme: AppTheme): Color {
 
 private fun formatLast(value: Double): String = "₹${String.format(Locale.US, "%,.2f", value)}"
 
+private fun formatFact(value: Double?, decimals: Int = 1): String {
+    if (value == null) return "—"
+    return String.format(Locale.US, "%.${decimals}f", value)
+}
+
+private fun formatPctFact(value: Double?): String {
+    if (value == null) return "—"
+    return String.format(Locale.US, "%.0f%%", value)
+}
+
+private fun formatVolFact(value: Double?): String {
+    if (value == null) return "—"
+    return String.format(Locale.US, "%.1f×", value)
+}
+
+private fun ScannerRow.displayNameLine(): String {
+    val cleanName = name.trim().takeIf { it.isNotBlank() && !it.equals(symbol, ignoreCase = true) }
+    val sector = metrics.sector?.trim().orEmpty()
+    return listOfNotNull(cleanName, sector.takeIf { it.isNotBlank() }).joinToString(" · ")
+}
+
+private fun ScannerRow.tabFacts(mode: ScannerModeChip): List<String> {
+    val metrics = metrics
+    return when (mode) {
+        ScannerModeChip.LONG_TERM -> listOf(
+            "PE ${formatFact(metrics.pe)}",
+            "ROE ${formatPctFact(metrics.roe)}",
+        )
+        ScannerModeChip.SWING -> listOf(
+            "RSI ${formatFact(metrics.rsi, 0)}",
+            "Vol ${formatVolFact(metrics.volumeRatio)}",
+        )
+        ScannerModeChip.HIGH_QUALITY -> listOf(
+            "ROE ${formatPctFact(metrics.roe)}",
+            "ROCE ${formatPctFact(metrics.roce)}",
+        )
+        ScannerModeChip.MOMENTUM -> listOf(
+            "RSI ${formatFact(metrics.rsi, 0)}",
+            "Vol ${formatVolFact(metrics.volumeRatio)}",
+        )
+        ScannerModeChip.VALUE -> listOf(
+            "PE ${formatFact(metrics.pe)}",
+            "PEG ${formatFact(metrics.peg)}",
+        )
+        ScannerModeChip.QUALITY_SCREEN -> listOf(
+            qualityScreen?.let { "${it.passed} passed" } ?: "— passed",
+            "ROE ${formatPctFact(metrics.roe)}",
+        )
+        ScannerModeChip.CUSTOM -> listOf(
+            "RSI ${formatFact(metrics.rsi, 0)}",
+            "PE ${formatFact(metrics.pe)}",
+        )
+        ScannerModeChip.FNO -> emptyList()
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CustomFilterChips(
@@ -860,47 +829,6 @@ private fun ChipGroup(title: String, content: @Composable () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             content()
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun QualityScreenChecklist(result: QualityScreenResult?) {
-    if (result == null) return
-    val theme = LocalAppTheme.current
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            result.summary.ifBlank { "${result.passed} passed · ${result.failed} failed · ${result.skipped} skipped" },
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            color = theme.text,
-        )
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            result.checks.forEach { check ->
-                val tint = when (check.status) {
-                    "pass" -> theme.positive
-                    "fail" -> theme.negative
-                    else -> theme.textSecondary
-                }
-                val mark = when (check.status) {
-                    "pass" -> "✓"
-                    "fail" -> "✗"
-                    else -> "—"
-                }
-                Text(
-                    "$mark ${check.label}",
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(tint.copy(alpha = 0.12f))
-                        .padding(horizontal = 8.dp, vertical = 3.dp),
-                    fontSize = 10.sp,
-                    color = tint,
-                )
-            }
         }
     }
 }
