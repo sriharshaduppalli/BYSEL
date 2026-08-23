@@ -448,9 +448,13 @@ fun BYSELApp(
     var showOnboarding by remember { mutableStateOf(prefs.getBoolean("onboarding_complete", false).not()) }
 
     var selectedTab by remember { mutableStateOf(initialTab) }
+    var homeScrollToTopTick by remember { mutableIntStateOf(0) }
     var previousTab by remember { mutableIntStateOf(0) }
     // Deep-link history (e.g. Stock Detail → AI Full Analysis) for swipe/back return.
     var tabBackStack by remember { mutableStateOf<List<Int>>(emptyList()) }
+    // More-section screens sit outside the 0–4 pager. Opening AI from SGB/MF
+    // must not let a stale settledPage (often Home) overwrite the target tab.
+    var suppressPagerTabSync by remember { mutableStateOf(false) }
 
     fun pushTab(tab: Int) {
         if (tabBackStack.lastOrNull() == tab) return
@@ -465,6 +469,9 @@ fun BYSELApp(
     }
 
     fun navigatePushingCurrent(toTab: Int) {
+        if (selectedTab !in 0..4 && toTab in 0..4) {
+            suppressPagerTabSync = true
+        }
         if (selectedTab != toTab) {
             pushTab(selectedTab)
             if (toTab == 9) previousTab = selectedTab
@@ -481,6 +488,9 @@ fun BYSELApp(
     }
 
     fun selectRootTab(tab: Int) {
+        if (tab == 0 && selectedTab == 0) {
+            homeScrollToTopTick += 1
+        }
         tabBackStack = emptyList()
         selectedTab = tab
     }
@@ -646,8 +656,8 @@ fun BYSELApp(
     }
 
     LaunchedEffect(selectedTab) {
-        if (selectedTab in 0..4 && pagerState.settledPage != selectedTab) {
-            pagerState.animateScrollToPage(selectedTab)
+        if (selectedTab in 0..4 && pagerState.currentPage != selectedTab) {
+            pagerState.scrollToPage(selectedTab)
         }
         // Soft resync when jumping Home ↔ Trade; skip if we just topped up (avoids stale overwrite).
         if (selectedTab == 0 || selectedTab == 2) {
@@ -674,6 +684,10 @@ fun BYSELApp(
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.settledPage }
             .collect { settledPage ->
+                if (suppressPagerTabSync) {
+                    if (settledPage == selectedTab) suppressPagerTabSync = false
+                    return@collect
+                }
                 if (selectedTab in 0..4 && selectedTab != settledPage) {
                     // Manual pager swipe between root tabs clears deep-link history.
                     if (tabBackStack.isNotEmpty()) tabBackStack = emptyList()
@@ -987,6 +1001,7 @@ fun BYSELApp(
                                         quotes = quotes,
                                         isLoading = isLoading,
                                         isRefreshing = quotesRefreshing,
+                                        scrollToTopTick = homeScrollToTopTick,
                                         error = marketError ?: tradeError,
                                         walletBalance = walletBalance,
                                         watchlistSymbols = watchlistSymbols,
@@ -1000,6 +1015,10 @@ fun BYSELApp(
                                             viewModel.clearTradeError()
                                         },
                                         onAiClick = { selectRootTab(1) },
+                                        onAiQuery = { query ->
+                                            viewModel.askAi(query)
+                                            navigatePushingCurrent(1)
+                                        },
                                         marketStatus = marketStatus,
                                         onQuickTradeClick = { symbol ->
                                             viewModel.fetchAndSelectQuote(symbol)
@@ -1107,6 +1126,10 @@ fun BYSELApp(
                                             selectedTab = 19
                                         },
                                         isActive = pagerState.currentPage == 2,
+                                        onAskAi = { query ->
+                                            viewModel.askAi(query)
+                                            navigatePushingCurrent(1)
+                                        },
                                         viewModel = viewModel
                                     )
                                     3 -> PortfolioScreen(
@@ -1200,14 +1223,38 @@ fun BYSELApp(
                                     onMarketCalendarClick = { selectedTab = 26 },
                                 )
                                 10 -> com.bysel.trader.ui.screens.AchievementsScreen(viewModel)
-                                11 -> MutualFundsScreen(viewModel)
-                                12 -> IpoListingsScreen(viewModel)
+                                11 -> MutualFundsScreen(
+                                    viewModel = viewModel,
+                                    onAskAi = { query ->
+                                        viewModel.askAi(query)
+                                        navigatePushingCurrent(1)
+                                    },
+                                )
+                                12 -> IpoListingsScreen(
+                                    viewModel = viewModel,
+                                    onAskAi = { query ->
+                                        viewModel.askAi(query)
+                                        navigatePushingCurrent(1)
+                                    },
+                                )
                                 13 -> EtfScreen(viewModel)
                                 14 -> SipPlansScreen(viewModel)
                                 15 -> MyIpoApplicationsScreen(viewModel)
-                                27 -> SgbScreen(viewModel)
+                                27 -> SgbScreen(
+                                    viewModel = viewModel,
+                                    onAskAi = { query ->
+                                        viewModel.askAi(query)
+                                        navigatePushingCurrent(1)
+                                    },
+                                )
                                 16 -> AdvancedOrdersScreen(viewModel)
-                                17 -> DerivativesIntelligenceScreen(viewModel)
+                                17 -> DerivativesIntelligenceScreen(
+                                    viewModel = viewModel,
+                                    onAskAi = { query ->
+                                        viewModel.askAi(query)
+                                        navigatePushingCurrent(1)
+                                    },
+                                )
                                 18 -> WealthOsScreen(viewModel)
                                 19 -> CopilotCenterScreen(viewModel)
                                 28 -> ScannerScreen(

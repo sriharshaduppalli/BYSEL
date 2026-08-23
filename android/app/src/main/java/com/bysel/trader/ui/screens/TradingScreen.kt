@@ -45,6 +45,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import com.bysel.trader.data.WatchlistSymbols
@@ -63,6 +65,7 @@ import com.bysel.trader.ui.components.filterDigitsOnly
 import com.bysel.trader.ui.components.PaperPositionSizeHelper
 import com.bysel.trader.ui.components.FnoLiteracyMode
 import com.bysel.trader.ui.components.FnoLiteracyPrimer
+import com.bysel.trader.ui.components.HabitLiteracyCatalog
 import com.bysel.trader.ui.components.InfoChip
 import com.bysel.trader.ui.components.basisPlainEnglish
 import com.bysel.trader.ui.theme.AnimatedAmountText
@@ -75,7 +78,6 @@ import com.bysel.trader.ui.theme.animatedChangeColor
 import com.bysel.trader.ui.theme.byselCardBorder
 import com.bysel.trader.ui.theme.byselCardColors
 import com.bysel.trader.ui.theme.byselCardElevation
-import com.bysel.trader.ui.components.PriceHistoryChart
 import com.bysel.trader.ui.components.PullToRefreshBox
 import com.bysel.trader.ui.components.exclusiveHorizontalScroll
 import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
@@ -160,7 +162,8 @@ fun TradingScreen(
     openAddFundsRequest: Boolean = false,
     onOpenAddFundsConsumed: () -> Unit = {},
     isActive: Boolean = true,
-    viewModel: com.bysel.trader.viewmodel.TradingViewModel
+    viewModel: com.bysel.trader.viewmodel.TradingViewModel,
+    onAskAi: (String) -> Unit = { viewModel.askAi(it) },
 ) {
     // Only warm the full quote universe while Trade is the active pager page
     // (adjacent pages stay composed via beyondBoundsPageCount).
@@ -241,20 +244,22 @@ fun TradingScreen(
     val sheetQuote = tradeSheetQuote?.let { seed ->
         selectedQuote?.takeIf { WatchlistSymbols.matches(it.symbol, seed.symbol) } ?: seed
     }
-    if (sheetQuote != null) {
-        TradeBottomSheet(
-            quote = sheetQuote,
-            walletBalance = walletBalance,
-            marketStatus = marketStatus,
-            onDismiss = {
-                tradeSheetQuote = null
-                viewModel.clearPreTradeCopilotSignal()
-            },
-            onBuy = { qty -> onBuy(sheetQuote.symbol, qty) },
-            onSell = { qty -> onSell(sheetQuote.symbol, qty) },
-            onTraceSupportLookup = onTraceSupportLookup,
-            viewModel = viewModel,
-        )
+    sheetQuote?.let { ticketQuote ->
+        key(WatchlistSymbols.normalize(ticketQuote.symbol)) {
+            TradeBottomSheet(
+                quote = ticketQuote,
+                walletBalance = walletBalance,
+                marketStatus = marketStatus,
+                onDismiss = {
+                    tradeSheetQuote = null
+                    viewModel.clearPreTradeCopilotSignal()
+                },
+                onBuy = { qty -> onBuy(ticketQuote.symbol, qty) },
+                onSell = { qty -> onSell(ticketQuote.symbol, qty) },
+                onTraceSupportLookup = onTraceSupportLookup,
+                viewModel = viewModel,
+            )
+        }
     }
 
     if (showAddFundsDialog) {
@@ -399,7 +404,7 @@ fun TradingScreen(
                         viewModel = viewModel,
                         preferredSymbol = selectedQuote?.symbol ?: tradeSheetQuote?.symbol,
                     )
-                    2 -> DerivativesIntelligenceScreen(viewModel)
+                    2 -> DerivativesIntelligenceScreen(viewModel, onAskAi = onAskAi)
                     else -> FuturesRadarScreen(
                         viewModel = viewModel,
                         quotes = liveQuotes,
@@ -408,6 +413,7 @@ fun TradingScreen(
                         onOpenSpotTrade = { openTradeSheet(it) },
                         onOpenOptions = { selectedWorkspaceIndex = 2 },
                         onOpenAdvanced = { selectedWorkspaceIndex = 1 },
+                        onAskAi = onAskAi,
                     )
                 }
             }
@@ -754,7 +760,9 @@ private fun SpotTradingWorkspace(
             }
         }
 
-        if (error != null && !isDerivativesFormMessage(error)) {
+        val hideTransientTimeout = watchlistQuotes.isNotEmpty() &&
+            com.bysel.trader.data.repository.NetworkErrorMessages.isTransientQuoteMessage(error)
+        if (error != null && !isDerivativesFormMessage(error) && !hideTransientTimeout) {
             TraceAwareErrorSnackbar(
                 error = error,
                 onDismiss = onErrorDismiss,
@@ -1042,13 +1050,11 @@ private fun FuturesRadarScreen(
     onOpenSpotTrade: (Quote) -> Unit,
     onOpenOptions: () -> Unit,
     onOpenAdvanced: () -> Unit,
+    onAskAi: (String) -> Unit,
 ) {
     val futuresContracts by viewModel.futuresContracts.collectAsStateWithLifecycle()
     val futuresTicketPreview by viewModel.futuresTicketPreview.collectAsStateWithLifecycle()
     val loading by viewModel.derivativesLoading.collectAsStateWithLifecycle()
-    val investorTips by viewModel.investorTips.collectAsStateWithLifecycle()
-    val foTipsFallback = remember { com.bysel.trader.ui.components.localInvestorTips("fno", limit = 2) }
-
     LaunchedEffect(Unit) { viewModel.loadInvestorTips("fno") }
 
     val candidateSymbols = remember(quotes, watchlistSymbols) {
@@ -1138,10 +1144,12 @@ private fun FuturesRadarScreen(
         item {
             com.bysel.trader.ui.components.InvestorTipsCard(
                 title = "F&O Tips",
-                topicLabel = if (investorTips.topic == "fno") investorTips.topicLabel else foTipsFallback.topicLabel,
-                tips = if (investorTips.topic == "fno") investorTips.tips else foTipsFallback.tips,
-                disclaimer = "Educational paper habits — not trade recommendations. Returns are not guaranteed.",
+                topicLabel = "",
+                tips = emptyList(),
+                disclaimer = "",
                 compact = true,
+                learnLinks = HabitLiteracyCatalog.investorLinksFor("fno"),
+                onLearnQuery = onAskAi,
             )
         }
 
@@ -1409,7 +1417,8 @@ private fun TradePracticeBlotter(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .exclusiveHorizontalScroll(),
         colors = CardDefaults.cardColors(containerColor = theme.card),
         shape = RoundedCornerShape(10.dp),
     ) {
@@ -1823,7 +1832,6 @@ private fun AddToWatchlistSheet(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TradeBottomSheet(
     quote: Quote,
@@ -1835,36 +1843,67 @@ fun TradeBottomSheet(
     onTraceSupportLookup: ((String) -> Unit)? = null,
     viewModel: TradingViewModel,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val haptic = LocalHapticFeedback.current
+    val theme = LocalAppTheme.current
 
-    ModalBottomSheet(
+    // Dialog, not ModalBottomSheet: the Trade tab lives in a HorizontalPager, and
+    // sheet anchors remounting mid-animation (Paper desk tap) can kill the process.
+    Dialog(
         onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = LocalAppTheme.current.card,
-        dragHandle = {
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
-                    .padding(top = 12.dp, bottom = 4.dp)
-                    .width(40.dp)
-                    .height(4.dp)
-                    .background(
-                        LocalAppTheme.current.textSecondary.copy(alpha = 0.4f),
-                        CircleShape
-                    )
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    .clickable(onClick = onDismiss)
             )
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.92f)
+                    .imePadding(),
+                color = theme.card,
+                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                shadowElevation = 8.dp,
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 12.dp, bottom = 4.dp)
+                            .align(Alignment.CenterHorizontally)
+                            .width(40.dp)
+                            .height(4.dp)
+                            .background(theme.textSecondary.copy(alpha = 0.4f), CircleShape)
+                    )
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        TradeBottomSheetContent(
+                            quote = quote,
+                            walletBalance = walletBalance,
+                            marketStatus = marketStatus,
+                            onDismiss = onDismiss,
+                            onBuy = { qty ->
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onBuy(qty)
+                            },
+                            onSell = { qty ->
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onSell(qty)
+                            },
+                            onTraceSupportLookup = onTraceSupportLookup,
+                            viewModel = viewModel,
+                        )
+                    }
+                }
+            }
         }
-    ) {
-        TradeBottomSheetContent(
-            quote = quote,
-            walletBalance = walletBalance,
-            marketStatus = marketStatus,
-            onDismiss = onDismiss,
-            onBuy = { qty -> haptic.performHapticFeedback(HapticFeedbackType.LongPress); onBuy(qty) },
-            onSell = { qty -> haptic.performHapticFeedback(HapticFeedbackType.LongPress); onSell(qty) },
-            onTraceSupportLookup = onTraceSupportLookup,
-            viewModel = viewModel,
-        )
     }
 }
 
@@ -1884,7 +1923,6 @@ private fun TradeBottomSheetContent(
     var orderType by remember { mutableStateOf("MARKET") }
     var limitPriceInput by remember { mutableStateOf(String.format("%.2f", quote.last)) }
     var showConfirmDialog by remember { mutableStateOf(false) }
-    val history by viewModel.quoteHistory.collectAsStateWithLifecycle()
     val holdings by viewModel.holdings.collectAsStateWithLifecycle()
     val preTradeSignal by viewModel.copilotPreTradeSignal.collectAsStateWithLifecycle()
     val preTradeEstimate by viewModel.preTradeEstimate.collectAsStateWithLifecycle()
@@ -2092,26 +2130,11 @@ private fun TradeBottomSheetContent(
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 Text(
-                    text = "Chart-Linked Context",
+                    text = "Ticket context",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = LocalAppTheme.current.text
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                if (history.size >= 2) {
-                    PriceHistoryChart(
-                        history = history.takeLast(30),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(180.dp)
-                    )
-                } else {
-                    Text(
-                        text = "Loading recent price structure for ${quote.symbol}...",
-                        fontSize = 11.sp,
-                        color = LocalAppTheme.current.textSecondary
-                    )
-                }
                 Spacer(modifier = Modifier.height(8.dp))
                 TradeSummaryLine(
                     label = "Intraday move",

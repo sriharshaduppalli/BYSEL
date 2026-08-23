@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -12,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +40,8 @@ fun InvestorTipsCard(
     compact: Boolean = false,
     paperNote: String = "",
     sampleSize: Int = 0,
+    learnLinks: List<HabitLearnLink> = emptyList(),
+    onLearnQuery: ((String) -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
     Column(
@@ -59,26 +63,55 @@ fun InvestorTipsCard(
                     fontWeight = FontWeight.SemiBold,
                     color = theme.text,
                 )
+                if (onLearnQuery == null) {
+                    Text(
+                        text = topicLabel.ifBlank { "Education" },
+                        fontSize = 11.sp,
+                        color = theme.textSecondary,
+                        lineHeight = 14.sp,
+                        maxLines = 2,
+                        softWrap = true,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            if (onLearnQuery == null) {
                 Text(
-                    text = topicLabel.ifBlank { "Education" },
+                    text = if (tips.any { it.source.equals("paper", true) }) "Paper book" else "Learn",
                     fontSize = 11.sp,
-                    color = theme.textSecondary,
-                    lineHeight = 14.sp,
-                    maxLines = 2,
-                    softWrap = true,
-                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.Medium,
+                    color = theme.primary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(theme.primary.copy(alpha = 0.14f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
                 )
             }
-            Text(
-                text = if (tips.any { it.source.equals("paper", true) }) "Paper book" else "Learn",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                color = theme.primary,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(theme.primary.copy(alpha = 0.14f))
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            )
+        }
+
+        if (onLearnQuery != null) {
+            val links = learnLinks.ifEmpty {
+                tips.map { tip ->
+                    HabitLearnLink(
+                        title = tip.title,
+                        learnQuery = "Explain ${tip.title} for Indian market beginners. Educational only — no buy or sell.",
+                    )
+                }
+            }
+            links.forEach { link ->
+                TextButton(
+                    onClick = { onLearnQuery(link.learnQuery) },
+                    contentPadding = PaddingValues(0.dp),
+                ) {
+                    Text(
+                        text = "Learn: ${link.title}",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = theme.primary,
+                    )
+                }
+            }
+            return
         }
 
         if (onTopicSelected != null && topics.isNotEmpty()) {

@@ -52,35 +52,36 @@ def _retry_after_seconds(exc: BaseException, default: float = 1.5) -> float:
 # ---------------------------------------------------------------------------
 # Base system prompt (always included)
 # ---------------------------------------------------------------------------
-_BASE_SYSTEM_PROMPT = """You are BYSEL AI, an expert Indian stock market analyst assistant.
+_BASE_SYSTEM_PROMPT = """You are BYSEL AI, an Indian-market analyst that gives clear investment advice when asked, and a tight factual answer when the user only wants a quote, news, definition, or number.
 
 STEP 0 — UNDERSTAND THE QUERY:
 - Greetings / chitchat ("hi", "hello", "thanks") → reply briefly as BYSEL AI. Do NOT invent a stock analysis.
 - Sector / theme queries ("defence stocks", "best pharma stocks") → answer with that sector's names.
   Prefer SCREENED RESULTS in context when present. Do NOT analyze a random unrelated ticker from wallet/context.
-- Only run a single-stock technical/fundamental template when the user clearly asked about one company/symbol.
+- Follow-ups ("what about sentiment?", "same for INFY") use the last ticker / last ask type.
+- Only run a single-stock template when the user clearly asked about one company/symbol.
 
 STEP 1 — DIRECT ANSWER (always first):
-Read the user's question carefully. Before any analysis, answer it directly:
-- "Should I buy X?" → State BUY / SELL / HOLD with one-sentence reason
+Read the user's question carefully. Before any analysis, answer THAT ask:
 - "What is X price?" → Give the price from the context data
-- "Compare A vs B?" → State which is better in one sentence
-- "Predict X price?" → Give a range estimate with probability
-- News / sentiment / quote / technicals / valuation → Answer THAT ask only
-- General questions (news, market, sector) → Answer directly without stock analysis template
+- "Compare A vs B?" → State which is the better investment for which style, using context numbers
+- "Predict X price?" → Direction + scenario bands with probability. Not a guarantee
+- "Should I buy X?" → State BUY / SELL / HOLD with one-sentence reason, then entry / SL / target
+- News / sentiment / quote / technicals / valuation → Answer THAT ask only (no forced trade call)
+- Definitions / formulas → Teach the concept. No stock pick unless they asked for one
 
 STEP 2 — MATCH THE ASK (do not dump a full dossier every time):
-If an INTENT FOCUS block is present below, follow it and DO NOT append RSI/MACD/P/E/BUY sections unless that block asks for them.
+If an INTENT FOCUS / PROFILE block is present below, follow it and DO NOT append RSI/MACD/P/E/BUY sections unless that block asks for them.
 - News / headlines → 4–6 headlines + one-line price. No trade plan.
 - Quote / LTP → last, OHLC, volume, support/resistance only.
 - Sentiment → mood + 2–3 drivers. No buy/sell template.
-- Technical / S&R / RSI → technicals only.
-- Predict / forecast → scenarios only. Not a guarantee.
-- Fundamentals / overvalued → valuation only.
-- Should I buy / trade plan → BUY/SELL/HOLD + entry/SL/target.
+- Technical / S&R / RSI → technicals only; add a one-line BUY/SELL/HOLD only if they asked.
+- Predict / forecast → direction + support-holds vs support-breaks + ATR band.
+- Fundamentals / overvalued → valuation first; add accumulate/avoid/watch if they asked for a view.
+- Should I buy / trade plan → BUY/SELL/HOLD + entry/SL/target from context.
 - "Analyze X" (full analysis) → then you MAY use the structured sections below.
 
-STEP 3 — STRUCTURED ANALYSIS (ONLY for full "Analyze X" or buy/sell with no narrower intent):
+STEP 3 — STRUCTURED ANALYSIS (ONLY for full "Analyze X" when no narrower profile is set):
 
 1. SYMBOL & CONTEXT
    - Stock symbol, full name, sector, market cap
@@ -110,10 +111,10 @@ STEP 3 — STRUCTURED ANALYSIS (ONLY for full "Analyze X" or buy/sell with no na
    - Recent Events: earnings, splits, FII/DII flows
    - Sector Trend: bullish/neutral/bearish
 
-6. SIGNAL & RECOMMENDATION (MUST include):
+6. SIGNAL & RECOMMENDATION (MUST include when this full template is used):
    - PRIMARY SIGNAL: BUY / SELL / HOLD
    - Confidence: [0-100]% (be specific — e.g. 72%, not "high confidence")
-   - Why Confident: 2-3 key reasons with specific data points
+   - Why this call: 2-3 key reasons with specific data points
    - Key Risks: 2-3 downside risks
    - Time Horizon: day trade / swing / 1-month / 3-month / long-term
 
@@ -124,7 +125,7 @@ CRITICAL RULES:
 - If a data field is missing, write "Data not available" — never make up a number.
 - Use Indian market terminology (NSE, BSE, NIFTY, SENSEX).
 - Format prices in ₹ with Indian number system (₹1,23,456).
-- Support Hinglish queries naturally — respond in the same language mix used by the user.
+- Support Hinglish and Telugu queries naturally — respond in the same language mix used by the user. If they wrote in Telugu script, answer in Telugu; keep tickers, rupee amounts, and RSI/MACD/P/E in Latin.
 - Confidence scores must be specific (78%, not "quite confident").
 - If signals conflict, explicitly highlight it.
 - USE the PRE-COMPUTED SIGNALS block (if provided) — these are already analyzed conclusions, weave them directly into your response.
@@ -150,7 +151,8 @@ IMPORTANT — USER-FACING RESPONSE ONLY:
 - Do NOT name market-data vendors. Say "available market data" or "live quotes".
 - Do NOT mention: "Intent detected", "category", "latency mode", "model backend", "confidence score", "alternatives", "data refresh", "data lineage", "stale feeds", "partial feeds", "resolved entity", or any other internal NLP/system information
 - Do NOT start your response with any metadata or system fields
-- Only provide analysis and investment advice to the user
+- Give investment advice when the user asked for a call, pick, forecast, or comparison winner
+- Still never invent numbers; still never claim SEBI RA/IA status
 - Begin directly with the analysis or answer — no preamble about how you processed the query
 - Keep responses professional and user-focused
 """
@@ -160,13 +162,13 @@ IMPORTANT — USER-FACING RESPONSE ONLY:
 # ---------------------------------------------------------------------------
 _INTENT_PROMPTS: Dict[str, str] = {
     "PREDICT": """
---- PREDICTION FOCUS ---
-The user wants a PRICE PREDICTION. Structure your response around:
-1. SHORT-TERM (2-4 weeks): Price range with probability % (e.g. "65% chance of ₹1200–1350")
-2. MEDIUM-TERM (3 months): Bull case / Base case / Bear case with specific price targets
-3. KEY CATALYSTS: What triggers each scenario (earnings date, RBI policy, sector tailwind)
-4. CONFIDENCE LEVEL: Specific % with reasoning (use technical + fundamental signals)
-DO NOT say "it depends" — give a directional view with numbers. Users need actionable targets.
+--- PREDICTION + ADVICE FOCUS ---
+The user wants a forecast and a usable investment view. Do NOT invent a point price.
+1. CALL: BUY / SELL / HOLD for the asked horizon, with probability %
+2. INTRADAY / SWING / MEDIUM: if/then bands from ATR + support/resistance in context
+3. SUPPORT HOLDS vs SUPPORT BREAKS: two paths, not one invented target
+4. KEY CATALYSTS from context only. If a results window is present, widen bands
+5. CONFIDENCE: cap it; never above the numbers you actually have
 """,
 
     "COMPARE": """
@@ -176,21 +178,21 @@ The user wants to COMPARE two or more stocks. Structure your response as:
    Include: Current Price, P/E, Market Cap, 52-week performance, RSI trend, Dividend
 2. TECHNICAL winner (short-term momentum)
 3. FUNDAMENTAL winner (long-term value)
-4. VERDICT: Better for swing traders? For long-term SIP? Risk-averse investors?
-Be decisive — name a clear winner for each category, not just "both have merits".
+4. VERDICT: which to prefer for swing vs SIP / long-term, with a clear pick per style
 """,
 
     "BUY_SELL": """
---- BUY/SELL/HOLD FOCUS ---
-The user wants a clear BUY / SELL / HOLD decision. Structure as:
+--- BUY/SELL/HOLD ADVICE ---
+The user wants a clear investment call. Structure as:
 1. VERDICT (first line): BUY at ₹[price] / SELL at ₹[price] / HOLD — one sentence reason
-2. FOR (if BUY/HOLD): 3 specific data-backed reasons from the context
-3. AGAINST (if SELL/HOLD): 3 specific risks
-4. EXACT ENTRY ZONE: ₹[low] – ₹[high] (never skip)
-5. STOP LOSS: ₹[level] — mandatory, calculated from support
+2. FOR: 3 specific data-backed reasons from the context
+3. AGAINST: 3 specific risks
+4. EXACT ENTRY ZONE: ₹[low] – ₹[high]
+5. STOP LOSS: ₹[level] from support
 6. TARGET: ₹[level] in [timeframe]
 7. RISK/REWARD: [ratio]
-8. WHO SHOULD BUY: Long-term investor / Swing trader / Avoid if [condition]
+8. WHO IT FITS: long-term / swing / avoid if [condition]
+Use only context numbers. Add the standard disclaimer after the call.
 """,
 
     "TECHNICAL": """
@@ -626,9 +628,10 @@ def normalize_market_terms_in_query(query: str) -> str:
 # ---------------------------------------------------------------------------
 # Intent classifier — pure Python, ~0ms, no extra LLM call
 # ---------------------------------------------------------------------------
-def classify_intent(query: str) -> dict:
+def classify_intent(query: str, conversation_history=None) -> dict:
     """
-    Classify user query into one of 8 intents using keyword scoring.
+    Classify user query into one of 8 intents using the shared query contract
+    plus keyword scoring.
     Returns: {
         "intent": "PREDICT|COMPARE|...|GENERAL",
         "confidence": 85,  # 0-100 confidence score
@@ -638,6 +641,16 @@ def classify_intent(query: str) -> dict:
     """
     q = normalize_market_terms_in_query((query or "").lower())
     detected_strategy = detect_options_strategy(q)
+    contract = None
+    try:
+        from indian_stock_llm.query_contract import resolve_query_contract
+
+        contract = resolve_query_contract(
+            query or "",
+            conversation_history=conversation_history,
+        )
+    except Exception:
+        contract = None
 
     small_talk_type = _detect_small_talk_type(q)
     if small_talk_type:
@@ -876,6 +889,25 @@ def classify_intent(query: str) -> dict:
     }
     if detected_strategy:
         result["detected_strategy"] = detected_strategy
+        result["intent"] = "DERIVATIVES"
+    elif (
+        contract
+        and contract.groq_intent not in {"GENERAL", ""}
+        and int(contract.confidence or 0) >= 70
+    ):
+        result["intent"] = contract.groq_intent
+        result["confidence"] = max(int(result.get("confidence") or 0), int(contract.confidence))
+        result["profile"] = contract.profile
+        result["resolved_query"] = contract.resolved_query
+        if "reasoning" in result:
+            result["reasoning"] = f"{result['reasoning']}; contract={contract.profile}"
+    if contract:
+        result.setdefault("profile", contract.profile)
+        result.setdefault("resolved_query", contract.resolved_query)
+        result["clarifier"] = contract.clarifier
+        result["format_instructions"] = contract.format_instructions
+        if contract.slots.symbol:
+            result["symbol"] = contract.slots.symbol
     return result
 
 
@@ -895,7 +927,15 @@ def _detect_small_talk_type(query_lower: str) -> Optional[str]:
     thanks_patterns = ["thanks", "thank you", "thx", "ty", "appreciate it", "great thanks"]
     bye_patterns = ["bye", "goodbye", "see you", "cya", "talk later", "good night", "gn"]
     how_are_you_patterns = ["how are you", "how r u", "howre you", "how you doing", "kaise ho", "kya haal"]
-    greeting_patterns = ["hi", "hello", "hey", "namaste", "namaskar", "good morning", "good afternoon", "good evening"]
+    greeting_patterns = ["hi", "hello", "hey", "namaste", "namaskar", "namaskaram", "good morning", "good afternoon", "good evening"]
+    try:
+        from indian_stock_llm.query_language import telugu_small_talk_kind
+
+        te_kind = telugu_small_talk_kind(query)
+        if te_kind:
+            return te_kind
+    except Exception:
+        pass
 
     if any(_contains_phrase(pat) for pat in how_are_you_patterns):
         return "how_are_you"
@@ -906,7 +946,7 @@ def _detect_small_talk_type(query_lower: str) -> Optional[str]:
 
     # Restrict greeting to short greeting-like utterances.
     greeting_tokens = {
-        "hi", "hii", "hiii", "hello", "hey", "namaste", "namaskar", "gm",
+        "hi", "hii", "hiii", "hello", "hey", "namaste", "namaskar", "namaskaram", "gm",
         "good", "morning", "afternoon", "evening",
     }
     allowed_context_tokens = {"there", "team", "bot", "ai", "assistant", "bysel"}
@@ -933,6 +973,13 @@ def get_small_talk_response(query: str, response_style: str = "concise") -> Opti
         "bye": "Bye! See you soon. Happy investing.",
         "how_are_you": "I am doing great and ready to help with markets. What stock question do you have?",
     }
+    try:
+        from indian_stock_llm.query_language import is_telugu_query, telugu_small_talk_replies
+
+        if is_telugu_query(query):
+            concise_map = telugu_small_talk_replies()
+    except Exception:
+        pass
 
     detailed_map = {
         "greeting": (
@@ -1500,11 +1547,13 @@ async def ask_groq(
 
     # Parse intent result
     if not intent_result:
-        intent_result = classify_intent(query)
+        intent_result = classify_intent(query, conversation_history=conversation_history)
 
     intent = intent_result.get("intent", "GENERAL")
     confidence = intent_result.get("confidence", 0)
     alternatives = intent_result.get("alternatives", [])
+    contract_format = str(intent_result.get("format_instructions") or "").strip()
+    contract_resolved = str(intent_result.get("resolved_query") or "").strip()
 
     # DEBUG: Log what we're sending to Groq
     logger.info(f"GROQ DEBUG: intent={intent}, confidence={confidence}")
@@ -1513,9 +1562,9 @@ async def ask_groq(
         logger.info(f"GROQ DEBUG: context keys={list(context.keys())}")
         logger.info(f"GROQ DEBUG: symbol={context.get('symbol')}, has_technical={bool(context.get('technical'))}")
 
-    # Resolve pronouns if conversation history is provided
-    resolved_query = query
-    if conversation_history:
+    # Resolve pronouns / follow-ups if conversation history is provided
+    resolved_query = contract_resolved or query
+    if conversation_history and resolved_query == query:
         resolved_query = resolve_pronouns(query, conversation_history)
 
     effective_style = response_style or infer_response_style(query, conversation_history)
@@ -1541,7 +1590,7 @@ async def ask_groq(
             alt_intent = alternatives[0][0]
             intent_addendum = _INTENT_PROMPTS.get(intent, "") + "\n\nALTERNATIVELY: " + _INTENT_PROMPTS.get(alt_intent, "")
         else:
-            intent_addendum = _INTENT_PROMPTS.get(intent, "")
+            intent_addendum = contract_format or _INTENT_PROMPTS.get(intent, "")
 
     # Multi-stock flag: if >1 symbol in context, use MULTI_STOCK prompt
     all_symbols = context.get("all_symbols", []) if context else []

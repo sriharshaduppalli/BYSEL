@@ -1,0 +1,8 @@
+# Separate from Cloud Run bysel-services. Do not merge into backend/requirements.txt.
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+torch>=2.2.0
+transformers>=4.41.0
+sentencepiece>=0.2.0
+IndicTransToolkit>=1.0.3

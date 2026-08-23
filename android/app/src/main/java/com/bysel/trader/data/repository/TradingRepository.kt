@@ -543,7 +543,7 @@ open class TradingRepository(private val database: BYSELDatabase) {
     suspend fun aiAsk(
         query: String,
         chatHistory: List<ConversationTurn>? = null,
-        tier: String = "auto",
+        tier: String = "fast",
     ): Result<AiAssistantResponse> {
         var lastError: Exception? = null
         repeat(2) { attempt ->

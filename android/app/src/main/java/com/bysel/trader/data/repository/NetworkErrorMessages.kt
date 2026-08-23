@@ -91,6 +91,22 @@ object NetworkErrorMessages {
         }
     }
 
+    fun isTransientQuoteMessage(message: String?): Boolean {
+        val m = message.orEmpty().lowercase()
+        if (m.isBlank()) return false
+        return m.contains("timeout") ||
+            m.contains("timed out") ||
+            m.contains("too long") ||
+            m.contains("taking longer") ||
+            m.contains("waking up") ||
+            m.contains("too many requests") ||
+            m.contains("busy right now") ||
+            m.contains("temporarily unavailable") ||
+            m.contains("failed to connect") ||
+            m.contains("cannot reach") ||
+            m.contains("quote refresh returned no prices")
+    }
+
     fun timeoutCopy(suffix: String): String {
         return if (ServerReachability.isLikelyWarm()) {
             "Server took too long. $suffix"

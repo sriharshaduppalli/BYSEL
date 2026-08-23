@@ -230,7 +230,7 @@ data class AiQuery(
     val query: String,
     @com.google.gson.annotations.SerializedName("conversation_history")
     val conversationHistory: List<ConversationTurn>? = null,
-    val tier: String? = "auto",
+    val tier: String? = "fast",
 )
 
 data class AiFeedbackRequest(

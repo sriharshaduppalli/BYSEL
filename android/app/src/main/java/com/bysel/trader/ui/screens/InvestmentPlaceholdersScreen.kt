@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -54,11 +55,11 @@ import androidx.compose.foundation.layout.FlowRow
 import com.bysel.trader.data.models.*
 import com.bysel.trader.ui.components.FnoLiteracyMode
 import com.bysel.trader.ui.components.FnoLiteracyPrimer
+import com.bysel.trader.ui.components.HabitLiteracyCatalog
 import com.bysel.trader.ui.components.InvestorTipsCard
 import com.bysel.trader.ui.components.atmIvPlainEnglish
 import com.bysel.trader.ui.components.callMoneyness
 import com.bysel.trader.ui.components.ivSkewPlainEnglish
-import com.bysel.trader.ui.components.localInvestorTips
 import com.bysel.trader.ui.components.pcrPlainEnglish
 import com.bysel.trader.ui.components.putMoneyness
 import com.bysel.trader.ui.theme.LocalAppTheme
@@ -257,10 +258,10 @@ private fun SgbLearnCard(onAskAi: () -> Unit) {
 }
 
 @Composable
-fun SgbScreen(viewModel: TradingViewModel) {
-    val investorTips by viewModel.investorTips.collectAsStateWithLifecycle()
-    val investorTipsLoading by viewModel.investorTipsLoading.collectAsStateWithLifecycle()
-
+fun SgbScreen(
+    viewModel: TradingViewModel,
+    onAskAi: (String) -> Unit = { viewModel.askAi(it) },
+) {
     LaunchedEffect(Unit) {
         viewModel.loadInvestorTips("sgb")
     }
@@ -287,25 +288,16 @@ fun SgbScreen(viewModel: TradingViewModel) {
         item {
             InvestorTipsCard(
                 title = "SGB Tips",
-                topicLabel = if (investorTips.topic == "sgb") {
-                    investorTips.topicLabel.ifBlank { "SGB" }
-                } else {
-                    "SGB"
-                },
-                tips = if (investorTips.topic == "sgb") {
-                    investorTips.tips
-                } else {
-                    localInvestorTips("sgb").tips
-                },
-                disclaimer = investorTips.disclaimer.ifBlank {
-                    "Educational habits — not bond recommendations."
-                },
-                loading = investorTipsLoading,
+                topicLabel = "",
+                tips = emptyList(),
+                disclaimer = "",
                 compact = true,
+                learnLinks = HabitLiteracyCatalog.investorLinksFor("sgb"),
+                onLearnQuery = onAskAi,
             )
         }
         item {
-            SgbLearnCard(onAskAi = { viewModel.askAi("What are Sovereign Gold Bonds?") })
+            SgbLearnCard(onAskAi = { onAskAi("What are Sovereign Gold Bonds?") })
         }
         item {
             Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
@@ -322,7 +314,7 @@ fun SgbScreen(viewModel: TradingViewModel) {
                         color = LocalAppTheme.current.textSecondary,
                         fontSize = 12.sp,
                     )
-                    TextButton(onClick = { viewModel.askAi("SGB vs gold ETF vs physical gold") }) {
+                    TextButton(onClick = { onAskAi("SGB vs gold ETF vs physical gold") }) {
                         Text("Ask AI: SGB vs gold ETF", maxLines = 1)
                     }
                 }
@@ -434,7 +426,10 @@ private fun PreTradeSignalCard(title: String, signal: CopilotSignal) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun MutualFundsScreen(viewModel: TradingViewModel) {
+fun MutualFundsScreen(
+    viewModel: TradingViewModel,
+    onAskAi: (String) -> Unit = { viewModel.askAi(it) },
+) {
     val funds by viewModel.mutualFunds.collectAsStateWithLifecycle()
     val loading by viewModel.productsLoading.collectAsStateWithLifecycle()
     val recommendations by viewModel.mutualFundRecommendations.collectAsStateWithLifecycle()
@@ -450,9 +445,6 @@ fun MutualFundsScreen(viewModel: TradingViewModel) {
     var recommendationRisk by remember { mutableStateOf("MODERATE") }
     var recommendationGoal by remember { mutableStateOf("growth") }
     var recommendationHorizonInput by remember { mutableStateOf("5") }
-
-    val investorTips by viewModel.investorTips.collectAsStateWithLifecycle()
-    val investorTipsLoading by viewModel.investorTipsLoading.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         viewModel.loadMutualFunds(limit = 1000)
@@ -510,16 +502,15 @@ fun MutualFundsScreen(viewModel: TradingViewModel) {
             item {
                 InvestorTipsCard(
                     title = "Mutual Fund Tips",
-                    topicLabel = investorTips.topicLabel.ifBlank { "Mutual funds" },
-                    tips = if (investorTips.topic == "mutual_funds") investorTips.tips else localInvestorTips("mutual_funds").tips,
-                    disclaimer = investorTips.disclaimer.ifBlank {
-                        "Educational habits — not fund recommendations."
-                    },
-                    loading = investorTipsLoading,
+                    topicLabel = "",
+                    tips = emptyList(),
+                    disclaimer = "",
                     compact = true,
+                    learnLinks = HabitLiteracyCatalog.investorLinksFor("mutual_funds"),
+                    onLearnQuery = onAskAi,
                 )
             }
-            item { MutualFundLearnCard(onAskAi = { viewModel.askAi("What are mutual funds?") }) }
+            item { MutualFundLearnCard(onAskAi = { onAskAi("What are mutual funds?") }) }
 
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
@@ -756,25 +747,64 @@ fun MutualFundsScreen(viewModel: TradingViewModel) {
     }
 
     compareResult?.let { result ->
-        val comparisonText = result.funds.joinToString("\n") { item ->
-            val tags = mutableListOf<String>()
-            if (result.bestReturns1YSchemeCode == item.schemeCode) tags.add("Best 1Y")
-            if (result.bestReturns3YSchemeCode == item.schemeCode) tags.add("Best 3Y")
-            if (result.bestReturns5YSchemeCode == item.schemeCode) tags.add("Best 5Y")
-            if (result.lowestRiskSchemeCode == item.schemeCode) tags.add("Lowest Risk")
-            val badge = if (tags.isNotEmpty()) " [${tags.joinToString(", ")}]" else ""
-            "• ${item.schemeName}$badge"
-        }
-
         AlertDialog(
             onDismissRequest = { viewModel.clearMutualFundCompare() },
             title = { Text("Mutual Fund Comparison") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
                     Text(result.summary, fontSize = 13.sp)
-                    Text(comparisonText, fontSize = 12.sp)
+                    result.funds.forEach { item ->
+                        val tags = mutableListOf<String>()
+                        if (result.bestReturns1YSchemeCode == item.schemeCode) tags.add("Best 1Y")
+                        if (result.bestReturns3YSchemeCode == item.schemeCode) tags.add("Best 3Y")
+                        if (result.bestReturns5YSchemeCode == item.schemeCode) tags.add("Best 5Y")
+                        if (result.lowestRiskSchemeCode == item.schemeCode) tags.add("Lowest risk")
+                        Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.surface)) {
+                            Column(
+                                modifier = Modifier.padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(3.dp),
+                            ) {
+                                Text(
+                                    item.schemeName,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp,
+                                    color = LocalAppTheme.current.text,
+                                )
+                                if (tags.isNotEmpty()) {
+                                    Text(
+                                        tags.joinToString(" · "),
+                                        fontSize = 11.sp,
+                                        color = LocalAppTheme.current.primary,
+                                    )
+                                }
+                                Text(
+                                    "NAV ₹${"%.2f".format(item.nav)} · ${item.navDate.ifBlank { "date n/a" }}",
+                                    fontSize = 12.sp,
+                                    color = LocalAppTheme.current.text,
+                                )
+                                Text(
+                                    "${item.category} · Risk ${item.riskLevel ?: "n/a"} · ${item.fundHouse ?: "house n/a"}",
+                                    fontSize = 12.sp,
+                                    color = LocalAppTheme.current.textSecondary,
+                                )
+                                Text(
+                                    "1Y ${formatMfReturn(item.returns1Y)} · 3Y ${formatMfReturn(item.returns3Y)} · 5Y ${formatMfReturn(item.returns5Y)}",
+                                    fontSize = 12.sp,
+                                    color = LocalAppTheme.current.textSecondary,
+                                )
+                                Text(
+                                    "Code ${item.schemeCode}",
+                                    fontSize = 11.sp,
+                                    color = LocalAppTheme.current.textSecondary,
+                                )
+                            }
+                        }
+                    }
                     Text(
-                        "Educational compare only — past returns are not guaranteed and this is not a fund recommendation.",
+                        "Educational compare only — NAV level is not ‘cheap vs expensive’. Past returns are not guaranteed.",
                         fontSize = 11.sp,
                         color = LocalAppTheme.current.textSecondary,
                     )
@@ -796,6 +826,10 @@ fun MutualFundsScreen(viewModel: TradingViewModel) {
             }
         )
     }
+}
+
+private fun formatMfReturn(value: Double?): String {
+    return if (value == null) "—" else "${"%.1f".format(value)}%"
 }
 
 private fun sortMutualFundsLocal(
@@ -864,15 +898,15 @@ private fun MutualFundDetailScreen(fund: MutualFund, onBack: () -> Unit, onStart
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun IpoListingsScreen(viewModel: TradingViewModel) {
+fun IpoListingsScreen(
+    viewModel: TradingViewModel,
+    onAskAi: (String) -> Unit = { viewModel.askAi(it) },
+) {
     val ipos by viewModel.ipoListings.collectAsStateWithLifecycle()
     val loading by viewModel.productsLoading.collectAsStateWithLifecycle()
     var selected by remember { mutableStateOf<IPOListing?>(null) }
     var applyTarget by remember { mutableStateOf<IPOListing?>(null) }
     var selectedTab by remember { mutableStateOf(IpoListingTab.OPEN) }
-
-    val investorTips by viewModel.investorTips.collectAsStateWithLifecycle()
-    val investorTipsLoading by viewModel.investorTipsLoading.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         viewModel.loadIpoListings()
@@ -921,13 +955,12 @@ fun IpoListingsScreen(viewModel: TradingViewModel) {
             item {
                 InvestorTipsCard(
                     title = "IPO Tips",
-                    topicLabel = investorTips.topicLabel.ifBlank { "IPOs" },
-                    tips = if (investorTips.topic == "ipo") investorTips.tips else localInvestorTips("ipo").tips,
-                    disclaimer = investorTips.disclaimer.ifBlank {
-                        "Educational habits — not IPO recommendations."
-                    },
-                    loading = investorTipsLoading,
+                    topicLabel = "",
+                    tips = emptyList(),
+                    disclaimer = "",
                     compact = true,
+                    learnLinks = HabitLiteracyCatalog.investorLinksFor("ipo"),
+                    onLearnQuery = onAskAi,
                 )
             }
             item {
@@ -1776,13 +1809,13 @@ fun AdvancedOrdersScreen(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
+fun DerivativesIntelligenceScreen(
+    viewModel: TradingViewModel,
+    onAskAi: (String) -> Unit = { viewModel.askAi(it) },
+) {
     val optionChain by viewModel.optionChain.collectAsStateWithLifecycle()
     val strategyPreview by viewModel.strategyPreview.collectAsStateWithLifecycle()
     val loading by viewModel.derivativesLoading.collectAsStateWithLifecycle()
-    val investorTips by viewModel.investorTips.collectAsStateWithLifecycle()
-    val investorTipsLoading by viewModel.investorTipsLoading.collectAsStateWithLifecycle()
-
     var symbol by remember { mutableStateOf("NIFTY") }
     // Default to ~3 weeks out so the educational chain always has a forward expiry.
     var expiry by remember {
@@ -1853,13 +1886,12 @@ fun DerivativesIntelligenceScreen(viewModel: TradingViewModel) {
         item {
             InvestorTipsCard(
                 title = "F&O Tips",
-                topicLabel = investorTips.topicLabel.ifBlank { "F&O" },
-                tips = if (investorTips.topic == "fno") investorTips.tips else localInvestorTips("fno").tips,
-                disclaimer = investorTips.disclaimer.ifBlank {
-                    "Educational paper habits — not trade recommendations. Returns are not guaranteed."
-                },
-                loading = investorTipsLoading,
+                topicLabel = "",
+                tips = emptyList(),
+                disclaimer = "",
                 compact = true,
+                learnLinks = HabitLiteracyCatalog.investorLinksFor("fno"),
+                onLearnQuery = onAskAi,
             )
         }
 

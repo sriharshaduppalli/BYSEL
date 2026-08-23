@@ -15,6 +15,7 @@ import com.bysel.trader.data.importbook.CasCsvParser
 import com.bysel.trader.data.importbook.ImportedBook
 import com.bysel.trader.data.importbook.ImportedBookStore
 import com.bysel.trader.data.models.*
+import com.bysel.trader.data.repository.NetworkErrorMessages
 import com.bysel.trader.data.repository.Result
 import com.bysel.trader.data.repository.TradingRepository
 import com.bysel.trader.data.api.ServerReachability
@@ -606,8 +607,15 @@ class TradingViewModel(
 
     private fun flagWatchlistSyncFailure(message: String?) {
         if (_watchlist.value.isEmpty()) return
-        val detail = message?.trim().orEmpty().ifBlank { "Couldn't refresh quotes" }
-        _watchlistSyncError.value = "$detail. Showing your last saved list."
+        val havePrints = _quotes.value.any { it.last > 0.0 }
+        // Live quote polls time out often. Last prices stay on My list — do not print
+        // "timeout / waking up / too long" under the list on every refresh.
+        if (havePrints) return
+        if (NetworkErrorMessages.isTransientQuoteMessage(message)) {
+            _watchlistSyncError.value = "Couldn't refresh quotes. Retry to load prices."
+            return
+        }
+        _watchlistSyncError.value = "Couldn't refresh quotes. Showing your last saved list."
     }
 
     private fun markQuoteUpdate(nowMs: Long = System.currentTimeMillis()) {
@@ -987,6 +995,9 @@ class TradingViewModel(
                                 evaluateAlerts(result.data)
                                 maybeAutoEvaluateTriggers(_quotes.value.map { it.symbol })
                                 _watchlistSyncError.value = null
+                                if (NetworkErrorMessages.isTransientQuoteMessage(_marketError.value)) {
+                                    _marketError.value = null
+                                }
                                 // Reset paging after success
                                 _pagedQuotes.value = emptyList()
                                 currentPage = 0
@@ -1278,11 +1289,12 @@ class TradingViewModel(
     /**
      * Open a paper ticket without going through Stock Detail.
      * Never clears [selectedQuote] — a null flash disposes the Trade sheet and can crash.
+     * Do not load history/news here: that mutates [quoteHistory] on the click frame and
+     * remounts the ticket while it is opening.
      */
     fun selectQuoteForTrade(quote: Quote) {
         val seed = quote.copy(symbol = WatchlistSymbols.normalize(quote.symbol).ifBlank { quote.symbol })
         _selectedQuote.value = seed
-        loadStockDetailContext(seed.symbol)
         viewModelScope.launch {
             when (val result = repository.getQuote(seed.symbol)) {
                 is Result.Success -> {
@@ -2644,7 +2656,7 @@ class TradingViewModel(
             val baseQuery = "trade_coach:symbol=$symbol,qty=$quantity,side=$side"
             val prompt = PromptBuilder.buildPrompt(baseQuery, holdingsSummary, wallet, portfolioScore, quoteResult.let { if (it is Result.Success) it.data else null }, recentHistory)
 
-            when (val r = repository.aiAsk(prompt, buildConversationHistory())) {
+            when (val r = repository.aiAsk(prompt, buildConversationHistory(), tier = "fast")) {
                 is Result.Success -> _tradeCoachTip.value = r.data.answer
                 else -> _tradeCoachTip.value = "Tip: Review your trade strategy."
             }
@@ -2951,10 +2963,8 @@ class TradingViewModel(
                 if (sectorThemeAsk) emptyList() else recentHistory
             )
 
-            // Prefer the server (better Indian-market routing). On-device Gemma is
-            // a fallback when the network path fails — not the first reply.
-            // "fast" = custom Indian Stock LLM first (with live enrich), paid LLMs only
-            // as fallback; also skips a duplicate Yahoo rule-engine pre-pass.
+            // Indian Stock LLM is the app assistant. On-device Gemma and Groq
+            // only run if that path fails.
             when (val r = repository.aiAsk(prompt, buildConversationHistory(), tier = "fast")) {
                 is Result.Success -> {
                     lastAiSuccessAtMs = System.currentTimeMillis()
@@ -3571,9 +3581,21 @@ class TradingViewModel(
     }
 
     fun compareMutualFunds(schemeCodes: List<String>) {
+        val wanted = schemeCodes.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        if (wanted.size < 2) {
+            _error.value = "Select at least 2 funds to compare"
+            return
+        }
+        val local = wanted.mapNotNull { code ->
+            _mutualFunds.value.firstOrNull { it.schemeCode == code }
+        }
+        if (local.size == wanted.size) {
+            _mutualFundCompare.value = buildMutualFundCompare(local)
+            _productActionMessage.value = "Mutual fund comparison ready"
+            return
+        }
         viewModelScope.launch {
-            _productsLoading.value = true
-            when (val r = repository.compareMutualFunds(schemeCodes)) {
+            when (val r = repository.compareMutualFunds(wanted)) {
                 is Result.Success -> {
                     _mutualFundCompare.value = r.data
                     _productActionMessage.value = "Mutual fund comparison ready"
@@ -3581,7 +3603,58 @@ class TradingViewModel(
                 is Result.Error -> _error.value = r.message
                 else -> {}
             }
-            _productsLoading.value = false
+        }
+    }
+
+    private fun buildMutualFundCompare(funds: List<MutualFund>): MutualFundCompareResponse {
+        fun bestOf(metric: (MutualFund) -> Double?): String? {
+            return funds
+                .mapNotNull { fund -> metric(fund)?.let { fund to it } }
+                .maxByOrNull { it.second }
+                ?.first
+                ?.schemeCode
+        }
+        val categories = funds.map { it.category.uppercase() }.distinct()
+        val dates = funds.map { it.navDate }.filter { it.isNotBlank() }.distinct()
+        val hasReturns = funds.any { it.returns1Y != null || it.returns3Y != null || it.returns5Y != null }
+        val lowestRisk = funds.minByOrNull { riskRankForCompare(it.riskLevel, it.category) }?.schemeCode
+        val summary = buildString {
+            append("Compared ${funds.size} schemes")
+            if (dates.size == 1) append(" (NAV as of ${dates.first()})")
+            append(". ")
+            if (categories.size > 1) {
+                append("Categories differ (${categories.joinToString(" vs ")}) — not a like-for-like race. ")
+            } else if (categories.isNotEmpty()) {
+                append("All ${categories.first()} schemes. ")
+            }
+            if (hasReturns) {
+                append("Return badges use available CAGR — past returns are not guaranteed.")
+            } else {
+                append("AMFI daily NAV has no 1Y/3Y/5Y CAGR. Compare category, risk, and latest NAV, then check the scheme factsheet for returns.")
+            }
+        }
+        return MutualFundCompareResponse(
+            funds = funds,
+            bestReturns1YSchemeCode = bestOf { it.returns1Y },
+            bestReturns3YSchemeCode = bestOf { it.returns3Y },
+            bestReturns5YSchemeCode = bestOf { it.returns5Y },
+            lowestRiskSchemeCode = lowestRisk,
+            summary = "$summary Educational snapshot only — not a fund recommendation.",
+        )
+    }
+
+    private fun riskRankForCompare(riskLevel: String?, category: String?): Int {
+        return when ((riskLevel ?: "").uppercase()) {
+            "LOW", "LOW_MODERATE" -> 1
+            "MODERATE" -> 2
+            "MODERATE_HIGH", "HIGH" -> 3
+            "VERY_HIGH" -> 4
+            else -> when ((category ?: "").uppercase()) {
+                "DEBT" -> 1
+                "HYBRID", "SOLUTION" -> 2
+                "INDEX", "EQUITY" -> 3
+                else -> 2
+            }
         }
     }
 

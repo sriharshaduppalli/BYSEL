@@ -290,7 +290,7 @@ fun AiAssistantScreen(
                     Box(modifier = Modifier.fillMaxWidth()) {
                         if (query.isEmpty()) {
                             Text(
-                                "Ask about any stock...",
+                                "Ask about any stock... / ఏ స్టాక్ గురించైనా అడగండి...",
                                 color = appTheme.textSecondary,
                                 fontSize = 16.sp,
                                 lineHeight = 22.sp,

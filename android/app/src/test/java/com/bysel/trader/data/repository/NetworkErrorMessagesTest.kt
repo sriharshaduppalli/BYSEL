@@ -102,6 +102,14 @@ class NetworkErrorMessagesTest {
     }
 
     @Test
+    fun transientQuoteTimeoutIsDetected() {
+        assertTrue(NetworkErrorMessages.isTransientQuoteMessage("timeout"))
+        assertTrue(NetworkErrorMessages.isTransientQuoteMessage("Server took too long. Tap to retry."))
+        assertTrue(NetworkErrorMessages.isTransientQuoteMessage("Server is waking up. Tap to retry."))
+        assertFalse(NetworkErrorMessages.isTransientQuoteMessage("Sign-in may have expired."))
+    }
+
+    @Test
     fun marketOfflineKeepsLastSavedCopy() {
         val msg = NetworkErrorMessages.forMarket(
             UnknownHostException("Unable to resolve host"),

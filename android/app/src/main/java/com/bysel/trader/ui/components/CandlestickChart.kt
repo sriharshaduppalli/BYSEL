@@ -283,7 +283,11 @@ fun CandlestickChart(
         )
 
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val widthPx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
+            val widthPx = with(density) { maxWidth.toPx() }
+            if (!widthPx.isFinite() || widthPx <= 0f) {
+                return@BoxWithConstraints
+            }
+            val boundedWidthPx = widthPx.coerceAtLeast(1f)
             val yAxisPadPx = with(density) { 48.dp.toPx() }
             val plotWidthPx = (widthPx - yAxisPadPx).coerceAtLeast(1f)
 
@@ -314,9 +318,14 @@ fun CandlestickChart(
                 startIndexState.floatValue = maxStartFor(fittedBarWidth)
             }
 
+            val sliderValue = barWidth.coerceIn(3.5f, 28f)
+            if (!sliderValue.isFinite()) {
+                return@BoxWithConstraints
+            }
+
             Column(modifier = Modifier.fillMaxWidth()) {
                 Slider(
-                    value = barWidth,
+                    value = sliderValue,
                     onValueChange = {
                         barWidthState.floatValue = it
                         startIndexState.floatValue = startIndexState.floatValue.coerceIn(0f, maxStartFor(it))

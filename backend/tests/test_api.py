@@ -1648,6 +1648,67 @@ def test_ai_ask_passes_detailed_style_to_groq(monkeypatch):
     assert captured["response_style"] == "detailed"
 
 
+def test_ai_ask_prefers_indian_stock_llm_even_when_confidence_is_low(monkeypatch):
+    groq_called = {"n": 0}
+
+    async def _fake_ask_groq(*args, **kwargs):
+        groq_called["n"] += 1
+        return {"answer": "groq should not win"}
+
+    monkeypatch.setattr(
+        routes_module,
+        "ai_assistant",
+        lambda query, db=None, user_id=None: {"answer": "rule fallback", "symbol": "TCS"},
+    )
+    monkeypatch.setattr("app.llm_integration.llm_available", lambda: True)
+    monkeypatch.setattr(
+        "app.llm_integration.ask_llm",
+        lambda query, context=None: {
+            "answer": "**TCS** — HOLD from Indian Stock LLM",
+            "confidence": 0.2,
+            "symbol": "TCS",
+        },
+    )
+    monkeypatch.setattr("app.groq_llm.groq_available", lambda: True)
+    monkeypatch.setattr("app.groq_llm.ask_groq", _fake_ask_groq)
+    monkeypatch.setattr("app.stock_enricher.enrich", lambda symbol: {"current_price": 100.0})
+    monkeypatch.setattr(routes_module, "get_holdings", lambda db=None: [])
+
+    response = client.post("/ai/ask", json={"query": "Should I buy TCS?", "tier": "fast"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "indian-stock-llm"
+    assert "Indian Stock LLM" in payload["answer"]
+    assert groq_called["n"] == 0
+
+
+def test_ai_ask_fast_does_not_call_groq_when_ism_is_empty(monkeypatch):
+    groq_called = {"n": 0}
+
+    async def _fake_ask_groq(*args, **kwargs):
+        groq_called["n"] += 1
+        return {"answer": "groq leak"}
+
+    monkeypatch.setattr(
+        routes_module,
+        "ai_assistant",
+        lambda query, db=None, user_id=None: {"answer": "rule-engine analysis of TCS", "symbol": "TCS"},
+    )
+    monkeypatch.setattr("app.llm_integration.llm_available", lambda: True)
+    monkeypatch.setattr("app.llm_integration.ask_llm", lambda query, context=None: None)
+    monkeypatch.setattr("app.groq_llm.groq_available", lambda: True)
+    monkeypatch.setattr("app.groq_llm.ask_groq", _fake_ask_groq)
+    monkeypatch.setattr("app.stock_enricher.enrich", lambda symbol: {"current_price": 100.0})
+    monkeypatch.setattr(routes_module, "get_holdings", lambda db=None: [])
+
+    response = client.post("/ai/ask", json={"query": "Analyze TCS", "tier": "fast"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "rule-engine"
+    assert groq_called["n"] == 0
+    assert "groq leak" not in payload["answer"].lower()
+
+
 def test_classify_intent_detects_small_talk_and_calculation_queries():
     from app.groq_llm import classify_intent
 
@@ -2813,3 +2874,36 @@ def test_otp_debug_requires_debug_token(monkeypatch):
     assert "api_key_prefix" not in client.get(
         "/auth/otp-debug", headers={"X-Debug-Token": "debug-token"}
     ).text
+
+
+def test_mutual_fund_compare_summary_explains_missing_returns():
+    from app.models.schemas import MutualFund
+    from app.routes import _build_compare_response
+
+    result = _build_compare_response(
+        [
+            MutualFund(
+                schemeCode="120503",
+                schemeName="SBI Nifty Index Fund",
+                category="INDEX",
+                nav=102.34,
+                navDate="2026-08-21",
+                fundHouse="SBI",
+                riskLevel="MODERATE",
+            ),
+            MutualFund(
+                schemeCode="120871",
+                schemeName="Parag Parikh Flexi Cap",
+                category="EQUITY",
+                nav=78.92,
+                navDate="2026-08-21",
+                fundHouse="PPFAS",
+                riskLevel="HIGH",
+            ),
+        ]
+    )
+    assert result.bestReturns1YSchemeCode is None
+    assert result.lowestRiskSchemeCode == "120503"
+    assert "INDEX vs EQUITY" in result.summary
+    assert "no 1Y/3Y/5Y" in result.summary
+    assert len(result.funds) == 2

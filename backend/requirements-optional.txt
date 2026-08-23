@@ -1,6 +1,9 @@
 # Optional extras for Indian Stock LLM / BYSEL backend.
 # MiniLM (sentence-transformers) is optional on Render free tier due to memory;
 # without it the assistant keeps the local hash-embedding fallback.
+#
+# IndicTrans2: do not install torch/transformers on Cloud Run bysel-services.
+# Run backend/indic_trans_worker with its own requirements.txt and set INDIC_TRANS_URL.
 sentence-transformers>=3.0.0,<4.0.0
 # pandas-ta needs Python >=3.10,<3.14 (numba). Prefer `ta` on Python 3.14+.
 pandas-ta>=0.3.14b0,<0.4.0; python_version < "3.14"

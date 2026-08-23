@@ -396,6 +396,53 @@ def _funds_from_db(db: Session) -> list[MutualFund]:
     ]
 
 
+def _mf_from_db_row(row: MutualFundModel) -> MutualFund:
+    return MutualFund(
+        schemeCode=row.scheme_code,
+        schemeName=row.scheme_name,
+        category=row.category,
+        nav=row.nav,
+        navDate=row.nav_date,
+        returns1Y=row.returns_1y,
+        returns3Y=row.returns_3y,
+        returns5Y=row.returns_5y,
+        fundHouse=row.fund_house,
+        riskLevel=row.risk_level,
+    )
+
+
+def _warm_mf_live_map() -> dict[str, MutualFund]:
+    """Use the in-memory AMFI cache only. Never hits the network."""
+    cached = _MF_LIVE_CACHE.get("funds")
+    fetched_at = float(_MF_LIVE_CACHE.get("fetched_at", 0.0) or 0.0)
+    if (
+        isinstance(cached, list)
+        and cached
+        and (time.time() - fetched_at) < _MF_LIVE_CACHE_TTL_SECONDS
+    ):
+        return {fund.schemeCode: fund for fund in cached}
+    return {}
+
+
+def _merge_compare_fund(live: MutualFund | None, stored: MutualFund | None) -> MutualFund | None:
+    if live is None:
+        return stored
+    if stored is None:
+        return live
+    return MutualFund(
+        schemeCode=live.schemeCode,
+        schemeName=live.schemeName or stored.schemeName,
+        category=live.category or stored.category,
+        nav=live.nav,
+        navDate=live.navDate or stored.navDate,
+        returns1Y=live.returns1Y if live.returns1Y is not None else stored.returns1Y,
+        returns3Y=live.returns3Y if live.returns3Y is not None else stored.returns3Y,
+        returns5Y=live.returns5Y if live.returns5Y is not None else stored.returns5Y,
+        fundHouse=live.fundHouse or stored.fundHouse,
+        riskLevel=live.riskLevel or stored.riskLevel,
+    )
+
+
 def _score_recommendation(
     fund: MutualFund,
     risk_profile: str,
@@ -466,10 +513,30 @@ def _build_compare_response(funds: list[MutualFund]) -> MutualFundCompareRespons
         return best_fund.schemeCode
 
     lowest_risk = min(funds, key=lambda fund: _risk_rank(fund.riskLevel, fund.category)).schemeCode if funds else None
-    summary = (
-        f"Compared {len(funds)} funds across risk, NAV and available return metrics. "
-        "Use this with your horizon and goal for final selection."
+    categories = list(dict.fromkeys((fund.category or "OTHER").upper() for fund in funds))
+    dates = list(dict.fromkeys(fund.navDate for fund in funds if fund.navDate))
+    has_returns = any(
+        fund.returns1Y is not None or fund.returns3Y is not None or fund.returns5Y is not None
+        for fund in funds
     )
+    bits = [f"Compared {len(funds)} schemes"]
+    if len(dates) == 1:
+        bits[0] += f" (NAV as of {dates[0]})"
+    bits[0] += "."
+    if len(categories) > 1:
+        bits.append(
+            "Categories differ (" + " vs ".join(categories) + ") — not a like-for-like race."
+        )
+    elif categories:
+        bits.append(f"All {categories[0]} schemes.")
+    if has_returns:
+        bits.append("Return badges use available CAGR — past returns are not guaranteed.")
+    else:
+        bits.append(
+            "AMFI daily NAV has no 1Y/3Y/5Y CAGR. Compare category, risk, and latest NAV, "
+            "then check the scheme factsheet for returns."
+        )
+    bits.append("Educational snapshot only — not a fund recommendation.")
 
     return MutualFundCompareResponse(
         funds=funds,
@@ -477,7 +544,7 @@ def _build_compare_response(funds: list[MutualFund]) -> MutualFundCompareRespons
         bestReturns3YSchemeCode=_best_scheme_for("returns3Y"),
         bestReturns5YSchemeCode=_best_scheme_for("returns5Y"),
         lowestRiskSchemeCode=lowest_risk,
-        summary=summary,
+        summary=" ".join(bits),
     )
 
 
@@ -2233,9 +2300,10 @@ async def warmup_endpoint(db: Session = Depends(get_db)):
 class AiQuery(BaseModel):
     query: str
     conversation_history: Optional[List[Dict]] = None  # last N turns: [{"role":"user"|"assistant","content":str}]
-    # auto/fast: Groq-first (skip heavy Yahoo rule engine when possible)
+    # auto/fast: Indian Stock LLM only (then our rule engine)
     # groq|gemini|indian-stock-llm|rule-engine: explicit tier
     tier: Optional[str] = "auto"
+    screen_context: Optional[Dict] = None  # {symbol, scanner_mode, source} from the open screen
 
 
 class AiFeedbackBody(BaseModel):
@@ -2274,8 +2342,8 @@ async def ai_ask_endpoint(
 ):
     """Natural language AI stock assistant with optional tier selection.
 
-    Auto mode (default): Groq → Gemini → Indian Stock LLM → Rule Engine (with fallback)
-    Explicit tier: Use only requested tier, no fallback
+    Auto / fast (app default): Indian Stock LLM only, then our rule engine.
+    Groq / Gemini run only when the caller sets tier explicitly.
 
     When a Bearer token is present, portfolio context is scoped to that user.
     Anonymous callers (website demo) still work without personalisation.
@@ -2310,6 +2378,13 @@ async def ai_ask_endpoint(
             from ..groq_llm import redact_vendor_names_for_display
 
             answer = redact_vendor_names_for_display(answer)
+        if answer:
+            try:
+                from indian_stock_llm.query_language import localize_assistant_answer
+
+                answer = localize_assistant_answer(user_text, answer)
+            except Exception:
+                pass
 
         user_response = {
             "answer": answer,
@@ -2397,7 +2472,29 @@ async def ai_ask_endpoint(
     user_text = _extract_user_query(body.query)
     expanded_query = expand_acronyms_in_query(user_text)
     normalized_query = normalize_hinglish(expanded_query)
-    intent_result = classify_intent(normalized_query)
+    query_contract = None
+    try:
+        from indian_stock_llm.query_contract import resolve_query_contract
+
+        query_contract = resolve_query_contract(
+            normalized_query,
+            conversation_history=body.conversation_history,
+            screen_context=body.screen_context,
+        )
+        if query_contract.resolved_query:
+            normalized_query = query_contract.resolved_query
+    except Exception:
+        query_contract = None
+    intent_result = classify_intent(normalized_query, conversation_history=body.conversation_history)
+    if query_contract and int(query_contract.confidence or 0) >= 70:
+        intent_result["intent"] = query_contract.groq_intent
+        intent_result["confidence"] = max(
+            int(intent_result.get("confidence") or 0),
+            int(query_contract.confidence),
+        )
+        intent_result["profile"] = query_contract.profile
+        intent_result["format_instructions"] = query_contract.format_instructions
+        intent_result["resolved_query"] = query_contract.resolved_query
     response_style = infer_response_style(normalized_query, body.conversation_history)
 
     small_talk_reply = get_small_talk_response(normalized_query, response_style=response_style)
@@ -2432,11 +2529,14 @@ async def ai_ask_endpoint(
             flags=re.IGNORECASE,
         ))
     )
+    if query_contract and query_contract.clarifier and not educational_like:
+        return _validated({"answer": query_contract.clarifier}, "clarifier", requested_tier)
     if (
         detected_intent in stock_intents
         and intent_confidence < 60
         and not explicit_symbol
         and not educational_like
+        and not (query_contract and query_contract.slots.symbol)
     ):
         if response_style == "concise":
             clarifier = (
@@ -2713,22 +2813,31 @@ async def ai_ask_endpoint(
             if llm_available():
                 llm_context = {}
                 # Pronoun / multi-turn resolution for ISM (previously Groq-only).
-                ism_query = normalized_query
+                ism_query = (
+                    (query_contract.resolved_query if query_contract else "")
+                    or normalized_query
+                )
                 try:
                     from ..groq_llm import resolve_pronouns, detect_sentiment_from_query
 
                     if body.conversation_history:
-                        resolved = resolve_pronouns(
-                            normalized_query, body.conversation_history
-                        )
-                        if resolved and resolved.strip():
-                            ism_query = resolved.strip()
+                        if query_contract is None:
+                            resolved = resolve_pronouns(
+                                normalized_query, body.conversation_history
+                            )
+                            if resolved and resolved.strip():
+                                ism_query = resolved.strip()
                         llm_context["conversation_history"] = list(
                             body.conversation_history or []
                         )[-6:]
                         llm_context["user_sentiment"] = detect_sentiment_from_query(
                             ism_query
                         )
+                    if query_contract:
+                        llm_context["query_profile"] = query_contract.profile
+                        llm_context["intent"] = query_contract.ism_intent
+                        if query_contract.slots.symbol:
+                            llm_context["symbol"] = query_contract.slots.symbol
                 except Exception:
                     ism_query = normalized_query
                 try:
@@ -2772,7 +2881,10 @@ async def ai_ask_endpoint(
                 except Exception:
                     pass
                 llm_result = await asyncio.to_thread(ask_llm, ism_query, llm_context or None)
-                if llm_result and llm_result.get("answer") and llm_result.get("confidence", 0) >= 0.35:
+                ism_answer = str((llm_result or {}).get("answer") or "").strip()
+                # App chat is ISM-first: keep a real ISM answer even if confidence is
+                # modest. Groq/Gemini only run when ISM has nothing usable.
+                if llm_result and ism_answer:
                     logger.info("DEBUG: Using Indian Stock LLM (confidence=%.2f)", llm_result.get("confidence", 0))
                     merged = {
                         **rule_result,
@@ -2837,17 +2949,16 @@ async def ai_ask_endpoint(
                                 pass
                     return _validated(merged, "indian-stock-llm", requested_tier)
                 else:
-                    low_conf = llm_result.get("confidence", 0) if llm_result else 0
-                    logger.info("DEBUG: Indian Stock LLM confidence too low (%.2f), falling back", low_conf)
+                    logger.info("DEBUG: Indian Stock LLM returned no answer")
                     if requested_tier == "indian-stock-llm":
-                        return _validated(llm_result or {"answer": "Low confidence"}, "indian-stock-llm", requested_tier)
+                        return _validated(llm_result or {"answer": "I could not build an answer from live data. Try a symbol or a clearer ask."}, "indian-stock-llm", requested_tier)
         except Exception as e:
             logger.error("Indian Stock LLM error: %s", e)
             if requested_tier == "indian-stock-llm":
                 return _validated({"answer": f"Indian Stock LLM error: {str(e)}"}, "none", requested_tier)
 
-    # Tier 2: Groq — paid generative fallback
-    if requested_tier in ("auto", "fast", "groq"):
+    # Paid models only when the caller asked for them — not for the BYSEL app path.
+    if requested_tier == "groq":
         try:
             from ..groq_llm import groq_available, ask_groq
             logger.info(f"DEBUG: groq_available() = {groq_available()}")
@@ -2913,8 +3024,8 @@ async def ai_ask_endpoint(
             if requested_tier == "groq":
                 return _validated({"answer": f"Groq LLM error: {str(e)}"}, "none", requested_tier)
 
-    # Tier 3: Gemini — optional paid fallback
-    if requested_tier in ("auto", "fast", "gemini"):
+    # Gemini only when the caller asked for it.
+    if requested_tier == "gemini":
         try:
             from ..gemini_llm import gemini_available, ask_gemini
             logger.info(f"DEBUG: gemini_available() = {gemini_available()}")
@@ -3346,31 +3457,43 @@ async def compare_mutual_funds_endpoint(
     if len(deduped_codes) > 4:
         raise HTTPException(status_code=400, detail="Compare up to 4 funds at a time")
 
-    try:
-        live_map = {fund.schemeCode: fund for fund in _fetch_live_mutual_funds()}
-    except Exception:
-        live_map = {}
-
+    live_map = _warm_mf_live_map()
     compared_funds: list[MutualFund] = []
+    missing: list[str] = []
     for code in deduped_codes:
-        fund = live_map.get(code)
+        row = db.query(MutualFundModel).filter(MutualFundModel.scheme_code == code).first()
+        stored = _mf_from_db_row(row) if row is not None else None
+        fund = _merge_compare_fund(live_map.get(code), stored)
         if fund is None:
+            missing.append(code)
+        else:
+            compared_funds.append(fund)
+
+    if missing:
+        # Only download AMFI if selected codes are not in cache or DB.
+        try:
+            live_map = {fund.schemeCode: fund for fund in _fetch_live_mutual_funds()}
+        except Exception as exc:
+            logger.warning("mutual_funds.compare.live_fetch_failed reason=%s", str(exc))
+            live_map = _warm_mf_live_map()
+        still_missing: list[str] = []
+        recovered: list[MutualFund] = []
+        for code in missing:
             row = db.query(MutualFundModel).filter(MutualFundModel.scheme_code == code).first()
-            if row is None:
-                raise HTTPException(status_code=404, detail=f"Mutual fund '{code}' not found")
-            fund = MutualFund(
-                schemeCode=row.scheme_code,
-                schemeName=row.scheme_name,
-                category=row.category,
-                nav=row.nav,
-                navDate=row.nav_date,
-                returns1Y=row.returns_1y,
-                returns3Y=row.returns_3y,
-                returns5Y=row.returns_5y,
-                fundHouse=row.fund_house,
-                riskLevel=row.risk_level,
+            stored = _mf_from_db_row(row) if row is not None else None
+            fund = _merge_compare_fund(live_map.get(code), stored)
+            if fund is None:
+                still_missing.append(code)
+            else:
+                recovered.append(fund)
+        if still_missing:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Mutual fund '{still_missing[0]}' not found",
             )
-        compared_funds.append(fund)
+        compared_funds.extend(recovered)
+        order = {code: idx for idx, code in enumerate(deduped_codes)}
+        compared_funds.sort(key=lambda item: order.get(item.schemeCode, 99))
 
     return _build_compare_response(compared_funds)
 

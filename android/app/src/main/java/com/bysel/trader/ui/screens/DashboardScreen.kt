@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
@@ -53,10 +54,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.bysel.trader.data.LocalHabitInsights
 import com.bysel.trader.data.PracticeHabitStore
 import com.bysel.trader.data.models.Holding
-import com.bysel.trader.data.models.IntradayTip
 import com.bysel.trader.data.models.IntradayTipsResponse
 import com.bysel.trader.data.models.MarketMoverQuote
 import com.bysel.trader.data.models.MarketNewsHeadline
@@ -77,6 +76,7 @@ import androidx.compose.material.icons.filled.ShoppingCart
 import java.util.Locale
 import com.bysel.trader.ui.components.DashboardSkeletonLoader
 import com.bysel.trader.ui.components.InfoChip
+import com.bysel.trader.ui.components.HabitLiteracyCatalog
 import com.bysel.trader.ui.components.InvestorTipsCard
 import com.bysel.trader.ui.components.NewsWidget
 import com.bysel.trader.ui.components.PullToRefreshBox
@@ -319,6 +319,7 @@ fun DashboardScreen(
     onTradeClick: (String) -> Unit,
     onErrorDismiss: () -> Unit,
     onAiClick: (() -> Unit)? = null,
+    onAiQuery: ((String) -> Unit)? = null,
     marketStatus: MarketStatus? = null,
     onQuickTradeClick: ((String) -> Unit)? = null,
     onSignalLabClick: (() -> Unit)? = null,
@@ -331,6 +332,7 @@ fun DashboardScreen(
     walletBalance: Double = 0.0,
     onAddPracticeFunds: (() -> Unit)? = null,
     watchlistSymbols: List<String> = emptyList(),
+    scrollToTopTick: Int = 0,
 ) {
     val context = LocalContext.current
     val dashboardViewModel: DashboardViewModel = viewModel()
@@ -434,6 +436,7 @@ fun DashboardScreen(
             investorTips = investorTips,
             investorTipsLoading = investorTipsLoading,
             investorTipTopic = investorTipTopic,
+            scrollToTopTick = scrollToTopTick,
             showHomeGuide = showHomeGuide,
             homeGuideStep = homeGuideStep,
             onShowGuide = {
@@ -464,6 +467,7 @@ fun DashboardScreen(
             practiceHabit = habit,
             practiceProgress = practiceProgress,
             onAiClick = onAiClick,
+            onAiQuery = onAiQuery,
             marketStatus = marketStatus,
             onQuickTradeClick = onQuickTradeClick,
             onSignalLabClick = onSignalLabClick,
@@ -551,6 +555,7 @@ fun DashboardContent(
     practiceIdeasLoading: Boolean = false,
     practiceIdeasDisclaimer: String = "",
     onAiClick: (() -> Unit)? = null,
+    onAiQuery: ((String) -> Unit)? = null,
     marketStatus: MarketStatus? = null,
     onQuickTradeClick: ((String) -> Unit)? = null,
     onSignalLabClick: (() -> Unit)? = null,
@@ -569,9 +574,16 @@ fun DashboardContent(
     investorTips: InvestorTipsResponse = localInvestorTips("long_term"),
     investorTipsLoading: Boolean = false,
     investorTipTopic: String = "long_term",
+    scrollToTopTick: Int = 0,
 ) {
     val theme = LocalAppTheme.current
     val scope = rememberCoroutineScope()
+    val homeListState = rememberLazyListState()
+    LaunchedEffect(scrollToTopTick) {
+        if (scrollToTopTick > 0) {
+            homeListState.animateScrollToItem(0)
+        }
+    }
     val layoutRequester = remember { BringIntoViewRequester() }
     val yourSpaceRequester = remember { BringIntoViewRequester() }
     val portfolioWidgetRequester = remember { BringIntoViewRequester() }
@@ -769,6 +781,7 @@ fun DashboardContent(
             enabled = true
         ) {
         LazyColumn(
+            state = homeListState,
             modifier = Modifier
                 .fillMaxSize()
                 .background(LocalAppTheme.current.surface)
@@ -1267,63 +1280,22 @@ fun DashboardContent(
             )
         }
 
-        item {
-            val localSession = LocalHabitInsights.sessionHabits(
-                habit = practiceHabit,
-                progress = practiceProgress,
-                holdings = holdings,
-                watchlistSize = watchlistSymbols.size,
-            )
-            val tipsPayload = LocalHabitInsights.mergeSession(
-                remote = intradayTips,
-                local = localSession,
-                fallback = buildLocalIntradayTips(marketStatus),
-                limit = 4,
-            )
-            IntradayTipsSection(
-                phaseLabel = tipsPayload.phaseLabel,
-                tips = tipsPayload.tips,
-                disclaimer = tipsPayload.disclaimer.ifBlank {
-                    "Educational session habits — not stock tips."
-                },
-                loading = intradayTipsLoading && tipsPayload.tips.isEmpty(),
-                mood = tipsPayload.mood,
-                paperNote = tipsPayload.paperNote,
-                sampleSize = tipsPayload.sampleSize,
-            )
-        }
-
-        item {
-            val remoteInvestor = if (investorTips.tips.isEmpty()) {
-                localInvestorTips(investorTipTopic)
-            } else {
-                investorTips
+        if (onAiQuery != null) {
+            item {
+                IntradayTipsSection(
+                    onLearnQuery = onAiQuery,
+                )
             }
-            val mergedInvestor = LocalHabitInsights.mergeInvestor(
-                remote = remoteInvestor,
-                local = LocalHabitInsights.investorHabits(
-                    habit = practiceHabit,
-                    progress = practiceProgress,
-                    holdings = holdings,
-                    watchlistSize = watchlistSymbols.size,
-                    topic = investorTipTopic,
-                ),
-                limit = 4,
-            )
-            InvestorTipsCard(
-                title = "Investor habits",
-                topicLabel = mergedInvestor.topicLabel,
-                tips = mergedInvestor.tips,
-                disclaimer = mergedInvestor.disclaimer.ifBlank {
-                    "Educational investor habits — not stock, fund, or IPO recommendations."
-                },
-                loading = investorTipsLoading && mergedInvestor.tips.isEmpty(),
-                topics = mergedInvestor.topics.ifEmpty { localInvestorTips("long_term").topics },
-                selectedTopic = investorTipTopic,
-                onTopicSelected = { dashboardViewModel.selectInvestorTipTopic(it) },
-                paperNote = mergedInvestor.paperNote,
-                sampleSize = mergedInvestor.sampleSize,
-            )
+            item {
+                InvestorTipsCard(
+                    title = "Investor habits",
+                    topicLabel = "",
+                    tips = emptyList(),
+                    disclaimer = "",
+                    learnLinks = HabitLiteracyCatalog.investorLinks,
+                    onLearnQuery = onAiQuery,
+                )
+            }
         }
         
         item {
@@ -2118,13 +2090,7 @@ private fun MarketPulseHero(
 
 @Composable
 private fun IntradayTipsSection(
-    phaseLabel: String,
-    tips: List<IntradayTip>,
-    disclaimer: String,
-    loading: Boolean,
-    mood: String? = null,
-    paperNote: String = "",
-    sampleSize: Int = 0,
+    onLearnQuery: (String) -> Unit,
 ) {
     val theme = LocalAppTheme.current
     Column(
@@ -2132,176 +2098,28 @@ private fun IntradayTipsSection(
             .fillMaxWidth()
             .byselSectionSurface(RoundedCornerShape(14.dp))
             .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Session habits",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = theme.text,
-                )
-                Text(
-                    text = buildString {
-                        append(phaseLabel.ifBlank { "Session" })
-                        if (!mood.isNullOrBlank()) append(" · ${mood.replaceFirstChar { it.uppercase() }} tape")
-                    },
-                    fontSize = 11.sp,
-                    color = theme.textSecondary,
-                    lineHeight = 14.sp,
-                    maxLines = 2,
-                    softWrap = true,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Text(
-                text = if (tips.any { it.source.equals("paper", true) }) "Paper book" else "Habits",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                color = theme.primary,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(theme.primary.copy(alpha = 0.14f))
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            )
-        }
-        if (loading && tips.isEmpty()) {
-            LinearProgressIndicator(
-                modifier = Modifier.fillMaxWidth(),
-                color = theme.primary,
-            )
-        } else {
-            tips.take(4).forEach { tip ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(theme.surface.copy(alpha = 0.55f))
-                        .padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Text(
-                        text = tip.title,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = theme.text,
-                        lineHeight = 16.sp,
-                        maxLines = 2,
-                        softWrap = true,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = tip.body,
-                        fontSize = 11.sp,
-                        color = theme.textSecondary,
-                        lineHeight = 15.sp,
-                        maxLines = 4,
-                        softWrap = true,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    val meta = buildString {
-                        if (tip.source.equals("paper", true)) append("From your paper trades")
-                        else append("Session cue")
-                        if (!tip.evidence.isNullOrBlank()) append(" · ${tip.evidence}")
-                    }
-                    Text(
-                        text = meta,
-                        fontSize = 10.sp,
-                        color = theme.primary.copy(alpha = 0.85f),
-                        lineHeight = 13.sp,
-                        maxLines = 2,
-                        softWrap = true,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
-        val note = when {
-            paperNote.isNotBlank() -> paperNote
-            sampleSize > 0 -> "Based on $sampleSize paper fills (IST windows)."
-            else -> ""
-        }
-        if (note.isNotBlank()) {
-            Text(
-                text = note,
-                fontSize = 10.sp,
-                color = theme.textSecondary,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
         Text(
-            text = disclaimer,
-            fontSize = 10.sp,
-            color = theme.textSecondary,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
+            text = "Session habits",
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = theme.text,
         )
+        HabitLiteracyCatalog.sessionLinks.forEach { link ->
+            TextButton(
+                onClick = { onLearnQuery(link.learnQuery) },
+                contentPadding = PaddingValues(0.dp),
+            ) {
+                Text(
+                    text = "Learn: ${link.title}",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = theme.primary,
+                )
+            }
+        }
     }
-}
-
-private fun buildLocalIntradayTips(marketStatus: MarketStatus?): IntradayTipsResponse {
-    val isHoliday = marketStatus?.message?.contains("holiday", ignoreCase = true) == true
-    val phase = MarketSession.phase(isHoliday = isHoliday)
-    val tips = when (phase.id) {
-        "weekend" -> listOf(
-            IntradayTip("wk_journal", "Weekend review", "Tag last week's paper trades: plan followed? size too large? one process fix for Monday.", "process", "session"),
-            IntradayTip("wk_calendar", "Scan the week ahead", "Note RBI/Fed/earnings dates — busy event days favour smaller size or sitting out.", "risk", "session"),
-            IntradayTip("wk_watchlist", "Trim the watchlist", "Keep 5–8 liquid names with a clear level to avoid FOMO entries.", "process", "session"),
-        )
-        "holiday" -> listOf(
-            IntradayTip("hol_gap", "Holiday gap risk", "Overnight news can gap the reopen. Prefer smaller size on the next cash session.", "risk", "session"),
-            IntradayTip("hol_plan", "Prep, don't chase", "Write entry/stop/target while the tape is shut — decide before the open auction.", "process", "session"),
-        )
-        "pre_market" -> listOf(
-            IntradayTip("pm_levels", "Mark key levels", "Note prior day high/low and invalidation before 9:15 IST.", "process", "session"),
-            IntradayTip("pm_news", "Headline check", "If you can't name the risk, skip the paper trade.", "risk", "session"),
-            IntradayTip("pm_size", "Pre-commit size", "Decide max loss in ₹ before the open. Intraday size should survive a bad first hour.", "risk", "session"),
-        )
-        "pre_open" -> listOf(
-            IntradayTip("po_auction", "Pre-open is noisy", "9:00–9:15 discovery can fake breakouts. Wait for the continuous session.", "session", "session"),
-            IntradayTip("po_orders", "Order discipline", "Prefer limits near your level — market orders into the open pay spreads.", "process", "session"),
-        )
-        "first_hour" -> listOf(
-            IntradayTip("fh_patience", "First-hour volatility", "Let an opening range form (15–30 min) before chasing breakouts.", "session", "session"),
-            IntradayTip("fh_stop", "Stop first, entry second", "If you can't place a stop where the thesis dies, you don't have a trade.", "process", "session"),
-            IntradayTip("fh_fomo", "Skip the gap chase", "Late FOMO into already-extended opens often has poor R:R.", "psychology", "session"),
-        )
-        "mid_morning" -> listOf(
-            IntradayTip("mm_trend", "Trade with breadth", "Strong advances → pullback longs; heavy declines → tighten risk.", "session", "session"),
-            IntradayTip("mm_scale", "Scale, don't all-in", "Don't average losers mid-morning — that is how a practice day blows up.", "risk", "session"),
-        )
-        "lunch_lull" -> listOf(
-            IntradayTip("ll_chop", "Midday chop zone", "12:00–13:30 IST often ranges. Smaller size or wait — fake breaks are common.", "session", "session"),
-            IntradayTip("ll_revenge", "No revenge trades", "After a stop-out, step away 10 minutes. The next impulse ticket is rarely the best idea.", "psychology", "session"),
-        )
-        "afternoon" -> listOf(
-            IntradayTip("af_size_down", "Cut size into the close", "New paper positions after 14:30 IST need a stronger reason — less time for the thesis.", "risk", "session"),
-            IntradayTip("af_time_stop", "Time stops matter", "If it hasn't worked by mid-afternoon, reassess. Dead capital needs a decision.", "process", "session"),
-        )
-        "closing_window" -> listOf(
-            IntradayTip("cw_cas", "Know the CAS clock", "From 3 Aug 2026: F&O cash continuous ~15:15, CAS ~15:35, derivatives ~15:40 IST — broker MIS may square earlier.", "session", "session"),
-            IntradayTip("cw_flat", "Intraday → flat", "Don't leave MIS hopes overnight. Square off with a time buffer — last minutes are chaotic.", "risk", "session"),
-            IntradayTip("cw_no_lottery", "No closing lottery", "Don't double size in the last 20 minutes to 'make the day back'. That is variance, not skill.", "psychology", "session"),
-        )
-        else -> listOf(
-            IntradayTip("ah_review", "After-hours debrief", "Grade process, not P&L. A green day with broken rules is still a bad practice day.", "process", "session"),
-            IntradayTip("ah_rest", "Protect attention", "Stop refreshing after close — fresh decisions need a clear head at 9:15 IST.", "psychology", "session"),
-        )
-    }
-    return IntradayTipsResponse(
-        phase = phase.id,
-        phaseLabel = phase.label,
-        isOpen = phase.isOpen && marketStatus?.isOpen != false,
-        tips = tips,
-        disclaimer = "Educational session habits — not stock tips or investment advice.",
-        paperNote = "IST session cues until enough paper fills are logged.",
-    )
 }
 
 @Composable

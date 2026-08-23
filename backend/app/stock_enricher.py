@@ -845,13 +845,20 @@ _SYMBOL_COMPANY: dict[str, str] = {
 
 def normalize_hinglish(query: str) -> str:
     """
-    Normalize Hinglish (Hindi-English mix) queries to English for NLP processing.
+    Normalize Hinglish / Telugu / Tenglish queries to English for NLP processing.
     Preserves stock symbols and financial terms.
     Examples:
     • "RELIANCE ka P/E kya hai?" → "RELIANCE of P/E what is?"
     • "₹1500 par buy karna chahiye?" → "₹1500 at buy should?"
     • "NIFTY me RELIANCE best hai?" → "NIFTY in RELIANCE best is?"
     """
+    try:
+        from indian_stock_llm.query_language import normalize_user_query
+
+        return normalize_user_query(query)
+    except Exception:
+        pass
+
     q = query
 
     # Hindi question words (placed at start for clarity)

@@ -1105,62 +1105,18 @@ private fun PriceStoryCard(
                 }
             }
 
-            Text(
-                text = "Market literacy",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = theme.text,
-            )
-            Text(
-                text = "Candles, ratios, and NSE tools — learning only, not buy/sell advice.",
-                fontSize = 11.sp,
-                color = theme.textSecondary,
-            )
-            literacyCards.forEach { card ->
-                val accent = when (card.tag.lowercase()) {
-                    "candle" -> if (card.seenOnChart) theme.primary else theme.text
-                    "fundamental" -> theme.text
-                    else -> theme.text
-                }
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = theme.surface,
-                    shape = RoundedCornerShape(12.dp),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
+            if (onAiQuery != null && literacyCards.isNotEmpty()) {
+                literacyCards.forEach { card ->
+                    TextButton(
+                        onClick = { onAiQuery(card.learnQuery) },
+                        contentPadding = PaddingValues(0.dp),
                     ) {
                         Text(
-                            text = buildString {
-                                append(card.title)
-                                append(" · ")
-                                append(card.tag)
-                                if (card.seenOnChart) append(" · on this chart")
-                            },
+                            text = "Learn: ${card.title}",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = accent,
+                            color = theme.primary,
                         )
-                        Text(
-                            text = card.summary,
-                            fontSize = 11.sp,
-                            color = theme.textSecondary,
-                            lineHeight = 15.sp,
-                        )
-                        if (onAiQuery != null) {
-                            TextButton(
-                                onClick = { onAiQuery(card.learnQuery) },
-                                contentPadding = PaddingValues(0.dp),
-                            ) {
-                                Text(
-                                    text = "Learn: ${card.title}",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = theme.primary,
-                                )
-                            }
-                        }
                     }
                 }
             }
