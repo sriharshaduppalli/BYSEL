@@ -1,0 +1,3 @@
+[submodule "backend/vendor/indian_stock_market"]
+	path = backend/vendor/indian_stock_market
+	url = https://github.com/sriharshaduppalli/Indian_stock_market.git

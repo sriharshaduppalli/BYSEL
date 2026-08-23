@@ -11,14 +11,15 @@ import json
 import logging
 import os
 import re
-import sys
 from pathlib import Path
 from typing import Any
+
+from .ism_bootstrap import ensure_ism_on_path, ism_package_dir
 
 logger = logging.getLogger(__name__)
 
 _LLM_DATA = Path(__file__).parent.parent / "llm_data"
-_LLM_PKG = Path(__file__).parent.parent / "indian_stock_llm"
+_LLM_PKG = ism_package_dir()
 _ENTERPRISE = _LLM_DATA / "enterprise"
 
 _assistant = None
@@ -85,13 +86,10 @@ def _load_assistant():
     if _assistant is not None:
         return _assistant
 
-    if not _LLM_PKG.exists():
-        logger.error("indian_stock_llm package not found at %s", _LLM_PKG)
+    pkg = ensure_ism_on_path()
+    if not pkg.exists():
+        logger.error("indian_stock_llm package not found at %s", pkg)
         return None
-
-    pkg_parent = str(_LLM_PKG.parent)
-    if pkg_parent not in sys.path:
-        sys.path.insert(0, pkg_parent)
 
     try:
         from indian_stock_llm import StockMarketAssistant
@@ -340,7 +338,59 @@ def _prior_symbol_from_history(history: list | None) -> str | None:
     return None
 
 
+def _compose_ism_fallback(
+    query: str,
+    ctx: dict[str, Any] | None,
+    market_context: dict[str, Any] | None,
+) -> str | None:
+    """Last-resort ISM composer so the app never needs Groq for a usable reply."""
+    try:
+        from indian_stock_llm.answer_composer import compose_structured_answer
+        from indian_stock_llm.query_contract import resolve_query_contract
+
+        contract = resolve_query_contract(
+            query,
+            intent_hint=str((ctx or {}).get("intent") or ""),
+            conversation_history=(ctx or {}).get("conversation_history")
+            if isinstance((ctx or {}).get("conversation_history"), list)
+            else None,
+        )
+        packed = market_context if isinstance(market_context, dict) else dict(ctx or {})
+        composed = compose_structured_answer(
+            query=contract.resolved_query or query,
+            intent=contract.ism_intent,
+            market_context=packed,
+            context_lines=[],
+        )
+        if composed and composed.strip():
+            return composed.strip()
+        if contract.clarifier:
+            return contract.clarifier
+    except Exception as exc:
+        logger.debug("ISM fallback compose missed: %s", exc)
+    return None
+
+
+def _apply_response_language(original_query: str, result: dict | None) -> dict | None:
+    """Keep Telugu replies on the original user text, not the English rewrite."""
+    if not result:
+        return result
+    try:
+        from indian_stock_llm.telugu_response import apply_response_language
+
+        return apply_response_language(original_query, result)
+    except Exception:
+        return result
+
+
 def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
+    """Answer using education pack first, then grounded Indian-market RAG."""
+    original_query = (query or "").strip()
+    result = _ask_llm_core(query, context)
+    return _apply_response_language(original_query, result)
+
+
+def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | None:
     """Answer using education pack first, then grounded Indian-market RAG."""
     cleaned = (query or "").strip()
     if not cleaned:
@@ -348,6 +398,23 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
 
     ctx = dict(context or {})
     history = ctx.get("conversation_history")
+    try:
+        from indian_stock_llm.query_contract import resolve_query_contract
+
+        _contract = resolve_query_contract(
+            cleaned,
+            intent_hint=str(ctx.get("intent") or ctx.get("groq_intent") or ""),
+            conversation_history=history if isinstance(history, list) else None,
+            screen_context=ctx.get("screen_context") if isinstance(ctx.get("screen_context"), dict) else None,
+        )
+        if _contract.resolved_query:
+            cleaned = _contract.resolved_query
+        if _contract.ism_intent:
+            ctx["intent"] = _contract.ism_intent
+        if _contract.slots.symbol and not ctx.get("symbol"):
+            ctx["symbol"] = _contract.slots.symbol
+    except Exception:
+        pass
     if isinstance(history, list) and history:
         # Compact multi-turn memory for the composer (ISM path).
         bits: list[str] = []
@@ -929,6 +996,14 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
             )
         )
         education = None
+        wants_numeric_calc = bool(
+            re.search(r"\b(calculate|compute|cagr|return from buy)\b", cleaned.lower())
+            and re.search(r"\d", cleaned)
+            and not re.search(
+                r"\b(what is|what are|explain|define|formula|equation|meaning)\b",
+                cleaned.lower(),
+            )
+        )
         if (
             (not wants_live_indicator or retail_literacy_ask)
             and not stock_specific_metric
@@ -940,6 +1015,7 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
             and not nifty_outlook_ask
             and not live_ccg
             and not sentiment_live
+            and not wants_numeric_calc
         ):
             education = get_education_answer(cleaned)
         # Pure definitions only (no "of SYMBOL").
@@ -1409,6 +1485,11 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
 
         result = assistant.query(cleaned, market_context=market_context)
         answer = (result.get("answer") or "").strip()
+        if (not answer) or "withheld for safety" in answer.lower():
+            composed = _compose_ism_fallback(cleaned, ctx, market_context)
+            if composed:
+                answer = composed
+                result["confidence"] = max(float(result.get("confidence") or 0.0), 0.55)
         disclaimer = (result.get("disclaimer") or "").strip()
         if disclaimer and disclaimer not in answer:
             answer = f"{answer}\n\n{disclaimer}" if answer else disclaimer
@@ -1426,6 +1507,16 @@ def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
         }
     except Exception as exc:
         logger.error("Indian Stock LLM query failed: %s", exc, exc_info=True)
+        composed = _compose_ism_fallback(cleaned, ctx, None)
+        if composed:
+            return {
+                "answer": composed,
+                "intent": str(ctx.get("intent") or "general_query"),
+                "confidence": 0.5,
+                "citations": [],
+                "category": "stocks",
+                "source": "indian-stock-llm",
+            }
         return None
 
 
@@ -1456,11 +1547,23 @@ def record_chat_feedback(
 
         feedback_path = getattr(lm, "feedback_log_path", None)
         if feedback_path is not None and hasattr(lm, "_write_line"):
+            query_key = query
+            language = "en"
+            try:
+                from indian_stock_llm.query_language import learning_query_fields
+
+                fields = learning_query_fields(query)
+                query_key = str(fields.get("key") or query)
+                language = str(fields.get("language") or "en")
+            except Exception:
+                query_key = query
             payload = {
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "kind": "thumbs_v1",
                 "intent": resolved_intent,
                 "helpful": bool(helpful),
+                "language": language,
+                "query_key": query_key,
                 "query_hash": lm.anonymize_query(query) if hasattr(lm, "anonymize_query") else "",
                 "answer_chars": len((answer or "").strip()),
             }

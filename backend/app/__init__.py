@@ -2,6 +2,10 @@
 
 import os
 import time
+
+from .ism_bootstrap import ensure_ism_on_path
+
+ensure_ism_on_path()
 from collections import deque
 from threading import Lock
 from uuid import uuid4
