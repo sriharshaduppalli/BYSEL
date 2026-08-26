@@ -84,7 +84,7 @@ class TradingViewModel(
     }
 
     // --- Stream Health ---
-    enum class StreamHealth { LIVE, RECONNECTING, OFFLINE }
+    enum class StreamHealth { LIVE, RECONNECTING, CLOSED, OFFLINE }
     private val _streamHealth = MutableStateFlow(StreamHealth.OFFLINE)
     val streamHealth: StateFlow<StreamHealth> = _streamHealth.asStateFlow()
 
@@ -594,11 +594,12 @@ class TradingViewModel(
             userId = currentWatchlistUserId(),
             lastGood = lastGood,
         )
-        _watchlist.value = loaded
-        if (loaded.isNotEmpty()) {
-            viewModelScope.launch {
-                WatchlistStore.writeDataStore(watchlistAppContext(), currentWatchlistUserId(), loaded)
-            }
+        // Login, logout, or a session blip must never let a shorter disk snapshot
+        // replace names the user just added in this process.
+        val merged = WatchlistSymbols.unionPreserveOrder(lastGood, loaded)
+        _watchlist.value = merged
+        if (merged.isNotEmpty()) {
+            persistWatchlist(merged, allowEmpty = false)
         }
     }
 
@@ -618,10 +619,15 @@ class TradingViewModel(
         _watchlistSyncError.value = "Couldn't refresh quotes. Showing your last saved list."
     }
 
+    private fun isMarketTapeOpen(): Boolean {
+        val serverOpen = _marketStatus.value?.isOpen
+        return MarketSession.isOpen() || serverOpen == true
+    }
+
     private fun markQuoteUpdate(nowMs: Long = System.currentTimeMillis()) {
         lastQuotesRefreshAt = nowMs
         _lastQuoteUpdateAt.value = nowMs
-        _streamHealth.value = StreamHealth.LIVE
+        _streamHealth.value = if (isMarketTapeOpen()) StreamHealth.LIVE else StreamHealth.CLOSED
     }
 
     private fun syncSelectedQuoteFrom(quotes: List<Quote>) {
@@ -1562,11 +1568,20 @@ class TradingViewModel(
 
         liveRefreshSymbols = symbolsToTrack
         autoRefreshJob?.cancel()
+        if (!isMarketTapeOpen()) {
+            _streamHealth.value = StreamHealth.CLOSED
+            autoRefreshJob = null
+            return
+        }
         _streamHealth.value = StreamHealth.RECONNECTING
         autoRefreshJob = viewModelScope.launch {
             launch {
                 while (isActive) {
                     kotlinx.coroutines.delay(8_000L)
+                    if (!isMarketTapeOpen()) {
+                        _streamHealth.value = StreamHealth.CLOSED
+                        continue
+                    }
                     val staleMs = System.currentTimeMillis() - _lastQuoteUpdateAt.value
                     if (staleMs > 8_000L && _streamHealth.value == StreamHealth.LIVE) {
                         _streamHealth.value = StreamHealth.RECONNECTING
@@ -1612,7 +1627,12 @@ class TradingViewModel(
         quoteWatchdogJob = viewModelScope.launch {
             while (isActive) {
                 kotlinx.coroutines.delay(liveRefreshIntervalMs.coerceIn(2_000L, 10_000L))
-                if (!MarketSession.isOpen()) continue
+                if (!isMarketTapeOpen()) {
+                    if (_streamHealth.value != StreamHealth.OFFLINE) {
+                        _streamHealth.value = StreamHealth.CLOSED
+                    }
+                    continue
+                }
                 val staleFor = maxOf(QUOTE_STALE_THRESHOLD, liveRefreshIntervalMs)
                 if (System.currentTimeMillis() - lastQuotesRefreshAt > staleFor) {
                     refreshQuotes(force = true, showSpinner = false)
@@ -3916,7 +3936,7 @@ class TradingViewModel(
             riskLevel = "Medium",
             demoBasket = true,
             illustrative = true,
-            disclaimer = "Illustrative educational metrics — live risk service unavailable. Not your paper portfolio.",
+            disclaimer = "Sample educational numbers — not your paper book.",
         )
     }
 

@@ -1328,6 +1328,7 @@ fun BYSELApp(
                                     quotes = quotes.filter { quote ->
                                         watchlistSymbols.any { WatchlistSymbols.matches(it, quote.symbol) }
                                     },
+                                    watchlistSymbols = watchlistSymbols,
                                     isLoading = quotesRefreshing,
                                     error = marketError,
                                     onRefresh = { viewModel.refreshQuotes(force = true, showSpinner = true) },

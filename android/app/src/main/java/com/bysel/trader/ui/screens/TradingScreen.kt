@@ -50,6 +50,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import com.bysel.trader.data.WatchlistSymbols
+import com.bysel.trader.utils.MarketSession
 import com.bysel.trader.ui.format.formatInr
 import com.bysel.trader.ui.format.formatSignedPct
 import com.bysel.trader.data.models.Quote
@@ -475,11 +476,23 @@ private fun SpotTradingWorkspace(
             delay(1000)
         }
     }
-    val quoteFreshnessLabel = remember(lastQuoteUpdateAt, statusNow) {
-        if (lastQuoteUpdateAt <= 0L) {
+    val marketTapeOpen = marketStatus?.isOpen == true || MarketSession.isOpen(statusNow)
+    val quoteFreshnessLabel = remember(lastQuoteUpdateAt, statusNow, marketTapeOpen) {
+        val ageSec = if (lastQuoteUpdateAt <= 0L) {
+            Long.MAX_VALUE
+        } else {
+            ((statusNow - lastQuoteUpdateAt) / 1000L).coerceAtLeast(0L)
+        }
+        if (!marketTapeOpen) {
+            when {
+                lastQuoteUpdateAt <= 0L -> "NSE closed"
+                ageSec < 60L -> "Closed · last print just now"
+                ageSec < 3600L -> "Closed · last print ${ageSec / 60}m ago"
+                else -> "Closed · last print ${ageSec / 3600}h ago"
+            }
+        } else if (lastQuoteUpdateAt <= 0L) {
             "Syncing..."
         } else {
-            val ageSec = ((statusNow - lastQuoteUpdateAt) / 1000L).coerceAtLeast(0L)
             when {
                 ageSec <= 4L -> "Live • just now"
                 ageSec < 60L -> "Live • ${ageSec}s ago"
@@ -488,7 +501,9 @@ private fun SpotTradingWorkspace(
             }
         }
     }
-    val quoteFreshnessColor = if (lastQuoteUpdateAt <= 0L) {
+    val quoteFreshnessColor = if (!marketTapeOpen) {
+        LocalAppTheme.current.textSecondary
+    } else if (lastQuoteUpdateAt <= 0L) {
         Color(0xFFFFC107)
     } else {
         val ageSec = ((statusNow - lastQuoteUpdateAt) / 1000L).coerceAtLeast(0L)
@@ -2730,11 +2745,13 @@ private fun StreamHealthPill(health: TradingViewModel.StreamHealth) {
     val dotColor = when (health) {
         TradingViewModel.StreamHealth.LIVE -> Color(0xFF00C853)
         TradingViewModel.StreamHealth.RECONNECTING -> Color(0xFFFF8F00)
+        TradingViewModel.StreamHealth.CLOSED -> Color(0xFF90A4AE)
         TradingViewModel.StreamHealth.OFFLINE -> Color(0xFF757575)
     }
     val label = when (health) {
         TradingViewModel.StreamHealth.LIVE -> "Live"
         TradingViewModel.StreamHealth.RECONNECTING -> "Reconnecting"
+        TradingViewModel.StreamHealth.CLOSED -> "Closed"
         TradingViewModel.StreamHealth.OFFLINE -> "Offline"
     }
     Row(verticalAlignment = Alignment.CenterVertically) {

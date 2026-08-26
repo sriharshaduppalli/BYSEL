@@ -68,7 +68,7 @@ fun RiskLabScreen(
             Spacer(modifier = Modifier.width(4.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("Risk Lab", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = appTheme.text)
-                Text("Educational VaR lab — not a live risk engine", fontSize = 12.sp, color = appTheme.textSecondary)
+                Text("Educational paper view — not advice", fontSize = 12.sp, color = appTheme.textSecondary)
             }
             IconButton(onClick = { load() }, enabled = !isLoading) {
                 Icon(Icons.Filled.Refresh, contentDescription = "Refresh", tint = appTheme.primary)
@@ -154,21 +154,20 @@ private fun RiskLabContent(
                             sampleNumbers && data.demoBasket ->
                                 "Sample numbers — not your paper book"
                             sampleNumbers ->
-                                "Illustrative sample — history was unavailable"
+                                "Sample numbers — for learning only"
                             else ->
-                                "Computed from daily market history"
+                                "Educational risk view"
                         },
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (sampleNumbers) Color(0xFFE65100) else appTheme.primary,
                     )
                     Text(
-                        text = data.disclaimer?.takeIf { it.isNotBlank() }
-                            ?: if (sampleNumbers) {
-                                "These VaR / Monte Carlo figures are fixed educational samples. They are not live risk on your holdings."
-                            } else {
-                                "Educational only — not a SEBI risk report or a forecast."
-                            },
+                        text = if (sampleNumbers) {
+                            "These figures are for learning. They are not live risk on your holdings."
+                        } else {
+                            "Educational only — not a SEBI risk report or a forecast."
+                        },
                         fontSize = 11.sp,
                         color = appTheme.textSecondary,
                         modifier = Modifier.padding(top = 4.dp),
@@ -213,7 +212,7 @@ private fun RiskLabContent(
                     if (sampleNumbers) {
                         "Sample figure only — not a modelled loss on your paper book."
                     } else {
-                        "With 95% confidence, daily loss is modeled near $var95Pct% from daily market history."
+                        "With 95% confidence, a one-day loss in this lab is near $var95Pct%."
                     },
                     fontSize = 11.sp,
                     color = appTheme.textSecondary,
@@ -245,9 +244,9 @@ private fun RiskLabContent(
         item {
             RiskSectionCard(
                 title = if (sampleNumbers) {
-                    "Illustrative Monte Carlo (sample)"
+                    "Possible 30-day outcomes (sample)"
                 } else {
-                    "Monte Carlo (500 simulations, 30-day)"
+                    "Possible 30-day outcomes"
                 },
                 appTheme = appTheme,
             ) {
@@ -286,7 +285,7 @@ private fun RiskLabContent(
                 shape = RoundedCornerShape(12.dp),
             ) {
                 Text(
-                    "Risk metrics use recent historical returns. VaR assumes a normal-like distribution and does not guarantee future results.",
+                    "Educational only. These figures are not a forecast or a SEBI risk report.",
                     fontSize = 11.sp,
                     color = appTheme.textSecondary,
                     modifier = Modifier.padding(12.dp),

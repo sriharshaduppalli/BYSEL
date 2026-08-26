@@ -1,6 +1,5 @@
 from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Date, UniqueConstraint, create_engine, text, inspect as sa_inspect
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime, date
 from pathlib import Path
 import logging

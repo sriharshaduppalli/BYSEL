@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List, Dict
 from datetime import datetime
 
@@ -37,8 +37,7 @@ class Quote(QuoteBase):
     previousClose: Optional[float] = None
     pe: Optional[float] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class HoldingBase(BaseModel):
     symbol: str
@@ -53,8 +52,7 @@ class HoldingCreate(HoldingBase):
 class Holding(HoldingBase):
     id: Optional[int] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class AlertBase(BaseModel):
     symbol: str
@@ -70,8 +68,7 @@ class Alert(AlertBase):
     # Epoch millis for Android Long deserialization (ISO datetimes break Gson).
     createdAt: Optional[int] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class OrderBase(BaseModel):
     symbol: str

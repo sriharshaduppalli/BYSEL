@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bysel.trader.data.WatchlistSymbols
 import com.bysel.trader.data.importbook.ImportedBook
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.Holding
@@ -69,6 +70,7 @@ import com.bysel.trader.ui.format.formatSignedPct
 @Composable
 fun WatchlistScreen(
     quotes: List<Quote>,
+    watchlistSymbols: List<String> = emptyList(),
     isLoading: Boolean,
     error: String?,
     onRefresh: () -> Unit,
@@ -79,7 +81,17 @@ fun WatchlistScreen(
     val sortMode = remember(sortModeName) {
         runCatching { WatchlistSortMode.valueOf(sortModeName) }.getOrDefault(WatchlistSortMode.MOVE)
     }
-    val sortedQuotes = remember(quotes, sortMode) { quotes.sortedByWatchlistMode(sortMode) }
+    val displayQuotes = remember(quotes, watchlistSymbols) {
+        val saved = WatchlistSymbols.normalizeAll(watchlistSymbols)
+        if (saved.isEmpty()) {
+            quotes
+        } else {
+            saved.map { symbol ->
+                WatchlistSymbols.findQuote(quotes, symbol) ?: Quote(symbol = symbol)
+            }
+        }
+    }
+    val sortedQuotes = remember(displayQuotes, sortMode) { displayQuotes.sortedByWatchlistMode(sortMode) }
     // Quote-load failures only. Order/F&O validation lives on other channels.
     val watchlistLoadError = error
 
@@ -108,10 +120,10 @@ fun WatchlistScreen(
                         color = LocalAppTheme.current.text
                     )
                     Text(
-                        text = if (quotes.isEmpty()) {
+                        text = if (sortedQuotes.isEmpty()) {
                             "Empty · add from Search (full NSE catalog)"
                         } else {
-                            "${quotes.size} tracked · ${sortMode.label}"
+                            "${sortedQuotes.size} tracked · ${sortMode.label}"
                         },
                         fontSize = 12.sp,
                         color = LocalAppTheme.current.textSecondary,
@@ -193,7 +205,35 @@ fun WatchlistScreen(
                         contentPadding = PaddingValues(bottom = 96.dp),
                     ) {
                         items(items = sortedQuotes, key = { it.symbol }) { quote ->
-                            UpgradedQuoteCard(quote) { onQuoteClick(quote) }
+                            if (quote.last <= 0.0) {
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(8.dp)
+                                        .clickable { onQuoteClick(quote) },
+                                    colors = byselCardColors(),
+                                    elevation = byselCardElevation(),
+                                    border = byselCardBorder(),
+                                    shape = RoundedCornerShape(12.dp),
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Text(
+                                            text = quote.symbol,
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = LocalAppTheme.current.text,
+                                        )
+                                        Text(
+                                            text = "Saved on My list · last price still loading",
+                                            fontSize = 13.sp,
+                                            color = LocalAppTheme.current.textSecondary,
+                                            modifier = Modifier.padding(top = 4.dp),
+                                        )
+                                    }
+                                }
+                            } else {
+                                UpgradedQuoteCard(quote) { onQuoteClick(quote) }
+                            }
                         }
                     }
                 }

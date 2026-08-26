@@ -11,6 +11,8 @@ import logging
 import asyncio
 from typing import Dict, List, Optional
 
+from .vendor_redact import redact_vendor_names_for_display
+
 logger = logging.getLogger(__name__)
 
 # Model to use — override via GROQ_MODEL env var.
@@ -1299,17 +1301,6 @@ def _strip_internal_metadata(text: str) -> str:
     result = "\n".join(filtered_lines).strip()
     # If everything was stripped, return original (safety)
     return redact_vendor_names_for_display(result if result else text)
-
-
-def redact_vendor_names_for_display(text: str) -> str:
-    """Keep vendor names out of user-visible copy."""
-    if not text:
-        return text
-    out = re.sub(r"(?i)Yahoo\s+Finance", "market data", text)
-    out = re.sub(r"(?i)NSE/Yahoo", "live market", out)
-    out = re.sub(r"(?i)\bYahoo\b", "market data", out)
-    out = re.sub(r"(?i)from available market data fields", "from available fields", out)
-    return out
 
 
 # ---------------------------------------------------------------------------

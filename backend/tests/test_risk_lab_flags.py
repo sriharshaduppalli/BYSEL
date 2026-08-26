@@ -1,5 +1,5 @@
-from app.groq_llm import redact_vendor_names_for_display
-from app.routes.ai_v2 import _build_risk_payload_from_returns, _illustrative_risk_payload
+from app.risk_lab_payload import _build_risk_payload_from_returns, _illustrative_risk_payload
+from app.vendor_redact import redact_vendor_names_for_display
 
 
 def test_illustrative_payload_is_flagged_as_sample():
@@ -25,8 +25,11 @@ def test_computed_payload_is_not_illustrative_unless_demo_basket():
     live = _build_risk_payload_from_returns(returns, ["RELIANCE", "TCS"], [0.5, 0.5], 10, False)
     assert live["illustrative"] is False
     assert live["demoBasket"] is False
-    assert "yahoo" not in live["disclaimer"].lower()
-    assert "computed" in live["disclaimer"].lower() or "market history" in live["disclaimer"].lower()
+    note = live["disclaimer"].lower()
+    assert "yahoo" not in note
+    assert "computed" not in note
+    assert "market history" not in note
+    assert "educational" in note
 
     demo = _build_risk_payload_from_returns(returns, ["RELIANCE", "TCS"], [0.5, 0.5], 10, True)
     assert demo["illustrative"] is True

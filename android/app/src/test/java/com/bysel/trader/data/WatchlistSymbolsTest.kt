@@ -71,6 +71,14 @@ class WatchlistSymbolsTest {
     }
 
     @Test
+    fun ownerChangeKeepsNamesAddedThisSession() {
+        val inMemory = listOf("RELIANCE", "TCS", "INFY")
+        val shorterDiskForNewOwner = listOf("INFY")
+        val merged = WatchlistSymbols.unionPreserveOrder(inMemory, shorterDiskForNewOwner)
+        assertEquals(listOf("RELIANCE", "TCS", "INFY"), merged)
+    }
+
+    @Test
     fun findQuoteMatchesNsAlias() {
         val quotes = listOf(Quote(symbol = "RELIANCE.NS", last = 1400.0, pctChange = 1.2))
         val found = WatchlistSymbols.findQuote(quotes, "RELIANCE")
