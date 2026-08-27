@@ -101,15 +101,16 @@ android {
         applicationId = "com.bysel.trader"
         minSdk = 24
         targetSdk = 36
-        val certPinHost = System.getenv("CERT_PIN_HOST") ?: "bysel-backend.onrender.com"
+        val certPinHost = System.getenv("CERT_PIN_HOST")
+            ?: "bysel-services-746069024823.europe-west1.run.app"
         val certPinPrimary = System.getenv("CERT_PIN_PRIMARY") ?: ""
         val certPinBackup = System.getenv("CERT_PIN_BACKUP") ?: ""
         val marketRestUrl = (
             System.getenv("MARKET_REST_URL")
-                ?: "https://bysel-backend.onrender.com/"
+                ?: "https://bysel-services-746069024823.europe-west1.run.app/"
             ).let { if (it.endsWith("/")) it else "$it/" }
         val marketWsUrl = System.getenv("MARKET_WS_URL")
-            ?: "wss://bysel-backend.onrender.com/ws/quotes"
+            ?: "wss://bysel-services-746069024823.europe-west1.run.app/ws/quotes"
         // Read version from root gradle.properties, but for bundleRelease we pre-bump
         // here so the built AAB and gradle.properties stay in sync in one run.
         versionCode = configuredVersionCode

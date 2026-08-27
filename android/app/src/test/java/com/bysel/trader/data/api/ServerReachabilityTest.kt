@@ -32,4 +32,9 @@ class ServerReachabilityTest {
         assertTrue(ServerReachability.isLikelyWarm())
         assertFalse(ServerReachability.hadFastSuccessRecently())
     }
+
+    @Test
+    fun wakeHintMaxIsLongerThanDelay() {
+        assertTrue(ServerReachability.WAKE_HINT_MAX_MS > ServerReachability.WAKE_HINT_DELAY_MS)
+    }
 }

@@ -119,6 +119,14 @@ def test_health_check():
     assert "version" in data
 
 
+def test_warmup_is_fast_and_does_not_require_yahoo():
+    response = client.get("/warmup")
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get("status") in {"ready", "warming"}
+    assert "db" in data
+
+
 def test_health_echoes_trace_header():
     trace_id = "trc-test-health-echo"
     response = client.get("/health", headers={"X-Trace-Id": trace_id})

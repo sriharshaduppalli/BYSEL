@@ -4,13 +4,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -155,7 +159,7 @@ fun SignalLabScreen(
                     ) {
                         CircularProgressIndicator(
                             strokeWidth = 2.dp,
-                            modifier = Modifier.width(20.dp).height(20.dp),
+                            modifier = Modifier.size(20.dp),
                             color = theme.primary,
                         )
                         Text(
@@ -193,13 +197,13 @@ fun SignalLabScreen(
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
-                            text = "Signal Lab Phase-2",
+                            text = "Today's playbooks",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = theme.text,
                         )
                         Text(
-                            text = "Server buckets from live quotes. Institutional Conviction is a proxy — not FII/DII filings.",
+                            text = "Educational lists from the session tape. Paper practice only — not brokerage signals.",
                             fontSize = 11.sp,
                             color = theme.textSecondary,
                             lineHeight = 16.sp,
@@ -209,11 +213,10 @@ fun SignalLabScreen(
 
                 items(scopedBackendBuckets, key = { "backend-${it.bucketId}" }) { bucket ->
                     SignalBucketCarousel(
-                        title = bucket.title,
-                        thesis = bucket.thesis,
+                        title = publicBucketTitle(bucket.title),
+                        thesis = publicBucketThesis(bucket.thesis),
                         count = bucket.candidates.size,
-                        badge = if (bucket.proxy) "Proxy" else null,
-                        note = bucket.notes.firstOrNull(),
+                        note = publicBucketNote(bucket.notes),
                     ) {
                         items(
                             bucket.candidates.take(8),
@@ -243,7 +246,6 @@ fun SignalLabScreen(
                         title = bucket.title,
                         thesis = bucket.thesis,
                         count = bucket.quotes.size,
-                        badge = null,
                         note = signalLabLeadSummary(bucket),
                     ) {
                         items(
@@ -267,7 +269,6 @@ private fun SignalBucketCarousel(
     title: String,
     thesis: String,
     count: Int,
-    badge: String?,
     note: String?,
     content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
 ) {
@@ -276,33 +277,27 @@ private fun SignalBucketCarousel(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = theme.text,
-                )
-                Text(
-                    text = thesis,
-                    fontSize = 12.sp,
-                    color = theme.textSecondary,
-                    lineHeight = 17.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (!badge.isNullOrBlank()) {
-                    InfoChip(label = { Text(badge) })
-                }
-                InfoChip(label = { Text("$count") })
-            }
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = title,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                color = theme.text,
+            )
+            Text(
+                text = thesis,
+                fontSize = 12.sp,
+                color = theme.textSecondary,
+                lineHeight = 17.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = if (count == 1) "1 name" else "$count names",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = theme.primary,
+            )
         }
         if (!note.isNullOrBlank()) {
             Text(
@@ -315,6 +310,7 @@ private fun SignalBucketCarousel(
             )
         }
         LazyRow(
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(end = 4.dp),
             content = content,
@@ -330,14 +326,15 @@ private fun BackendCandidateCard(
     val theme = LocalAppTheme.current
     Card(
         modifier = Modifier
-            .width(196.dp)
+            .width(292.dp)
+            .heightIn(min = 168.dp)
             .clickable(onClick = onOpen),
         colors = CardDefaults.cardColors(containerColor = theme.card),
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
@@ -362,13 +359,12 @@ private fun BackendCandidateCard(
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = candidate.thesis.ifBlank { "${candidate.confidence}% confidence" },
+                text = publicCandidateThesis(candidate.thesis),
                 color = theme.textSecondary,
                 fontSize = 11.sp,
-                lineHeight = 15.sp,
+                lineHeight = 16.sp,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.height(48.dp),
             )
             Text(
                 text = "Open →",
@@ -388,14 +384,15 @@ private fun LocalCandidateCard(
     val theme = LocalAppTheme.current
     Card(
         modifier = Modifier
-            .width(196.dp)
+            .width(292.dp)
+            .heightIn(min = 168.dp)
             .clickable(onClick = onOpen),
         colors = CardDefaults.cardColors(containerColor = theme.card),
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
@@ -425,10 +422,9 @@ private fun LocalCandidateCard(
                 },
                 color = theme.textSecondary,
                 fontSize = 11.sp,
-                lineHeight = 15.sp,
+                lineHeight = 16.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.height(32.dp),
             )
             Text(
                 text = "Open →",
@@ -440,6 +436,7 @@ private fun LocalCandidateCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SignalLabHeroCard(
     quoteCount: Int,
@@ -489,10 +486,25 @@ private fun SignalLabHeroCard(
             color = theme.textSecondary,
             lineHeight = 16.sp,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            InfoChip(label = { Text("$quoteCount scoped quotes") })
-            InfoChip(label = { Text("$bucketCount paper buckets") })
-            InfoChip(label = { Text(selectedSector) })
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            InfoChip(
+                modifier = Modifier.wrapContentWidth(),
+                label = { Text("$quoteCount names in view", maxLines = 1, softWrap = false) },
+            )
+            InfoChip(
+                modifier = Modifier.wrapContentWidth(),
+                label = { Text("$bucketCount playbooks", maxLines = 1, softWrap = false) },
+            )
+            if (selectedSector != "All") {
+                InfoChip(
+                    modifier = Modifier.wrapContentWidth(),
+                    label = { Text(selectedSector, maxLines = 1, softWrap = false) },
+                )
+            }
         }
         FilledTonalButton(onClick = onRefresh) {
             Text("Refresh Signals")
@@ -524,9 +536,10 @@ private fun SignalLabFilterCard(
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(timeframes, key = { it.name }) { timeframe ->
                 FilterChip(
+                    modifier = Modifier.wrapContentWidth(),
                     selected = selectedTimeframe == timeframe,
                     onClick = { onTimeframeSelected(timeframe) },
-                    label = { Text(timeframe.title) },
+                    label = { Text(timeframe.title, maxLines = 1, softWrap = false) },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = theme.primary.copy(alpha = 0.2f),
                         selectedLabelColor = theme.text,
@@ -544,12 +557,14 @@ private fun SignalLabFilterCard(
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(sectors, key = { it }) { sector ->
                     FilterChip(
+                        modifier = Modifier.wrapContentWidth(),
                         selected = selectedSector == sector,
                         onClick = { onSectorSelected(sector) },
                         label = {
                             Text(
                                 text = sector,
                                 maxLines = 1,
+                                softWrap = false,
                                 overflow = TextOverflow.Ellipsis,
                             )
                         },
@@ -593,6 +608,36 @@ private fun List<Quote>.filterByTimeframe(timeframe: SignalLabTimeframe): List<Q
                 quote.dividendYield != null
         }
     }
+}
+
+private fun looksInternal(text: String): Boolean {
+    val value = text.lowercase()
+    return value.contains("proxy") ||
+        value.contains("fii") ||
+        value.contains("dii") ||
+        value.contains("filings") ||
+        value.contains("phase-2") ||
+        value.contains("bulk-deal") ||
+        value.contains("nse results")
+}
+
+private fun publicBucketTitle(title: String): String =
+    title.replace(Regex("\\s*\\(proxy\\)", RegexOption.IGNORE_CASE), "").trim()
+        .ifBlank { "Playbook" }
+
+private fun publicBucketThesis(thesis: String): String =
+    if (looksInternal(thesis)) {
+        "Names from the session tape for paper practice — not investment advice."
+    } else {
+        thesis
+    }
+
+private fun publicBucketNote(notes: List<String>): String? =
+    notes.firstOrNull { it.isNotBlank() && !looksInternal(it) }
+
+private fun publicCandidateThesis(thesis: String): String {
+    val cleaned = thesis.replace(Regex("analyst\\s+", RegexOption.IGNORE_CASE), "").trim()
+    return cleaned.ifBlank { "Tap for stock context" }
 }
 
 private fun formatSignalCurrency(value: Double): String = "₹${String.format("%.2f", value)}"

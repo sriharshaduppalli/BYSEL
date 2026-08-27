@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -36,7 +37,8 @@ fun InfoChip(
     val foreground = contentColor ?: theme.text
     Surface(
         modifier = modifier
-            .defaultMinSize(minHeight = 32.dp)
+            .wrapContentWidth()
+            .defaultMinSize(minHeight = 32.dp, minWidth = 40.dp)
             // Merge the label into a single read-only node so screen readers announce the
             // badge as one piece of text rather than an actionable element.
             .semantics(mergeDescendants = true) {},

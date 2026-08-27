@@ -836,7 +836,9 @@ class TradingViewModel(
      */
     private fun scheduleInitialWarmup() {
         warmBackendInBackground()
-        armServerWakeHint()
+        if (isMarketTapeOpen()) {
+            armServerWakeHint()
+        }
         viewModelScope.launch {
             kotlinx.coroutines.delay(INITIAL_STATUS_WARMUP_DELAY)
             refreshMarketStatus()
@@ -850,7 +852,7 @@ class TradingViewModel(
     }
 
     private fun armServerWakeHint() {
-        if (ServerReachability.isLikelyWarm()) {
+        if (ServerReachability.isLikelyWarm() || !isMarketTapeOpen()) {
             _serverWakingHint.value = false
             return
         }
@@ -858,9 +860,12 @@ class TradingViewModel(
         serverWakeHintJob = viewModelScope.launch {
             kotlinx.coroutines.delay(ServerReachability.WAKE_HINT_DELAY_MS)
             val stillWaiting = _isLoading.value || _quotesRefreshing.value || _holdingsRefreshing.value
-            if (stillWaiting && ServerReachability.isLikelyColdStart()) {
+            if (stillWaiting && ServerReachability.isLikelyColdStart() && isMarketTapeOpen()) {
                 _serverWakingHint.value = true
             }
+            // Never leave the orange bar up after a slow Yahoo path — cached prices stay.
+            kotlinx.coroutines.delay(ServerReachability.WAKE_HINT_MAX_MS)
+            _serverWakingHint.value = false
         }
     }
 
@@ -885,12 +890,15 @@ class TradingViewModel(
     fun retryWakeServer() {
         _marketError.value = null
         _portfolioError.value = null
-        _serverWakingHint.value = false
+        clearServerWakeHint()
         warmBackendInBackground()
-        refreshQuotes(force = true, showSpinner = true)
-        refreshHoldings()
-        refreshWallet()
-        armServerWakeHint()
+        refreshMarketStatus()
+        if (isMarketTapeOpen() || _quotes.value.isEmpty()) {
+            refreshQuotes(force = true, showSpinner = _quotes.value.isEmpty())
+        }
+        if (isMarketTapeOpen()) {
+            armServerWakeHint()
+        }
     }
 
     private fun defaultAchievementsFromCode() = listOf(
@@ -1014,6 +1022,7 @@ class TradingViewModel(
                             // Keep showing cached quotes; only surface a hard error when Home
                             // has nothing to render (otherwise "timeout" sits on Home Layout).
                             flagWatchlistSyncFailure(result.message)
+                            clearServerWakeHint()
                             if (_quotes.value.isEmpty()) {
                                 _marketError.value = result.message
                             } else {
@@ -1659,7 +1668,11 @@ class TradingViewModel(
         lastForegroundWarmupAt = now
 
         warmBackendInBackground()
-        armServerWakeHint()
+        if (isMarketTapeOpen()) {
+            armServerWakeHint()
+        } else {
+            clearServerWakeHint()
+        }
 
         viewModelScope.launch {
             ensureWatchlistLoaded()
@@ -1701,7 +1714,7 @@ class TradingViewModel(
             kotlinx.coroutines.delay(RESUME_HEATMAP_DELAY)
             val heatmapStale = _marketHeatmap.value == null ||
                 System.currentTimeMillis() - lastHeatmapRefreshAt > HEATMAP_STALE_THRESHOLD
-            if (force || heatmapStale) {
+            if ((force || heatmapStale) && (isMarketTapeOpen() || _marketHeatmap.value == null)) {
                 loadMarketHeatmap(force = false)
             }
 
@@ -3398,7 +3411,8 @@ class TradingViewModel(
         val fetchedAt = scannerFetchedAt[normalized] ?: 0L
         val fresh = !force &&
             cached != null &&
-            (System.currentTimeMillis() - fetchedAt) < SCANNER_CLIENT_TTL_MS
+            (System.currentTimeMillis() - fetchedAt) < SCANNER_CLIENT_TTL_MS &&
+            !(normalized == "quality_screen" && cached.rows.isEmpty())
         if (fresh) {
             prefetchScannerModes(except = normalized)
             return
@@ -3416,7 +3430,10 @@ class TradingViewModel(
             if (mode == except) continue
             val cached = _scannerByMode.value[mode]
             val fetchedAt = scannerFetchedAt[mode] ?: 0L
-            if (cached != null && (now - fetchedAt) < SCANNER_CLIENT_TTL_MS) continue
+            if (cached != null &&
+                (now - fetchedAt) < SCANNER_CLIENT_TTL_MS &&
+                !(mode == "quality_screen" && cached.rows.isEmpty())
+            ) continue
             if (scannerJobs[mode]?.isActive == true) continue
             fetchScannerMode(mode, force = false, visible = false)
         }

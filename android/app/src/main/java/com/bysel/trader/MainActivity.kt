@@ -85,6 +85,7 @@ import com.google.android.play.core.install.model.AppUpdateType
 import com.google.android.play.core.install.model.UpdateAvailability
 import com.google.android.play.core.review.ReviewManager
 import com.google.android.play.core.review.ReviewManagerFactory
+import com.bysel.trader.utils.MarketSession
 import com.bysel.trader.viewmodel.TradingViewModel
 import com.bysel.trader.viewmodel.TradingViewModelFactory
 import com.bysel.trader.viewmodel.isDerivativesFormMessage
@@ -977,7 +978,7 @@ fun BYSELApp(
                         // Shown on every tab so a stale price is never mistaken for a live one.
                         MarketDataStatusBanner(
                             lastQuoteUpdateAt = lastQuoteUpdateAt,
-                            isMarketOpen = marketStatus?.isOpen,
+                            isMarketOpen = marketStatus?.isOpen ?: MarketSession.isOpen(),
                             serverWaking = serverWakingHint,
                             liveRefreshInFlight = isLoading || quotesRefreshing || holdingsRefreshing,
                             onRetryWake = { viewModel.retryWakeServer() },
@@ -1276,6 +1277,10 @@ fun BYSELApp(
                                     onOpenFuturesGym = {
                                         viewModel.requestTradeWorkspace(3)
                                         selectRootTab(2)
+                                    },
+                                    onAskAi = { query ->
+                                        viewModel.askAi(query)
+                                        navigatePushingCurrent(1)
                                     },
                                 )
                                 20 -> SignalLabScreen(

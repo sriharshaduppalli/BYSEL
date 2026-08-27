@@ -19,4 +19,16 @@ class HabitLiteracyCatalogTest {
         assertTrue(HabitLiteracyCatalog.investorLinksFor("sgb").single().id == "sgb")
         assertTrue(HabitLiteracyCatalog.investorLinksFor("fno").single().id == "fno")
     }
+
+    @Test
+    fun fnoScannerLinksAreLearnOnlyWithoutEquations() {
+        val links = HabitLiteracyCatalog.fnoScannerLinks
+        val blob = links.joinToString("\n") { "${it.title}\n${it.learnQuery}" }
+        assertTrue(links.size >= 3)
+        assertTrue(links.any { it.title.contains("Futures vs options", ignoreCase = true) })
+        assertFalse(blob.contains("Notional =", ignoreCase = true))
+        assertFalse(blob.contains("PCR =", ignoreCase = true))
+        assertFalse(blob.contains("Delta", ignoreCase = true))
+        assertFalse(blob.contains("SPAN", ignoreCase = true))
+    }
 }

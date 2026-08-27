@@ -10,6 +10,7 @@ object ServerReachability {
     const val FAST_ROUNDTRIP_MS = 3_000L
     const val WARM_WINDOW_MS = 8 * 60_000L
     const val WAKE_HINT_DELAY_MS = 2_500L
+    const val WAKE_HINT_MAX_MS = 10_000L
 
     @Volatile
     private var lastSuccessAtMs: Long = 0L

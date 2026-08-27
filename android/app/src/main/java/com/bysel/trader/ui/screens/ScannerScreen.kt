@@ -31,6 +31,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -57,6 +59,7 @@ import com.bysel.trader.data.models.ScannerAnomaly
 import com.bysel.trader.data.models.ScannerPillar
 import com.bysel.trader.data.models.ScannerRow
 import com.bysel.trader.data.models.ScoreHistoryResponse
+import com.bysel.trader.ui.components.HabitLiteracyCatalog
 import com.bysel.trader.ui.format.formatSignedPct
 import com.bysel.trader.ui.theme.AppTheme
 import com.bysel.trader.ui.theme.LocalAppTheme
@@ -91,6 +94,7 @@ fun ScannerScreen(
     onOpenPaperGym: () -> Unit,
     onOpenOptionsGym: () -> Unit = onOpenPaperGym,
     onOpenFuturesGym: () -> Unit = onOpenPaperGym,
+    onAskAi: (String) -> Unit = {},
 ) {
     val theme = LocalAppTheme.current
     val scannerByMode by viewModel.scannerByMode.collectAsStateWithLifecycle()
@@ -173,6 +177,7 @@ fun ScannerScreen(
                 FnoPaperHubCard(
                     onOpenOptionsGym = onOpenOptionsGym,
                     onOpenFuturesGym = onOpenFuturesGym,
+                    onAskAi = onAskAi,
                 )
             }
             loading && payload == null -> {
@@ -263,12 +268,27 @@ fun ScannerScreen(
                         }
                     }
 
+                    if (selected == ScannerModeChip.QUALITY_SCREEN &&
+                        rows.isNotEmpty() &&
+                        rows.none { it.qualityScreen?.matches == true }
+                    ) {
+                        item {
+                            Text(
+                                "Closest fits — no name passed every available check. Educational only.",
+                                fontSize = 13.sp,
+                                color = theme.textSecondary,
+                            )
+                        }
+                    }
+
                     if (rows.isEmpty() && !loading) {
                         item {
                             Text(
                                 when (selected) {
                                     ScannerModeChip.CUSTOM ->
                                         "No names match these chips. Clear a chip or refresh."
+                                    ScannerModeChip.QUALITY_SCREEN ->
+                                        "No Quality-screen names yet. Refresh to score this list again."
                                     else ->
                                         "No names in this list yet. Refresh to try again."
                                 },
@@ -316,10 +336,12 @@ fun ScannerScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FnoPaperHubCard(
     onOpenOptionsGym: () -> Unit,
     onOpenFuturesGym: () -> Unit,
+    onAskAi: (String) -> Unit,
 ) {
     val theme = LocalAppTheme.current
     Column(
@@ -336,22 +358,40 @@ private fun FnoPaperHubCard(
             shape = RoundedCornerShape(14.dp),
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("F&O paper gym is ready", fontWeight = FontWeight.SemiBold, color = theme.text)
+                Text("Paper F&O practice", fontWeight = FontWeight.SemiBold, color = theme.text)
                 Text(
-                    "This scanner tab does not rank F&O contracts yet. Use Trade → Options to read a chain, " +
-                        "or Trade → Futures to preview lot size and margin. Start with NIFTY or BANKNIFTY.",
+                    "Educational only — not a live F&O ticket. Open Options or Futures to practise.",
                     fontSize = 13.sp,
                     color = theme.textSecondary,
                     lineHeight = 18.sp,
                 )
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilledTonalButton(onClick = onOpenOptionsGym) {
+                        Text("Open Options", maxLines = 1)
+                    }
+                    OutlinedButton(onClick = onOpenFuturesGym) {
+                        Text("Open Futures", maxLines = 1)
+                    }
+                }
+                HabitLiteracyCatalog.fnoScannerLinks.forEach { link ->
+                    TextButton(
+                        onClick = { onAskAi(link.learnQuery) },
+                        contentPadding = PaddingValues(0.dp),
+                    ) {
+                        Text(
+                            text = "Learn: ${link.title}",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = theme.primary,
+                        )
+                    }
+                }
             }
         }
-        com.bysel.trader.ui.components.FnoLiteracyPrimer(
-            mode = com.bysel.trader.ui.components.FnoLiteracyMode.SCANNER,
-            initiallyExpanded = true,
-            onOpenOptions = onOpenOptionsGym,
-            onOpenFutures = onOpenFuturesGym,
-        )
     }
 }
 
@@ -747,7 +787,7 @@ private fun ScannerRow.tabFacts(mode: ScannerModeChip): List<String> {
             "PEG ${formatFact(metrics.peg)}",
         )
         ScannerModeChip.QUALITY_SCREEN -> listOf(
-            qualityScreen?.let { "${it.passed} passed" } ?: "— passed",
+            qualityScreen?.let { "${it.passed} passed · ${it.failed} failed" } ?: "— passed",
             "ROE ${formatPctFact(metrics.roe)}",
         )
         ScannerModeChip.CUSTOM -> listOf(

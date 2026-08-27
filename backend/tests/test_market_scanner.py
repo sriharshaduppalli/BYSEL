@@ -352,6 +352,33 @@ def test_quality_screen_payload_drops_fails_and_keeps_honest_copy():
     assert "multibagger prediction" in payload["education"]["riskNote"]
 
 
+def test_quality_screen_shows_closest_fits_when_nobody_fully_matches():
+    quotes = [
+        {
+            "symbol": "NEAR",
+            "name": "Near Fit Ltd",
+            "last": 220.0,
+            "pctChange": 0.3,
+            "marketCap": 9_000_000_000,
+            "trailingPE": 16.0,
+            "peg": 0.8,
+            "roe": 12.0,
+            "revenueGrowth": 0.18,
+        },
+        {
+            "symbol": "THIN",
+            "name": "Thin Ltd",
+            "last": 80.0,
+            "pctChange": -0.1,
+            "marketCap": 2_000_000_000,
+        },
+    ]
+    payload = build_scanner_payload(quotes, mode="quality_screen", limit=10)
+    symbols = [row["symbol"] for row in payload["rows"]]
+    assert "NEAR" in symbols
+    assert all(not (row.get("qualityScreen") or {}).get("matches") for row in payload["rows"])
+
+
 def test_score_row_does_not_invent_promoter_or_related_party_anomalies():
     scores = score_row(
         {

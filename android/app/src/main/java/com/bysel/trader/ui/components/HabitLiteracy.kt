@@ -81,4 +81,22 @@ object HabitLiteracyCatalog {
         if (mapped.isBlank()) return investorLinks
         return investorLinks.filter { it.id == mapped }.ifEmpty { investorLinks }
     }
+
+    val fnoScannerLinks: List<HabitLearnLink> = listOf(
+        HabitLearnLink(
+            id = "fno_vs",
+            title = "Futures vs options",
+            learnQuery = "What is the difference between NSE futures and options for beginners? Educational paper practice only — no buy or sell.",
+        ),
+        HabitLearnLink(
+            id = "fno_lot",
+            title = "Lot size and margin",
+            learnQuery = "What are lot size and margin in NSE F&O for beginners? Educational paper practice only — no buy or sell.",
+        ),
+        HabitLearnLink(
+            id = "fno_expiry",
+            title = "Expiry and why options lose value",
+            learnQuery = "Why do NSE options lose value as expiry nears? Educational paper practice only — no buy or sell.",
+        ),
+    )
 }

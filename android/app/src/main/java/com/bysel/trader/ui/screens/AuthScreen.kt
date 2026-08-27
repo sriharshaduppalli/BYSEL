@@ -124,7 +124,7 @@ fun AuthScreen(
         delay(2_500)
         if (loading && message.isNullOrBlank()) {
             val cold = ServerReachability.isLikelyColdStart()
-            message = if (cold) "Waking server…" else "Still connecting…"
+            message = if (cold) "Connecting…" else "Still connecting…"
             messageIsError = false
         }
     }

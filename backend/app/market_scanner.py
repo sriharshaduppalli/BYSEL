@@ -1767,7 +1767,8 @@ def _education(mode: str) -> Dict[str, Any]:
             "NSE shareholding fills promoter % and pledge when the filing is available. "
             "Sector PE prefers NSE pdSectorPe, else the median PE in this batch. "
             "A missing year or filing stays —; we do not scrape Screener.in. "
-            f"A name is listed only if it fails none of the available checks and passes at least {QUALITY_SCREEN_MIN_PASSES}."
+            f"A name is listed first if it fails none of the available checks and passes at least {QUALITY_SCREEN_MIN_PASSES}. "
+            "If none do, we show the closest names by checks passed — not a pass of the full checklist."
         )
         risk_note = (
             "Paper practice shortlist only. Not a buy list and not a multibagger prediction."
@@ -1915,7 +1916,14 @@ def build_scanner_payload(
         shortlist = scored[: min(max(int(limit), 5), 40)]
     elif mode_key == "quality_screen":
         matched = [item for item in scored if (item.get("qualityScreen") or {}).get("matches")]
-        shortlist = matched[:limit]
+        if matched:
+            shortlist = matched[:limit]
+        else:
+            closest = [
+                item for item in scored
+                if int((item.get("qualityScreen") or {}).get("passed") or 0) > 0
+            ]
+            shortlist = closest[:limit]
     else:
         shortlist = scored[:limit]
 

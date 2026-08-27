@@ -1836,7 +1836,8 @@ private fun HomeSignalCard(
 
     Card(
         modifier = Modifier
-            .width(240.dp)
+            .width(292.dp)
+            .heightIn(min = 168.dp)
             .padding(vertical = 4.dp)
             .clickable(enabled = leadQuote != null, onClick = onOpen),
         colors = byselCardColors(),

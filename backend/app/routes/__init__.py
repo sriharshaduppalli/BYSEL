@@ -2287,9 +2287,15 @@ async def warmup_endpoint(db: Session = Depends(get_db)):
     except Exception as exc:
         logger.warning("warmup.db_ping_failed reason=%s", exc)
 
-    _kick_background_warmup(force=True)
+    # Throttled only. force=True used to start Yahoo+scanner on every app resume
+    # and starve the single Cloud Run instance so quotes timed out ("Waking server").
+    from ..market_session import is_within_equity_session
+
+    warmed = False
+    if is_within_equity_session():
+        warmed = _kick_background_warmup(force=False)
     return {
-        "status": "warming",
+        "status": "warming" if warmed else "ready",
         "db": db_ok,
         "version": "2.0.0",
     }

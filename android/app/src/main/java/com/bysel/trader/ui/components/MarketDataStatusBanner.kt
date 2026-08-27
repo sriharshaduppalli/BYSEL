@@ -64,7 +64,8 @@ fun MarketDataStatusBanner(
     // so there is nothing to warn about.
     val marketClosed = isMarketOpen == false
     val hideWhileFirstFetch = neverLoaded && liveRefreshInFlight && !serverWaking
-    val visible = serverWaking || (isStale && !marketClosed && !hideWhileFirstFetch)
+    val showWake = serverWaking && !marketClosed
+    val visible = showWake || (isStale && !marketClosed && !hideWhileFirstFetch)
 
     AnimatedVisibility(
         visible = visible,
@@ -72,12 +73,12 @@ fun MarketDataStatusBanner(
         exit = shrinkVertically(),
     ) {
         val accent = when {
-            serverWaking -> Color(0xFFFF8F00)
+            showWake -> Color(0xFFFF8F00)
             neverLoaded -> Color(0xFFE53935)
             else -> Color(0xFFFF8F00)
         }
         val message = when {
-            serverWaking -> "Waking server…"
+            showWake -> "Refreshing prices…"
             neverLoaded -> "Live prices unavailable — check your connection before trading"
             else -> "Prices may be delayed — last updated ${formatAge(ageMs)} ago"
         }
@@ -91,7 +92,7 @@ fun MarketDataStatusBanner(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Icon(
-                imageVector = if (neverLoaded && !serverWaking) Icons.Filled.CloudOff else Icons.Filled.Schedule,
+                imageVector = if (neverLoaded && !showWake) Icons.Filled.CloudOff else Icons.Filled.Schedule,
                 contentDescription = null,
                 tint = accent,
                 modifier = Modifier.size(14.dp),
@@ -103,7 +104,7 @@ fun MarketDataStatusBanner(
                 color = accent,
                 modifier = Modifier.weight(1f),
             )
-            if (serverWaking && onRetryWake != null) {
+            if (showWake && onRetryWake != null) {
                 TextButton(onClick = onRetryWake) {
                     Text("Retry", fontSize = 11.sp, color = accent, fontWeight = FontWeight.SemiBold)
                 }

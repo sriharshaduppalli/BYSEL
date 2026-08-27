@@ -525,15 +525,10 @@ open class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
-    /** Cheap market-API wake — does not wait on Yahoo quotes. */
+    /** Cheap market-API ping — /health only. Do not call /warmup (it kicks Yahoo on the only instance). */
     suspend fun warmMarketBackend(): Result<Unit> {
         return try {
-            // Prefer /warmup (DB ping + background quote seed); fall back to /health.
-            try {
-                warmApiService.warmup()
-            } catch (_: Exception) {
-                warmApiService.healthCheck()
-            }
+            warmApiService.healthCheck()
             Result.Success(Unit)
         } catch (e: Exception) {
             Result.Error(e.message ?: "Market warmup failed")
