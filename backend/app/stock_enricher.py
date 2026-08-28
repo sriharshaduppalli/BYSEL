@@ -920,6 +920,14 @@ _ENGLISH_MF_TICKER_COLLISIONS = {
     "BANK", "VALUE", "GROWTH", "QUALITY", "NIFTY", "SENSEX", "INDEX", "FUND",
 }
 
+# Learn-chip / habit English that looks like a ticker when uppercased.
+_LITERACY_SKIP_TOKENS = frozenset({
+    "BEGINNER", "BEGINNERS", "EDUCATIONAL", "EDUCATION", "TEACH", "LEARN",
+    "HABIT", "HABITS", "PAPER", "PRACTICE", "COVER", "INDIAN",
+    "MUTUAL", "FUNDS", "INVESTING", "INVESTOR", "INVESTORS",
+    "FOMO", "CAS", "DRHP", "SGB", "TER", "NAV", "SIP",
+})
+
 
 def _strip_prompt_wrapper(query: str) -> str:
     raw = (query or "").strip()
@@ -1091,6 +1099,7 @@ def extract_all_symbols_from_query(query: str) -> list[str]:
         # English verbs / fillers that collide with rare NSE codes.
         "TAKE", "TAKES", "TAKEN", "GIVEN", "MAKE", "MADE", "COME", "CAME",
         "LOOK", "LOOKS", "KEEP", "KEPT", "HELP", "HELD", "MOVE", "MOVES",
+        *_LITERACY_SKIP_TOKENS,
     }
     known = None
     catalog = None
@@ -1571,6 +1580,7 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
         # English verbs / fillers that collide with rare NSE codes.
         "TAKE", "TAKES", "TAKEN", "GIVEN", "MAKE", "MADE", "COME", "CAME",
         "LOOK", "LOOKS", "KEEP", "KEPT", "HELP", "HELD", "MOVE", "MOVES",
+        *_LITERACY_SKIP_TOKENS,
     }
     q_upper = query.upper().strip()
     # Prefer "… of/for/on TICKER" so "full math for KAYNES" resolves KAYNES, not FULL.
@@ -1581,10 +1591,14 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
     if of_for:
         cand = of_for.group(1)
         if cand not in _SKIP and len(cand) >= 2:
-            return _resolve_listed_symbol(cand)
+            resolved = _resolve_listed_symbol(cand)
+            if _is_catalog_symbol(resolved):
+                return resolved
     amp = re.search(r"\b([A-Z]{1,6}&[A-Z]{1,6})\b", q_upper)
     if amp and amp.group(1) not in _SKIP:
-        return _resolve_listed_symbol(amp.group(1))
+        resolved = _resolve_listed_symbol(amp.group(1))
+        if _is_catalog_symbol(resolved):
+            return resolved
     catalog = None
     tokens = re.findall(r'\b[A-Z][A-Z0-9\-]{1,9}\b', q_upper)
     for tok in tokens:

@@ -1070,6 +1070,7 @@ private fun FuturesRadarScreen(
     val futuresContracts by viewModel.futuresContracts.collectAsStateWithLifecycle()
     val futuresTicketPreview by viewModel.futuresTicketPreview.collectAsStateWithLifecycle()
     val loading by viewModel.derivativesLoading.collectAsStateWithLifecycle()
+    val derivativesError by viewModel.derivativesError.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { viewModel.loadInvestorTips("fno") }
 
     val candidateSymbols = remember(quotes, watchlistSymbols) {
@@ -1088,17 +1089,13 @@ private fun FuturesRadarScreen(
             .take(6)
     }
 
-    val defaultUnderlying = remember(candidateSymbols) {
-        candidateSymbols.firstOrNull()?.symbol ?: "NIFTY"
-    }
-    var underlyingInput by remember(defaultUnderlying) { mutableStateOf(defaultUnderlying) }
+    var underlyingInput by remember { mutableStateOf("NIFTY") }
     var lotsInput by remember { mutableStateOf("1") }
     var selectedExpiry by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(defaultUnderlying) {
-        if (futuresContracts == null && defaultUnderlying.isNotBlank()) {
-            underlyingInput = defaultUnderlying
-            viewModel.loadFuturesContracts(defaultUnderlying)
+    LaunchedEffect(Unit) {
+        if (futuresContracts == null) {
+            viewModel.loadFuturesContracts("NIFTY")
         }
     }
 
@@ -1147,6 +1144,27 @@ private fun FuturesRadarScreen(
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
+                    }
+                }
+            }
+        }
+
+        if (!derivativesError.isNullOrBlank()) {
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.primary.copy(alpha = 0.12f))) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            derivativesError.orEmpty(),
+                            color = LocalAppTheme.current.text,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { viewModel.clearDerivativesError() }) {
+                            Text("Dismiss")
+                        }
                     }
                 }
             }
@@ -2030,12 +2048,19 @@ private fun TradeBottomSheetContent(
         }
     }
 
+    val footerInset = WindowInsets.safeDrawing
+        .exclude(WindowInsets.ime)
+        .asPaddingValues()
+        .calculateBottomPadding()
+    // Dialog windows often report 0 nav insets; keep a floor so Close/BUY stay fully on screen.
+    val footerBottom = if (footerInset > 8.dp) footerInset else 40.dp
+
+    Column(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
+            .weight(1f)
             .fillMaxWidth()
-            .navigationBarsPadding()
             .padding(horizontal = 20.dp)
-            .padding(bottom = 24.dp)
             .verticalScroll(rememberScrollState())
     ) {
         // Title row
@@ -2524,56 +2549,65 @@ private fun TradeBottomSheetContent(
         if (limitInvalid) {
             Text("Enter a valid limit price to continue.", fontSize = 12.sp, color = LocalAppTheme.current.negative)
         }
+        Spacer(modifier = Modifier.height(12.dp))
+    }
 
-        // Confirm / Cancel
-        Spacer(modifier = Modifier.height(16.dp))
-        if (orderExecutionLoading) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(16.dp),
-                    strokeWidth = 2.dp,
-                    color = LocalAppTheme.current.primary
-                )
-                Text(
-                    text = "Submitting order and refreshing execution context...",
-                    fontSize = 11.sp,
-                    color = LocalAppTheme.current.textSecondary
-                )
-            }
-        }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton(
-                onClick = onDismiss,
-                modifier = Modifier.weight(1f).height(48.dp),
-                shape = RoundedCornerShape(12.dp)
-            ) { Text("Close") }
-            TradeActionButton(
-                onClick = {
-                    if (qty > 0) {
-                        showConfirmDialog = true
-                    }
-                },
-                isBuy = tradeType == "BUY",
-                enabled = qty > 0 && !limitInvalid && !limitDeviationHardBlock && !copilotBlocksTrade && !orderExecutionLoading && (tradeType == "SELL" || canAfford),
-                modifier = Modifier.weight(2f),
-                height = 48.dp,
-            ) {
-                if (orderExecutionLoading) {
+        HorizontalDivider(color = LocalAppTheme.current.textSecondary.copy(alpha = 0.12f))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(LocalAppTheme.current.card)
+                .padding(horizontal = 20.dp)
+                .padding(top = 12.dp, bottom = footerBottom),
+        ) {
+            if (orderExecutionLoading) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
+                        modifier = Modifier.size(16.dp),
                         strokeWidth = 2.dp,
-                        color = Color.White
+                        color = LocalAppTheme.current.primary
                     )
-                } else {
                     Text(
-                        if (orderType == "MARKET") tradeType else "LIMIT $tradeType",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
+                        text = "Submitting order and refreshing execution context...",
+                        fontSize = 11.sp,
+                        color = LocalAppTheme.current.textSecondary
                     )
+                }
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("Close") }
+                TradeActionButton(
+                    onClick = {
+                        if (qty > 0) {
+                            showConfirmDialog = true
+                        }
+                    },
+                    isBuy = tradeType == "BUY",
+                    enabled = qty > 0 && !limitInvalid && !limitDeviationHardBlock && !copilotBlocksTrade && !orderExecutionLoading && (tradeType == "SELL" || canAfford),
+                    modifier = Modifier.weight(2f),
+                    height = 48.dp,
+                ) {
+                    if (orderExecutionLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = Color.White
+                        )
+                    } else {
+                        Text(
+                            if (orderType == "MARKET") tradeType else "LIMIT $tradeType",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
                 }
             }
         }

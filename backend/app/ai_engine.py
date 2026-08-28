@@ -1774,6 +1774,8 @@ _SYMBOL_NOISE_WORDS = {
     "analyze",
     "and",
     "against",
+    "beginner",
+    "beginners",
     "best",
     "breakout",
     "buy",

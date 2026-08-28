@@ -10,6 +10,7 @@ from ..database.db import (
     UserModel,
     WalletModel,
     RefreshTokenModel,
+    DeviceRestoreTokenModel,
     PasswordResetTokenModel,
     OTPModel,
     DeviceTokenModel,
@@ -150,8 +151,12 @@ TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER", "").strip()
 OTP_TTL_SECONDS = int(os.getenv("OTP_TTL_SECONDS", "300"))  # 5 minutes
 OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "3"))
 
+DEVICE_RESTORE_TOKEN_TTL_SECONDS = int(os.getenv("DEVICE_RESTORE_TOKEN_TTL_SECONDS", str(400 * 24 * 3600)))
+DEVICE_RESTORE_RATE_LIMIT_ATTEMPTS = int(os.getenv("DEVICE_RESTORE_RATE_LIMIT_ATTEMPTS", "8"))
+DEVICE_RESTORE_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("DEVICE_RESTORE_RATE_LIMIT_WINDOW_SECONDS", "60"))
 _login_rate_buckets: dict[str, deque[float]] = defaultdict(deque)
 _refresh_rate_buckets: dict[str, deque[float]] = defaultdict(deque)
+_device_restore_rate_buckets: dict[str, deque[float]] = defaultdict(deque)
 _otp_verify_rate_buckets: dict[str, deque[float]] = defaultdict(deque)
 _login_failure_buckets: dict[str, deque[float]] = defaultdict(deque)
 _login_lockouts: dict[str, float] = {}
@@ -195,6 +200,16 @@ class LogoutResponse(BaseModel):
 
 class LogoutRequest(BaseModel):
     refreshToken: str
+
+
+class DeviceRestoreTokenIssueResponse(BaseModel):
+    status: str
+    restore_token: str
+    expires_in: int
+
+
+class DeviceRestoreRequest(BaseModel):
+    restore_token: str
 
 
 class PasswordResetRequest(BaseModel):
@@ -677,6 +692,31 @@ def _persist_refresh_token(db: Session, user_id: int, refresh_token: str, reques
         _enforce_active_session_cap(db, user_id, protected_session_id=token_row.id)
 
 
+def _revoke_device_restore_tokens(db: Session, user_id: int, now: datetime | None = None) -> None:
+    when = now or datetime.utcnow()
+    db.query(DeviceRestoreTokenModel).filter(
+        DeviceRestoreTokenModel.user_id == user_id,
+        DeviceRestoreTokenModel.revoked_at.is_(None),
+    ).update({"revoked_at": when}, synchronize_session=False)
+
+
+def _issue_device_restore_token(db: Session, user_id: int, request: Request | None = None) -> tuple[str, int]:
+    now = datetime.utcnow()
+    _revoke_device_restore_tokens(db, user_id, now)
+    raw = secrets.token_urlsafe(32)
+    db.add(
+        DeviceRestoreTokenModel(
+            user_id=user_id,
+            token_hash=_hash_token(raw),
+            expires_at=now + timedelta(seconds=DEVICE_RESTORE_TOKEN_TTL_SECONDS),
+            client_ip=_client_ip(request) if request is not None else None,
+            device_info=_device_info(request),
+        )
+    )
+    db.commit()
+    return raw, DEVICE_RESTORE_TOKEN_TTL_SECONDS
+
+
 def _enforce_rate_limit(
     key: str,
     buckets: dict[str, deque[float]],
@@ -1090,6 +1130,7 @@ def _reset_debug_state() -> None:
     with _rate_limit_lock:
         _login_rate_buckets.clear()
         _refresh_rate_buckets.clear()
+        _device_restore_rate_buckets.clear()
         _login_failure_buckets.clear()
         _login_lockouts.clear()
         _rate_limit_last_prune_at = 0.0
@@ -1929,6 +1970,7 @@ def logout(body: LogoutRequest, authorization: str | None = Header(default=None,
             RefreshTokenModel.token_hash == token_hash
         ).first()
 
+        _revoke_device_restore_tokens(db, user_id, now)
         if token_row and token_row.revoked_at is None:
             token_row.revoked_at = now
             db.commit()
@@ -1958,6 +2000,7 @@ def logout_all_devices(authorization: str | None = Header(default=None, alias="A
             RefreshTokenModel.user_id == user_id,
             RefreshTokenModel.revoked_at.is_(None)
         ).update({"revoked_at": now}, synchronize_session=False)
+        _revoke_device_restore_tokens(db, user_id, now)
         db.query(DeviceTokenModel).filter(DeviceTokenModel.user_id == user_id).delete()
         db.commit()
         _metric_inc("logout.success_all_devices")
@@ -1966,6 +2009,99 @@ def logout_all_devices(authorization: str | None = Header(default=None, alias="A
         db.close()
 
     return LogoutResponse(status="ok", message="Logged out from all devices")
+
+
+@router.post("/restore-token", response_model=DeviceRestoreTokenIssueResponse)
+def issue_restore_token(
+    request: Request,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+):
+    """Issue a hashed restore key for Play Restore Credentials. One active token per user."""
+    user_id = _get_user_id_from_authorization(authorization)
+    db: Session = SessionLocal()
+    try:
+        db_user = db.query(UserModel).filter(UserModel.id == user_id).first()
+        if not db_user:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        raw, expires_in = _issue_device_restore_token(db, user_id, request)
+        _metric_inc("restore_token.issued")
+        logger.info("auth.restore_token.issued user_id=%s", user_id)
+        return DeviceRestoreTokenIssueResponse(
+            status="ok",
+            restore_token=raw,
+            expires_in=expires_in,
+        )
+    finally:
+        db.close()
+
+
+@router.post("/device-restore", response_model=AuthResponse)
+def restore_session_from_device_key(body: DeviceRestoreRequest, request: Request):
+    """Silent new-device sign-in after Google Restore Credentials transfer."""
+    client_ip = _client_ip(request)
+    raw = (body.restore_token or "").strip()
+    _enforce_rate_limit(
+        key=f"restore:{client_ip}",
+        buckets=_device_restore_rate_buckets,
+        max_attempts=DEVICE_RESTORE_RATE_LIMIT_ATTEMPTS,
+        window_seconds=DEVICE_RESTORE_RATE_LIMIT_WINDOW_SECONDS,
+        message="Too many restore attempts. Please try again shortly.",
+    )
+    if len(raw) < 16:
+        _metric_inc("device_restore.failure_invalid")
+        raise HTTPException(status_code=401, detail="Invalid restore key")
+
+    db: Session = SessionLocal()
+    try:
+        token_hash = _hash_token(raw)
+        now = datetime.utcnow()
+        stored = db.query(DeviceRestoreTokenModel).filter(
+            DeviceRestoreTokenModel.token_hash == token_hash,
+        ).first()
+        if stored is None:
+            _metric_inc("device_restore.failure_unknown")
+            raise HTTPException(status_code=401, detail="Invalid restore key")
+        if stored.revoked_at is not None:
+            _metric_inc("device_restore.failure_revoked")
+            raise HTTPException(status_code=401, detail="Restore key revoked")
+        if stored.expires_at <= now:
+            stored.revoked_at = now
+            db.commit()
+            _metric_inc("device_restore.failure_expired")
+            raise HTTPException(status_code=401, detail="Restore key expired")
+
+        db_user = db.query(UserModel).filter(UserModel.id == stored.user_id).first()
+        if not db_user:
+            stored.revoked_at = now
+            db.commit()
+            _metric_inc("device_restore.failure_invalid_user")
+            raise HTTPException(status_code=401, detail="Invalid restore key")
+
+        token_version = int(getattr(db_user, "token_version", 0) or 0)
+        access_token, refresh_token = _create_auth_tokens(
+            user_id=db_user.id,
+            token_version=token_version,
+        )
+        stored.last_used_at = now
+        db.commit()
+        _persist_refresh_token(db, db_user.id, refresh_token, request)
+        _metric_inc("device_restore.success")
+        logger.info("auth.device_restore.success user_id=%s", db_user.id)
+        return AuthResponse(
+            status="ok",
+            user_id=db_user.id,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_in=ACCESS_TOKEN_TTL_SECONDS,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        logger.exception("auth.device_restore.failed reason=%s", str(exc))
+        raise HTTPException(status_code=500, detail="Could not restore session")
+    finally:
+        db.close()
 
 
 @router.post("/register-fcm-token", response_model=FcmTokenResponse)
@@ -2533,6 +2669,7 @@ def _purge_user_rows(db: Session, user: UserModel) -> None:
     user_id = user.id
     mobile = user.mobile_number or ""
     db.query(RefreshTokenModel).filter(RefreshTokenModel.user_id == user_id).delete()
+    db.query(DeviceRestoreTokenModel).filter(DeviceRestoreTokenModel.user_id == user_id).delete()
     db.query(DeviceTokenModel).filter(DeviceTokenModel.user_id == user_id).delete()
     db.query(WalletModel).filter(WalletModel.user_id == user_id).delete()
     db.query(HoldingModel).filter(HoldingModel.user_id == user_id).delete()

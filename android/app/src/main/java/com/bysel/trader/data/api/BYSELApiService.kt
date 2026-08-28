@@ -29,6 +29,12 @@ interface BYSELApiService {
     @POST("/auth/logout-all")
     suspend fun logoutAllDevices(): Map<String, String>
 
+    @POST("/auth/restore-token")
+    suspend fun issueRestoreToken(): DeviceRestoreTokenResponse
+
+    @POST("/auth/device-restore")
+    suspend fun restoreSession(@Body request: DeviceRestoreRequest): AuthResponse
+
     @GET("/auth/sessions")
     suspend fun getActiveSessions(): AuthSessionsResponse
 

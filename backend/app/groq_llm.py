@@ -1074,6 +1074,12 @@ def detect_sentiment_from_query(query: str) -> dict:
         "user_profile": "investor" | "trader" | "unknown"
     }
     """
+    try:
+        from indian_stock_llm.sentence_analysis import detect_user_sentiment
+
+        return detect_user_sentiment(query)
+    except Exception:
+        pass
     q = query.lower()
     sentiment = {
         "urgency": "low",

@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.automirrored.filled.TrendingDown
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.HealthAndSafety
@@ -75,7 +76,8 @@ fun WatchlistScreen(
     error: String?,
     onRefresh: () -> Unit,
     onQuoteClick: (Quote) -> Unit,
-    onErrorDismiss: () -> Unit
+    onErrorDismiss: () -> Unit,
+    onRemove: (String) -> Unit = {},
 ) {
     var sortModeName by rememberSaveable { mutableStateOf(WatchlistSortMode.MOVE.name) }
     val sortMode = remember(sortModeName) {
@@ -123,7 +125,7 @@ fun WatchlistScreen(
                         text = if (sortedQuotes.isEmpty()) {
                             "Empty · add from Search (full NSE catalog)"
                         } else {
-                            "${sortedQuotes.size} tracked · ${sortMode.label}"
+                            "${sortedQuotes.size} tracked · ${sortMode.label} · swipe left to remove"
                         },
                         fontSize = 12.sp,
                         color = LocalAppTheme.current.textSecondary,
@@ -205,34 +207,42 @@ fun WatchlistScreen(
                         contentPadding = PaddingValues(bottom = 96.dp),
                     ) {
                         items(items = sortedQuotes, key = { it.symbol }) { quote ->
-                            if (quote.last <= 0.0) {
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(8.dp)
-                                        .clickable { onQuoteClick(quote) },
-                                    colors = byselCardColors(),
-                                    elevation = byselCardElevation(),
-                                    border = byselCardBorder(),
-                                    shape = RoundedCornerShape(12.dp),
-                                ) {
-                                    Column(modifier = Modifier.padding(16.dp)) {
-                                        Text(
-                                            text = quote.symbol,
-                                            fontSize = 18.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = LocalAppTheme.current.text,
-                                        )
-                                        Text(
-                                            text = "Saved on My list · last price still loading",
-                                            fontSize = 13.sp,
-                                            color = LocalAppTheme.current.textSecondary,
-                                            modifier = Modifier.padding(top = 4.dp),
-                                        )
+                            SwipeToDismissItem(
+                                item = quote,
+                                modifier = Modifier.fillMaxWidth(),
+                                onDismiss = { onRemove(quote.symbol) },
+                                dismissIcon = Icons.Filled.Delete,
+                                dismissLabel = "Remove from My list",
+                            ) {
+                                if (quote.last <= 0.0) {
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(8.dp)
+                                            .clickable { onQuoteClick(quote) },
+                                        colors = byselCardColors(),
+                                        elevation = byselCardElevation(),
+                                        border = byselCardBorder(),
+                                        shape = RoundedCornerShape(12.dp),
+                                    ) {
+                                        Column(modifier = Modifier.padding(16.dp)) {
+                                            Text(
+                                                text = quote.symbol,
+                                                fontSize = 18.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = LocalAppTheme.current.text,
+                                            )
+                                            Text(
+                                                text = "Saved on My list · last price still loading",
+                                                fontSize = 13.sp,
+                                                color = LocalAppTheme.current.textSecondary,
+                                                modifier = Modifier.padding(top = 4.dp),
+                                            )
+                                        }
                                     }
+                                } else {
+                                    UpgradedQuoteCard(quote) { onQuoteClick(quote) }
                                 }
-                            } else {
-                                UpgradedQuoteCard(quote) { onQuoteClick(quote) }
                             }
                         }
                     }
@@ -883,32 +893,34 @@ fun UpgradedPortfolioHoldingItem(
             }
 
             Row(
-                modifier = Modifier
-                    .fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Button(
                     onClick = onBuy,
                     modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp),
+                        .defaultMinSize(minWidth = 64.dp, minHeight = 32.dp)
+                        .height(32.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = LocalAppTheme.current.positive,
                         contentColor = Color.White,
                     ),
-                    shape = RoundedCornerShape(8.dp)
+                    shape = RoundedCornerShape(8.dp),
                 ) {
-                    Text("Buy", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("Buy", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Button(
                     onClick = onSell,
                     modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp),
+                        .defaultMinSize(minWidth = 64.dp, minHeight = 32.dp)
+                        .height(32.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = theme.negative),
-                    shape = RoundedCornerShape(8.dp)
+                    shape = RoundedCornerShape(8.dp),
                 ) {
-                    Text("Sell", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("Sell", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }

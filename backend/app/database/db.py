@@ -240,6 +240,20 @@ class RefreshTokenModel(Base):
     device_info = Column(String, nullable=True)
 
 
+class DeviceRestoreTokenModel(Base):
+    """Opaque token for Play Restore Credentials silent re-auth on a new device."""
+    __tablename__ = "device_restore_tokens"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    token_hash = Column(String, unique=True, index=True, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_used_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+    client_ip = Column(String, nullable=True)
+    device_info = Column(String, nullable=True)
+
+
 class PasswordResetTokenModel(Base):
     __tablename__ = "password_reset_tokens"
     id = Column(Integer, primary_key=True, index=True)

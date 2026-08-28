@@ -5,7 +5,9 @@ import com.bysel.trader.data.api.BYSELApiService
 import com.bysel.trader.data.api.RetrofitClient
 import com.bysel.trader.data.auth.AuthSessionManager
 import com.bysel.trader.data.auth.AuthTokenRefresher
+import com.bysel.trader.BuildConfig
 import com.bysel.trader.data.models.AuthResponse
+import com.bysel.trader.data.models.DeviceRestoreRequest
 import com.bysel.trader.data.models.ChangePasswordRequest
 import com.bysel.trader.data.models.PasswordResetConfirmRequest
 import com.bysel.trader.data.models.PasswordResetConfirmResponse
@@ -23,6 +25,7 @@ import com.bysel.trader.data.models.RefreshTokenRequest
 import com.bysel.trader.data.models.RegisterRequest
 import com.bysel.trader.data.models.UserProfile
 import com.bysel.trader.data.models.UserProfileUpdateRequest
+import android.content.Context
 import android.util.Log
 import com.bysel.trader.util.CredentialHelper
 import com.google.firebase.auth.FirebaseAuth
@@ -152,6 +155,7 @@ class AuthRepository(
             )
             refreshCachedProfile()
             FcmTokenRegistrar.registerCurrentToken()
+            persistDeviceRestoreKey()
             Result.Success(response)
         } catch (e: Exception) {
             Result.Error(toAuthErrorMessage(e, "Registration failed"))
@@ -194,6 +198,7 @@ class AuthRepository(
             }
             refreshCachedProfile()
             FcmTokenRegistrar.registerCurrentToken()
+            persistDeviceRestoreKey()
             Result.Success(response)
         } catch (e: Exception) {
             Result.Error(toAuthErrorMessage(e, "Login failed"))
@@ -309,6 +314,56 @@ class AuthRepository(
     }
 
     /**
+     * After a Google device transfer, recover the signed-in account without asking
+     * for a password. Password autofill does not count for Play's Restore Credentials rule.
+     */
+    suspend fun tryDeviceRestore(context: Context): Boolean {
+        if (AuthSessionManager.hasSession()) return true
+        val restoreToken = CredentialHelper.loadRestoreCredential(context) ?: return false
+        return try {
+            val response = retryTransientAuth {
+                apiService.restoreSession(DeviceRestoreRequest(restoreToken = restoreToken))
+            }
+            if (response.access_token.isBlank() || response.refresh_token.isBlank()) {
+                return false
+            }
+            AuthSessionManager.saveSession(
+                accessToken = response.access_token,
+                refreshToken = response.refresh_token,
+                userId = response.user_id,
+                accessTokenTtlSeconds = response.accessTtlSeconds(),
+            )
+            refreshCachedProfile()
+            FcmTokenRegistrar.registerCurrentToken()
+            persistDeviceRestoreKey()
+            true
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) {
+                Log.w(TAG, "Device restore failed", e)
+            }
+            false
+        }
+    }
+
+    private suspend fun persistDeviceRestoreKey() {
+        val ctx = AuthSessionManager.applicationContextOrNull() ?: return
+        try {
+            val issued = apiService.issueRestoreToken()
+            val token = issued.restoreToken.trim()
+            if (token.isBlank()) return
+            CredentialHelper.saveRestoreCredential(
+                context = ctx,
+                restoreToken = token,
+                accountLabel = AuthSessionManager.getCachedIdentity().displayLabel(),
+            )
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) {
+                Log.w(TAG, "Restore key persist skipped", e)
+            }
+        }
+    }
+
+    /**
      * Clears the device session. The local session and the Firebase phone-auth session are
      * always cleared, even when the server call fails, so the user is never stuck signed in.
      * A failed server revoke is still reported so the UI can say the session may remain
@@ -409,6 +464,7 @@ class AuthRepository(
             )
             refreshCachedProfile()
             FcmTokenRegistrar.registerCurrentToken()
+            persistDeviceRestoreKey()
             Result.Success(response)
         } catch (e: Exception) {
             Result.Error(toAuthErrorMessage(e, "OTP verification failed"))
@@ -433,6 +489,7 @@ class AuthRepository(
             )
             refreshCachedProfile()
             FcmTokenRegistrar.registerCurrentToken()
+            persistDeviceRestoreKey()
             Result.Success(response)
         } catch (e: Exception) {
             Result.Error(toAuthErrorMessage(e, "Phone authentication failed"))

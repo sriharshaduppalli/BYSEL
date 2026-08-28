@@ -1,12 +1,28 @@
 package com.bysel.trader.ui.screens
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,14 +45,12 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.SwapVert
-import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -44,6 +58,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -77,7 +92,6 @@ import java.util.Locale
 import com.bysel.trader.ui.components.DashboardSkeletonLoader
 import com.bysel.trader.ui.components.InfoChip
 import com.bysel.trader.ui.components.HabitLiteracyCatalog
-import com.bysel.trader.ui.components.InvestorTipsCard
 import com.bysel.trader.ui.components.NewsWidget
 import com.bysel.trader.ui.components.PullToRefreshBox
 import com.bysel.trader.ui.components.exclusiveHorizontalScroll
@@ -99,28 +113,11 @@ import com.bysel.trader.ui.viewmodel.DashboardViewModel
 import com.bysel.trader.utils.MarketSession
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-private data class DashboardMetric(
-    val title: String,
-    val value: String,
-    val caption: String,
-    val accent: Color,
-)
-
-private data class HomeAction(
-    val title: String,
-    val subtitle: String,
-    val colors: List<Color>,
-    val onClick: () -> Unit,
-)
-
-private enum class HomeLayoutVariant(val title: String, val subtitle: String) {
-    FOCUS("Focus", "Action-first cockpit"),
-    FLOW("Flow", "Narrative market feed"),
-}
 
 private data class HomeGuideStep(
     val title: String,
     val body: String,
+    val lookHint: String,
     val actionLabel: String,
     val icon: ImageVector,
 )
@@ -128,41 +125,68 @@ private data class HomeGuideStep(
 private val HomeGuideSteps = listOf(
     HomeGuideStep(
         title = "BYSEL Pulse",
-        body = "This top card is your session brief — market mood, portfolio value, and fast actions. Refresh updates quotes and headlines.",
+        body = "This top card is your session brief — market mood, portfolio value, and fast actions. Pull down on Home to sync quotes and headlines.",
+        lookHint = "Watch the glowing Pulse card above.",
         actionLabel = "Next",
         icon = Icons.Filled.Info,
     ),
     HomeGuideStep(
-        title = "Home Layout",
-        body = "Focus puts actions first. Flow leads with narrative. Try switching now — you’ll see the Home Layout chips change.",
-        actionLabel = "Switch layout",
-        icon = Icons.Filled.ViewAgenda,
+        title = "Session tape",
+        body = "Nifty, Sensex, and Bank Nifty plus whether NSE is open. Mood and portfolio stay on Pulse — this strip is only the session tape.",
+        lookHint = "Watch Session tape glow.",
+        actionLabel = "Show tape",
+        icon = Icons.Filled.Schedule,
     ),
     HomeGuideStep(
         title = "Pin to Your Space",
         body = "Pin News and Market Watch so they stay in Your Space above the fold. We’ll pin them for you and scroll there.",
+        lookHint = "Your Space will glow after we pin.",
         actionLabel = "Pin widgets",
         icon = Icons.Filled.PushPin,
     ),
     HomeGuideStep(
         title = "Reorder widgets",
         body = "Use the ↑↓ arrows beside pinned widgets to change order. We’ll bump News upward so you can see the reorder live.",
+        lookHint = "Watch Your Space move News up.",
         actionLabel = "Reorder News",
         icon = Icons.Filled.SwapVert,
     ),
     HomeGuideStep(
         title = "Live refresh",
-        body = "Pull down anywhere on Home, or tap Refresh, to sync quotes and market news.",
+        body = "Pull down anywhere on Home to sync quotes and market news. There is no extra Refresh button — the pull is the refresh.",
+        lookHint = "Pull the Home list down to refresh.",
         actionLabel = "Refresh now",
         icon = Icons.Filled.Refresh,
     ),
     HomeGuideStep(
         title = "You’re set",
-        body = "Customize Home around your session: pin what matters, reorder Your Space, switch Focus/Flow, and jump into stocks or AI.",
+        body = "Customize Home around your session: pin what matters, reorder Your Space, and use Ask AI on the brief card when you want a chat.",
+        lookHint = "You can reopen Guide anytime from Pulse.",
         actionLabel = "Done",
         icon = Icons.Filled.CheckCircle,
     ),
 )
+
+@Composable
+private fun Modifier.guideSpotlight(active: Boolean): Modifier {
+    if (!active) return this
+    val theme = LocalAppTheme.current
+    val pulse = rememberInfiniteTransition(label = "guideSpotlight")
+    val glow by pulse.animateFloat(
+        initialValue = 0.28f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "guideSpotlightGlow",
+    )
+    return this.border(
+        width = 2.dp,
+        color = theme.primary.copy(alpha = glow),
+        shape = RoundedCornerShape(16.dp),
+    )
+}
 
 @Composable
 private fun HomeGuideDialog(
@@ -173,8 +197,26 @@ private fun HomeGuideDialog(
     actionFeedback: String? = null,
 ) {
     val theme = LocalAppTheme.current
-    val current = HomeGuideSteps[step.coerceIn(0, HomeGuideSteps.lastIndex)]
-    val isLast = step >= HomeGuideSteps.lastIndex
+    val safeStep = step.coerceIn(0, HomeGuideSteps.lastIndex)
+    val current = HomeGuideSteps[safeStep]
+    val isLast = safeStep >= HomeGuideSteps.lastIndex
+    val progress by animateFloatAsState(
+        targetValue = (safeStep + 1f) / HomeGuideSteps.size,
+        animationSpec = tween(durationMillis = 420),
+        label = "guideProgress",
+    )
+    val iconPulse = rememberInfiniteTransition(label = "guideIcon")
+    val iconScale by iconPulse.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.14f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 750),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "guideIconScale",
+    )
+    var sheetVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { sheetVisible = true }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -189,121 +231,168 @@ private fun HomeGuideDialog(
                 .padding(horizontal = 12.dp, vertical = 12.dp),
             contentAlignment = Alignment.BottomCenter,
         ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = byselCardColors(),
-            elevation = byselCardElevation(),
-            border = byselCardBorder(),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+            AnimatedVisibility(
+                visible = sheetVisible,
+                enter = fadeIn(tween(180)) + slideInVertically(tween(320)) { it / 4 },
+                exit = fadeOut(tween(140)),
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Icon(current.icon, contentDescription = null, tint = theme.primary)
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Home Guide",
-                            color = theme.textSecondary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                        )
-                        Text(
-                            text = current.title,
-                            color = theme.text,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                    Text(
-                        text = "${step + 1}/${HomeGuideSteps.size}",
-                        color = theme.textSecondary,
-                        fontSize = 12.sp,
-                    )
-                }
-
-                LinearProgressIndicator(
-                    progress = { (step + 1f) / HomeGuideSteps.size },
+                Card(
                     modifier = Modifier.fillMaxWidth(),
-                    color = theme.primary,
-                    trackColor = theme.textSecondary.copy(alpha = 0.2f),
-                )
-
-                Text(
-                    text = current.body,
-                    color = theme.text,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 56.dp, max = 120.dp)
-                        .verticalScroll(rememberScrollState()),
-                )
-
-                if (!actionFeedback.isNullOrBlank()) {
-                    Text(
-                        text = actionFeedback,
-                        color = theme.primary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        lineHeight = 16.sp,
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    shape = RoundedCornerShape(20.dp),
+                    colors = byselCardColors(),
+                    elevation = byselCardElevation(),
+                    border = byselCardBorder(),
                 ) {
-                    HomeGuideSteps.indices.forEach { index ->
-                        Box(
-                            modifier = Modifier
-                                .height(4.dp)
-                                .weight(1f)
-                                .background(
-                                    color = if (index <= step) theme.primary else theme.textSecondary.copy(alpha = 0.25f),
-                                    shape = RoundedCornerShape(2.dp),
-                                )
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Close")
-                    }
-                    Spacer(modifier = Modifier.weight(1f))
-                    if (step > 0) {
-                        OutlinedButton(onClick = { onStepChange(step - 1) }) {
-                            Text("Back")
-                        }
-                    }
-                    Button(
-                        onClick = {
-                            if (isLast) onDismiss() else onTryAction(step)
-                        },
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp)
+                            .animateContentSize(animationSpec = tween(280)),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Icon(
-                            if (isLast) Icons.Filled.CheckCircle else Icons.Filled.DashboardCustomize,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
+                        AnimatedContent(
+                            targetState = safeStep,
+                            transitionSpec = {
+                                val forward = targetState >= initialState
+                                val enter = slideInHorizontally(
+                                    animationSpec = tween(280),
+                                    initialOffsetX = { if (forward) it / 3 else -it / 3 },
+                                ) + fadeIn(tween(220))
+                                val exit = slideOutHorizontally(
+                                    animationSpec = tween(220),
+                                    targetOffsetX = { if (forward) -it / 4 else it / 4 },
+                                ) + fadeOut(tween(160))
+                                (enter togetherWith exit).using(SizeTransform(clip = false))
+                            },
+                            label = "guideStepContent",
+                        ) { animatedStep ->
+                            val shown = HomeGuideSteps[animatedStep]
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    Icon(
+                                        shown.icon,
+                                        contentDescription = null,
+                                        tint = theme.primary,
+                                        modifier = Modifier.scale(iconScale),
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Home Guide",
+                                            color = theme.textSecondary,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                        )
+                                        Text(
+                                            text = shown.title,
+                                            color = theme.text,
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                    }
+                                    Text(
+                                        text = "${animatedStep + 1}/${HomeGuideSteps.size}",
+                                        color = theme.textSecondary,
+                                        fontSize = 12.sp,
+                                    )
+                                }
+                                Text(
+                                    text = shown.lookHint,
+                                    color = theme.primary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    text = shown.body,
+                                    color = theme.text,
+                                    fontSize = 14.sp,
+                                    lineHeight = 20.sp,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 56.dp, max = 120.dp)
+                                        .verticalScroll(rememberScrollState()),
+                                )
+                            }
+                        }
+
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = theme.primary,
+                            trackColor = theme.textSecondary.copy(alpha = 0.2f),
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(current.actionLabel)
+
+                        AnimatedVisibility(
+                            visible = !actionFeedback.isNullOrBlank(),
+                            enter = fadeIn(tween(180)) + expandVertically(tween(220)),
+                            exit = fadeOut(tween(120)) + shrinkVertically(tween(160)),
+                        ) {
+                            Text(
+                                text = actionFeedback.orEmpty(),
+                                color = theme.primary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                lineHeight = 16.sp,
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            HomeGuideSteps.indices.forEach { index ->
+                                val filled by animateColorAsState(
+                                    targetValue = if (index <= safeStep) {
+                                        theme.primary
+                                    } else {
+                                        theme.textSecondary.copy(alpha = 0.25f)
+                                    },
+                                    animationSpec = tween(280),
+                                    label = "guideDot$index",
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .height(4.dp)
+                                        .weight(1f)
+                                        .background(color = filled, shape = RoundedCornerShape(2.dp)),
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            TextButton(onClick = onDismiss) {
+                                Text("Close")
+                            }
+                            Spacer(modifier = Modifier.weight(1f))
+                            if (safeStep > 0) {
+                                OutlinedButton(onClick = { onStepChange(safeStep - 1) }) {
+                                    Text("Back")
+                                }
+                            }
+                            Button(
+                                onClick = {
+                                    if (isLast) onDismiss() else onTryAction(safeStep)
+                                },
+                            ) {
+                                Icon(
+                                    if (isLast) Icons.Filled.CheckCircle else Icons.Filled.DashboardCustomize,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(current.actionLabel)
+                            }
+                        }
                     }
                 }
             }
-        }
         }
     }
 }
@@ -576,7 +665,6 @@ fun DashboardContent(
     investorTipTopic: String = "long_term",
     scrollToTopTick: Int = 0,
 ) {
-    val theme = LocalAppTheme.current
     val scope = rememberCoroutineScope()
     val homeListState = rememberLazyListState()
     LaunchedEffect(scrollToTopTick) {
@@ -584,11 +672,12 @@ fun DashboardContent(
             homeListState.animateScrollToItem(0)
         }
     }
-    val layoutRequester = remember { BringIntoViewRequester() }
+    val sessionTapeRequester = remember { BringIntoViewRequester() }
     val yourSpaceRequester = remember { BringIntoViewRequester() }
     val portfolioWidgetRequester = remember { BringIntoViewRequester() }
     val newsRequester = remember { BringIntoViewRequester() }
     var guideFeedback by rememberSaveable { mutableStateOf<String?>(null) }
+    var layoutResetHint by rememberSaveable { mutableStateOf<String?>(null) }
     var scrollPortfolioIntoView by remember { mutableStateOf(false) }
 
     LaunchedEffect(portfolioPinned, scrollPortfolioIntoView) {
@@ -601,19 +690,26 @@ fun DashboardContent(
             scrollPortfolioIntoView = false
         }
     }
-    var layoutVariant by rememberSaveable { mutableStateOf(HomeLayoutVariant.FOCUS.name) }
-    val selectedVariant = remember(layoutVariant) {
-        runCatching { HomeLayoutVariant.valueOf(layoutVariant) }
-            .getOrDefault(HomeLayoutVariant.FOCUS)
-    }
-
     LaunchedEffect(showHomeGuide) {
         if (showHomeGuide && homeGuideStep == 0) {
             guideFeedback = null
         }
     }
+    LaunchedEffect(showHomeGuide, homeGuideStep) {
+        if (!showHomeGuide) return@LaunchedEffect
+        delay(200)
+        when (homeGuideStep) {
+            0, 4 -> homeListState.animateScrollToItem(0)
+            1 -> sessionTapeRequester.bringIntoView()
+            2, 3 -> yourSpaceRequester.bringIntoView()
+        }
+    }
     val pinnedList = remember(quotes, pinnedStocks) {
         quotes.filter { pinnedStocks.contains(it.symbol) }
+    }
+    val pinnedNotOnWatchlist = remember(pinnedList, watchlistSymbols) {
+        val watched = watchlistSymbols.map { WatchlistSymbols.normalize(it) }.toSet()
+        pinnedList.filter { WatchlistSymbols.normalize(it.symbol) !in watched }
     }
     val localGainers = remember(quotes, pinnedStocks) {
         quotes
@@ -700,69 +796,6 @@ fun DashboardContent(
         buildPersonalNewsSymbols(watchlistSymbols, holdings.map { it.symbol })
     }
     val signalBuckets = remember(quotes) { buildSignalLabBuckets(quotes).take(3) }
-    val dashboardMetrics = remember(totalValue, holdings, positiveCount, negativeCount, focusQuotes, marketNews, theme) {
-        listOf(
-            DashboardMetric(
-                title = "Portfolio",
-                value = if (holdings.isEmpty()) "No holdings" else formatCompactCurrency(totalValue),
-                caption = if (holdings.isEmpty()) "Build your first tracked book" else "${holdings.size} active holding${if (holdings.size == 1) "" else "s"}",
-                accent = theme.primary,
-            ),
-            DashboardMetric(
-                title = "Breadth",
-                value = "$positiveCount up / $negativeCount down",
-                caption = "Tracked names on Home (not full NSE)",
-                accent = if (positiveCount >= negativeCount) theme.positive else theme.negative,
-            ),
-            DashboardMetric(
-                title = "Top Swing",
-                value = focusQuotes.firstOrNull()?.symbol ?: "Syncing",
-                caption = focusQuotes.firstOrNull()?.let { formatSignedPercent(it.pctChange) } ?: "Waiting for quotes",
-                accent = focusQuotes.firstOrNull()?.let { if (it.pctChange >= 0) theme.positive else theme.negative } ?: theme.textSecondary,
-            ),
-            DashboardMetric(
-                title = "News Flow",
-                value = "${marketNews.size}",
-                caption = if (marketNews.isEmpty()) "No live headlines yet" else "Tracked storylines in motion",
-                accent = theme.primary,
-            ),
-        )
-    }
-    val homeActions = remember(focusQuotes, onAiClick, onRefresh, onShowGuide, theme) {
-        listOfNotNull(
-            HomeAction(
-                title = "Fast Refresh",
-                subtitle = "Sync quotes + news",
-                colors = listOf(theme.primary.copy(alpha = 0.3f), theme.card),
-                onClick = {
-                    onRefresh()
-                    dashboardViewModel.refreshMarketNews(newsRefreshSymbols)
-                    dashboardViewModel.refreshMarketMovers(staggerMs = 400L)
-                },
-            ),
-            HomeAction(
-                title = "Market Leader",
-                subtitle = focusQuotes.firstOrNull()?.let { "Open ${it.symbol}" } ?: "Waiting for setup",
-                colors = listOf(theme.positive.copy(alpha = 0.25f), theme.card),
-                onClick = { focusQuotes.firstOrNull()?.let { onTradeClick(it.symbol) } },
-            ),
-            HomeAction(
-                title = "Home Guide",
-                subtitle = "Pin + reorder widgets",
-                colors = listOf(theme.textSecondary.copy(alpha = 0.2f), theme.card),
-                onClick = onShowGuide,
-            ),
-            onAiClick?.let {
-                HomeAction(
-                    title = "Ask AI",
-                    subtitle = "Chat about the tape",
-                    colors = listOf(theme.primary.copy(alpha = 0.2f), theme.surface),
-                    onClick = it,
-                )
-            }
-        )
-    }
-
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -788,6 +821,11 @@ fun DashboardContent(
                 .padding(16.dp)
         ) {
         item {
+            Box(
+                modifier = Modifier.guideSpotlight(
+                    showHomeGuide && (homeGuideStep == 0 || homeGuideStep == 4),
+                ),
+            ) {
             DashboardHeroCard(
                 marketMoodTitle = marketMoodTitle,
                 marketMoodDetail = marketMoodDetail,
@@ -800,11 +838,6 @@ fun DashboardContent(
                 positiveCount = positiveCount,
                 negativeCount = negativeCount,
                 portfolioPinned = portfolioPinned,
-                onRefresh = {
-                    onRefresh()
-                    dashboardViewModel.refreshMarketNews(newsRefreshSymbols)
-                    dashboardViewModel.refreshMarketMovers(staggerMs = 400L)
-                },
                 onShowGuide = onShowGuide,
                 onTogglePortfolioPin = {
                     val willPin = !portfolioPinned
@@ -815,31 +848,39 @@ fun DashboardContent(
                         guideFeedback = "Portfolio card removed from Your Space."
                     }
                 },
-                onResetLayout = { dashboardViewModel.resetDashboardLayout() },
+                onResetLayout = {
+                    dashboardViewModel.resetDashboardLayout()
+                    layoutResetHint = "Restored News and Market Watch in Your Space."
+                    scope.launch {
+                        delay(120)
+                        yourSpaceRequester.bringIntoView()
+                    }
+                },
                 onOpenLead = { focusQuotes.firstOrNull()?.let { onTradeClick(it.symbol) } },
+                layoutResetHint = layoutResetHint,
             )
+            }
         }
 
         item {
-            MarketPulseHero(
-                quotes = quotes,
-                marketStatus = marketStatus,
-                positiveCount = positiveCount,
-                negativeCount = negativeCount,
-                moodTitle = marketMoodTitle,
-            )
+            Box(
+                modifier = Modifier
+                    .bringIntoViewRequester(sessionTapeRequester)
+                    .guideSpotlight(showHomeGuide && homeGuideStep == 1),
+            ) {
+                MarketPulseHero(
+                    quotes = quotes,
+                    marketStatus = marketStatus,
+                )
+            }
         }
 
         item {
             IdeasRail(
-                topMover = focusQuotes.firstOrNull(),
                 signalTitle = signalBuckets.firstOrNull()?.title,
-                newsCount = marketNews.size,
-                onAiBrief = onAiClick,
                 onSignalLab = onSignalLabClick,
                 onScanner = onScannerClick,
                 onSmartMoney = onSmartMoneyClick,
-                onOpenMover = focusQuotes.firstOrNull()?.let { q -> { onTradeClick(q.symbol) } },
             )
         }
 
@@ -855,141 +896,17 @@ fun DashboardContent(
             }
         }
 
-                when (selectedVariant) {
-                    HomeLayoutVariant.FOCUS -> {
-                        item {
-                            DashboardMetricsRow(metrics = dashboardMetrics)
-                        }
-
-                        if (homeActions.isNotEmpty()) {
-                            item {
-                                HomeActionRail(actions = homeActions)
-                            }
-                        }
-
-                        item {
-                            AiDailyBriefCard(
-                                holdings = holdings,
-                                positiveCount = positiveCount,
-                                negativeCount = negativeCount,
-                                averageMove = averageMove,
-                                newsCount = marketNews.size,
-                                topMover = focusQuotes.firstOrNull(),
-                                onAskAi = onAiClick
-                            )
-                        }
-
-                        if (focusQuotes.isNotEmpty()) {
-                            item {
-                                SectionHeader(
-                                    title = "Quick Board",
-                                    subtitle = "Tap straight into strongest movers and fast contexts.",
-                                )
-                            }
-                            item {
-                                LazyRow(modifier = Modifier.exclusiveHorizontalScroll(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    items(focusQuotes.take(4), key = { it.symbol }) { quote ->
-                                        HomeQuoteBoardCard(
-                                            quote = quote,
-                                            onOpen = { onTradeClick(quote.symbol) },
-                                            isPinned = pinnedStocks.contains(quote.symbol),
-                                            onPinClick = { dashboardViewModel.togglePin(quote.symbol) },
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        if (signalBuckets.isNotEmpty()) {
-                            item {
-                                SectionHeader(
-                                    title = "Signal Playbooks",
-                                    subtitle = "Breakout, volume and dividend setups, ranked for immediate action.",
-                                )
-                            }
-                            item {
-                                LazyRow(modifier = Modifier.exclusiveHorizontalScroll(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    items(signalBuckets, key = { it.title }) { bucket ->
-                                        HomeSignalCard(
-                                            bucket = bucket,
-                                            onOpen = { bucket.quotes.firstOrNull()?.let { quote -> onTradeClick(quote.symbol) } },
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    HomeLayoutVariant.FLOW -> {
-                        if (homeActions.isNotEmpty()) {
-                            item {
-                                HomeActionRail(actions = homeActions)
-                            }
-                        }
-
-                        item {
-                            AiDailyBriefCard(
-                                holdings = holdings,
-                                positiveCount = positiveCount,
-                                negativeCount = negativeCount,
-                                averageMove = averageMove,
-                                newsCount = marketNews.size,
-                                topMover = focusQuotes.firstOrNull(),
-                                onAskAi = onAiClick
-                            )
-                        }
-
-                        item {
-                            DashboardMetricsRow(metrics = dashboardMetrics)
-                        }
-
-                        if (signalBuckets.isNotEmpty()) {
-                            item {
-                                SectionHeader(
-                                    title = "Signal Playbooks",
-                                    subtitle = "Start from thesis-first buckets, then drill into symbols.",
-                                )
-                            }
-                            item {
-                                LazyRow(modifier = Modifier.exclusiveHorizontalScroll(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    items(signalBuckets, key = { it.title }) { bucket ->
-                                        HomeSignalCard(
-                                            bucket = bucket,
-                                            onOpen = { bucket.quotes.firstOrNull()?.let { quote -> onTradeClick(quote.symbol) } },
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        if (focusQuotes.isNotEmpty()) {
-                            item {
-                                SectionHeader(
-                                    title = "Quick Board",
-                                    subtitle = "Context cards for the most relevant symbols this session.",
-                                )
-                            }
-                            item {
-                                LazyRow(modifier = Modifier.exclusiveHorizontalScroll(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    items(focusQuotes.take(4), key = { it.symbol }) { quote ->
-                                        HomeQuoteBoardCard(
-                                            quote = quote,
-                                            onOpen = { onTradeClick(quote.symbol) },
-                                            isPinned = pinnedStocks.contains(quote.symbol),
-                                            onPinClick = { dashboardViewModel.togglePin(quote.symbol) },
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+        item {
+            AiDailyBriefCard(onAskAi = onAiClick)
+        }
 
         item {
             SectionHeader(
                 title = "Your Space",
                 subtitle = "Watchlist and news — pin and reorder what you want on the tape.",
-                modifier = Modifier.bringIntoViewRequester(yourSpaceRequester),
+                modifier = Modifier
+                    .bringIntoViewRequester(yourSpaceRequester)
+                    .guideSpotlight(showHomeGuide && homeGuideStep in 2..3),
             )
         }
 
@@ -1161,14 +1078,14 @@ fun DashboardContent(
             }
         }
 
-        if (pinnedStocks.isNotEmpty()) {
+        if (pinnedNotOnWatchlist.isNotEmpty()) {
             item {
                 SectionHeader(
                     title = "Pinned Conviction",
-                    subtitle = "The names you explicitly want to keep on the radar while the market rotates.",
+                    subtitle = "Starred on Home and not already on Market Watch.",
                 )
             }
-            items(items = pinnedList, key = { "pinned_${it.symbol}" }) { quote ->
+            items(items = pinnedNotOnWatchlist, key = { "pinned_${it.symbol}" }) { quote ->
                 GainerLosersCard(
                     quote,
                     isGainer = quote.pctChange >= 0,
@@ -1241,14 +1158,6 @@ fun DashboardContent(
         }
 
         item {
-            HomeVariantSwitcher(
-                selectedVariant = selectedVariant,
-                onVariantSelected = { layoutVariant = it.name },
-                modifier = Modifier.bringIntoViewRequester(layoutRequester),
-            )
-        }
-
-        item {
             PaperWalletHomeStrip(
                 balance = walletBalance,
                 onAddFunds = onAddPracticeFunds,
@@ -1282,19 +1191,7 @@ fun DashboardContent(
 
         if (onAiQuery != null) {
             item {
-                IntradayTipsSection(
-                    onLearnQuery = onAiQuery,
-                )
-            }
-            item {
-                InvestorTipsCard(
-                    title = "Investor habits",
-                    topicLabel = "",
-                    tips = emptyList(),
-                    disclaimer = "",
-                    learnLinks = HabitLiteracyCatalog.investorLinks,
-                    onLearnQuery = onAiQuery,
-                )
+                HomeLearnSection(onLearnQuery = onAiQuery)
             }
         }
         
@@ -1325,14 +1222,8 @@ fun DashboardContent(
                             onHomeGuideStepChange(1)
                         }
                         1 -> {
-                            layoutVariant = if (selectedVariant == HomeLayoutVariant.FOCUS) {
-                                HomeLayoutVariant.FLOW.name
-                            } else {
-                                HomeLayoutVariant.FOCUS.name
-                            }
-                            delay(80)
-                            layoutRequester.bringIntoView()
-                            guideFeedback = "Layout switched — Focus ↔ Flow chips updated above."
+                            sessionTapeRequester.bringIntoView()
+                            guideFeedback = "Session tape — indices and open/closed. Mood stays on Pulse."
                             onHomeGuideStepChange(2)
                         }
                         2 -> {
@@ -1397,11 +1288,11 @@ private fun DashboardHeroCard(
     positiveCount: Int,
     negativeCount: Int,
     portfolioPinned: Boolean,
-    onRefresh: () -> Unit,
     onShowGuide: () -> Unit,
     onTogglePortfolioPin: () -> Unit,
     onResetLayout: () -> Unit,
     onOpenLead: () -> Unit,
+    layoutResetHint: String? = null,
 ) {
     val theme = LocalAppTheme.current
 
@@ -1531,11 +1422,6 @@ private fun DashboardHeroCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                FilledTonalButton(onClick = onRefresh) {
-                    Icon(Icons.Default.Refresh, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Refresh", maxLines = 1)
-                }
                 OutlinedButton(onClick = onShowGuide) {
                     Icon(Icons.Default.Info, contentDescription = null)
                     Spacer(modifier = Modifier.width(6.dp))
@@ -1559,19 +1445,6 @@ private fun DashboardHeroCard(
             ) {
                 InfoChip(label = { Text("$headlineCount headlines") })
                 InfoChip(label = { Text("$positiveCount up / $negativeCount down") })
-                if (leadQuote != null) {
-                    AssistChip(
-                        onClick = onOpenLead,
-                        label = {
-                            Text(
-                                text = "${leadQuote.symbol} ${formatSignedPercent(leadQuote.pctChange)}",
-                                maxLines = 2,
-                                softWrap = true,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
-                    )
-                }
             }
 
             TextButton(onClick = onResetLayout) {
@@ -1579,158 +1452,14 @@ private fun DashboardHeroCard(
                 Spacer(modifier = Modifier.width(6.dp))
                 Text("Reset dashboard layout")
             }
-        }
-    }
-}
-
-@Composable
-private fun DashboardMetricsRow(metrics: List<DashboardMetric>) {
-    LazyRow(
-        modifier = Modifier
-            .padding(top = 16.dp)
-            .exclusiveHorizontalScroll(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        items(metrics, key = { it.title }) { metric ->
-            Card(
-                modifier = Modifier
-                    .width(200.dp)
-                    .heightIn(min = 112.dp),
-                colors = byselCardColors(),
-                elevation = byselCardElevation(),
-                border = byselCardBorder(),
-                shape = RoundedCornerShape(18.dp),
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Text(
-                        metric.title,
-                        color = LocalAppTheme.current.textSecondary,
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp,
-                        maxLines = 2,
-                        softWrap = true,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        metric.value,
-                        color = metric.accent,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        lineHeight = 22.sp,
-                        maxLines = 2,
-                        softWrap = true,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        metric.caption,
-                        color = LocalAppTheme.current.text,
-                        fontSize = 12.sp,
-                        lineHeight = 17.sp,
-                        maxLines = 3,
-                        softWrap = true,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun HomeActionRail(actions: List<HomeAction>) {
-    LazyRow(
-        modifier = Modifier
-            .padding(top = 12.dp)
-            .exclusiveHorizontalScroll(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        items(actions, key = { it.title }) { action ->
-            Card(
-                modifier = Modifier
-                    .width(220.dp)
-                    .clickable { action.onClick() },
-                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Brush.linearGradient(action.colors))
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Text(
-                        text = action.title,
-                        color = LocalAppTheme.current.text,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
-                        lineHeight = 18.sp,
-                        maxLines = 2,
-                        softWrap = true,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = action.subtitle,
-                        color = LocalAppTheme.current.textSecondary,
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp,
-                        maxLines = 2,
-                        softWrap = true,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun HomeVariantSwitcher(
-    selectedVariant: HomeLayoutVariant,
-    onVariantSelected: (HomeLayoutVariant) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(top = 10.dp),
-        colors = byselCardColors(),
-        elevation = byselCardElevation(),
-        border = byselCardBorder(),
-        shape = RoundedCornerShape(14.dp),
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = "Home Layout",
-                color = LocalAppTheme.current.text,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 13.sp,
-            )
-            LazyRow(modifier = Modifier.exclusiveHorizontalScroll(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(HomeLayoutVariant.entries, key = { it.name }) { variant ->
-                    AssistChip(
-                        onClick = { onVariantSelected(variant) },
-                        label = {
-                            Text(
-                                text = if (selectedVariant == variant) {
-                                    "● ${variant.title}: ${variant.subtitle}"
-                                } else {
-                                    "${variant.title}: ${variant.subtitle}"
-                                },
-                                maxLines = 2,
-                                softWrap = true,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
-                    )
-                }
+            if (!layoutResetHint.isNullOrBlank()) {
+                Text(
+                    text = layoutResetHint,
+                    color = theme.primary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = 15.sp,
+                )
             }
         }
     }
@@ -1759,146 +1488,9 @@ private fun SectionHeader(
 }
 
 @Composable
-private fun HomeQuoteBoardCard(
-    quote: Quote,
-    onOpen: () -> Unit,
-    isPinned: Boolean,
-    onPinClick: () -> Unit,
-) {
-    Card(
-        modifier = Modifier
-            .width(148.dp)
-            .clickable { onOpen() },
-        colors = byselCardColors(),
-        elevation = byselCardElevation(),
-        border = byselCardBorder(),
-        shape = RoundedCornerShape(12.dp),
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = quote.symbol,
-                    color = LocalAppTheme.current.text,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                Icon(
-                    imageVector = if (isPinned) Icons.Default.Star else Icons.Default.StarBorder,
-                    contentDescription = if (isPinned) "Unpin" else "Pin",
-                    tint = if (isPinned) LocalAppTheme.current.primary else LocalAppTheme.current.textSecondary,
-                    modifier = Modifier
-                        .size(18.dp)
-                        .clickable(onClick = onPinClick),
-                )
-            }
-            Text(
-                text = "₹${String.format("%.2f", quote.last)}",
-                color = LocalAppTheme.current.textSecondary,
-                fontSize = 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = formatSignedPercent(quote.pctChange),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (quote.pctChange >= 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative,
-            )
-            if (quote.effectiveVolume() > 0L) {
-                Text(
-                    text = "Vol ${formatCompactVolume(quote.effectiveVolume())}",
-                    color = LocalAppTheme.current.textSecondary,
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun HomeSignalCard(
-    bucket: SignalLabBucket,
-    onOpen: () -> Unit,
-) {
-    val leadQuote = bucket.quotes.firstOrNull()
-
-    Card(
-        modifier = Modifier
-            .width(292.dp)
-            .heightIn(min = 168.dp)
-            .padding(vertical = 4.dp)
-            .clickable(enabled = leadQuote != null, onClick = onOpen),
-        colors = byselCardColors(),
-        elevation = byselCardElevation(),
-        border = byselCardBorder(),
-        shape = RoundedCornerShape(18.dp),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = bucket.title,
-                color = LocalAppTheme.current.text,
-                fontWeight = FontWeight.Bold,
-                lineHeight = 20.sp,
-                maxLines = 2,
-                softWrap = true,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = "${bucket.quotes.size} live setup${if (bucket.quotes.size == 1) "" else "s"}",
-                color = LocalAppTheme.current.textSecondary,
-                fontSize = 12.sp,
-            )
-            Text(
-                text = signalLabLeadSummary(bucket),
-                color = LocalAppTheme.current.text,
-                fontSize = 12.sp,
-                lineHeight = 18.sp,
-                maxLines = 3,
-                softWrap = true,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = bucket.quotes.take(3).joinToString(" • ") { it.symbol },
-                color = LocalAppTheme.current.textSecondary,
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
-                maxLines = 2,
-                softWrap = true,
-                overflow = TextOverflow.Ellipsis,
-            )
-            TextButton(
-                onClick = onOpen,
-                enabled = leadQuote != null,
-                contentPadding = PaddingValues(0.dp),
-            ) {
-                Text(if (leadQuote != null) "Open ${leadQuote.symbol}" else "No live setup")
-            }
-        }
-    }
-}
-
-@Composable
 private fun MarketPulseHero(
     quotes: List<Quote>,
     marketStatus: MarketStatus?,
-    positiveCount: Int,
-    negativeCount: Int,
-    moodTitle: String,
 ) {
     val theme = LocalAppTheme.current
     val indices = remember(quotes) {
@@ -1909,8 +1501,6 @@ private fun MarketPulseHero(
     val sessionOpen = marketStatus?.isOpen ?: MarketSession.isOpen()
     val sessionLabel = marketStatus?.message
         ?: if (sessionOpen) "NSE session live" else "Market closed · last session levels"
-    val breadthTotal = (positiveCount + negativeCount).coerceAtLeast(1)
-    val advanceShare = positiveCount.toFloat() / breadthTotal.toFloat()
 
     AnimatedVisibility(
         visible = true,
@@ -1940,13 +1530,13 @@ private fun MarketPulseHero(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "BYSEL Market Pulse",
+                        text = "Session tape",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = theme.text,
                     )
                     Text(
-                        text = moodTitle,
+                        text = "Nifty · Sensex · Bank Nifty",
                         fontSize = 12.sp,
                         lineHeight = 16.sp,
                         color = theme.textSecondary,
@@ -2044,56 +1634,16 @@ private fun MarketPulseHero(
                     }
                 }
             }
-
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    Text(
-                        text = "Session breadth",
-                        fontSize = 11.sp,
-                        lineHeight = 14.sp,
-                        color = theme.textSecondary,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 2,
-                        softWrap = true,
-                    )
-                    Text(
-                        text = "$positiveCount up · $negativeCount down",
-                        fontSize = 11.sp,
-                        lineHeight = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = theme.text,
-                        maxLines = 2,
-                        softWrap = true,
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(theme.negative.copy(alpha = 0.35f)),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .fillMaxWidth(advanceShare.coerceIn(0.05f, 1f))
-                            .background(theme.positive.copy(alpha = 0.85f)),
-                    )
-                }
-            }
         }
     }
 }
 
 @Composable
-private fun IntradayTipsSection(
+private fun HomeLearnSection(
     onLearnQuery: (String) -> Unit,
 ) {
     val theme = LocalAppTheme.current
+    val links = HabitLiteracyCatalog.sessionLinks + HabitLiteracyCatalog.investorLinks
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -2102,18 +1652,24 @@ private fun IntradayTipsSection(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(
-            text = "Session habits",
+            text = "Learn",
             fontSize = 15.sp,
             fontWeight = FontWeight.SemiBold,
             color = theme.text,
         )
-        HabitLiteracyCatalog.sessionLinks.forEach { link ->
+        Text(
+            text = "Opens Ask AI with that lesson — one chat, not a second brief.",
+            fontSize = 11.sp,
+            color = theme.textSecondary,
+            lineHeight = 15.sp,
+        )
+        links.forEach { link ->
             TextButton(
                 onClick = { onLearnQuery(link.learnQuery) },
                 contentPadding = PaddingValues(0.dp),
             ) {
                 Text(
-                    text = "Learn: ${link.title}",
+                    text = link.title,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = theme.primary,
@@ -2714,25 +2270,13 @@ private fun buildLocalPracticeIdeas(quotes: List<Quote>): List<PracticeIdea> {
 
 @Composable
 private fun IdeasRail(
-    topMover: Quote?,
     signalTitle: String?,
-    newsCount: Int,
-    onAiBrief: (() -> Unit)?,
     onSignalLab: (() -> Unit)?,
     onScanner: (() -> Unit)?,
     onSmartMoney: (() -> Unit)?,
-    onOpenMover: (() -> Unit)?,
 ) {
     val theme = LocalAppTheme.current
     val ideas = listOfNotNull(
-        onAiBrief?.let {
-            IdeaChip(
-                title = "AI Brief",
-                subtitle = if (newsCount > 0) "$newsCount stories in play" else "Ask the AI tab",
-                icon = Icons.Filled.Psychology,
-                onClick = it,
-            )
-        },
         onScanner?.let {
             IdeaChip(
                 title = "BYSEL Top Picks",
@@ -2757,14 +2301,6 @@ private fun IdeasRail(
                 onClick = it,
             )
         },
-        if (topMover != null && onOpenMover != null) {
-            IdeaChip(
-                title = topMover.symbol,
-                subtitle = formatSignedPercent(topMover.pctChange),
-                icon = if (topMover.pctChange >= 0) Icons.AutoMirrored.Filled.TrendingUp else Icons.AutoMirrored.Filled.TrendingDown,
-                onClick = onOpenMover,
-            )
-        } else null,
     )
     if (ideas.isEmpty()) return
 
@@ -3012,41 +2548,9 @@ fun GainerLosersCard(
 
 @Composable
 fun AiDailyBriefCard(
-    holdings: List<Holding>,
-    positiveCount: Int,
-    negativeCount: Int,
-    averageMove: Double,
-    newsCount: Int,
-    topMover: Quote?,
     onAskAi: (() -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
-    val briefLines = remember(holdings, positiveCount, negativeCount, averageMove, newsCount, topMover) {
-        buildList {
-            // Market tone
-            when {
-                averageMove >= 0.75 -> add("Markets are broadly positive today — momentum favours fresh entries.")
-                averageMove <= -0.75 -> add("Selling pressure is dominant — consider tightening stops.")
-                positiveCount > negativeCount -> add("Mixed session leaning bullish — selective opportunities.")
-                else -> add("Caution in the tape — breadth is weak today.")
-            }
-            // Portfolio
-            if (holdings.isNotEmpty()) {
-                val pnl = holdings.sumOf { it.qty * it.last } - holdings.sumOf { it.qty * it.avgPrice }
-                if (pnl >= 0) add("Your portfolio is up ₹${String.format("%,.0f", pnl)} today.")
-                else add("Your portfolio is down ₹${String.format("%,.0f", -pnl)} — review weak links.")
-            } else {
-                add("No holdings yet — ask AI for starter picks.")
-            }
-            // Top mover
-            topMover?.let {
-                add("${it.symbol} leads at ${if (it.pctChange >= 0) "+" else ""}${String.format("%.1f", it.pctChange)}%.")
-            }
-            // News
-            if (newsCount > 0) add("$newsCount live headlines driving sentiment.")
-        }
-    }
-
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -3066,21 +2570,19 @@ fun AiDailyBriefCard(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "AI Daily Brief",
+                    text = "Ask AI",
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,
                     color = theme.text
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
-            briefLines.forEach { line ->
-                Text(
-                    text = "• $line",
-                    fontSize = 13.sp,
-                    color = theme.textSecondary,
-                    lineHeight = 18.sp,
-                )
-            }
+            Text(
+                text = "Ask about the session, a name, or a paper plan. Mood and headlines stay on Pulse and News.",
+                fontSize = 13.sp,
+                color = theme.textSecondary,
+                lineHeight = 18.sp,
+            )
             if (onAskAi != null) {
                 Spacer(modifier = Modifier.height(10.dp))
                 Button(
@@ -3090,7 +2592,7 @@ fun AiDailyBriefCard(
                     modifier = Modifier.fillMaxWidth().height(36.dp),
                     contentPadding = PaddingValues(0.dp)
                 ) {
-                    Text("Ask AI for Detailed Analysis", fontSize = 13.sp)
+                    Text("Open chat", fontSize = 13.sp)
                 }
             }
         }

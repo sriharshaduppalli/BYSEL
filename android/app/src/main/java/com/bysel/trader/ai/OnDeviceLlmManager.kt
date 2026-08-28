@@ -42,6 +42,23 @@ object OnDeviceLlmManager {
 
     fun isReady(): Boolean = inference != null && session != null
 
+    /**
+     * Drop the native engine/session so RSS can fall after the user leaves the app.
+     * The on-disk model file is kept — the next AI turn can load it again.
+     */
+    @Synchronized
+    fun releaseEngine() {
+        if (inference == null && session == null) return
+        runCatching { session?.close() }
+        runCatching { inference?.close() }
+        session = null
+        inference = null
+        if (_state.value is LlmDownloadState.Ready || _state.value is LlmDownloadState.Initializing) {
+            _state.value = LlmDownloadState.NotDownloaded
+        }
+        Log.i(TAG, "On-device LLM released")
+    }
+
     suspend fun initialize(context: Context) {
         if (inference != null && session != null) return
         _state.value = LlmDownloadState.Initializing

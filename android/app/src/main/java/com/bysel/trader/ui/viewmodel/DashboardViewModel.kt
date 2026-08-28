@@ -36,11 +36,12 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             _portfolioPinned.value = false
             _newsPinned.value = true
             _watchlistPinned.value = true
-            _widgetOrder.value = listOf("portfolio", "news", "watchlist")
+            // Visible Your Space widgets first so ↑↓ is not a no-op against a hidden Portfolio.
+            _widgetOrder.value = listOf("news", "watchlist", "portfolio")
             PinnedWidgetsStore.setPortfolioPinned(context, false)
             PinnedWidgetsStore.setNewsPinned(context, true)
             PinnedWidgetsStore.setWatchlistPinned(context, true)
-            PinnedWidgetsStore.setWidgetOrder(context, listOf("portfolio", "news", "watchlist"))
+            PinnedWidgetsStore.setWidgetOrder(context, listOf("news", "watchlist", "portfolio"))
         }
     }
 

@@ -18,6 +18,14 @@ def test_extract_symbol_recognizes_bse_code_and_prefix():
     assert extract_symbol_from_query("BSE:ABB outlook").upper() == "ABB"
 
 
+def test_extract_symbol_ignores_beginners_literacy_word():
+    assert extract_symbol_from_query("Teach stop-loss for beginners") is None
+    assert extract_symbol_from_query("How should beginners do long-term investing in Indian stocks?") is None
+    assert extract_symbol_from_query("BEGINNERS") is None
+    assert extract_symbol_from_query("Should I buy RELIANCE?") == "RELIANCE"
+    assert extract_symbol_from_query("full math for RELIANCE") == "RELIANCE"
+
+
 def test_extract_symbol_ignores_wait_action_label():
     assert extract_symbol_from_query("WAIT") is None
     assert extract_symbol_from_query("Action: WAIT") is None

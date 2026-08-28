@@ -67,6 +67,7 @@ import com.bysel.trader.ui.theme.byselCardBorder
 import com.bysel.trader.ui.theme.byselCardColors
 import com.bysel.trader.ui.theme.byselCardElevation
 import com.bysel.trader.viewmodel.TradingViewModel
+import com.bysel.trader.viewmodel.isDerivativesFormMessage
 
 @Composable
 private fun LoadingOrEmpty(
@@ -112,10 +113,22 @@ private fun ProductPaperBanner(text: String) {
 }
 
 @Composable
-private fun ActionBanner(viewModel: TradingViewModel) {
+private fun ActionBanner(
+    viewModel: TradingViewModel,
+    includeDerivativesError: Boolean = false,
+) {
     val msg by viewModel.productActionMessage.collectAsStateWithLifecycle()
     val derivativesError by viewModel.derivativesError.collectAsStateWithLifecycle()
-    val display = derivativesError?.takeIf { it.isNotBlank() } ?: msg?.takeIf { it.isNotBlank() }
+    val foError = derivativesError?.takeIf { includeDerivativesError && it.isNotBlank() }
+    val leakedFoMessage = msg?.takeIf { it.isNotBlank() && isDerivativesFormMessage(it) }
+    if (!includeDerivativesError && leakedFoMessage != null) {
+        LaunchedEffect(leakedFoMessage) {
+            viewModel.clearProductActionMessage()
+            viewModel.clearDerivativesError()
+        }
+    }
+    val display = foError
+        ?: msg?.takeIf { it.isNotBlank() && (includeDerivativesError || !isDerivativesFormMessage(it)) }
     if (!display.isNullOrBlank()) {
         Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.primary.copy(alpha = 0.12f))) {
             Row(
@@ -124,14 +137,14 @@ private fun ActionBanner(viewModel: TradingViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(display, color = LocalAppTheme.current.text, modifier = Modifier.weight(1f))
-                if (!derivativesError.isNullOrBlank()) {
+                if (!foError.isNullOrBlank()) {
                     TextButton(onClick = { viewModel.clearDerivativesError() }) {
                         Text("Dismiss")
                     }
                 }
             }
         }
-        if (derivativesError.isNullOrBlank()) {
+        if (foError.isNullOrBlank()) {
             LaunchedEffect(msg) { viewModel.clearProductActionMessage() }
         }
     }
@@ -1457,6 +1470,7 @@ fun AdvancedOrdersScreen(
 
     LaunchedEffect(Unit) {
         viewModel.clearPreTradeCopilotSignal()
+        viewModel.clearDerivativesError()
         viewModel.refreshTriggerOrders()
         viewModel.refreshBasketOrders()
     }
@@ -1882,7 +1896,7 @@ fun DerivativesIntelligenceScreen(
         item {
             ProductPaperBanner("Cash shares 9:15–3:30 IST. F&O has extra closes after 3:15 (CAS ~3:35, derivatives ~3:40). Paper practice, not live brokerage.")
         }
-        item { ActionBanner(viewModel) }
+        item { ActionBanner(viewModel, includeDerivativesError = true) }
         item {
             InvestorTipsCard(
                 title = "F&O Tips",
@@ -2183,7 +2197,13 @@ fun WealthOsScreen(viewModel: TradingViewModel) {
         viewModel.loadGoalPlans()
     }
 
-    LaunchedEffect(Unit) { refreshWealthContext() }
+    LaunchedEffect(Unit) {
+        viewModel.clearDerivativesError()
+        if (viewModel.productActionMessage.value?.let { isDerivativesFormMessage(it) } == true) {
+            viewModel.clearProductActionMessage()
+        }
+        refreshWealthContext()
+    }
 
     val summary = dashboard
     val members = summary?.members.orEmpty()

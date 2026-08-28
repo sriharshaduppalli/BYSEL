@@ -176,7 +176,20 @@ class MainActivity : FragmentActivity() {
                 onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
             }
             
-            LaunchedEffect(isLoggedIn) {
+            var restoreAttempted by remember { mutableStateOf(AuthSessionManager.hasSession()) }
+            LaunchedEffect(Unit) {
+                if (!AuthSessionManager.hasSession()) {
+                    runCatching {
+                        kotlinx.coroutines.withTimeoutOrNull(4_000L) {
+                            authRepository.tryDeviceRestore(this@MainActivity)
+                        }
+                    }
+                }
+                restoreAttempted = true
+            }
+
+            LaunchedEffect(isLoggedIn, restoreAttempted) {
+                if (!restoreAttempted) return@LaunchedEffect
                 keepSplashScreen = false // Dismiss splash screen
 
                 if (wasLoggedIn && !isLoggedIn && !manualLogoutInProgress) {
@@ -453,7 +466,7 @@ fun BYSELApp(
     var previousTab by remember { mutableIntStateOf(0) }
     // Deep-link history (e.g. Stock Detail → AI Full Analysis) for swipe/back return.
     var tabBackStack by remember { mutableStateOf<List<Int>>(emptyList()) }
-    // More-section screens sit outside the 0–4 pager. Opening AI from SGB/MF
+    // More-section screens sit outside the 0–5 pager. Opening AI from SGB/MF
     // must not let a stale settledPage (often Home) overwrite the target tab.
     var suppressPagerTabSync by remember { mutableStateOf(false) }
 
@@ -470,7 +483,7 @@ fun BYSELApp(
     }
 
     fun navigatePushingCurrent(toTab: Int) {
-        if (selectedTab !in 0..4 && toTab in 0..4) {
+        if (selectedTab !in 0..5 && toTab in 0..5) {
             suppressPagerTabSync = true
         }
         if (selectedTab != toTab) {
@@ -531,8 +544,8 @@ fun BYSELApp(
     val edgeThresholdPx = with(density) { 28.dp.toPx() }
     val swipeTriggerPx = with(density) { 110.dp.toPx() }
     val pagerState = rememberPagerState(
-        initialPage = selectedTab.coerceIn(0, 4),
-        pageCount = { 5 }
+        initialPage = selectedTab.coerceIn(0, 5),
+        pageCount = { 6 }
     )
     
     val quotes by viewModel.quotes.collectAsStateWithLifecycle()
@@ -657,7 +670,7 @@ fun BYSELApp(
     }
 
     LaunchedEffect(selectedTab) {
-        if (selectedTab in 0..4 && pagerState.currentPage != selectedTab) {
+        if (selectedTab in 0..5 && pagerState.currentPage != selectedTab) {
             pagerState.scrollToPage(selectedTab)
         }
         // Soft resync when jumping Home ↔ Trade; skip if we just topped up (avoids stale overwrite).
@@ -689,7 +702,7 @@ fun BYSELApp(
                     if (settledPage == selectedTab) suppressPagerTabSync = false
                     return@collect
                 }
-                if (selectedTab in 0..4 && selectedTab != settledPage) {
+                if (selectedTab in 0..5 && selectedTab != settledPage) {
                     // Manual pager swipe between root tabs clears deep-link history.
                     if (tabBackStack.isNotEmpty()) tabBackStack = emptyList()
                     selectedTab = settledPage
@@ -705,7 +718,7 @@ fun BYSELApp(
                 selectedTab = previousTab
             }
 
-            selectedTab in 6..8 || selectedTab in 10..27 -> {
+            selectedTab in 6..8 || selectedTab in 10..29 -> {
                 selectedTab = 5
             }
 
@@ -814,7 +827,7 @@ fun BYSELApp(
                     bottomBar = {
                         // Stock detail (tab 9) is opened on top of another tab, so keep the
                         // originating tab highlighted instead of falling through to "More".
-                        val navHighlightTab = if (selectedTab == 9 && previousTab in 0..4) {
+                        val navHighlightTab = if (selectedTab == 9 && previousTab in 0..5) {
                             previousTab
                         } else {
                             selectedTab
@@ -907,7 +920,7 @@ fun BYSELApp(
                         }
                     }
                 ) { paddingValues ->
-                    val edgeGestureModifier = if (selectedTab !in 0..4 || tabBackStack.isNotEmpty()) {
+                    val edgeGestureModifier = if (selectedTab !in 0..5 || tabBackStack.isNotEmpty()) {
                         Modifier.pointerInput(selectedTab, previousTab, tabBackStack.size) {
                             var dragStartX = 0f
                             var totalDragX = 0f
@@ -936,7 +949,7 @@ fun BYSELApp(
                                         tabBackStack.isNotEmpty() ||
                                             selectedTab == 9 ||
                                             selectedTab in 6..8 ||
-                                            selectedTab in 10..27
+                                            selectedTab in 10..29
                                     val canSwipeForwardFromMore = selectedTab == 5 && tabBackStack.isEmpty()
                                     val startedFromLeftEdge = dragStartX <= edgeThresholdPx
                                     val startedFromRightEdge = dragStartX >= size.width - edgeThresholdPx
@@ -988,8 +1001,8 @@ fun BYSELApp(
                             .fillMaxSize()
                             .then(edgeGestureModifier)
                     ) {
-                        // Swipeable tabs for main 5 tabs (0-4)
-                        if (selectedTab in 0..4) {
+                        // Swipeable root tabs: Home, AI, Trade, Portfolio, Heatmap, More
+                        if (selectedTab in 0..5) {
                             HorizontalPager(
                                 state = pagerState,
                                 modifier = Modifier.fillMaxSize(),
@@ -1081,8 +1094,12 @@ fun BYSELApp(
                                             viewModel.createAlert(symbol, price, alertType)
                                         },
                                         onNavigateToStock = { symbol ->
-                                            // Quote + 1M candles together; chart sits under the hero.
-                                            viewModel.openStockDetail(symbol, period = "1mo", interval = "1d")
+                                            viewModel.openStockDetail(
+                                                symbol,
+                                                period = "1mo",
+                                                interval = "1d",
+                                                focusChart = true,
+                                            )
                                             openStockDetailTab()
                                         },
                                         onNavigateBack = if (tabBackStack.isNotEmpty()) {
@@ -1184,45 +1201,45 @@ fun BYSELApp(
                                             selectedTab = 28
                                         },
                                     )
+                                    5 -> MoreScreen(
+                                        activeAlertCount = activeAlertCount,
+                                        onSearchClick = { selectedTab = 6 },
+                                        onAlertsClick = { selectedTab = 7 },
+                                        onSettingsClick = { selectedTab = 8 },
+                                        onAchievementsClick = { selectedTab = 10 },
+                                        onEquityClick = {
+                                            viewModel.requestTradeWorkspace(0)
+                                            selectRootTab(2)
+                                        },
+                                        onFnoClick = {
+                                            viewModel.requestTradeWorkspace(2)
+                                            selectRootTab(2)
+                                        },
+                                        onMutualFundsClick = { selectedTab = 11 },
+                                        onIpoClick = { selectedTab = 12 },
+                                        onEtfClick = { selectedTab = 13 },
+                                        onSgbClick = { selectedTab = 27 },
+                                        onSipClick = { selectedTab = 14 },
+                                        onMyIpoApplicationsClick = { selectedTab = 15 },
+                                        onAdvancedOrdersClick = { selectedTab = 16 },
+                                        onDerivativesClick = { selectedTab = 17 },
+                                        onWealthOsClick = { selectedTab = 18 },
+                                        onCopilotCenterClick = { selectedTab = 19 },
+                                        onSignalLabClick = { selectedTab = 20 },
+                                        onScannerClick = { selectedTab = 28 },
+                                        onInvestorPortfoliosClick = { selectedTab = 21 },
+                                        onRiskLabClick = { selectedTab = 22 },
+                                        onEarningsCalendarClick = { selectedTab = 23 },
+                                        onTradeJournalClick = { selectedTab = 24 },
+                                        onOrderHistoryClick = { selectedTab = 29 },
+                                        onWatchlistClick = { selectedTab = 25 },
+                                        onMarketCalendarClick = { selectedTab = 26 },
+                                    )
                                 }
                             }
                         } else {
-                            // Non-swipeable screens (More, Search, Alerts, Settings, Detail, Achievements)
+                            // Non-swipeable screens (Search, Alerts, Settings, Detail, Achievements)
                             when (selectedTab) {
-                                5 -> MoreScreen(
-                                    activeAlertCount = activeAlertCount,
-                                    onSearchClick = { selectedTab = 6 },
-                                    onAlertsClick = { selectedTab = 7 },
-                                    onSettingsClick = { selectedTab = 8 },
-                                    onAchievementsClick = { selectedTab = 10 },
-                                    onEquityClick = {
-                                        viewModel.requestTradeWorkspace(0)
-                                        selectRootTab(2)
-                                    },
-                                    onFnoClick = {
-                                        viewModel.requestTradeWorkspace(2)
-                                        selectRootTab(2)
-                                    },
-                                    onMutualFundsClick = { selectedTab = 11 },
-                                    onIpoClick = { selectedTab = 12 },
-                                    onEtfClick = { selectedTab = 13 },
-                                    onSgbClick = { selectedTab = 27 },
-                                    onSipClick = { selectedTab = 14 },
-                                    onMyIpoApplicationsClick = { selectedTab = 15 },
-                                    onAdvancedOrdersClick = { selectedTab = 16 },
-                                    onDerivativesClick = { selectedTab = 17 },
-                                    onWealthOsClick = { selectedTab = 18 },
-                                    onCopilotCenterClick = { selectedTab = 19 },
-                                    onSignalLabClick = { selectedTab = 20 },
-                                    onScannerClick = { selectedTab = 28 },
-                                    onInvestorPortfoliosClick = { selectedTab = 21 },
-                                    onRiskLabClick = { selectedTab = 22 },
-                                    onEarningsCalendarClick = { selectedTab = 23 },
-                                    onTradeJournalClick = { selectedTab = 24 },
-                                    onOrderHistoryClick = { selectedTab = 29 },
-                                    onWatchlistClick = { selectedTab = 25 },
-                                    onMarketCalendarClick = { selectedTab = 26 },
-                                )
                                 10 -> com.bysel.trader.ui.screens.AchievementsScreen(viewModel)
                                 11 -> MutualFundsScreen(
                                     viewModel = viewModel,
@@ -1341,7 +1358,8 @@ fun BYSELApp(
                                         viewModel.setSelectedQuote(quote)
                                         openStockDetailTab()
                                     },
-                                    onErrorDismiss = { viewModel.clearMarketError() }
+                                    onErrorDismiss = { viewModel.clearMarketError() },
+                                    onRemove = { viewModel.removeFromWatchlist(it) },
                                 )
                                 26 -> MarketCalendarScreen(onBack = { selectedTab = 5 })
                                 6 -> SearchScreen(
@@ -1470,6 +1488,43 @@ fun BYSELApp(
                                                     handled = true
                                                     change.consume()
                                                     popTabBack()
+                                                }
+                                            },
+                                        )
+                                    },
+                            )
+                        }
+
+                        // Right-edge only so the pager can still swipe More ↔ Heatmap.
+                        if (selectedTab == 5 && tabBackStack.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .fillMaxHeight()
+                                    .width(36.dp)
+                                    .pointerInput(selectedTab) {
+                                        var totalDragX = 0f
+                                        var handled = false
+                                        detectHorizontalDragGestures(
+                                            onDragStart = {
+                                                totalDragX = 0f
+                                                handled = false
+                                            },
+                                            onDragEnd = {
+                                                totalDragX = 0f
+                                                handled = false
+                                            },
+                                            onDragCancel = {
+                                                totalDragX = 0f
+                                                handled = false
+                                            },
+                                            onHorizontalDrag = { change, dragAmount ->
+                                                if (handled) return@detectHorizontalDragGestures
+                                                totalDragX += dragAmount
+                                                if (totalDragX < -swipeTriggerPx) {
+                                                    handled = true
+                                                    change.consume()
+                                                    selectedTab = 6
                                                 }
                                             },
                                         )

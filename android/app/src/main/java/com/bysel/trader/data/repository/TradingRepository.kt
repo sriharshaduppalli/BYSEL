@@ -7,6 +7,8 @@ import com.bysel.trader.data.api.RetrofitClient
 import com.bysel.trader.data.live.LiveMarketDataClient
 import com.bysel.trader.data.api.TradeHistory
 import com.bysel.trader.data.local.BYSELDatabase
+import com.bysel.trader.data.fno.TeachingFutures
+import com.bysel.trader.data.fno.TeachingOptionChain
 import com.bysel.trader.data.models.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -996,7 +998,16 @@ open class TradingRepository(private val database: BYSELDatabase) {
             val response = apiService.getOptionChain(symbol = symbol, expiry = expiry)
             Result.Success(response)
         } catch (e: Exception) {
-            Result.Error(e.message ?: "Unknown error")
+            if (TeachingOptionChain.isMissingLiveSpot(e)) {
+                Result.Success(TeachingOptionChain.build(symbol, expiry))
+            } else {
+                Result.Error(
+                    NetworkErrorMessages.forException(
+                        e,
+                        "Couldn't load the teaching chain. Tap Load Chain to retry.",
+                    )
+                )
+            }
         }
     }
 
@@ -1005,7 +1016,12 @@ open class TradingRepository(private val database: BYSELDatabase) {
             val response = apiService.previewStrategy(request)
             Result.Success(response)
         } catch (e: Exception) {
-            Result.Error(e.message ?: "Unknown error")
+            Result.Error(
+                NetworkErrorMessages.forException(
+                    e,
+                    "Couldn't preview this paper recipe. Check the legs and retry.",
+                )
+            )
         }
     }
 
@@ -1014,7 +1030,16 @@ open class TradingRepository(private val database: BYSELDatabase) {
             val response = apiService.getFuturesContracts(symbol = symbol)
             Result.Success(response)
         } catch (e: Exception) {
-            Result.Error(e.message ?: "Unknown error")
+            if (TeachingOptionChain.isMissingLiveSpot(e)) {
+                Result.Success(TeachingFutures.build(symbol))
+            } else {
+                Result.Error(
+                    NetworkErrorMessages.forException(
+                        e,
+                        "Couldn't load the teaching futures list. Tap Load Contracts to retry.",
+                    )
+                )
+            }
         }
     }
 
@@ -1023,7 +1048,16 @@ open class TradingRepository(private val database: BYSELDatabase) {
             val response = apiService.previewFuturesTicket(request)
             Result.Success(response)
         } catch (e: Exception) {
-            Result.Error(e.message ?: "Unknown error")
+            if (TeachingOptionChain.isMissingLiveSpot(e)) {
+                Result.Success(TeachingFutures.preview(request))
+            } else {
+                Result.Error(
+                    NetworkErrorMessages.forException(
+                        e,
+                        "Couldn't preview this paper futures ticket. Retry.",
+                    )
+                )
+            }
         }
     }
 

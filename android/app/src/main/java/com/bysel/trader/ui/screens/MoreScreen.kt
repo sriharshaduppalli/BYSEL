@@ -65,6 +65,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.BuildConfig
+import com.bysel.trader.ui.components.exclusiveHorizontalScroll
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.theme.ScreenHeader
 import com.bysel.trader.ui.theme.byselCardBorder
@@ -308,7 +309,9 @@ fun MoreScreen(
         item { SectionHeader("Products") }
         item {
             FlowRow(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .exclusiveHorizontalScroll(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -323,7 +326,9 @@ fun MoreScreen(
 
         item {
             FlowRow(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .exclusiveHorizontalScroll(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {

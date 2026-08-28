@@ -444,10 +444,15 @@ INDIAN_STOCKS: Dict[str, tuple] = {
     "ZENSARTECH":   ("ZENSARTECH.NS",   "Zensar Technologies Ltd"),
 
     # ── INDICES (for reference/watchlist) ────────────────────
+    "NIFTY":        ("^NSEI",           "NIFTY 50 Index"),
     "NIFTY50":      ("^NSEI",           "NIFTY 50 Index"),
     "SENSEX":       ("^BSESN",          "BSE SENSEX Index"),
     "BANKNIFTY":    ("^NSEBANK",        "NIFTY Bank Index"),
+    "NIFTYBANK":    ("^NSEBANK",        "NIFTY Bank Index"),
     "NIFTYIT":      ("^CNXIT",          "NIFTY IT Index"),
+    "FINNIFTY":     ("NIFTY_FIN_SERVICE.NS", "NIFTY Financial Services Index"),
+    "MIDCPNIFTY":   ("NIFTY_MID_SELECT.NS", "NIFTY Midcap Select Index"),
+    "NIFTYNXT50":   ("^NSMIDCP",        "NIFTY Next 50 Index"),
 
     # ── ADDITIONAL POPULAR (mostly dual-listed NSE) ──────────
     "DMART":        ("DMART.NS",        "Avenue Supermarts Ltd"),

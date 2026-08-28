@@ -91,11 +91,16 @@ fun InvestorTipsCard(
 
         if (onLearnQuery != null) {
             val links = learnLinks.ifEmpty {
-                tips.map { tip ->
-                    HabitLearnLink(
-                        title = tip.title,
-                        learnQuery = "Explain ${tip.title} for Indian market beginners. Educational only — no buy or sell.",
-                    )
+                val topicLink = HabitLiteracyCatalog.investorLinksFor(selectedTopic).firstOrNull()
+                if (topicLink != null && tips.isEmpty()) {
+                    listOf(topicLink)
+                } else {
+                    tips.map { tip ->
+                        HabitLearnLink(
+                            title = tip.title,
+                            learnQuery = HabitLiteracyCatalog.tipLearnQuery(tip.title, tip.body),
+                        )
+                    }
                 }
             }
             links.forEach { link ->

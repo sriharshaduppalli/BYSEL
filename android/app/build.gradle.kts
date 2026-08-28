@@ -206,6 +206,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Include native debug symbols in the AAB so Play Console can
             // symbolicate native crashes/ANRs (avoids the missing-symbols warning).
@@ -285,9 +286,9 @@ dependencies {
     implementation("androidx.compose.runtime:runtime-livedata")
     // Custom Tabs for Privacy/Terms/website
     implementation("androidx.browser:browser:1.8.0")
-    // Credential Manager (password autofill)
-    implementation("androidx.credentials:credentials:1.3.0")
-    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    // Credential Manager (password + Restore Credentials for new-device sign-in)
+    implementation("androidx.credentials:credentials:1.5.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
     // Paging for large quote/news lists
     implementation("androidx.paging:paging-runtime-ktx:3.3.0")
     implementation("androidx.paging:paging-compose:3.3.0")

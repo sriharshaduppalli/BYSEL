@@ -18,6 +18,12 @@ class HabitLiteracyCatalogTest {
         assertFalse(blob.contains("NAV = (assets", ignoreCase = true))
         assertTrue(HabitLiteracyCatalog.investorLinksFor("sgb").single().id == "sgb")
         assertTrue(HabitLiteracyCatalog.investorLinksFor("fno").single().id == "fno")
+        assertTrue(session.all { HabitLiteracyCatalog.isHabitLearnQuery(it.learnQuery) })
+        assertTrue(investor.all { HabitLiteracyCatalog.isHabitLearnQuery(it.learnQuery) })
+        assertTrue(session.any { it.learnQuery.contains("opening range", ignoreCase = true) })
+        assertTrue(session.any { it.learnQuery.contains("midday chop", ignoreCase = true) })
+        assertTrue(investor.any { it.learnQuery.contains("long-term investing", ignoreCase = true) })
+        assertFalse(blob.contains("no buy or sell", ignoreCase = true))
     }
 
     @Test

@@ -44,6 +44,8 @@ object NetworkErrorMessages {
                 connectCopy()
             httpCode == 401 || httpCode == 403 ->
                 "$fallback Sign-in may have expired."
+            httpCode == 404 || raw.contains("HTTP 404", ignoreCase = true) ->
+                fallback
             isServerError(httpCode, raw) ->
                 serverErrorCopy()
             isExplicitOffline(e) ->

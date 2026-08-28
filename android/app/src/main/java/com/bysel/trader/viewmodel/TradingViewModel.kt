@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.firstOrNull
+import com.bysel.trader.ui.components.HabitLiteracyCatalog
 import com.bysel.trader.utils.MarketSession
 import com.bysel.trader.utils.PromptBuilder
 import android.content.Intent
@@ -682,13 +683,6 @@ class TradingViewModel(
 
     init {
         loadAchievements()
-        // On-device LLM is heavy — defer well past first Home paint / TTFD.
-        viewModelScope.launch {
-            kotlinx.coroutines.delay(6_000)
-            if (OnDeviceLlmManager.isModelDownloaded(getApplication())) {
-                OnDeviceLlmManager.initialize(getApplication())
-            }
-        }
         // observe active alerts from DB
         viewModelScope.launch {
             repository.getActiveAlerts()
@@ -1329,6 +1323,14 @@ class TradingViewModel(
     /** Symbol currently being opened for Stock Detail (AI Chart / search). */
     private val _pendingDetailSymbol = MutableStateFlow<String?>(null)
 
+    /** AI "View chart" lands on candles; Home/search keep the hero first. */
+    private val _openDetailAtChart = MutableStateFlow(false)
+    val openDetailAtChart: StateFlow<Boolean> = _openDetailAtChart.asStateFlow()
+
+    fun clearOpenDetailAtChart() {
+        _openDetailAtChart.value = false
+    }
+
     /** In-memory per-window history so 5D/1M/3M/1Y switches stay seamless. */
     private val historyWindowCache = LinkedHashMap<String, List<HistoryCandle>>(12)
 
@@ -1337,13 +1339,14 @@ class TradingViewModel(
     }
 
     /**
-     * Open Stock Detail with quote + 1M daily candles fetched together.
-     * Used by AI "View chart" so the chart is ready when the screen paints.
+     * Open Stock Detail with quote + candles fetched together.
+     * [focusChart] is for AI "View chart" so Price chart sits under the toolbar.
      */
     fun openStockDetail(
         symbol: String,
         period: String = "1mo",
         interval: String = "1d",
+        focusChart: Boolean = false,
     ) {
         val normalizedSymbol = symbol.trim().uppercase()
         if (normalizedSymbol.isBlank()) {
@@ -1360,6 +1363,7 @@ class TradingViewModel(
         val requestKey = "$normalizedSymbol|$normalizedPeriod|$normalizedInterval"
 
         _pendingDetailSymbol.value = normalizedSymbol
+        _openDetailAtChart.value = focusChart
         _detailLoading.value = true
         _quoteHistoryLoading.value = true
         activeHistoryRequestKey = requestKey
@@ -2198,8 +2202,9 @@ class TradingViewModel(
             _derivativesError.value = "Symbol is required"
             return
         }
-        if (spot <= 0.0) {
-            _derivativesError.value = "Spot must be greater than 0"
+        val resolvedSpot = if (spot > 0.0) spot else (_optionChain.value?.spot ?: 0.0)
+        if (resolvedSpot <= 0.0) {
+            _derivativesError.value = "Enter a spot price or load an option chain first"
             return
         }
         if (legs.isEmpty()) {
@@ -2209,7 +2214,7 @@ class TradingViewModel(
 
         viewModelScope.launch {
             _derivativesLoading.value = true
-            when (val response = repository.previewStrategy(StrategyPreviewRequest(symbol = symbol.trim().uppercase(), spot = spot, legs = legs))) {
+            when (val response = repository.previewStrategy(StrategyPreviewRequest(symbol = symbol.trim().uppercase(), spot = resolvedSpot, legs = legs))) {
                 is Result.Success -> {
                     _strategyPreview.value = response.data
                     _derivativesError.value = null
@@ -2962,10 +2967,12 @@ class TradingViewModel(
 
             // Sector/theme asks must not inherit the currently selected quote (e.g. INFY
             // while the user asked "defence stocks") — that leaks Buy/Alert CTAs.
+            // Habit Learn chips are literacy, not a plan for the open quote.
             val sectorThemeAsk = isSectorThemeQuery(cleanedQuery)
-            val symbol = _selectedQuote.value?.symbol?.takeUnless { sectorThemeAsk }
+            val habitLearnAsk = HabitLiteracyCatalog.isHabitLearnQuery(cleanedQuery)
+            val symbol = _selectedQuote.value?.symbol?.takeUnless { sectorThemeAsk || habitLearnAsk }
             symbol?.let { contextParts.add("symbol=$it") }
-            if (!sectorThemeAsk) {
+            if (!sectorThemeAsk && !habitLearnAsk) {
                 _selectedQuote.value?.let { q ->
                     contextParts.add("price=${q.last}")
                     q.pctChange.let { contextParts.add("pctChange=${it}") }
@@ -3050,6 +3057,11 @@ class TradingViewModel(
                 }
                 is Result.Error -> {
                     var answeredOnDevice = false
+                    if (OnDeviceLlmManager.isModelDownloaded(getApplication())) {
+                        if (!OnDeviceLlmManager.isReady()) {
+                            OnDeviceLlmManager.initialize(getApplication())
+                        }
+                    }
                     if (OnDeviceLlmManager.isReady()) {
                         val stockCtx = contextParts.joinToString("; ")
                         val devicePrompt = OnDeviceLlmManager.buildPrompt(cleanedQuery, stockCtx)
@@ -4083,6 +4095,8 @@ class TradingViewModel(
 fun isDerivativesFormMessage(message: String): Boolean {
     val lower = message.lowercase()
     return lower.contains("spot must") ||
+        lower.contains("enter a spot") ||
+        lower.contains("option chain first") ||
         lower.contains("strategy leg") ||
         lower.contains("symbol and expiry") ||
         lower.contains("underlying symbol") ||

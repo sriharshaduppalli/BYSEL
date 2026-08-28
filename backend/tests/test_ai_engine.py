@@ -63,6 +63,13 @@ def test_extract_symbols_ignores_generic_screening_phrases():
     assert symbols == []
 
 
+def test_extract_symbols_ignores_beginners_literacy_word():
+    assert "BEGINNERS" not in ai_engine._extract_symbols(
+        "How should beginners do long-term investing in Indian stocks?"
+    )
+    assert ai_engine._extract_symbols("Should I wait on reliance?") == ["RELIANCE"]
+
+
 def test_extract_symbols_ignores_wait_action_label():
     assert "WAIT" not in ai_engine._extract_symbols("Action: WAIT")
     assert "WAIT" not in ai_engine._extract_symbols("should I wait now?")
@@ -207,3 +214,16 @@ def test_custom_llm_composer_uses_distinct_shapes_for_stock_chips():
     assert news.lower().startswith("**reliance** — news")
     assert quote.lower().startswith("**reliance** — live quote")
     assert "direct answer" in plan.lower() or "paper trade plan" in plan.lower()
+    assert "your ask:" in plan.lower()
+    assert "should i buy reliance?" in plan.lower()
+    assert "wilder" not in plan.lower()
+    assert "score " not in plan.lower()
+    assert "ev/ebitda" not in plan.lower()
+
+    analysis = _compose("Analyze RELIANCE", "stock_analysis")
+    assert "how it's doing" in analysis.lower() or "snapshot" in analysis.lower()
+    assert "direct answer" not in analysis.lower()
+    assert "paper trade plan" not in analysis.lower()
+    assert "entry zone" not in analysis.lower()
+    assert "should i buy reliance" in analysis.lower()
+    assert plan != analysis

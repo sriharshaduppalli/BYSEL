@@ -2702,6 +2702,15 @@ _TERM_ANSWERS["official option chain"] = _TERM_ANSWERS["nseindia"]
 
 def get_education_answer(query: str) -> Optional[str]:
     """Return a structured education answer if the query is definitional/formulaic."""
+    try:
+        from .habit_lessons import get_habit_lesson
+
+        habit = get_habit_lesson(query)
+        if habit:
+            return habit
+    except Exception:
+        pass
+
     q = (query or "").strip().lower()
     if not q:
         return None
@@ -2846,6 +2855,30 @@ def get_education_answer(query: str) -> Optional[str]:
     if stock_specific_stop_or_plan and not formula_cue and not re.search(
         r"\b(what is|define|definition|meaning of|explain)\b", q
     ):
+        return None
+
+    # "Dividend date of INFY" / "corporate actions of TCS" → dated pack, not yield glossary.
+    dated_event_ask = bool(
+        re.search(
+            r"\b(ex[- ]?date|record date|dividend date|bonus date|"
+            r"rights date|corporate actions?)\b",
+            q,
+        )
+    )
+    stock_specific_event = bool(
+        dated_event_ask
+        and (
+            named_symbol
+            or re.search(
+                r"\b(of|for)\s+[a-z0-9]|bse:|nse:|\b\d{6}\b|"
+                r"\b(reliance|tcs|infy|hdfc|wipro|sbin)\b",
+                q,
+            )
+        )
+        and not formula_cue
+        and not re.search(r"\b(what is|define|definition|meaning of|explain)\b", q)
+    )
+    if stock_specific_event:
         return None
 
     # "Technical analysis of KAYNES" → live stock TA, not the TA literacy primer.

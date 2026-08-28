@@ -737,11 +737,42 @@ def _option_contract_from_row(row: dict) -> OptionContract:
     )
 
 
+_QUOTE_ALIASES = {
+    "NIFTY": "NIFTY50",
+    "NIFTYBANK": "BANKNIFTY",
+}
+
+# Teaching-board levels used only when a live quote is unavailable.
+_EDUCATIONAL_SPOT = {
+    "NIFTY": 24500.0,
+    "NIFTY50": 24500.0,
+    "BANKNIFTY": 55000.0,
+    "NIFTYBANK": 55000.0,
+    "FINNIFTY": 26500.0,
+    "MIDCPNIFTY": 13000.0,
+    "NIFTYNXT50": 69000.0,
+}
+
+
+def _resolve_derivatives_spot(symbol: str) -> tuple[float, bool]:
+    """Return (spot, illustrative). Never fail a teaching chain on a missing quote."""
+    raw = (symbol or "").strip().upper()
+    lookup = _QUOTE_ALIASES.get(raw, raw)
+    last = 0.0
+    try:
+        last = float((fetch_quote(lookup) or {}).get("last") or 0.0)
+        if last <= 0 and lookup != raw:
+            last = float((fetch_quote(raw) or {}).get("last") or 0.0)
+    except Exception as exc:
+        logger.debug("derivatives_spot_quote_failed symbol=%s reason=%s", raw, exc)
+        last = 0.0
+    if last > 0:
+        return last, False
+    return _EDUCATIONAL_SPOT.get(raw, 1000.0), True
+
+
 def _generate_synthetic_option_chain(symbol: str, expiry: str) -> OptionChainResponse:
-    quote = fetch_quote(symbol.upper())
-    spot = float(quote.get("last") or 0.0)
-    if spot <= 0:
-        raise HTTPException(status_code=404, detail=f"Could not fetch live spot for {symbol}")
+    spot, illustrative = _resolve_derivatives_spot(symbol)
 
     step = 50.0 if spot >= 1000 else 20.0 if spot >= 300 else 10.0
     atm = round(spot / step) * step
@@ -814,30 +845,38 @@ def _generate_synthetic_option_chain(symbol: str, expiry: str) -> OptionChainRes
         ivSkew=metrics.get("ivSkew"),
         atmIv=metrics.get("atmIv"),
         notes=[
-            "Synthetic Black–Scholes chain (NSE live chain unavailable or blocked).",
+            "Teaching chain — live exchange chain unavailable.",
             "PCR / IV skew are computed on this educational board — verify with your broker.",
+            *(
+                ["Spot is illustrative because a live index print was unavailable."]
+                if illustrative
+                else []
+            ),
         ],
     )
 
 
 def _generate_option_chain(symbol: str, expiry: str) -> OptionChainResponse:
-    from ..derivatives_data import fetch_nse_option_chain
+    try:
+        from ..derivatives_data import fetch_nse_option_chain
 
-    live = fetch_nse_option_chain(symbol=symbol, expiry=expiry)
-    if live and live.get("contracts"):
-        contracts = [_option_contract_from_row(row) for row in live["contracts"]]
-        return OptionChainResponse(
-            symbol=str(live.get("symbol") or symbol).upper(),
-            expiry=str(live.get("expiry") or expiry),
-            spot=float(live.get("spot") or 0.0),
-            generatedAt=str(live.get("generatedAt") or datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")),
-            contracts=contracts,
-            source=str(live.get("source") or "nse"),
-            pcr=live.get("pcr"),
-            ivSkew=live.get("ivSkew"),
-            atmIv=live.get("atmIv"),
-            notes=list(live.get("notes") or []),
-        )
+        live = fetch_nse_option_chain(symbol=symbol, expiry=expiry)
+        if live and live.get("contracts"):
+            contracts = [_option_contract_from_row(row) for row in live["contracts"]]
+            return OptionChainResponse(
+                symbol=str(live.get("symbol") or symbol).upper(),
+                expiry=str(live.get("expiry") or expiry),
+                spot=float(live.get("spot") or 0.0),
+                generatedAt=str(live.get("generatedAt") or datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")),
+                contracts=contracts,
+                source=str(live.get("source") or "nse"),
+                pcr=live.get("pcr"),
+                ivSkew=live.get("ivSkew"),
+                atmIv=live.get("atmIv"),
+                notes=list(live.get("notes") or []),
+            )
+    except Exception as exc:
+        logger.warning("option_chain_live_failed symbol=%s reason=%s", symbol, exc)
     return _generate_synthetic_option_chain(symbol=symbol, expiry=expiry)
 
 
@@ -857,10 +896,7 @@ def _lot_size_for_symbol(symbol: str, spot: float) -> int:
 
 
 def _generate_synthetic_futures_contracts(symbol: str) -> FuturesContractsResponse:
-    quote = fetch_quote(symbol.upper())
-    spot = float(quote.get("last") or 0.0)
-    if spot <= 0:
-        raise HTTPException(status_code=404, detail=f"Could not fetch live spot for {symbol}")
+    spot, illustrative = _resolve_derivatives_spot(symbol)
 
     normalized_symbol = symbol.strip().upper()
     lot_size = _lot_size_for_symbol(normalized_symbol, spot)
@@ -878,7 +914,7 @@ def _generate_synthetic_futures_contracts(symbol: str) -> FuturesContractsRespon
         oi = max(5000, int((base_seed * 97 + idx * 431) % 95000 + 8000))
         oi_change = int(((base_seed * 31 + idx * 173) % 3200) - 1600)
         volume = max(500, int((base_seed * 19 + idx * 257) % 18000 + 2500))
-        pct_change = round(float(quote.get("pctChange") or 0.0) + (idx * 0.08), 2)
+        pct_change = round(idx * 0.08, 2)
 
         margin_pct = round(min(0.22, 0.11 + (abs(oi_change) / 12000.0) + (idx * 0.01)), 4)
         margin_per_lot = round(contract_last * lot_size * margin_pct, 2)
@@ -907,51 +943,55 @@ def _generate_synthetic_futures_contracts(symbol: str) -> FuturesContractsRespon
         contracts=contracts,
         source="synthetic",
         notes=[
-            "Synthetic futures board (NSE live futures unavailable or blocked).",
+            "Teaching futures board — live exchange list unavailable.",
             "Contract metrics are indicative — validate against broker RMS before execution.",
             "Margin preview excludes span spikes and intraday leverage changes.",
+            *(
+                ["Spot is illustrative because a live print was unavailable."]
+                if illustrative
+                else []
+            ),
         ],
     )
 
 
 def _generate_futures_contracts(symbol: str) -> FuturesContractsResponse:
-    from ..derivatives_data import fetch_nse_futures_contracts
-
-    quote = fetch_quote(symbol.upper())
-    spot = float(quote.get("last") or 0.0)
-    if spot <= 0:
-        raise HTTPException(status_code=404, detail=f"Could not fetch live spot for {symbol}")
-
     normalized_symbol = symbol.strip().upper()
-    lot_size = _lot_size_for_symbol(normalized_symbol, spot)
-    live = fetch_nse_futures_contracts(normalized_symbol, spot=spot, lot_size=lot_size)
-    if live and live.get("contracts"):
-        contracts = [
-            FuturesContract(
-                contractSymbol=str(row.get("contractSymbol") or ""),
-                expiry=str(row.get("expiry") or ""),
-                lotSize=int(row.get("lotSize") or lot_size),
-                last=float(row.get("last") or 0.0),
-                pctChange=float(row.get("pctChange") or 0.0),
-                oi=int(row.get("oi") or 0),
-                oiChange=int(row.get("oiChange") or 0),
-                volume=int(row.get("volume") or 0),
-                basis=float(row.get("basis") or 0.0),
-                marginPct=float(row.get("marginPct") or 0.15),
-                marginPerLot=float(row.get("marginPerLot") or 0.0),
-            )
-            for row in live["contracts"]
-            if row.get("contractSymbol") and row.get("expiry")
-        ]
-        if contracts:
-            return FuturesContractsResponse(
-                symbol=normalized_symbol,
-                spot=float(live.get("spot") or spot),
-                generatedAt=str(live.get("generatedAt") or datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")),
-                contracts=contracts,
-                source=str(live.get("source") or "nse"),
-                notes=list(live.get("notes") or []),
-            )
+    try:
+        from ..derivatives_data import fetch_nse_futures_contracts
+
+        spot, _illustrative = _resolve_derivatives_spot(normalized_symbol)
+        lot_size = _lot_size_for_symbol(normalized_symbol, spot)
+        live = fetch_nse_futures_contracts(normalized_symbol, spot=spot, lot_size=lot_size)
+        if live and live.get("contracts"):
+            contracts = [
+                FuturesContract(
+                    contractSymbol=str(row.get("contractSymbol") or ""),
+                    expiry=str(row.get("expiry") or ""),
+                    lotSize=int(row.get("lotSize") or lot_size),
+                    last=float(row.get("last") or 0.0),
+                    pctChange=float(row.get("pctChange") or 0.0),
+                    oi=int(row.get("oi") or 0),
+                    oiChange=int(row.get("oiChange") or 0),
+                    volume=int(row.get("volume") or 0),
+                    basis=float(row.get("basis") or 0.0),
+                    marginPct=float(row.get("marginPct") or 0.15),
+                    marginPerLot=float(row.get("marginPerLot") or 0.0),
+                )
+                for row in live["contracts"]
+                if row.get("contractSymbol") and row.get("expiry")
+            ]
+            if contracts:
+                return FuturesContractsResponse(
+                    symbol=normalized_symbol,
+                    spot=float(live.get("spot") or spot),
+                    generatedAt=str(live.get("generatedAt") or datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")),
+                    contracts=contracts,
+                    source=str(live.get("source") or "nse"),
+                    notes=list(live.get("notes") or []),
+                )
+    except Exception as exc:
+        logger.warning("futures_contracts_live_failed symbol=%s reason=%s", normalized_symbol, exc)
     return _generate_synthetic_futures_contracts(symbol=normalized_symbol)
 
 
@@ -968,12 +1008,16 @@ def _preview_futures_ticket(payload: FuturesTicketPreviewRequest) -> FuturesTick
         raise HTTPException(status_code=400, detail="orderType must be MARKET or LIMIT")
 
     contracts = _generate_futures_contracts(payload.symbol)
-    selected = next((c for c in contracts.contracts if c.expiry == payload.expiry), None)
-    if selected is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No futures contract found for {payload.symbol.upper()} expiry {payload.expiry}",
+    wanted = (payload.expiry or "").strip()
+    selected = next((c for c in contracts.contracts if c.expiry == wanted), None)
+    if selected is None and contracts.contracts:
+        selected = min(
+            contracts.contracts,
+            key=lambda c: abs(_expiry_ord(c.expiry) - _expiry_ord(wanted)),
         )
+    if selected is None:
+        contracts = _generate_synthetic_futures_contracts(payload.symbol)
+        selected = contracts.contracts[0]
 
     if order_type == "LIMIT" and (payload.limitPrice is None or payload.limitPrice <= 0):
         raise HTTPException(status_code=400, detail="limitPrice is required for LIMIT order previews")
@@ -1003,6 +1047,13 @@ def _preview_futures_ticket(payload: FuturesTicketPreviewRequest) -> FuturesTick
             "Use broker confirmation before placing live futures orders.",
         ],
     )
+
+
+def _expiry_ord(value: str) -> int:
+    try:
+        return datetime.strptime((value or "").strip()[:10], "%Y-%m-%d").toordinal()
+    except Exception:
+        return 0
 
 
 def _safe_float(value: object, default: float = 0.0) -> float:

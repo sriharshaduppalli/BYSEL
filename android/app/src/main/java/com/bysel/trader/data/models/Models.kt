@@ -1017,6 +1017,16 @@ data class LogoutRequest(
     val refreshToken: String
 )
 
+data class DeviceRestoreRequest(
+    @SerializedName("restore_token") val restoreToken: String,
+)
+
+data class DeviceRestoreTokenResponse(
+    val status: String,
+    @SerializedName("restore_token") val restoreToken: String,
+    @SerializedName("expires_in") val expiresIn: Int? = null,
+)
+
 data class FcmTokenRequest(
     val token: String,
     val platform: String = "android",

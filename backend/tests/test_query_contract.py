@@ -6,6 +6,89 @@ from indian_stock_llm.prediction import PredictionEngine
 from indian_stock_llm.query_contract import resolve_query_contract
 
 
+def test_retail_asks_match_expected_profiles():
+    cases = {
+        "Can I buy RELIANCE now?": "trade_plan",
+        "Is it a good time to buy TCS?": "trade_plan",
+        "Should I wait for a dip in MARUTI?": "trade_plan",
+        "Show RELIANCE chart": "technical",
+        "View chart for INFY": "technical",
+        "How is RELIANCE doing?": "stock_analysis",
+        "Tell me about BEL": "stock_analysis",
+        "Why is RELIANCE falling?": "news",
+        "RELIANCE vs last week": "stock_analysis",
+        "HDFCBANK vs ICICIBANK": "compare",
+        "kitna hai TCS": "quote",
+        "kya main HDFCBANK kharidun?": "trade_plan",
+        "Hold or exit SBIN?": "trade_plan",
+        "Add more RELIANCE?": "trade_plan",
+        "Book profit in INFY?": "trade_plan",
+        "Average down on TCS?": "trade_plan",
+        "Is RELIANCE a good buy for swing?": "trade_plan",
+        "Short HAL?": "trade_plan",
+        "Any update on RELIANCE?": "news",
+        "What is happening in INFY?": "news",
+        "Is market bullish today?": "sentiment",
+        "Mood on HDFCBANK": "sentiment",
+        "Is TCS cheap?": "fundamentals",
+        "Book value of SBIN": "fundamentals",
+        "INFY target next month": "prediction",
+        "Will TCS reach 4000?": "prediction",
+        "Downside in RELIANCE?": "risks",
+        "What can go wrong in INFY?": "risks",
+        "TCS or INFY?": "compare",
+        "Better HDFCBANK or ICICIBANK": "compare",
+        "Which PSU stocks?": "sector_screen",
+        "Auto names for swing": "sector_screen",
+        "Explain delivery vs intraday": "literacy",
+        "How does SIP work?": "literacy",
+        "Nifty call option meaning": "literacy",
+        "good morning": "small_talk",
+        "RELIANCE ka price": "quote",
+        "TCS ka rate kya hai": "quote",
+        "SBIN cmp": "quote",
+        "Should I hold TCS?": "trade_plan",
+        "Exit INFY now?": "trade_plan",
+        "Trim HDFCBANK?": "trade_plan",
+        "Buy the dip in MARUTI?": "trade_plan",
+        "Is it time to sell ITC?": "trade_plan",
+        "accumulate HDFCBANK on dips": "trade_plan",
+        "Why did HAL jump": "news",
+        "RELIANCE Q2 results": "news",
+        "Any announcement on SBIN": "news",
+        "upper circuit on YESBANK": "news",
+        "Are traders bullish on TCS": "sentiment",
+        "200 DMA of INFY": "technical",
+        "Support resistance for SBIN": "technical",
+        "RELIANCE breakout?": "technical",
+        "volume spike in SBIN": "technical",
+        "FII DII data": "literacy",
+        "bonus issue meaning": "literacy",
+        "portfolio concentration": "portfolio",
+        "promoter pledge in ADANIENT": "fundamentals",
+        "SIP vs lumpsum": "compare_concepts",
+        "gold vs stocks": "compare_concepts",
+        "Nifty outlook": "prediction",
+        "TCS ka kya haal": "stock_analysis",
+        "INFY target next month": "prediction",
+        "add RELIANCE on every dip": "trade_plan",
+        "50 EMA of RELIANCE": "technical",
+        "FII buying in RELIANCE": "news",
+        "Market cap of RELIANCE": "fundamentals",
+        "Covered call on RELIANCE": "derivatives",
+        "what is a straddle": "literacy",
+        "is paper trading useful": "literacy",
+        "best banks to paper trade": "sector_screen",
+        "How much brokerage on RELIANCE": "literacy",
+        "good night": "small_talk",
+        "kaise ho": "small_talk",
+        "position size for RELIANCE": "portfolio",
+    }
+    for query, expected in cases.items():
+        contract = resolve_query_contract(query)
+        assert contract.profile == expected, (query, contract.profile)
+
+
 def test_chip_queries_keep_distinct_profiles():
     cases = {
         "Should I buy RELIANCE?": ("trade_plan", "BUY_SELL"),
@@ -23,6 +106,48 @@ def test_chip_queries_keep_distinct_profiles():
         assert contract.profile == profile, (query, contract.profile)
         assert contract.groq_intent == groq_intent, (query, contract.groq_intent)
         assert resolve_stock_response_profile(query, "general_query") == profile
+
+
+def test_forecast_target_is_not_a_trade_plan_card():
+    from indian_stock_llm.answer_composer import compose_structured_answer
+
+    answer = compose_structured_answer(
+        query="INFY target next month",
+        intent="prediction",
+        market_context={
+            "symbol": "INFY",
+            "current_price": 1400.0,
+            "technical": {"rsi": 55.0, "trend": "up"},
+            "trading_levels": {"support": 1350.0, "resistance": 1450.0},
+        },
+        context_lines=[],
+        profile="prediction",
+    ) or ""
+    low = answer.lower()
+    assert "scenario range" in low or "not a price guarantee" in low
+    assert "paper trade plan" not in low
+    assert "entry zone" not in low
+
+
+def test_or_compare_names_the_pair_even_without_second_tape():
+    from indian_stock_llm.answer_composer import compose_structured_answer
+
+    answer = compose_structured_answer(
+        query="TCS or INFY?",
+        intent="compare",
+        market_context={
+            "symbol": "INFY",
+            "current_price": 1400.0,
+            "technical": {"rsi": 55.0, "trend": "up"},
+            "fundamental": {"pe": 24.0},
+        },
+        context_lines=[],
+        profile="compare",
+    ) or ""
+    low = answer.lower()
+    assert "tcs" in low and "infy" in low
+    assert "wilder" not in low
+    assert "pass a second ticker" not in low
 
 
 def test_followup_reuses_last_symbol_and_changes_shape():

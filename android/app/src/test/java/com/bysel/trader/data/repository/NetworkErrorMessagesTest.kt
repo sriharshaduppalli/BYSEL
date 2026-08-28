@@ -110,6 +110,17 @@ class NetworkErrorMessagesTest {
     }
 
     @Test
+    fun http404DoesNotLeakStatusCode() {
+        val msg = NetworkErrorMessages.forException(
+            RuntimeException("HTTP 404 Could not fetch live spot for NIFTY"),
+            "Couldn't load the teaching chain. Tap Load Chain to retry.",
+        )
+        assertFalse(msg.contains("404"))
+        assertFalse(msg.contains("live spot", ignoreCase = true))
+        assertTrue(msg.contains("teaching chain", ignoreCase = true))
+    }
+
+    @Test
     fun marketOfflineKeepsLastSavedCopy() {
         val msg = NetworkErrorMessages.forMarket(
             UnknownHostException("Unable to resolve host"),

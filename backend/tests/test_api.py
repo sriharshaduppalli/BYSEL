@@ -770,6 +770,80 @@ def test_auth_me_returns_authenticated_profile_details():
     assert payload["user_id"] > 0
 
 
+def test_restore_token_requires_auth():
+    response = client.post("/auth/restore-token")
+    assert response.status_code == 401
+
+
+def test_device_restore_rejects_unknown_token():
+    response = client.post("/auth/device-restore", json={"restore_token": "not-a-real-restore-key-value"})
+    assert response.status_code == 401
+    assert "restore" in response.json()["detail"].lower()
+
+
+def test_device_restore_issues_session_and_revokes_on_logout():
+    username, email, password = _unique_user("restore_user")
+    register_response = client.post(
+        "/auth/register",
+        json={"username": username, "email": email, "password": password},
+    )
+    assert register_response.status_code == 200
+    access_token = register_response.json()["access_token"]
+    refresh_token = register_response.json()["refresh_token"]
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    issued = client.post("/auth/restore-token", headers=headers)
+    assert issued.status_code == 200
+    restore_token = issued.json()["restore_token"]
+    assert len(restore_token) >= 16
+    assert issued.json()["expires_in"] > 0
+
+    restored = client.post("/auth/device-restore", json={"restore_token": restore_token})
+    assert restored.status_code == 200
+    payload = restored.json()
+    assert payload["status"] == "ok"
+    assert payload["user_id"] > 0
+    assert payload["access_token"]
+    assert payload["refresh_token"]
+
+    me = client.get("/auth/me", headers={"Authorization": f"Bearer {payload['access_token']}"})
+    assert me.status_code == 200
+    assert me.json()["username"] == username
+
+    logout_response = client.post(
+        "/auth/logout",
+        json={"refreshToken": refresh_token},
+        headers=headers,
+    )
+    assert logout_response.status_code == 200
+
+    replay = client.post("/auth/device-restore", json={"restore_token": restore_token})
+    assert replay.status_code == 401
+
+
+def test_device_restore_replaces_previous_key():
+    username, email, password = _unique_user("restore_rotate_user")
+    register_response = client.post(
+        "/auth/register",
+        json={"username": username, "email": email, "password": password},
+    )
+    assert register_response.status_code == 200
+    headers = {"Authorization": f"Bearer {register_response.json()['access_token']}"}
+
+    first = client.post("/auth/restore-token", headers=headers)
+    second = client.post("/auth/restore-token", headers=headers)
+    assert first.status_code == 200
+    assert second.status_code == 200
+    old_token = first.json()["restore_token"]
+    new_token = second.json()["restore_token"]
+    assert old_token != new_token
+
+    stale = client.post("/auth/device-restore", json={"restore_token": old_token})
+    assert stale.status_code == 401
+    fresh = client.post("/auth/device-restore", json={"restore_token": new_token})
+    assert fresh.status_code == 200
+
+
 def test_logout_all_invalidates_old_access_token():
     username, email, password = _unique_user("logout_all_user")
 
@@ -2253,6 +2327,27 @@ def test_intraday_tips_personalizes_from_paper_trades():
     assert "paper" in (payload.get("paperNote") or "").lower()
 
 
+def test_futures_contracts_survives_quote_http_404(monkeypatch):
+    from fastapi import HTTPException
+
+    def _boom(symbol):
+        raise HTTPException(status_code=404, detail=f"Could not fetch live spot for {symbol}")
+
+    monkeypatch.setattr("app.routes.fetch_quote", _boom)
+    monkeypatch.setattr(
+        "app.derivatives_data.fetch_nse_futures_contracts",
+        lambda *args, **kwargs: None,
+    )
+
+    response = client.get("/derivatives/futures/contracts?symbol=NIFTY")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["symbol"] == "NIFTY"
+    assert payload["source"] == "synthetic"
+    assert payload["spot"] > 0
+    assert len(payload["contracts"]) >= 1
+
+
 def test_futures_contracts_endpoint_returns_contract_set(monkeypatch):
     monkeypatch.setattr(
         "app.routes.fetch_quote",
@@ -2279,6 +2374,48 @@ def test_futures_contracts_endpoint_returns_contract_set(monkeypatch):
     assert first_contract["marginPerLot"] > 0
 
 
+def test_option_chain_survives_quote_http_404(monkeypatch):
+    from fastapi import HTTPException
+
+    def _boom(symbol):
+        raise HTTPException(status_code=404, detail=f"Could not fetch live spot for {symbol}")
+
+    monkeypatch.setattr("app.routes.fetch_quote", _boom)
+    monkeypatch.setattr(
+        "app.derivatives_data.fetch_nse_option_chain",
+        lambda *args, **kwargs: None,
+    )
+
+    response = client.get("/derivatives/option-chain?symbol=NIFTY&expiry=2026-09-17")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["symbol"] == "NIFTY"
+    assert payload["source"] == "synthetic"
+    assert payload["spot"] > 0
+    assert len(payload["contracts"]) >= 10
+    assert any("illustrative" in note.lower() for note in payload.get("notes") or [])
+
+
+def test_option_chain_returns_teaching_board_when_quote_missing(monkeypatch):
+    monkeypatch.setattr(
+        "app.routes.fetch_quote",
+        lambda symbol: {"symbol": symbol.upper(), "last": 0.0, "pctChange": 0.0},
+    )
+    monkeypatch.setattr(
+        "app.derivatives_data.fetch_nse_option_chain",
+        lambda *args, **kwargs: None,
+    )
+
+    response = client.get("/derivatives/option-chain?symbol=NIFTY&expiry=2026-09-17")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["symbol"] == "NIFTY"
+    assert payload["source"] == "synthetic"
+    assert payload["spot"] > 0
+    assert len(payload["contracts"]) >= 10
+    assert any("illustrative" in note.lower() for note in payload.get("notes") or [])
+
+
 def test_option_chain_endpoint_returns_pcr_and_iv_skew(monkeypatch):
     monkeypatch.setattr(
         "app.routes.fetch_quote",
@@ -2299,6 +2436,37 @@ def test_option_chain_endpoint_returns_pcr_and_iv_skew(monkeypatch):
     assert payload["atmIv"] is not None
     assert len(payload["contracts"]) >= 10
     assert payload["contracts"][0]["callIv"] is not None
+
+
+def test_futures_ticket_preview_survives_quote_http_404(monkeypatch):
+    from fastapi import HTTPException
+
+    def _boom(symbol):
+        raise HTTPException(status_code=404, detail=f"Could not fetch live spot for {symbol}")
+
+    monkeypatch.setattr("app.routes.fetch_quote", _boom)
+    monkeypatch.setattr(
+        "app.derivatives_data.fetch_nse_futures_contracts",
+        lambda *args, **kwargs: None,
+    )
+
+    response = client.post(
+        "/derivatives/futures/ticket/preview",
+        json={
+            "symbol": "NIFTY",
+            "expiry": "1999-01-01",
+            "side": "SELL",
+            "lots": 1,
+            "orderType": "MARKET",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["symbol"] == "NIFTY"
+    assert data["side"] == "SELL"
+    assert data["lots"] == 1
+    assert data["notionalValue"] > 0
+    assert data["estimatedMargin"] > 0
 
 
 def test_futures_ticket_preview_endpoint_returns_margin_and_notional(monkeypatch):

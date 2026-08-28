@@ -33,6 +33,7 @@ _INDICATOR_TOKENS = {
     # Composer action/stance labels — never treat as tickers.
     "BUY", "SELL", "HOLD", "WAIT", "TRIM", "ACCUMULATE",
     "ACTION", "DIRECT", "ANSWER", "LEGEND", "PAPER", "PRACTICE",
+    "BEGINNER", "BEGINNERS", "TEACH", "LEARN", "HABIT", "HABITS",
 }
 
 
@@ -129,6 +130,7 @@ def _load_assistant():
                 "feedback_learning_enabled": True,
                 "nightly_refresh_enabled": True,
                 "open_source_market_data_enabled": True,
+                "language_graph_enabled": True,
                 "embedding_local_model": emb,
             }
         )
@@ -361,6 +363,7 @@ def _compose_ism_fallback(
             intent=contract.ism_intent,
             market_context=packed,
             context_lines=[],
+            profile=contract.profile,
         )
         if composed and composed.strip():
             return composed.strip()
@@ -398,6 +401,22 @@ def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | N
 
     ctx = dict(context or {})
     history = ctx.get("conversation_history")
+    query_profile = ""
+    try:
+        from indian_stock_llm.conversation import small_talk_reply
+
+        chitchat = small_talk_reply(cleaned)
+        if chitchat:
+            return {
+                "answer": chitchat,
+                "intent": "general_query",
+                "confidence": 0.97,
+                "citations": ["ism_conversation_v1"],
+                "category": "conversation",
+                "source": "indian-stock-llm",
+            }
+    except Exception:
+        pass
     try:
         from indian_stock_llm.query_contract import resolve_query_contract
 
@@ -407,12 +426,32 @@ def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | N
             conversation_history=history if isinstance(history, list) else None,
             screen_context=ctx.get("screen_context") if isinstance(ctx.get("screen_context"), dict) else None,
         )
+        query_profile = str(_contract.profile or "")
         if _contract.resolved_query:
             cleaned = _contract.resolved_query
         if _contract.ism_intent:
             ctx["intent"] = _contract.ism_intent
         if _contract.slots.symbol and not ctx.get("symbol"):
             ctx["symbol"] = _contract.slots.symbol
+        elif not _contract.slots.symbol:
+            from indian_stock_llm.query_contract import should_inherit_symbol
+
+            named = bool(_contract.slots.symbol)
+            if not should_inherit_symbol(_contract.profile, cleaned, named):
+                ctx.pop("symbol", None)
+        if _contract.user_sentiment:
+            ctx["user_sentiment"] = _contract.user_sentiment
+        ctx["query_nlu"] = {
+            "compound": _contract.compound,
+            "secondary_profile": _contract.secondary_profile,
+            "sentence_count": _contract.sentence_count,
+            "primary_profile": _contract.profile,
+        }
+        ctx["conversation"] = {
+            "follow_up": bool(_contract.slots.follow_up),
+            "prior_symbol": _contract.slots.prior_symbol,
+            "prior_profile": _contract.slots.prior_profile,
+        }
     except Exception:
         pass
     if isinstance(history, list) and history:
@@ -447,7 +486,19 @@ def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | N
     # 1) Deterministic equations / glossary (highest precision).
     try:
         from indian_stock_llm.calculations import PandasTaIndicatorCalculator
+        from .habit_lessons import get_habit_lesson
         from .market_education import get_education_answer
+
+        habit = get_habit_lesson((query or "").strip()) or get_habit_lesson(cleaned)
+        if habit:
+            return {
+                "answer": habit,
+                "intent": "market_literacy",
+                "confidence": 0.96,
+                "citations": ["bysel_habit_lessons"],
+                "category": "nse_bse_sebi",
+                "source": "indian-stock-llm-education",
+            }
 
         definitional = _is_definitional_query(cleaned)
         has_of_symbol = bool(
@@ -996,6 +1047,7 @@ def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | N
             )
         )
         education = None
+        skip_glossary = query_profile in {"corporate_actions", "session"}
         wants_numeric_calc = bool(
             re.search(r"\b(calculate|compute|cagr|return from buy)\b", cleaned.lower())
             and re.search(r"\d", cleaned)
@@ -1005,7 +1057,8 @@ def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | N
             )
         )
         if (
-            (not wants_live_indicator or retail_literacy_ask)
+            not skip_glossary
+            and (not wants_live_indicator or retail_literacy_ask)
             and not stock_specific_metric
             and not stock_specific_fo
             and not stock_specific_levels
@@ -1020,7 +1073,8 @@ def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | N
             education = get_education_answer(cleaned)
         # Pure definitions only (no "of SYMBOL").
         if (
-            (definitional or retail_literacy_ask)
+            not skip_glossary
+            and (definitional or retail_literacy_ask)
             and not has_of_symbol
             and (not wants_live_indicator or retail_literacy_ask)
             and not stock_specific_fo
@@ -1467,8 +1521,18 @@ def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | N
             "trade_plan": (p0_pack or {}).get("trade_plan") if p0_pack and p0_pack.get("ok") else None,
             "conversation_summary": ctx.get("conversation_summary"),
             "user_sentiment": ctx.get("user_sentiment") if isinstance(ctx.get("user_sentiment"), dict) else None,
+            "query_nlu": ctx.get("query_nlu") if isinstance(ctx.get("query_nlu"), dict) else None,
+            "conversation": ctx.get("conversation") if isinstance(ctx.get("conversation"), dict) else None,
             "portfolio_context": ctx.get("portfolio_context"),
         }
+        try:
+            from indian_stock_llm.agent_tools import load_corporate_actions, session_snapshot
+
+            market_context["session"] = session_snapshot()
+            if symbol_hint:
+                market_context["corporate_actions"] = load_corporate_actions(symbol_hint)
+        except Exception:
+            pass
         if not any(
             market_context.get(k)
             for k in (

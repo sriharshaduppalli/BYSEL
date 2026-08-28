@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -139,6 +140,7 @@ fun StockDetailScreen(
     val stockPrediction by viewModel.stockPrediction.collectAsStateWithLifecycle()
     val stockResearchLoading by viewModel.stockResearchLoading.collectAsStateWithLifecycle()
     val stockResearchError by viewModel.stockResearchError.collectAsStateWithLifecycle()
+    val requestedChartFocus by viewModel.openDetailAtChart.collectAsStateWithLifecycle()
 
     if (quote == null) {
         Box(
@@ -174,6 +176,11 @@ fun StockDetailScreen(
     var historyWindowName by rememberSaveable(quote.symbol) { mutableStateOf(DetailHistoryWindow.OneMonth.name) }
     var previewSide by rememberSaveable(quote.symbol) { mutableStateOf("BUY") }
     var quantityText by rememberSaveable(quote.symbol) { mutableStateOf("1") }
+    val showChartFirst = rememberSaveable(quote.symbol) { requestedChartFocus }
+
+    DisposableEffect(Unit) {
+        onDispose { viewModel.clearOpenDetailAtChart() }
+    }
 
     val historyWindow = remember(historyWindowName) { DetailHistoryWindow.valueOf(historyWindowName) }
     val tradeQuantity = quantityText.toIntOrNull()?.coerceAtLeast(1) ?: 1
@@ -414,6 +421,21 @@ fun StockDetailScreen(
                 }
             }
 
+            if (showChartFirst) {
+                stockDetailPriceChartSection(
+                    quote = quote,
+                    history = history,
+                    historyLoading = historyLoading,
+                    historyWindow = historyWindow,
+                    onHistoryWindowChange = { historyWindowName = it.name },
+                    intradayRangePct = intradayRangePct,
+                    patterns = chartPatterns,
+                    sentimentData = sentimentData,
+                    sentimentLoading = sentimentLoading,
+                    onAiQuery = onAiQuery,
+                )
+            }
+
             item {
                 StockDetailHeroCard(
                     quote = quote,
@@ -447,33 +469,13 @@ fun StockDetailScreen(
                 )
             }
 
-            // Chart first — AI "View chart" and stock opens should show candles immediately.
-            item {
-                SectionHeader(
-                    title = "Price chart",
-                    subtitle = historyWindow.subtitle,
-                )
-            }
-
-            item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(DetailHistoryWindow.entries, key = { it.name }) { window ->
-                        FilterChip(
-                            selected = historyWindow == window,
-                            onClick = { historyWindowName = window.name },
-                            label = { Text(window.label) },
-                        )
-                    }
-                }
-            }
-
-            item(key = "chart-${historyWindow.period}-${historyWindow.interval}-${quote.symbol}") {
-                PriceStoryCard(
+            if (!showChartFirst) {
+                stockDetailPriceChartSection(
                     quote = quote,
                     history = history,
                     historyLoading = historyLoading,
-                    historyLabel = historyWindow.label,
-                    historyHint = historyWindow.subtitle,
+                    historyWindow = historyWindow,
+                    onHistoryWindowChange = { historyWindowName = it.name },
                     intradayRangePct = intradayRangePct,
                     patterns = chartPatterns,
                     sentimentData = sentimentData,
@@ -1533,6 +1535,51 @@ private fun StockDetailActionBar(
                     Text("Cancel")
                 }
             }
+        )
+    }
+}
+
+private fun LazyListScope.stockDetailPriceChartSection(
+    quote: Quote,
+    history: List<HistoryCandle>,
+    historyLoading: Boolean,
+    historyWindow: DetailHistoryWindow,
+    onHistoryWindowChange: (DetailHistoryWindow) -> Unit,
+    intradayRangePct: Double,
+    patterns: List<com.bysel.trader.data.api.ChartPattern>,
+    sentimentData: com.bysel.trader.data.api.SentimentScoreResponse?,
+    sentimentLoading: Boolean,
+    onAiQuery: ((String) -> Unit)?,
+) {
+    item(key = "price-chart-header") {
+        SectionHeader(
+            title = "Price chart",
+            subtitle = historyWindow.subtitle,
+        )
+    }
+    item(key = "price-chart-windows") {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(DetailHistoryWindow.entries, key = { it.name }) { window ->
+                FilterChip(
+                    selected = historyWindow == window,
+                    onClick = { onHistoryWindowChange(window) },
+                    label = { Text(window.label) },
+                )
+            }
+        }
+    }
+    item(key = "chart-${historyWindow.period}-${historyWindow.interval}-${quote.symbol}") {
+        PriceStoryCard(
+            quote = quote,
+            history = history,
+            historyLoading = historyLoading,
+            historyLabel = historyWindow.label,
+            historyHint = historyWindow.subtitle,
+            intradayRangePct = intradayRangePct,
+            patterns = patterns,
+            sentimentData = sentimentData,
+            sentimentLoading = sentimentLoading,
+            onAiQuery = onAiQuery,
         )
     }
 }
