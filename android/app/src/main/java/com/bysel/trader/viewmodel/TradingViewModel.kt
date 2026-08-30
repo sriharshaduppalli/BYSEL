@@ -3004,14 +3004,20 @@ class TradingViewModel(
                 contextParts.add("history_closes=[$closesShort]")
             }
 
-            val prompt = PromptBuilder.buildPrompt(
-                cleanedQuery,
-                holdingsSummary,
-                wallet,
-                portfolio?.overallScore,
-                if (sectorThemeAsk) null else _selectedQuote.value,
-                if (sectorThemeAsk) emptyList() else recentHistory
-            )
+            val prompt = if (habitLearnAsk) {
+                // Learn chips are literacy. Do not wrap a selected quote / candles
+                // around them or /ai/ask treats "Teach …" as a stock clarifier.
+                cleanedQuery
+            } else {
+                PromptBuilder.buildPrompt(
+                    cleanedQuery,
+                    holdingsSummary,
+                    wallet,
+                    portfolio?.overallScore,
+                    if (sectorThemeAsk) null else _selectedQuote.value,
+                    if (sectorThemeAsk) emptyList() else recentHistory
+                )
+            }
 
             // Indian Stock LLM is the app assistant. On-device Gemma and Groq
             // only run if that path fails.
@@ -3032,13 +3038,15 @@ class TradingViewModel(
                     refreshAiColdStartFlag()
                     _aiResponse.value = r.data
                     val replySymbol = when {
-                        sectorThemeAsk -> null // keep CTAs on names from the sector answer
+                        sectorThemeAsk || habitLearnAsk -> null
                         else -> r.data.symbol?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
                             ?: symbol?.trim()?.uppercase()
                     }
-                    val replyPrice = if (sectorThemeAsk) null else extractAiReferencePrice(r.data)
+                    val replyPrice = if (sectorThemeAsk || habitLearnAsk) null else extractAiReferencePrice(r.data)
                     val replySuggestions = if (sectorThemeAsk) {
                         filterSuggestionsForSector(cleanedQuery, r.data.answer, r.data.suggestions)
+                    } else if (habitLearnAsk) {
+                        emptyList()
                     } else {
                         r.data.suggestions
                     }
@@ -3049,7 +3057,7 @@ class TradingViewModel(
                         source = r.data.source,
                         confidence = r.data.confidence,
                         symbol = replySymbol,
-                        signal = if (sectorThemeAsk) null else r.data.signal,
+                        signal = if (sectorThemeAsk || habitLearnAsk) null else r.data.signal,
                         lastPrice = replyPrice,
                     )
                     // Optionally enrich the last bubble with v2 cards when a symbol is in focus.

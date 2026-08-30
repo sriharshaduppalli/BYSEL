@@ -1,6 +1,6 @@
 """Put the pinned Indian_stock_market package on sys.path.
 
-BYSEL tracks tag bysel-ism-v2026.08.23 via backend/vendor/indian_stock_market.
+BYSEL tracks tag bysel-ism-v2026.08.30 via backend/vendor/indian_stock_market.
 """
 from __future__ import annotations
 

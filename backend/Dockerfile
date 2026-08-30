@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-ARG ISM_GIT_TAG=bysel-ism-v2026.08.23
+ARG ISM_GIT_TAG=bysel-ism-v2026.08.30
 RUN if [ ! -f /app/vendor/indian_stock_market/src/indian_stock_llm/__init__.py ]; then \
       git clone --depth 1 --branch "$ISM_GIT_TAG" \
         https://github.com/sriharshaduppalli/Indian_stock_market.git \

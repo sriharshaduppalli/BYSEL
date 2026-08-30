@@ -825,6 +825,7 @@ def classify_intent(query: str, conversation_history=None) -> dict:
         "what is", "what are", "explain", "how does", "what does",
         "meaning of", "define", "definition", "understand", "how to calculate",
         "why is", "formula", "equation", "difference between",
+        "teach", "paper habit", "not a stock pick",
         "what is rsi", "what is macd", "what is pe", "what is p/e",
         "rsi formula", "macd formula", "cagr formula", "pe formula",
     ]:

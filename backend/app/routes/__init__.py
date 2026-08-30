@@ -2617,6 +2617,22 @@ async def ai_ask_endpoint(
             requested_tier,
         )
 
+    # Home / F&O Learn chips: return the habit lesson before any symbol clarifier.
+    # "Teach the NSE opening range…" is literacy, not a stock ask.
+    from ..habit_lessons import get_habit_lesson
+
+    habit_answer = get_habit_lesson(normalized_query)
+    if habit_answer:
+        return _validated(
+            {
+                "answer": habit_answer,
+                "intent": "market_literacy",
+                "citations": ["bysel_habit_lessons"],
+            },
+            "education",
+            requested_tier,
+        )
+
     # Extra belt-and-suspenders: never let ultra-short greetings reach stock search.
     if re.fullmatch(r"\s*(hi|hii|hiii|hello|hey|yo|namaste|thanks|thank you|bye)\s*[!.?]*\s*", normalized_query, flags=re.I):
         return _validated(
@@ -2635,8 +2651,10 @@ async def ai_ask_endpoint(
     explicit_symbol = extract_symbol_from_query(normalized_query)
     educational_like = (
         detected_intent in {"EDUCATIONAL", "CALCULATION", "COMPARE_CONCEPTS"}
+        or bool(query_contract and query_contract.profile in {"literacy", "session", "compare_concepts"})
         or bool(re.search(
-            r"\b(what is|what are|explain|define|definition|meaning of|formula|equation)\b",
+            r"\b(what is|what are|explain|define|definition|meaning of|formula|equation|"
+            r"teach|paper habit|not a stock pick|educational (paper|investor|session))\b",
             normalized_query,
             flags=re.IGNORECASE,
         ))

@@ -79,6 +79,23 @@ def test_opening_range_is_not_nseindia_dump():
     assert "do **not** crawl" not in answer.lower()
 
 
+def test_ai_ask_home_learn_is_not_a_symbol_clarifier():
+    """Home Learn 'Teach …' chips must not ask which NSE/BSE symbol."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    for lesson_id, query in _CATALOG.items():
+        response = client.post("/ai/ask", json={"query": query, "tier": "fast"})
+        assert response.status_code == 200, lesson_id
+        body = response.json()
+        answer = (body.get("answer") or "").lower()
+        assert "which nse/bse symbol" not in answer, lesson_id
+        assert "please share the stock symbol" not in answer, lesson_id
+        assert "paper habit" in answer, lesson_id
+        assert body.get("source") in {"education", "indian-stock-llm-education"}, lesson_id
+
+
 def test_ask_llm_habit_wins_over_selected_symbol():
     from app.llm_integration import ask_llm
 
