@@ -55,6 +55,8 @@ QUOTE_CACHE_STORAGE_SECONDS = _env_int("QUOTE_CACHE_STORAGE_SECONDS", 300, minim
 # Backward-compatible alias: default freshness when market is open.
 QUOTE_CACHE_TTL_SECONDS = _env_int("QUOTE_CACHE_TTL_SECONDS", QUOTE_CACHE_TTL_OPEN, minimum=3)
 QUOTE_CACHE_MAX_ENTRIES = _env_int("QUOTE_CACHE_MAX_ENTRIES", 3000, minimum=50)
+# Last successful last>0 print — used for after-hours paper fills (weekend/holiday).
+LAST_PRINT_TTL_SECONDS = _env_int("LAST_PRINT_TTL_SECONDS", 7 * 24 * 3600, minimum=3600)
 QUOTE_BATCH_SIZE = _env_int("QUOTE_BATCH_SIZE", 40, minimum=1)
 # Cap per-symbol Ticker.history fallback. A 20–40 name sequential walk is the 40–50s hang.
 QUOTE_INDIVIDUAL_FALLBACK_MAX = _env_int("QUOTE_INDIVIDUAL_FALLBACK_MAX", 2, minimum=0)
@@ -756,6 +758,7 @@ class QuoteCache:
             self._cache[symbol] = data
             self._timestamps[symbol] = now
             self._evict_oversized_locked()
+        remember_last_print(symbol, data)
 
     def patch(self, symbol: str, updates: dict) -> Optional[dict]:
         """Merge snapshot fields into a cached quote without resetting last-price freshness."""
@@ -791,6 +794,61 @@ _quote_cache = QuoteCache(
     max_entries=QUOTE_CACHE_MAX_ENTRIES,
     storage_seconds=QUOTE_CACHE_STORAGE_SECONDS,
 )
+_last_print: Dict[str, tuple] = {}
+_last_print_lock = Lock()
+
+
+def remember_last_print(symbol: str, quote: Optional[dict]) -> None:
+    """Keep a last>0 print across the short quote-cache storage window."""
+    if not quote:
+        return
+    key = normalize_listed_symbol(str(symbol or quote.get("symbol") or ""))
+    try:
+        last = float(quote.get("last") or 0.0)
+    except Exception:
+        last = 0.0
+    if not key or last <= 0:
+        return
+    with _last_print_lock:
+        _last_print[key] = (time.time(), dict(quote))
+
+
+def last_known_print(symbol: str, max_age_seconds: Optional[float] = None) -> Optional[dict]:
+    """Last session print for paper fills when the cash session is closed.
+
+    Does not invent a price. Returns None when we have never seen a last>0.
+    """
+    key = normalize_listed_symbol(symbol)
+    if not key:
+        return None
+    age_limit = float(LAST_PRINT_TTL_SECONDS if max_age_seconds is None else max_age_seconds)
+    now = time.time()
+    with _last_print_lock:
+        row = _last_print.get(key)
+    if row:
+        ts, payload = row
+        try:
+            last = float(payload.get("last") or 0.0)
+        except Exception:
+            last = 0.0
+        if last > 0 and (now - float(ts)) < age_limit:
+            out = dict(payload)
+            out["symbol"] = key
+            out["fillKind"] = "last_session"
+            return out
+    stale = _quote_cache.get_allow_stale(key, float(QUOTE_CACHE_STORAGE_SECONDS))
+    if stale:
+        try:
+            last = float(stale.get("last") or 0.0)
+        except Exception:
+            last = 0.0
+        if last > 0:
+            remember_last_print(key, stale)
+            out = dict(stale)
+            out["symbol"] = key
+            out["fillKind"] = "last_session"
+            return out
+    return None
 
 
 def normalize_listed_symbol(symbol: str) -> str:
@@ -1714,6 +1772,7 @@ def fetch_quote(symbol: str) -> dict:
             _quote_cache.patch(symbol, filled)
         if _needs_fundamentals(filled):
             _schedule_fundamentals_fill([symbol])
+        remember_last_print(symbol, filled)
         return filled
     stale = _quote_cache.get_allow_stale(symbol, float(QUOTE_CACHE_STORAGE_SECONDS))
 

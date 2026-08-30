@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.SwapVert
@@ -94,6 +95,7 @@ import com.bysel.trader.ui.components.InfoChip
 import com.bysel.trader.ui.components.HabitLiteracyCatalog
 import com.bysel.trader.ui.components.NewsWidget
 import com.bysel.trader.ui.components.PullToRefreshBox
+import com.bysel.trader.ui.components.blockParentHorizontalPager
 import com.bysel.trader.ui.components.exclusiveHorizontalScroll
 import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
 import com.bysel.trader.ui.components.WatchlistWidget
@@ -414,6 +416,7 @@ fun DashboardScreen(
     onSignalLabClick: (() -> Unit)? = null,
     onScannerClick: (() -> Unit)? = null,
     onSmartMoneyClick: (() -> Unit)? = null,
+    onSearchClick: (() -> Unit)? = null,
     onPaperBuy: ((String, Int) -> Unit)? = null,
     onPracticeAlert: ((String, Double, String) -> Unit)? = null,
     lastExecutedOrder: OrderResponse? = null,
@@ -562,6 +565,7 @@ fun DashboardScreen(
             onSignalLabClick = onSignalLabClick,
             onScannerClick = onScannerClick,
             onSmartMoneyClick = onSmartMoneyClick,
+            onSearchClick = onSearchClick,
             onPaperBuy = onPaperBuy?.let { buy ->
                 { symbol, qty ->
                     if (walletBalance <= 0.0 && onAddPracticeFunds != null) {
@@ -650,6 +654,7 @@ fun DashboardContent(
     onSignalLabClick: (() -> Unit)? = null,
     onScannerClick: (() -> Unit)? = null,
     onSmartMoneyClick: (() -> Unit)? = null,
+    onSearchClick: (() -> Unit)? = null,
     onPaperBuy: ((String, Int) -> Unit)? = null,
     onPracticeAlert: ((String, Double, String) -> Unit)? = null,
     practiceHabit: PracticeHabitStore.DayState = PracticeHabitStore.DayState(dateKey = ""),
@@ -881,6 +886,7 @@ fun DashboardContent(
                 onSignalLab = onSignalLabClick,
                 onScanner = onScannerClick,
                 onSmartMoney = onSmartMoneyClick,
+                onSearch = onSearchClick,
             )
         }
 
@@ -2274,9 +2280,18 @@ private fun IdeasRail(
     onSignalLab: (() -> Unit)?,
     onScanner: (() -> Unit)?,
     onSmartMoney: (() -> Unit)?,
+    onSearch: (() -> Unit)?,
 ) {
     val theme = LocalAppTheme.current
     val ideas = listOfNotNull(
+        onSearch?.let {
+            IdeaChip(
+                title = "Search Stocks",
+                subtitle = "Full NSE catalog · add to My list",
+                icon = Icons.Filled.Search,
+                onClick = it,
+            )
+        },
         onScanner?.let {
             IdeaChip(
                 title = "BYSEL Top Picks",
@@ -2307,7 +2322,8 @@ private fun IdeasRail(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 4.dp),
+            .padding(top = 4.dp)
+            .blockParentHorizontalPager(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
@@ -2316,45 +2332,42 @@ private fun IdeasRail(
             fontWeight = FontWeight.SemiBold,
             color = theme.text,
         )
-        LazyRow(modifier = Modifier.exclusiveHorizontalScroll(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(ideas, key = { it.title }) { idea ->
-                Row(
-                    modifier = Modifier
-                        .widthIn(min = 148.dp, max = 200.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(theme.card)
-                        .clickable(onClick = idea.onClick)
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Icon(
-                        idea.icon,
-                        contentDescription = null,
-                        tint = theme.primary,
-                        modifier = Modifier.size(18.dp),
+        ideas.forEach { idea ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 52.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(theme.card)
+                    .clickable(onClick = idea.onClick)
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(
+                    idea.icon,
+                    contentDescription = null,
+                    tint = theme.primary,
+                    modifier = Modifier.size(20.dp),
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = idea.title,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = theme.text,
+                        lineHeight = 18.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                    Column(modifier = Modifier.weight(1f, fill = false)) {
-                        Text(
-                            text = idea.title,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = theme.text,
-                            lineHeight = 16.sp,
-                            maxLines = 2,
-                            softWrap = true,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            text = idea.subtitle,
-                            fontSize = 10.sp,
-                            color = theme.textSecondary,
-                            lineHeight = 13.sp,
-                            maxLines = 2,
-                            softWrap = true,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+                    Text(
+                        text = idea.subtitle,
+                        fontSize = 12.sp,
+                        color = theme.textSecondary,
+                        lineHeight = 15.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }

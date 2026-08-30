@@ -135,6 +135,14 @@ def _load_assistant():
             }
         )
         _assistant = StockMarketAssistant(config=cfg)
+        try:
+            from indian_stock_llm.query_transformer import configure_query_encoder
+
+            provider = getattr(getattr(_assistant, "knowledge_base", None), "embedding_provider", None)
+            if provider is not None and hasattr(provider, "encode"):
+                configure_query_encoder(provider.encode)
+        except Exception:
+            pass
         emb_mode = (
             f"sentence-transformers:{emb}"
             if emb
@@ -1047,7 +1055,22 @@ def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | N
             )
         )
         education = None
-        skip_glossary = query_profile in {"corporate_actions", "session"}
+        skip_glossary = query_profile in {
+            "corporate_actions",
+            "session",
+            "fundamentals",
+            "technical",
+            "derivatives",
+            "news",
+            "quote",
+            "trade_plan",
+            "portfolio",
+            "prediction",
+            "compare",
+            "stock_analysis",
+            "sentiment",
+            "risks",
+        }
         wants_numeric_calc = bool(
             re.search(r"\b(calculate|compute|cagr|return from buy)\b", cleaned.lower())
             and re.search(r"\d", cleaned)
@@ -1321,6 +1344,13 @@ def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | N
         need_p0 = (
             symbol_hint
             and response_profile not in {"quote"}
+            and query_profile not in {
+                "session",
+                "small_talk",
+                "literacy",
+                "corporate_actions",
+                "compare_concepts",
+            }
             and not bare_name_ask
         )
         if need_p0:
@@ -1528,12 +1558,18 @@ def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | N
         try:
             from indian_stock_llm.agent_tools import load_corporate_actions, session_snapshot
 
-            market_context["session"] = session_snapshot()
-            if symbol_hint:
-                market_context["corporate_actions"] = load_corporate_actions(symbol_hint)
+            if query_profile in {"session", "corporate_actions", ""}:
+                market_context["session"] = session_snapshot()
+            if query_profile == "corporate_actions" and symbol_hint:
+                # Yahoo hydrate only on this profile — not on every chat turn.
+                market_context["corporate_actions"] = load_corporate_actions(
+                    symbol_hint, hydrate=True
+                )
         except Exception:
             pass
-        if not any(
+        pc = market_context.get("portfolio_context")
+        has_book = isinstance(pc, dict) and bool(pc.get("symbols") or pc.get("watchlist"))
+        if not has_book and not any(
             market_context.get(k)
             for k in (
                 "symbol",
@@ -1543,6 +1579,8 @@ def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | N
                 "trading_levels",
                 "all_symbols",
                 "peers",
+                "session",
+                "corporate_actions",
             )
         ):
             market_context = None

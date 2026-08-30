@@ -97,6 +97,8 @@ class OrderResponse(BaseModel):
     idempotencyKey: Optional[str] = None
     isDuplicate: bool = False
     errorCode: Optional[str] = None
+    fillKind: Optional[str] = None
+    sessionPhase: Optional[str] = None
 
 class AlertResponse(BaseModel):
     status: str

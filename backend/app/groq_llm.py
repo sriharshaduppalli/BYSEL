@@ -602,15 +602,47 @@ def get_options_strategy_example(strategy_name: str, response_style: str = "conc
     return _OPTIONS_STRATEGY_EXAMPLES[strategy_name].get(style_key, "")
 
 
+def _is_valuation_pe_ask(query: str) -> bool:
+    """True when PE means price-to-earnings, not a put option."""
+    q = query or ""
+    if re.search(
+        r"\b(p/?e\s*ratio|price[- ]to[- ]earnings|\bp/e\b|pe\s+of)\b",
+        q,
+        flags=re.IGNORECASE,
+    ):
+        return True
+    if re.search(r"\b[A-Za-z]{2,12}\s+p/?e\b", q, flags=re.IGNORECASE) and not re.search(
+        r"\b(ce|call|put|strike|lot|premium|otm|itm|atm|expiry|option)\b",
+        q,
+        flags=re.IGNORECASE,
+    ):
+        return True
+    return False
+
+
 def expand_acronyms_in_query(query: str) -> str:
     """Expand common Indian financial acronyms to full forms."""
     expanded = query
+    raw = query or ""
+    skip_pe_as_put = _is_valuation_pe_ask(raw)
     for acronym, expansion in _ACRONYMS.items():
         # Replace acronym with parenthetical expansion (preserve original)
-        import re
         pattern_acronym = acronym
         display_acronym = acronym
+        if acronym in {"NIFTY", "SENSEX", "BANKNIFTY"}:
+            # Parenthetical expand turns "Nifty 50 PE" into an unslotable blob.
+            continue
+        if acronym in {"EMA", "SMA", "RSI", "MACD"} and re.search(
+            rf"\b\d{{1,3}}\s*{re.escape(acronym)}\b",
+            raw,
+            flags=re.IGNORECASE,
+        ):
+            continue
+        if acronym in {"PE", "P/E"} and skip_pe_as_put:
+            continue
         if acronym == "PE2":
+            if skip_pe_as_put:
+                continue
             pattern_acronym = "PE"
             display_acronym = "PE"
         pattern = r'\b' + re.escape(pattern_acronym) + r'\b'
@@ -621,7 +653,10 @@ def expand_acronyms_in_query(query: str) -> str:
 def normalize_market_terms_in_query(query: str) -> str:
     """Normalize common market shorthand/Hinglish terms for better intent detection."""
     normalized = query or ""
+    skip_pe_as_put = _is_valuation_pe_ask(normalized)
     for short_term, long_term in _MARKET_TERM_NORMALIZATION.items():
+        if short_term == "pe" and skip_pe_as_put:
+            continue
         pattern = r'\b' + re.escape(short_term) + r'\b'
         normalized = re.sub(pattern, long_term, normalized, flags=re.IGNORECASE)
     return normalized

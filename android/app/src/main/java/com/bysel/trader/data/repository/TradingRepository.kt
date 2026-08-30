@@ -541,12 +541,18 @@ open class TradingRepository(private val database: BYSELDatabase) {
         query: String,
         chatHistory: List<ConversationTurn>? = null,
         tier: String = "fast",
+        watchlist: List<String>? = null,
     ): Result<AiAssistantResponse> {
         var lastError: Exception? = null
         repeat(2) { attempt ->
             try {
                 val response = aiApiService.aiAsk(
-                    AiQuery(query = query, conversationHistory = chatHistory, tier = tier)
+                    AiQuery(
+                        query = query,
+                        conversationHistory = chatHistory,
+                        tier = tier,
+                        watchlist = watchlist,
+                    )
                 )
                 return Result.Success(response)
             } catch (e: Exception) {

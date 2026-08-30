@@ -1632,7 +1632,13 @@ def test_ai_ask_low_confidence_stock_intent_returns_clarifier(monkeypatch):
     assert response.status_code == 200
     payload = response.json()
     assert payload["source"] == "clarifier"
-    assert "clarification" in payload["answer"].lower() or "clarify" in payload["answer"].lower()
+    answer = payload["answer"].lower()
+    assert (
+        "clarification" in answer
+        or "clarify" in answer
+        or "which nse/bse symbol" in answer
+        or "which symbol" in answer
+    )
 
 
 def test_ai_ask_passes_concise_style_to_groq(monkeypatch):
@@ -1678,7 +1684,7 @@ def test_groq_rate_limit_helpers():
 def test_ai_ask_http_429_is_softened_to_chat_answer(monkeypatch):
     from fastapi import HTTPException
 
-    def _boom(_query):
+    def _boom(*_args, **_kwargs):
         raise HTTPException(status_code=429, detail="provider busy")
 
     monkeypatch.setattr("app.groq_llm.classify_intent", _boom)
@@ -1823,6 +1829,31 @@ def test_expand_acronyms_supports_extended_market_terms():
     assert "Volume Weighted Average Price" in expanded
     assert "Open Interest" in expanded
     assert "Put-Call Ratio" in expanded
+
+
+def test_expand_acronyms_keeps_valuation_pe_out_of_put_option():
+    from app.groq_llm import expand_acronyms_in_query, normalize_market_terms_in_query
+
+    for query in (
+        "RELIANCE PE ratio",
+        "Nifty 50 PE ratio",
+        "PE of INFY",
+        "what is the PE of WIPRO",
+    ):
+        expanded = expand_acronyms_in_query(query).lower()
+        assert "put option" not in expanded, query
+        assert "pe" in expanded, query
+    nifty = expand_acronyms_in_query("Nifty 50 PE ratio")
+    assert "NIFTY 50 index" not in nifty
+    ema = expand_acronyms_in_query("RELIANCE 50 EMA")
+    assert "50 EMA" in ema
+    assert "Exponential Moving Average" not in ema
+
+    fo = normalize_market_terms_in_query(
+        "NIFTY CE PE mein kitna OI hai aur SL kya hona chahiye"
+    ).lower()
+    assert "put option" in fo
+    assert "call option" in fo
 
 
 def test_classify_intent_detects_derivatives_query():

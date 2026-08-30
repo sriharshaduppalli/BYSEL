@@ -101,6 +101,22 @@ def test_dividend_date_of_symbol_skips_yield_glossary():
     assert "ex-date" in primer.lower()
 
 
+def test_stock_and_index_live_asks_skip_glossary():
+    assert get_education_answer("RELIANCE PE ratio") is None
+    assert get_education_answer("RELIANCE 50 EMA") is None
+    assert get_education_answer("Nifty 50 PE ratio") is None
+    assert get_education_answer("Bank Nifty expiry this week") is None
+    pe_card = get_education_answer("what is PE")
+    assert pe_card
+    assert "price-to-earnings" in pe_card.lower() or "p/e" in pe_card.lower()
+    ema_card = get_education_answer("what is EMA")
+    assert ema_card
+    assert "exponential" in ema_card.lower()
+    ipo_card = get_education_answer("How to apply for IPO")
+    assert ipo_card
+    assert "ipo" in ipo_card.lower()
+
+
 def test_ask_llm_dividend_date_uses_dated_pack():
     from app.llm_integration import ask_llm
 

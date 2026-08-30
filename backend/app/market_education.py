@@ -2881,6 +2881,36 @@ def get_education_answer(query: str) -> Optional[str]:
     if stock_specific_event:
         return None
 
+    # "RELIANCE PE ratio" / "INFY 50 EMA" → live card, not P/E or EMA glossary.
+    stock_specific_metric = bool(named_symbol) and bool(
+        re.search(
+            r"\b(p/?e|pe ratio|pb|p/b|roe|eps|rsi|macd|sma|ema|dma|"
+            r"atr|bollinger|\bbeta\b)\b",
+            q,
+        )
+    ) and not formula_cue
+    if stock_specific_metric and (
+        not re.search(r"\b(what is|define|definition|meaning of|explain)\b", q)
+        or re.search(r"\b(of|for)\s+", q)
+    ):
+        return None
+
+    # "Nifty 50 PE ratio" is an index valuation ask, not Put Option Basics.
+    if (
+        re.search(r"\b(nifty|sensex|bank\s*nifty|nifty\s*50)\b", q)
+        and re.search(r"\b(p/?e|pe ratio|pb|p/b|valuation)\b", q)
+        and not re.search(r"\b(what is|define|definition|meaning of|explain)\b", q)
+    ):
+        return None
+
+    # "Bank Nifty expiry this week" → dated F&O card, not the BANK NIFTY primer.
+    if (
+        re.search(r"\b(expir(y|ies)|weekly expiry|monthly expiry)\b", q)
+        and re.search(r"\b(this week|bank\s*nifty|nifty|sensex|when is)\b", q)
+        and not re.search(r"\b(what is|define|definition|meaning of|explain)\b", q)
+    ):
+        return None
+
     # "Technical analysis of KAYNES" → live stock TA, not the TA literacy primer.
     stock_specific_ta = bool(named_symbol) and bool(
         re.search(

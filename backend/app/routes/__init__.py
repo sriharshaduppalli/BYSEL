@@ -1657,6 +1657,48 @@ def _holdings_in_thread(user_id: int) -> list[Holding]:
         session.close()
 
 
+def _holdings_book_in_thread(user_id: int) -> list[dict]:
+    """Symbols + qty + book last from DB. No Yahoo refresh, no invented P&L."""
+    from ..database.db import SessionLocal
+
+    session = SessionLocal()
+    try:
+        rows = session.query(HoldingModel).filter(HoldingModel.user_id == user_id).all()
+        book: list[dict] = []
+        for row in rows:
+            symbol = str(getattr(row, "symbol", "") or "").strip().upper()
+            if not symbol:
+                continue
+            book.append(
+                {
+                    "symbol": symbol,
+                    "qty": int(getattr(row, "quantity", 0) or 0),
+                    "book_last": float(getattr(row, "last_price", 0.0) or 0.0),
+                }
+            )
+        return book
+    finally:
+        session.close()
+
+
+def _normalize_watchlist(raw) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw or []:
+        symbol = str(item or "").strip().upper().split(".")[0]
+        if symbol.startswith("NSE:") or symbol.startswith("BSE:"):
+            symbol = symbol.split(":", 1)[1]
+        if not symbol or symbol in seen:
+            continue
+        if not re.match(r"^[A-Z0-9&-]{1,12}$", symbol):
+            continue
+        seen.add(symbol)
+        out.append(symbol)
+        if len(out) >= 24:
+            break
+    return out
+
+
 @router.get("/holdings", response_model=list[Holding])
 async def get_holdings_endpoint(user=Depends(get_current_user)):
     """Get holdings for the authenticated user."""
@@ -2361,6 +2403,7 @@ class AiQuery(BaseModel):
     # groq|gemini|indian-stock-llm|rule-engine: explicit tier
     tier: Optional[str] = "auto"
     screen_context: Optional[Dict] = None  # {symbol, scanner_mode, source} from the open screen
+    watchlist: Optional[List[str]] = None  # client symbols only — never treated as live P&L
 
 
 class AiFeedbackBody(BaseModel):
@@ -2389,6 +2432,18 @@ async def ai_feedback_endpoint(
         "authenticated": user is not None,
         "message": "Feedback recorded" if ok else "Learning loop unavailable",
     }
+
+
+@router.post("/internal/ism/cluster-misses")
+def cluster_misses_endpoint(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    """Off-request nightly cluster. Human review file only — no learned_knowledge write."""
+    from .auth import _require_admin_access
+    from ..miss_cluster import cluster_and_write
+
+    _require_admin_access(x_admin_token)
+    return cluster_and_write()
 
 
 @router.post("/ai/ask")
@@ -2620,12 +2675,18 @@ async def ai_ask_endpoint(
             r"\b(support|resistance|s/?r|trading levels?|pivots?|sentiment|"
             r"should i|buy|sell|pe ratio|p/?e\b|pb ratio|p/?b\b|technical|"
             r"technical analysis|chart analysis|price action|"
-            r"fundamental|target|stop ?loss|macd|rsi of|price of|quote)\b",
+            r"fundamental|target|stop ?loss|macd|rsi|ema|sma|dma|"
+            r"price of|quote|live price|cmp|expir(y|ies)|why (did|is|has))\b",
             normalized_query,
             flags=re.IGNORECASE,
         )
     )
-    if education_answer and not stock_live_ask:
+    live_ism_profile = bool(
+        query_contract
+        and query_contract.profile
+        and query_contract.profile not in {"literacy", "compare_concepts", "small_talk"}
+    )
+    if education_answer and not stock_live_ask and not live_ism_profile:
         return _validated({"answer": education_answer}, "education", requested_tier)
 
     # For sector/compare (and always when user named tickers), run rule engine on the
@@ -2695,26 +2756,31 @@ async def ai_ask_endpoint(
         from ..groq_llm import detect_sentiment_from_query
         user_sentiment = detect_sentiment_from_query(body.query)
 
-        # Extract user's current portfolio for personalized advice (symbols only —
-        # skip live quote refresh so chat latency stays low). Skip the DB round-trip
-        # unless the question is about holdings.
-        portfolio_context = {"total_holdings": 0, "symbols": [], "concentrations": {}}
-        wants_portfolio = detected_intent == "PORTFOLIO" or bool(
-            re.search(
-                r"\b(portfolio|holdings?|my stocks?|my shares)\b",
-                normalized_query,
-                flags=re.IGNORECASE,
-            )
+        # Symbols only — DB book, no Yahoo refresh, no invented MTM/P&L.
+        watchlist_symbols = _normalize_watchlist(body.watchlist)
+        portfolio_context = {
+            "total_holdings": 0,
+            "symbols": [],
+            "concentrations": {},
+            "watchlist": watchlist_symbols,
+        }
+        light_profile = bool(
+            query_contract and query_contract.profile in {
+                "small_talk",
+                "session",
+                "literacy",
+                "compare_concepts",
+            }
         )
-        if auth_user_id is not None and wants_portfolio:
+        if auth_user_id is not None and not light_profile:
             try:
-                holdings = await asyncio.to_thread(_holdings_in_thread, auth_user_id)
-                if holdings:
+                book = await asyncio.to_thread(_holdings_book_in_thread, auth_user_id)
+                if book:
                     portfolio_context = {
-                        "total_holdings": len(holdings),
-                        "symbols": [h.symbol for h in holdings if h.symbol],
-                        "concentrations": {h.symbol: h.qty for h in holdings if h.symbol},
-                        "total_value": sum((h.last or 0) * (h.qty or 0) for h in holdings if h.symbol),
+                        "total_holdings": len(book),
+                        "symbols": [row["symbol"] for row in book],
+                        "concentrations": {row["symbol"]: row["qty"] for row in book},
+                        "watchlist": watchlist_symbols,
                     }
             except Exception as e:
                 logger.debug("Could not extract portfolio context: %s", e)
@@ -2732,10 +2798,18 @@ async def ai_ask_endpoint(
             "sentiment": data.get("sentiment", {}),
         }
 
-        # Always enrich when we have a symbol — cache (~3 min) keeps this cheap.
-        # Previously skipped when rule-engine already had tech+fund, which dropped
-        # live news headlines / news sentiment from Indian Stock LLM answers.
-        if symbol:
+        # Skip Yahoo enrich on session / literacy / corp-action / greeting asks.
+        skip_enrich = bool(
+            query_contract
+            and query_contract.profile in {
+                "session",
+                "small_talk",
+                "literacy",
+                "corporate_actions",
+                "compare_concepts",
+            }
+        )
+        if symbol and not skip_enrich:
             try:
                 live = await enrich(
                     symbol,

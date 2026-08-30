@@ -128,6 +128,8 @@ data class OrderResponse(
     val idempotencyKey: String? = null,
     val isDuplicate: Boolean = false,
     val errorCode: String? = null,
+    val fillKind: String? = null,
+    val sessionPhase: String? = null,
 )
 
 // ==================== WALLET & MARKET STATUS ====================
@@ -231,6 +233,9 @@ data class AiQuery(
     @com.google.gson.annotations.SerializedName("conversation_history")
     val conversationHistory: List<ConversationTurn>? = null,
     val tier: String? = "fast",
+    val watchlist: List<String>? = null,
+    @com.google.gson.annotations.SerializedName("screen_context")
+    val screenContext: Map<String, String>? = null,
 )
 
 data class AiFeedbackRequest(

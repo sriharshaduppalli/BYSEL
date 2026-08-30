@@ -31,19 +31,39 @@ object TradeIntentParser {
         "CHART", "STACK", "QUANTITATIVE", "HORIZON", "STRENGTH", "REDUCE",
         "LIGHTEN", "FRESH", "LONG", "SHORT", "STAGED", "ADDS", "DIPS", "CLEAR",
         "EDGE", "EXIT", "AVOID", "SKIP", "SETUP", "IMPROVES",
+        "EARNINGS", "RESULTS", "RESULT", "DIVIDEND", "QUARTER", "QUARTERLY",
+        "GUIDANCE", "REVENUE", "CALENDAR", "UPDATE", "HEADLINE", "CATALYST",
+        "OUTLOOK", "FORECAST", "ESTIMATE", "PAYOUT", "YIELD", "REPORT",
+        "SEASON", "YEAR", "YEARS", "MONTH", "WEEK", "TODAY", "TOMORROW",
+        "DATE", "EXDATE", "SESSION", "MARKET", "HISTORY", "TREND",
+        "PLAN", "PRINT", "CALL", "PUT", "OPTION", "PREMIUM", "INTO",
+        "AHEAD", "STRENGTH", "TAPE", "COPY", "LINE", "EVENT", "CARD",
+        "ASK", "OFF", "SIDE", "WING", "SPREAD",
+        "ON", "IN", "AT", "TO", "OF", "IF", "OR", "AN", "AS", "BY", "UP",
+        "IT", "NO", "SO", "MY", "WE", "BE",
+        "MILLION", "BILLION", "TRILLION", "CRORE", "CRORES", "LAKH", "LAKHS",
+        "LACS", "LAC", "THOUSAND", "THOUSANDS", "MN", "BN", "CR", "VOLUME",
+        "SHARES", "SHARE", "UNITS", "UNIT", "LOTS", "LOT",
+        "ALREADY", "HANDS", "CHANGED", "IDEA", "HEADLINE", "ABOUT", "WAS",
+        "EQUIVALENT", "USD", "CAP", "DIPS", "STRUCTURE", "VOLUME",
+    )
+
+    private val SHARE_UNITS = Regex("""(?i)\b(?:shares?|lots?|qty|units?)\b""")
+    private val SCALE_WORD = Regex(
+        """(?i)^(?:million|billion|trillion|crore|crores|lakh|lakhs|lacs|lac|thousand|thousands|mn|bn|cr)$"""
     )
 
     private val BUY_PATTERN = Regex(
-        """(?i)\b(?:buy|purchase|accumulate|go long)\b[^.]*?\b(\d+)\s*(?:shares?|lots?|qty|units?)?\s*(?:of\s+)?([A-Z]{2,20})\b"""
+        """(?i)\b(?:buy|purchase|accumulate|go long)\b[^.]*?\b(\d+)\s*(?:(?:million|billion|trillion|crore|crores|lakh|lakhs|lacs|thousand|mn|bn|cr)\s+)?(?:shares?|lots?|qty|units?)?\s*(?:of\s+)?([A-Z]{2,20})\b"""
     )
     private val BUY_SIMPLE = Regex(
         """(?i)\b(?:buy|purchase|go long)\b\s+([A-Z]{2,20})\b"""
     )
     private val SELL_PATTERN = Regex(
-        """(?i)\b(?:sell|exit|book profits?|offload)\b[^.]*?\b(\d+)\s*(?:shares?|lots?|qty|units?)?\s*(?:of\s+)?([A-Z]{2,20})\b"""
+        """(?i)\b(?:sell|exit|book profits?|offload)\b[^.]*?\b(\d+)\s*(?:(?:million|billion|trillion|crore|crores|lakh|lakhs|lacs|thousand|mn|bn|cr)\s+)?(?:shares?|lots?|qty|units?)?\s*(?:of\s+)?([A-Z]{2,20})\b"""
     )
     private val SELL_SIMPLE = Regex(
-        """(?i)\b(?:sell|exit|book profits?)\b\s+([A-Z]{2,20})\b"""
+        """(?i)\b(?:sell|book profits?(?:\s+on)?)\b\s+([A-Z]{2,20})\b"""
     )
     private val ALERT_PATTERN = Regex(
         """(?i)\b(?:set|create)\s+(?:an?\s+)?(?:price\s+)?alert\b[^.]*?([A-Z]{2,20})\s+(?:when|if|at)?\s*(?:it\s+)?(?:goes?\s+)?(above|below|crosses?)\s+(?:₹?\s*)?(\d+(?:\.\d+)?)"""
@@ -78,9 +98,10 @@ object TradeIntentParser {
 
         // Buy with quantity
         BUY_PATTERN.find(message)?.let { match ->
-            val qty = match.groupValues[1].toIntOrNull()
-            val symbol = sanitizeSymbol(match.groupValues[2]) ?: return@let
-            intents.add(TradeIntent(Action.BUY, symbol, qty, displayText = "Buy ${qty ?: ""} $symbol".trim()))
+            val parsed = parseQtyAndSymbol(match.groupValues[1], match.groupValues[2], match.value)
+                ?: return@let
+            val (qty, symbol) = parsed
+            intents.add(TradeIntent(Action.BUY, symbol, qty, displayText = "Buy $qty $symbol"))
         }
 
         // Simple buy (no quantity)
@@ -95,9 +116,10 @@ object TradeIntentParser {
 
         // Sell with quantity
         SELL_PATTERN.find(message)?.let { match ->
-            val qty = match.groupValues[1].toIntOrNull()
-            val symbol = sanitizeSymbol(match.groupValues[2]) ?: return@let
-            intents.add(TradeIntent(Action.SELL, symbol, qty, displayText = "Sell ${qty ?: ""} $symbol".trim()))
+            val parsed = parseQtyAndSymbol(match.groupValues[1], match.groupValues[2], match.value)
+                ?: return@let
+            val (qty, symbol) = parsed
+            intents.add(TradeIntent(Action.SELL, symbol, qty, displayText = "Sell $qty $symbol"))
         }
 
         if (intents.none { it.action == Action.SELL }) {
@@ -238,7 +260,22 @@ object TradeIntentParser {
     private fun sanitizeSymbol(raw: String?): String? {
         val symbol = raw?.trim()?.uppercase()?.takeIf { it.isNotBlank() } ?: return null
         if (symbol in KNOWN_FALSE_SYMBOLS) return null
+        if (SCALE_WORD.matches(symbol)) return null
         if (symbol.length < 2) return null
+        if (symbol.any { it.isDigit() }) return null
         return symbol
+    }
+
+    /**
+     * "exit … 2026 earnings" is a calendar phrase, not "sell 2026 shares of EARNINGS".
+     * Years only count as qty when the user wrote shares/lots/qty/units.
+     */
+    private fun parseQtyAndSymbol(qtyRaw: String, symbolRaw: String, matched: String): Pair<Int, String>? {
+        val symbol = sanitizeSymbol(symbolRaw) ?: return null
+        val qty = qtyRaw.toIntOrNull() ?: return null
+        if (qty <= 0 || qty > 100_000) return null
+        val yearLike = qty in 1900..2100
+        if (yearLike && !SHARE_UNITS.containsMatchIn(matched)) return null
+        return qty to symbol
     }
 }

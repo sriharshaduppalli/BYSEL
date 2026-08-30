@@ -483,6 +483,11 @@ fun BYSELApp(
     }
 
     fun navigatePushingCurrent(toTab: Int) {
+        if (selectedTab in 0..5 && toTab !in 0..5) {
+            // Home/AI/… pager may still be settling a sloppy tap. Do not
+            // let that swipe overwrite Smart Money / Scanner / Signal Lab.
+            suppressPagerTabSync = true
+        }
         if (selectedTab !in 0..5 && toTab in 0..5) {
             suppressPagerTabSync = true
         }
@@ -1043,6 +1048,9 @@ fun BYSELApp(
                                         onSmartMoneyClick = {
                                             navigatePushingCurrent(21)
                                         },
+                                        onSearchClick = {
+                                            navigatePushingCurrent(6)
+                                        },
                                         onAddPracticeFunds = {
                                             showHomeAddFundsDialog = true
                                         },
@@ -1148,6 +1156,7 @@ fun BYSELApp(
                                             viewModel.askAi(query)
                                             navigatePushingCurrent(1)
                                         },
+                                        onOpenSearch = { navigatePushingCurrent(6) },
                                         viewModel = viewModel
                                     )
                                     3 -> PortfolioScreen(

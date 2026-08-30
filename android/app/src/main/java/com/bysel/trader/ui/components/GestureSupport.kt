@@ -34,6 +34,67 @@ import androidx.compose.ui.unit.dp
 fun Modifier.exclusiveHorizontalScroll(): Modifier =
     this.nestedScroll(ExclusiveHorizontalNestedScroll)
 
+/**
+ * Tappable blocks on a [HorizontalPager] page (Home shortcuts) must eat
+ * leftover horizontal slop. Otherwise the first tap is treated as a page
+ * swipe and [clickable] never fires.
+ */
+fun Modifier.blockParentHorizontalPager(): Modifier =
+    this.nestedScroll(BlockParentHorizontalPagerScroll)
+
+/**
+ * Keep leftover vertical drag on Trade My list so the root
+ * [HorizontalPager] does not steal the gesture. Otherwise the list
+ * viewport stays clipped and downward scroll never starts.
+ */
+fun Modifier.preferVerticalScroll(): Modifier =
+    this.nestedScroll(PreferVerticalNestedScroll)
+
+private object BlockParentHorizontalPagerScroll : NestedScrollConnection {
+    override fun onPreScroll(
+        available: Offset,
+        source: NestedScrollSource,
+    ): Offset {
+        return if (kotlin.math.abs(available.x) > kotlin.math.abs(available.y)) {
+            Offset(x = available.x, y = 0f)
+        } else {
+            Offset.Zero
+        }
+    }
+
+    override suspend fun onPreFling(available: Velocity): Velocity {
+        return if (kotlin.math.abs(available.x) > kotlin.math.abs(available.y)) {
+            Velocity(x = available.x, y = 0f)
+        } else {
+            Velocity.Zero
+        }
+    }
+}
+
+private object PreferVerticalNestedScroll : NestedScrollConnection {
+    override fun onPostScroll(
+        consumed: Offset,
+        available: Offset,
+        source: NestedScrollSource,
+    ): Offset {
+        val childTookVertical = kotlin.math.abs(consumed.y) > 0.5f
+        val leftoverIsVertical = kotlin.math.abs(available.y) >= kotlin.math.abs(available.x)
+        return if (childTookVertical || leftoverIsVertical) {
+            Offset(x = 0f, y = available.y)
+        } else {
+            Offset.Zero
+        }
+    }
+
+    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+        return if (kotlin.math.abs(available.y) >= kotlin.math.abs(available.x)) {
+            Velocity(x = 0f, y = available.y)
+        } else {
+            Velocity.Zero
+        }
+    }
+}
+
 private object ExclusiveHorizontalNestedScroll : NestedScrollConnection {
     override fun onPostScroll(
         consumed: Offset,

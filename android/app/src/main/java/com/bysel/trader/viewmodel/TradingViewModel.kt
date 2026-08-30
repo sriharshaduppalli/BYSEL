@@ -2694,7 +2694,17 @@ class TradingViewModel(
             val baseQuery = "trade_coach:symbol=$symbol,qty=$quantity,side=$side"
             val prompt = PromptBuilder.buildPrompt(baseQuery, holdingsSummary, wallet, portfolioScore, quoteResult.let { if (it is Result.Success) it.data else null }, recentHistory)
 
-            when (val r = repository.aiAsk(prompt, buildConversationHistory(), tier = "fast")) {
+            when (val r = repository.aiAsk(
+                prompt,
+                buildConversationHistory(),
+                tier = "fast",
+                watchlist = _watchlist.value
+                    .map { it.trim().uppercase() }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                    .take(24)
+                    .ifEmpty { null },
+            )) {
                 is Result.Success -> _tradeCoachTip.value = r.data.answer
                 else -> _tradeCoachTip.value = "Tip: Review your trade strategy."
             }
@@ -3005,7 +3015,17 @@ class TradingViewModel(
 
             // Indian Stock LLM is the app assistant. On-device Gemma and Groq
             // only run if that path fails.
-            when (val r = repository.aiAsk(prompt, buildConversationHistory(), tier = "fast")) {
+            when (val r = repository.aiAsk(
+                prompt,
+                buildConversationHistory(),
+                tier = "fast",
+                watchlist = _watchlist.value
+                    .map { it.trim().uppercase() }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                    .take(24)
+                    .ifEmpty { null },
+            )) {
                 is Result.Success -> {
                     lastAiSuccessAtMs = System.currentTimeMillis()
                     lastAiWarmAtMs = lastAiSuccessAtMs

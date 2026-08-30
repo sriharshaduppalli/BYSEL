@@ -19,7 +19,7 @@ from ..database.db import (
     TriggerOrderModel,
 )
 from ..models.schemas import Order, OrderResponse, Holding, Wallet, WalletResponse, MarketStatus
-from ..market_data import fetch_quote
+from ..market_data import fetch_quote, last_known_print
 
 import logging
 
@@ -586,6 +586,8 @@ def _execute_order_at_price(
     idempotency_key: str | None = None,
     trace_id: str | None = None,
     after_hours_paper: bool = False,
+    fill_kind: str | None = None,
+    session_phase: str | None = None,
 ) -> tuple[OrderResponse, OrderModel]:
     normalized_order = _normalize_order_payload(order, idempotency_key=idempotency_key)
     resolved_trace_id = (trace_id or f"trc-{uuid4().hex[:16]}").strip()
@@ -731,8 +733,9 @@ def _execute_order_at_price(
     )
 
     fill_note = ""
+    resolved_fill_kind = fill_kind or ("last_session" if after_hours_paper else "live")
     if after_hours_paper:
-        fill_note = " | Paper fill @ last session (NSE closed)"
+        fill_note = " | Paper fill at last session print (market closed — not a live tape print)"
     return (
         OrderResponse(
             status="ok",
@@ -749,6 +752,8 @@ def _execute_order_at_price(
             traceId=resolved_trace_id,
             idempotencyKey=normalized_order.idempotencyKey,
             isDuplicate=False,
+            fillKind=resolved_fill_kind,
+            sessionPhase=session_phase,
         ),
         order_db,
     )
@@ -940,18 +945,59 @@ def place_order(
     # informational only — do not hard-block paper orders after session close.
     market = is_market_open()
     after_hours_paper = not market.isOpen
+    market_message = str(getattr(market, "message", "") or "")
+    if market.isOpen:
+        session_phase = "open"
+    elif "weekend" in market_message.lower():
+        session_phase = "weekend"
+    elif "holiday" in market_message.lower():
+        session_phase = "holiday"
+    else:
+        session_phase = "closed"
 
-    live_quote = fetch_quote(normalized_order.symbol)
+    live_quote: dict = {}
+    fill_kind = "live"
+    if after_hours_paper:
+        # Prefer last known print — skip a live Yahoo hop when the tape is closed.
+        known = last_known_print(normalized_order.symbol)
+        if known and float(known.get("last") or 0.0) > 0:
+            live_quote = known
+            fill_kind = "last_session"
+        else:
+            holding = (
+                db.query(HoldingModel)
+                .filter(
+                    HoldingModel.symbol == normalized_order.symbol,
+                    HoldingModel.user_id == user_id,
+                )
+                .first()
+            )
+            book_last = float(getattr(holding, "last_price", 0.0) or 0.0) if holding else 0.0
+            if book_last > 0:
+                live_quote = {"symbol": normalized_order.symbol, "last": book_last}
+                fill_kind = "last_session"
+            else:
+                live_quote = fetch_quote(normalized_order.symbol)
+                fill_kind = "last_session"
+    else:
+        live_quote = fetch_quote(normalized_order.symbol)
+
     live_price = float(live_quote.get("last") or 0.0)
 
     if live_price <= 0:
         return OrderResponse(
             status="error",
             order=normalized_order,
-            message=f"Could not fetch live price for {normalized_order.symbol}",
+            message=(
+                f"No last session print for {normalized_order.symbol}"
+                if after_hours_paper
+                else f"Could not fetch live price for {normalized_order.symbol}"
+            ),
             traceId=resolved_trace_id,
             idempotencyKey=normalized_order.idempotencyKey,
             errorCode="PRICE_UNAVAILABLE",
+            fillKind=fill_kind if after_hours_paper else None,
+            sessionPhase=session_phase,
         )
 
     if normalized_order.orderType in {"LIMIT", "SL", "SLM"} and not _should_trigger(normalized_order, live_price):
@@ -985,6 +1031,8 @@ def place_order(
             idempotency_key=normalized_order.idempotencyKey,
             trace_id=resolved_trace_id,
             after_hours_paper=after_hours_paper,
+            fill_kind=fill_kind,
+            session_phase=session_phase,
         )
         return response
     except LifecycleTransitionError as exc:

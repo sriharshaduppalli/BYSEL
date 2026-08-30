@@ -11,7 +11,7 @@ from indian_stock_llm.symbol_linker import is_index_or_market_ask, link_symbols
 GOLD = (
     ("What is the price of RELIANCE?", "quote", "live quote", ("— paper trade plan", "wilder", "entry zone")),
     ("kitna hai TCS", "quote", "live quote", ("— paper trade plan", "entry zone")),
-    ("Should I buy RELIANCE?", "trade_plan", "paper trade plan", ("wilder", "ev/ebitda")),
+    ("Should I buy RELIANCE?", "trade_plan", "paper buy plan", ("wilder", "ev/ebitda")),
     ("How is RELIANCE doing?", "stock_analysis", "snapshot", ("paper trade plan", "entry zone", "direct answer")),
     ("INFY target next month", "prediction", "scenario range", ("paper trade plan", "entry zone")),
     ("Any update on RELIANCE?", "news", "news", ("paper trade plan",)),
@@ -25,13 +25,14 @@ GOLD = (
     ("Is market bullish today?", "sentiment", "market mood", ("paper trade plan",)),
     ("TCS or INFY?", "compare", "tcs", ()),
     ("Explain delivery vs intraday", "literacy", "delivery", ("delhivery",)),
-    ("kya main HDFCBANK kharidun?", "trade_plan", "paper trade plan", ()),
+    ("kya main HDFCBANK kharidun?", "trade_plan", "paper buy plan", ()),
     ("50 EMA of RELIANCE", "technical", "technical", ()),
     ("FII buying in RELIANCE", "news", "news", ()),
     ("what is a straddle", "literacy", "straddle", ()),
     ("Is the market open?", "session", "session", ("reliance —",)),
     ("Dividend date of RELIANCE", "corporate_actions", "corporate", ("2024-01-01",)),
     ("Dividend date of INFY", "corporate_actions", "2026-05-15", ("dividend yield", "equation")),
+    ("What's on my watchlist?", "portfolio", "on your list", ("paper trade plan", "entry zone")),
 )
 
 
