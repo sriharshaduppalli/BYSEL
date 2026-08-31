@@ -87,6 +87,43 @@ class WatchlistSymbolsTest {
     }
 
     @Test
+    fun recoverAfterUpdateReadsOrphanLoggedInKeyWhileSessionIsAnon() {
+        val recovered = WatchlistSymbols.recoverFromKeyedStores(
+            currentUserId = null,
+            keyedLists = mapOf(
+                "anon" to emptyList(),
+                "u_42" to listOf("RELIANCE", "TCS"),
+            ),
+        )
+        assertEquals(listOf("RELIANCE", "TCS"), recovered)
+    }
+
+    @Test
+    fun recoverAfterReloginReadsPreviousUserAndDeviceCopy() {
+        val recovered = WatchlistSymbols.recoverFromKeyedStores(
+            currentUserId = 99,
+            keyedLists = mapOf(
+                "u_99" to emptyList(),
+                "u_42" to listOf("INFY"),
+                WatchlistSymbols.DEVICE_KEY to listOf("RELIANCE", "TCS"),
+            ),
+        )
+        assertEquals(listOf("RELIANCE", "TCS", "INFY"), recovered)
+    }
+
+    @Test
+    fun recoverKeepsCurrentOwnerOrderAndAppendsOrphans() {
+        val recovered = WatchlistSymbols.recoverFromKeyedStores(
+            currentUserId = 42,
+            keyedLists = mapOf(
+                "u_42" to listOf("WIPRO"),
+                "anon" to listOf("TCS"),
+            ),
+        )
+        assertEquals(listOf("WIPRO", "TCS"), recovered)
+    }
+
+    @Test
     fun encodeDecodeRoundTrip() {
         val symbols = listOf("TCS", "reliance.ns", "INFY")
         val decoded = WatchlistSymbols.decode(WatchlistSymbols.encode(symbols))

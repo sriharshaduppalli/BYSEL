@@ -3059,6 +3059,7 @@ class TradingViewModel(
                         symbol = replySymbol,
                         signal = if (sectorThemeAsk || habitLearnAsk) null else r.data.signal,
                         lastPrice = replyPrice,
+                        intent = r.data.intent,
                     )
                     // Optionally enrich the last bubble with v2 cards when a symbol is in focus.
                     if (shouldUseEnhancedAnalysis(cleanedQuery, symbol) && symbol != null) {
@@ -4000,11 +4001,15 @@ class TradingViewModel(
     fun submitAiFeedback(query: String, answer: String, helpful: Boolean) {
         viewModelScope.launch {
             try {
+                val intent = _chatHistory.value
+                    .lastOrNull { !it.isUser && it.text == answer }
+                    ?.intent
                 com.bysel.trader.data.api.RetrofitClient.aiApiService.submitAiFeedback(
                     com.bysel.trader.data.models.AiFeedbackRequest(
                         query = query,
                         answer = answer,
                         helpful = helpful,
+                        intent = intent,
                     )
                 )
             } catch (_: Exception) { }
@@ -4148,6 +4153,8 @@ data class ChatMessage(
     val signal: String? = null,
     /** Last/reference price from the analysis payload, used when Target is missing. */
     val lastPrice: Double? = null,
+    /** ISM / classifier intent, sent back with thumbs so learning keys stay aligned. */
+    val intent: String? = null,
 )
 
 // Factory for TradingViewModel

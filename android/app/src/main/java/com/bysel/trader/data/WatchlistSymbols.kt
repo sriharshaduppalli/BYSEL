@@ -9,6 +9,9 @@ import com.bysel.trader.data.models.Quote
  * replace a last-good list unless the user explicitly cleared it.
  */
 object WatchlistSymbols {
+    /** User-independent last-known copy so a session blip cannot hide the list. */
+    const val DEVICE_KEY = "device"
+
     fun userKey(userId: Int?): String =
         if (userId != null && userId > 0) "u_$userId" else "anon"
 
@@ -61,6 +64,28 @@ object WatchlistSymbols {
      * Same-user restore: keep [primary] order and append any extra names from [extra].
      * A stale shorter snapshot must never drop names that the other store still has.
      */
+    /**
+     * After an app update, token expiry, or re-login the current owner key is often
+     * `anon` or a new `u_*` while the names still live under another key on disk.
+     * Union every stored bucket so that empty current key never hides a last-good list.
+     */
+    fun recoverFromKeyedStores(
+        currentUserId: Int?,
+        keyedLists: Map<String, List<String>>,
+        legacy: List<String> = emptyList(),
+        lastGood: List<String> = emptyList(),
+    ): List<String> {
+        val currentKey = userKey(currentUserId)
+        var recovered = normalizeAll(keyedLists[currentKey].orEmpty())
+        recovered = unionPreserveOrder(recovered, keyedLists[DEVICE_KEY].orEmpty())
+        recovered = unionPreserveOrder(recovered, legacy)
+        for ((key, list) in keyedLists) {
+            if (key == currentKey || key == DEVICE_KEY) continue
+            recovered = unionPreserveOrder(recovered, list)
+        }
+        return coalesce(recovered, lastGood, allowEmpty = false)
+    }
+
     fun unionPreserveOrder(primary: List<String>, extra: List<String>): List<String> {
         val first = normalizeAll(primary)
         val second = normalizeAll(extra)

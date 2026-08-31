@@ -255,6 +255,7 @@ data class AiAssistantResponse(
     val data: Map<String, Any>? = null,
     val stocks: List<Map<String, Any>>? = null,
     val source: String = "rule-engine",
+    val intent: String? = null,
     val confidence: Double? = null,
     @com.google.gson.annotations.SerializedName("current_price")
     val currentPrice: Double? = null,

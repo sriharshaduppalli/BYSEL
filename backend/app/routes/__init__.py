@@ -2523,6 +2523,9 @@ async def ai_ask_endpoint(
             user_response["data"] = data
         if result.get("signal"):
             user_response["signal"] = result.get("signal")
+        feedback_intent = result.get("intent") or (intent_result or {}).get("intent")
+        if feedback_intent:
+            user_response["intent"] = str(feedback_intent)
 
         # Keep follow-up chips linked to the answered stock / query.
         # Never invent stock chips for greetings / education / clarifiers.

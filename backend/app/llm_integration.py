@@ -154,6 +154,7 @@ def _load_assistant():
             emb_mode,
             cfg.feedback_learning_enabled,
         )
+        _hydrate_feedback_signals(_assistant)
         return _assistant
     except Exception as exc:
         logger.error("Failed to load Indian Stock LLM: %s", exc, exc_info=True)
@@ -1622,6 +1623,62 @@ def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | N
         return None
 
 
+def _persist_feedback_row(
+    query_key: str,
+    intent: str,
+    helpful: bool,
+    language: str,
+    answer_chars: int,
+) -> None:
+    try:
+        from .database.db import AiFeedbackModel, SessionLocal
+
+        db = SessionLocal()
+        try:
+            db.add(
+                AiFeedbackModel(
+                    query_key=query_key,
+                    intent=intent,
+                    helpful=helpful,
+                    language=language,
+                    answer_chars=answer_chars,
+                )
+            )
+            db.commit()
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.debug("ai_feedback persist skipped: %s", exc)
+
+
+def _hydrate_feedback_signals(assistant) -> None:
+    """Prefer durable DB thumbs over an empty / stale container log."""
+    lm = getattr(assistant, "learning_manager", None)
+    if lm is None or not hasattr(lm, "signals"):
+        return
+    try:
+        from .database.db import AiFeedbackModel, SessionLocal
+
+        db = SessionLocal()
+        try:
+            rows = db.query(AiFeedbackModel).all()
+        finally:
+            db.close()
+    except Exception:
+        return
+    if not rows:
+        return
+    try:
+        from indian_stock_llm.learning_loop import FeedbackSignalStore
+
+        store = FeedbackSignalStore()
+        for row in rows:
+            store.record(str(row.query_key or ""), str(row.intent or ""), bool(row.helpful))
+        lm.signals = store
+    except Exception:
+        return
+
+
 def record_chat_feedback(
     query: str,
     answer: str,
@@ -1642,23 +1699,30 @@ def record_chat_feedback(
         if lm is None:
             return False
 
-        if hasattr(lm, "record_feedback"):
-            lm.record_feedback(query=query, intent=resolved_intent)
-        if hasattr(lm, "record_anonymized_feedback"):
-            lm.record_anonymized_feedback(query=query, intent=resolved_intent)
+        query_key = query
+        language = "en"
+        try:
+            from indian_stock_llm.query_language import learning_query_fields
+
+            fields = learning_query_fields(query)
+            query_key = str(fields.get("key") or query)
+            language = str(fields.get("language") or "en")
+        except Exception:
+            query_key = query
+
+        if hasattr(lm, "record_thumbs"):
+            lm.record_thumbs(query=query, intent=resolved_intent, helpful=bool(helpful))
+
+        # Topic-frequency TSV is thumbs-up only. A downvote must not look like
+        # "learners often ask this" and get promoted into the knowledge base.
+        if helpful:
+            if hasattr(lm, "record_feedback"):
+                lm.record_feedback(query=query, intent=resolved_intent)
+            if hasattr(lm, "record_anonymized_feedback"):
+                lm.record_anonymized_feedback(query=query, intent=resolved_intent)
 
         feedback_path = getattr(lm, "feedback_log_path", None)
         if feedback_path is not None and hasattr(lm, "_write_line"):
-            query_key = query
-            language = "en"
-            try:
-                from indian_stock_llm.query_language import learning_query_fields
-
-                fields = learning_query_fields(query)
-                query_key = str(fields.get("key") or query)
-                language = str(fields.get("language") or "en")
-            except Exception:
-                query_key = query
             payload = {
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "kind": "thumbs_v1",
@@ -1670,6 +1734,14 @@ def record_chat_feedback(
                 "answer_chars": len((answer or "").strip()),
             }
             lm._write_line(json.dumps(payload, ensure_ascii=False) + "\n")
+
+        _persist_feedback_row(
+            query_key=query_key,
+            intent=resolved_intent,
+            helpful=bool(helpful),
+            language=language,
+            answer_chars=len((answer or "").strip()),
+        )
 
         if helpful:
             cfg = getattr(assistant, "config", None)

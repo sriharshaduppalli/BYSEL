@@ -345,6 +345,18 @@ class ETFModel(Base):
     expense_ratio = Column(Float, nullable=True)
 
 
+class AiFeedbackModel(Base):
+    """Thumbs-up/down on AI answers. Feeds ISM retrieval ranking."""
+    __tablename__ = "ai_feedback"
+    id = Column(Integer, primary_key=True, index=True)
+    query_key = Column(String, nullable=False, index=True, default="")
+    intent = Column(String, nullable=True, index=True, default="general_query")
+    helpful = Column(Boolean, nullable=False, default=True)
+    language = Column(String, nullable=True, default="en")
+    answer_chars = Column(Integer, nullable=True, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 class ByselScoreSnapshotModel(Base):
     """One daily BYSEL Score snapshot per symbol. Created via create_all (no Alembic)."""
     __tablename__ = "bysel_score_snapshots"

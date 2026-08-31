@@ -331,12 +331,18 @@ fun UpgradedQuoteCard(quote: Quote, onClick: () -> Unit) {
                 onClick = onClick,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(40.dp)
-                    .padding(top = 12.dp),
+                    .padding(top = 12.dp)
+                    .heightIn(min = 44.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Text("View Details", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    text = "View details",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
             }
         }
     }
