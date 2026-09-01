@@ -4,7 +4,7 @@
     <shortcut
         android:shortcutId="open_portfolio"
         android:enabled="true"
-        android:icon="@drawable/ic_launcher_foreground"
+        android:icon="@mipmap/ic_launcher"
         android:shortcutShortLabel="@string/shortcut_portfolio_short"
         android:shortcutLongLabel="@string/shortcut_portfolio_long">
         <intent
@@ -18,7 +18,7 @@
     <shortcut
         android:shortcutId="buy_stock"
         android:enabled="true"
-        android:icon="@drawable/ic_launcher_foreground"
+        android:icon="@mipmap/ic_launcher"
         android:shortcutShortLabel="@string/shortcut_buy_short"
         android:shortcutLongLabel="@string/shortcut_buy_long">
         <intent
@@ -32,7 +32,7 @@
     <shortcut
         android:shortcutId="market_status"
         android:enabled="true"
-        android:icon="@drawable/ic_launcher_foreground"
+        android:icon="@mipmap/ic_launcher"
         android:shortcutShortLabel="@string/shortcut_market_short"
         android:shortcutLongLabel="@string/shortcut_market_long">
         <intent
@@ -46,7 +46,7 @@
     <shortcut
         android:shortcutId="price_alerts"
         android:enabled="true"
-        android:icon="@drawable/ic_launcher_foreground"
+        android:icon="@mipmap/ic_launcher"
         android:shortcutShortLabel="@string/shortcut_alerts_short"
         android:shortcutLongLabel="@string/shortcut_alerts_long">
         <intent
