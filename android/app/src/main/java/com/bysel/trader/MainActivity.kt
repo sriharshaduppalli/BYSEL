@@ -11,6 +11,8 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.StrictMode
 import android.widget.Toast
+import android.graphics.Color as AndroidColor
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -103,7 +105,17 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         // Install modern splash screen (Material You)
         val splashScreen = installSplashScreen()
-        enableEdgeToEdge()
+        // Transparent scrims — do not call Window.setStatusBarColor / setNavigationBarColor.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(
+                lightScrim = AndroidColor.TRANSPARENT,
+                darkScrim = AndroidColor.TRANSPARENT,
+            ),
+            navigationBarStyle = SystemBarStyle.auto(
+                lightScrim = AndroidColor.TRANSPARENT,
+                darkScrim = AndroidColor.TRANSPARENT,
+            ),
+        )
         super.onCreate(savedInstanceState)
 
         // Catch accidental main-thread I/O during startup in debug builds only.

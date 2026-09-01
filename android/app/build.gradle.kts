@@ -4,12 +4,9 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.kapt")
+    id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.devtools.ksp")
     id("com.google.gms.google-services")
-}
-
-apply {
-    plugin("kotlin-kapt")
 }
 
 fun bumpPatchVersion(versionName: String): String {
@@ -27,22 +24,24 @@ fun bumpPatchVersion(versionName: String): String {
 
 /**
  * Play track series (versionName major):
- *   internal → 2.x.x
- *   closed   → 3.x.x
- *   open     → 4.x.x
+ *   internal   → 2.x.x
+ *   closed     → 3.x.x
+ *   open       → 4.x.x  (open testing; same major as production)
+ *   production → 4.x.x  (Play Production — default from 4.0.21 on)
  *
  * versionCode is GLOBAL and always increases (Play requirement across all tracks).
- * Build with:  .\gradlew.bat :app:bundleRelease -Ptrack=closed
+ * Build with:  .\gradlew.bat :app:bundleRelease -Ptrack=production
  */
 enum class ReleaseTrack(val key: String, val major: Int, val versionNameProp: String) {
     INTERNAL("internal", 2, "VERSION_NAME_INTERNAL"),
     CLOSED("closed", 3, "VERSION_NAME_CLOSED"),
-    OPEN("open", 4, "VERSION_NAME_OPEN");
+    OPEN("open", 4, "VERSION_NAME_OPEN"),
+    PRODUCTION("production", 4, "VERSION_NAME_PRODUCTION");
 
     companion object {
         fun from(raw: String?): ReleaseTrack {
             val key = raw?.trim()?.lowercase().orEmpty()
-            return values().firstOrNull { it.key == key } ?: INTERNAL
+            return values().firstOrNull { it.key == key } ?: PRODUCTION
         }
     }
 }
@@ -64,7 +63,7 @@ val versionProps = Properties().apply {
 val releaseTrack = ReleaseTrack.from(
     (project.findProperty("track") as? String)
         ?: versionProps.getProperty("RELEASE_TRACK")
-        ?: "internal"
+        ?: "production"
 )
 
 val baseVersionCode = (versionProps.getProperty("VERSION_CODE") ?: "1").toIntOrNull() ?: 1
@@ -242,18 +241,12 @@ android {
         compose = true
     }
 
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.12"
-    }
-
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
-        // AGP 8.4 path for 16 KB devices: compress JNI libs so Play install doesn't
-        // require PAGE_ALIGNMENT_16K zip layout (ELF LOAD align still 16 KB via NDK r28 +
-        // tasks-genai 0.10.35). Prefer AGP 8.5.1+ + useLegacyPackaging=false when Gradle
-        // upgrade is available.
+        // Compress JNI libs so Play install doesn't require PAGE_ALIGNMENT_16K zip
+        // layout (ELF LOAD align still 16 KB via NDK r28 + tasks-genai 0.10.35).
         jniLibs {
             useLegacyPackaging = true
         }
@@ -265,7 +258,7 @@ dependencies {
     implementation(project(":core:network"))
 
     // Core Android
-    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
@@ -324,10 +317,10 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.11.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.11.0")
     implementation("com.google.code.gson:gson:2.10.1")
-    implementation("androidx.room:room-runtime:2.6.1")
-    kapt("androidx.room:room-compiler:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    implementation("androidx.room:room-paging:2.6.1")
+    implementation("androidx.room:room-runtime:2.8.4")
+    ksp("androidx.room:room-compiler:2.8.4")
+    implementation("androidx.room:room-ktx:2.8.4")
+    implementation("androidx.room:room-paging:2.8.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
     // Hilt dependencies removed — app uses manual ViewModelProvider.Factory
@@ -347,7 +340,7 @@ dependencies {
     implementation("com.google.mediapipe:tasks-genai:0.10.35")
 
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:1.9.23")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.2.10")
     testImplementation("org.robolectric:robolectric:4.11")
     testImplementation("androidx.work:work-testing:2.8.1")
     testImplementation("org.mockito:mockito-core:5.5.0")
