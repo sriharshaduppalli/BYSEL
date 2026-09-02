@@ -1,8 +1,8 @@
-# Separate from Cloud Run bysel-services. Do not merge into backend/requirements.txt.
+# IndicTrans2 HF-compatible inference. Torch is installed from the CPU index in the Dockerfile.
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 pydantic==2.5.0
-torch>=2.2.0
-transformers>=4.41.0
+transformers>=4.41.0,<4.50.0
+huggingface-hub>=0.23.0,<1.0.0
 sentencepiece>=0.2.0
-IndicTransToolkit>=1.0.3
+IndicTransToolkit>=1.0.3,<1.2.0

@@ -390,14 +390,21 @@ def _apply_response_language(original_query: str, result: dict | None) -> dict |
     try:
         from indian_stock_llm.telugu_response import apply_response_language
 
-        return apply_response_language(original_query, result)
+        result = apply_response_language(original_query, result)
+    except Exception:
+        pass
+    try:
+        from .telugu_reply import polish_telugu_result
+
+        return polish_telugu_result(original_query, result)
     except Exception:
         return result
 
 
 def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
     """Answer using education pack first, then grounded Indian-market RAG."""
-    original_query = (query or "").strip()
+    ctx = dict(context or {})
+    original_query = str(ctx.get("original_query") or query or "").strip()
     result = _ask_llm_core(query, context)
     return _apply_response_language(original_query, result)
 

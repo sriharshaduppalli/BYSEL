@@ -2497,6 +2497,12 @@ async def ai_ask_endpoint(
                 answer = localize_assistant_answer(user_text, answer)
             except Exception:
                 pass
+            try:
+                from ..telugu_reply import polish_telugu_answer
+
+                answer = polish_telugu_answer(user_text, answer)
+            except Exception:
+                pass
 
         user_response = {
             "answer": answer,
@@ -2612,7 +2618,7 @@ async def ai_ask_endpoint(
         intent_result["resolved_query"] = query_contract.resolved_query
     response_style = infer_response_style(normalized_query, body.conversation_history)
 
-    small_talk_reply = get_small_talk_response(normalized_query, response_style=response_style)
+    small_talk_reply = get_small_talk_response(user_text, response_style=response_style)
     if small_talk_reply:
         return _validated(
             {"answer": small_talk_reply},
@@ -3032,6 +3038,7 @@ async def ai_ask_endpoint(
                         llm_context["groq_intent"] = detected_intent
                 except Exception:
                     pass
+                llm_context["original_query"] = user_text
                 llm_result = await asyncio.to_thread(ask_llm, ism_query, llm_context or None)
                 ism_answer = str((llm_result or {}).get("answer") or "").strip()
                 # App chat is ISM-first: keep a real ISM answer even if confidence is

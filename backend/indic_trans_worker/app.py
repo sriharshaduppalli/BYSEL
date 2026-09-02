@@ -1,12 +1,17 @@
-"""Standalone IndicTrans2 worker — English → Telugu.
+"""Standalone English → Telugu worker using IndicTrans2 (MIT).
 
-Run this beside BYSEL, never inside Cloud Run `bysel-services`.
-Default model: ai4bharat/indictrans2-en-indic-dist-200M (CPU).
+Runs beside Cloud Run `bysel-services`, never inside it.
+
+Official HF repo `ai4bharat/indictrans2-en-indic-dist-200M` is gated.
+Default weights are the MIT redistribution
+`naklitechie/indictrans2-en-indic-dist-200M` (byte-identical, documented).
+Override with INDIC_TRANS_MODEL + HF_TOKEN to use the official repo.
 """
 from __future__ import annotations
 
 import logging
 import os
+from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import List
 
@@ -16,11 +21,18 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger("indic_trans_worker")
 logging.basicConfig(level=logging.INFO)
 
-DEFAULT_MODEL = "ai4bharat/indictrans2-en-indic-dist-200M"
+DEFAULT_MODEL = "naklitechie/indictrans2-en-indic-dist-200M"
 SRC_LANG = "eng_Latn"
 TGT_LANG = "tel_Telu"
 
-app = FastAPI(title="BYSEL IndicTrans2", docs_url=None, redoc_url=None)
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    _load_stack()
+    yield
+
+
+app = FastAPI(title="BYSEL IndicTrans2", docs_url=None, redoc_url=None, lifespan=_lifespan)
 
 
 class TranslateRequest(BaseModel):
@@ -68,13 +80,28 @@ def health() -> dict:
     return {"ok": True, "model": os.getenv("INDIC_TRANS_MODEL", DEFAULT_MODEL)}
 
 
+@app.get("/ready")
+def ready() -> dict:
+    tokenizer, _model, _processor, model_id, device = _load_stack()
+    return {
+        "ok": True,
+        "ready": True,
+        "model": model_id,
+        "device": device,
+        "vocab": len(tokenizer),
+    }
+
+
 @app.post("/translate", response_model=TranslateResponse)
 def translate(req: TranslateRequest) -> TranslateResponse:
     if req.tgt_lang != TGT_LANG or req.src_lang != SRC_LANG:
         raise HTTPException(status_code=400, detail="Only eng_Latn → tel_Telu is enabled")
     texts = [str(item or "").strip() for item in req.texts]
     if not texts:
-        return TranslateResponse(translations=[], model=os.getenv("INDIC_TRANS_MODEL", DEFAULT_MODEL))
+        return TranslateResponse(
+            translations=[],
+            model=os.getenv("INDIC_TRANS_MODEL", DEFAULT_MODEL),
+        )
     try:
         tokenizer, model, processor, model_id, device = _load_stack()
         import torch
@@ -92,8 +119,8 @@ def translate(req: TranslateRequest) -> TranslateResponse:
         with torch.no_grad():
             generated = model.generate(
                 **encoded,
-                num_beams=5,
-                max_length=256,
+                num_beams=3,
+                max_length=192,
                 early_stopping=True,
             )
         decoded = tokenizer.batch_decode(

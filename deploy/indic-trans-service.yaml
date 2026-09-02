@@ -1,0 +1,39 @@
+# Separate from bysel-services. IndicTrans2 does not fit in the 2Gi API instance.
+# Deploy: gcloud run deploy bysel-indic-trans --source backend/indic_trans_worker --region europe-west1
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: bysel-indic-trans
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "1"
+        run.googleapis.com/startup-cpu-boost: "true"
+    spec:
+      containerConcurrency: 4
+      timeoutSeconds: 300
+      containers:
+        - image: IMAGE_PLACEHOLDER
+          resources:
+            limits:
+              memory: 4Gi
+              cpu: "2"
+          env:
+            - name: INDIC_TRANS_MODEL
+              value: naklitechie/indictrans2-en-indic-dist-200M
+            - name: INDIC_TRANS_DEVICE
+              value: cpu
+          ports:
+            - name: http1
+              containerPort: 8080
+          startupProbe:
+            httpGet:
+              path: /ready
+            periodSeconds: 10
+            failureThreshold: 36
+          livenessProbe:
+            httpGet:
+              path: /health
+            periodSeconds: 30

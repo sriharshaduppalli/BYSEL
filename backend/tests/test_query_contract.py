@@ -244,6 +244,10 @@ def test_tenglish_routes_like_english():
     assert buy.profile == "trade_plan"
     assert buy.slots.symbol == "RELIANCE"
 
+    about = resolve_query_contract("\u0c28\u0c3e\u0c15\u0c41 \u0c10\u0c1f\u0c40\u0c38\u0c40 \u0c17\u0c41\u0c30\u0c3f\u0c02\u0c1a\u0c3f \u0c1a\u0c46\u0c2a\u0c4d\u0c2a\u0c02\u0c21\u0c3f")
+    assert about.slots.symbol == "ITC"
+    assert "\u0c28\u0c3e\u0c15\u0c41" not in about.resolved_query
+
     predict = resolve_query_contract("HDFCBANK ela untundi?")
     assert predict.profile == "prediction"
 
@@ -261,9 +265,30 @@ def test_telugu_answer_gets_summary():
     assert "కారణం" in localized
     assert "వేచి" in localized
     assert "మధ్యస్థం" in localized
+    assert "కొనండి (BUY)" not in localized
     assert localize_assistant_answer("Should I buy RELIANCE?", "**Direct answer:** HOLD") == (
         "**Direct answer:** HOLD"
     )
+
+
+def test_telugu_buy_plan_does_not_flip_hold_to_buy():
+    from indian_stock_llm.query_language import localize_assistant_answer
+
+    localized = localize_assistant_answer(
+        "\u0c30\u0c3f\u0c32\u0c2f\u0c28\u0c4d\u0c38\u0c4d \u0c15\u0c4a\u0c28\u0c3e\u0c32\u0c3e?",
+        "**RELIANCE** — paper buy plan\n"
+        "**Your ask:** RELIANCE should I buy ?\n\n"
+        "**Direct answer:** HOLD / wait — no clear edge yet\n"
+        "**Action:** HOLD (score 0)\n"
+        "• Meaning: No clear edge — stay flat or keep what you have (paper)\n",
+    )
+    assert "\u0c24\u0c46\u0c32\u0c41\u0c17\u0c41 \u0c38\u0c3e\u0c30\u0c3e\u0c02\u0c36\u0c02" in localized
+    assert "HOLD" in localized
+    assert not localized.startswith(
+        "**\u0c24\u0c46\u0c32\u0c41\u0c17\u0c41 \u0c38\u0c3e\u0c30\u0c3e\u0c02\u0c36\u0c02:** \u0c15\u0c4a\u0c28\u0c02\u0c21\u0c3f"
+    )
+    assert "Your ask" not in localized
+    assert "should I buy ?" not in localized
 
 
 def test_telugu_literacy_uses_telugu_primer():
@@ -322,6 +347,24 @@ def test_indic_trans_leftover_english_uses_worker(monkeypatch):
     assert "తెలుగు సారాంశం" in localized
     assert "ఈ వాక్యం తెలుగులో ఉంది" in localized
     assert "నేరుగా సమాధానం" in localized
+
+
+def test_indic_trans_needs_nmt_skips_formulas():
+    from indian_stock_llm.indic_trans import needs_nmt
+
+    assert needs_nmt("The tape looks mixed today and you should wait.") is True
+    assert needs_nmt("`RSI = 100 − (100 / (1 + RS))`") is False
+    assert needs_nmt("RSI 52") is False
+    assert needs_nmt("Disclaimer: Educational / informational only") is False
+    assert needs_nmt("• Entry zone: 1288.7 — 1320.5") is False
+
+
+def test_indic_trans_rejects_nllb_garbage():
+    from indian_stock_llm.indic_trans import usable_telugu_line
+
+    assert usable_telugu_line("Why: RSI 52 is mid-range", ":::::") is False
+    assert usable_telugu_line("Why: RSI 52 is mid-range", "# # # # # # #") is False
+    assert usable_telugu_line("Why: RSI 52 is mid-range", "RSI 52 మధ్యస్థంలో ఉంది") is True
 
 
 def test_indic_trans_off_keeps_phrase_table(monkeypatch):
