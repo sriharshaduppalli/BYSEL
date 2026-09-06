@@ -123,6 +123,12 @@ def test_stock_and_index_live_asks_skip_glossary():
     assert get_education_answer("RELIANCE 50 EMA") is None
     assert get_education_answer("Nifty 50 PE ratio") is None
     assert get_education_answer("Bank Nifty expiry this week") is None
+    assert get_education_answer("how is Nifty") is None
+    assert get_education_answer("Nifty ela undi?") is None
+    assert get_education_answer("nifty dhara entha") is None
+    nifty_primer = get_education_answer("what is nifty")
+    assert nifty_primer
+    assert "flagship" in nifty_primer.lower() or "NIFTY 50" in nifty_primer
     pe_card = get_education_answer("what is PE")
     assert pe_card
     assert "price-to-earnings" in pe_card.lower() or "p/e" in pe_card.lower()

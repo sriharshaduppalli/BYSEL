@@ -567,8 +567,12 @@ def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | N
             re.search(r"\bbeta\b", cleaned.lower())
         ) and (has_of_symbol or bool(re.search(rf"\b{re.escape(resolved_symbol.lower())}\b", cleaned.lower())))
         nifty_outlook_ask = bool(
-            re.search(r"\b(nifty|banknifty)\b", cleaned.lower())
-            and re.search(r"\b(outlook|view|bias|forecast)\b", cleaned.lower())
+            re.search(r"\b(nifty|banknifty|sensex)\b", cleaned.lower())
+            and re.search(
+                r"\b(outlook|view|bias|forecast|how is|how much|ela undi|entha|dhara|status)\b",
+                cleaned.lower(),
+            )
+            and not definitional
         )
         sentiment_ask = bool(
             re.search(
@@ -1019,7 +1023,16 @@ def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | N
         # Nifty / BankNifty outlook → live bias, not futures literacy primer.
         if nifty_outlook_ask and not definitional:
             try:
-                idx = "BANKNIFTY" if "banknifty" in q_low else "NIFTY50"
+                if "banknifty" in q_low or "bank nifty" in q_low:
+                    idx = "BANKNIFTY"
+                elif "sensex" in q_low:
+                    idx = "SENSEX"
+                elif query_profile in {"quote", "stock_analysis", "sentiment", "technical"} and symbol_hint in {
+                    "SENSEX", "BANKNIFTY", "NIFTY50",
+                }:
+                    idx = symbol_hint
+                else:
+                    idx = "NIFTY50"
                 filled = _enrich_symbol_sync(idx)
                 tech = (filled or {}).get("technical") or {}
                 price = (filled or {}).get("current_price")

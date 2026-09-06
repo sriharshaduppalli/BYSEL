@@ -2503,6 +2503,15 @@ async def ai_ask_endpoint(
                 answer = polish_telugu_answer(user_text, answer)
             except Exception:
                 pass
+            try:
+                from ..telugu_reply import localize_suggestions
+
+                tips = localize_suggestions(user_text, result.get("suggestions") or [])
+                if tips:
+                    result = dict(result)
+                    result["suggestions"] = tips
+            except Exception:
+                pass
 
         user_response = {
             "answer": answer,

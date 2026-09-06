@@ -67,6 +67,44 @@ fun ivSkewPlainEnglish(skew: Double?): String {
     return "IV skew $value (put IV − call IV). A richer put IV usually means more demand for downside protection."
 }
 
+/** One tape sentence for the options desk — no PCR/IV formula strip. */
+fun optionTapePlainEnglish(pcr: Double?, atmIv: Double?, skew: Double?): String {
+    val ivBit = atmIv?.let {
+        "Options here are priced for about a ${String.format("%.0f", it * 100.0)}% yearly move."
+    } ?: "Option prices already include a move-size premium."
+    val pcrBit = when {
+        pcr == null -> ""
+        pcr >= 1.2 -> " More puts are outstanding than calls — often hedging, not a sell signal."
+        pcr <= 0.8 -> " More calls are outstanding than puts — often bullish positioning, not a buy signal."
+        else -> " Puts and calls outstanding are roughly balanced."
+    }
+    val skewBit = when {
+        skew == null -> ""
+        skew > 0.02 -> " Puts cost a bit more than calls as downside cover."
+        skew < -0.02 -> " Calls are priced a bit richer than puts on this board."
+        else -> ""
+    }
+    return (ivBit + pcrBit + skewBit).trim()
+}
+
+fun callPlainEnglish(spot: Double, strike: Double): String {
+    return when (callMoneyness(spot, strike)) {
+        "ATM" -> "Call at spot"
+        "ITM" -> "Call already in the money"
+        "OTM" -> "Call needs a rise"
+        else -> "Call"
+    }
+}
+
+fun putPlainEnglish(spot: Double, strike: Double): String {
+    return when (putMoneyness(spot, strike)) {
+        "ATM" -> "Put at spot"
+        "ITM" -> "Put already in the money"
+        "OTM" -> "Put needs a fall"
+        else -> "Put"
+    }
+}
+
 fun basisPlainEnglish(basis: Double, spot: Double): String {
     val absBasis = abs(basis)
     val vsSpot = if (spot > 0.0) absBasis / spot * 100.0 else 0.0
@@ -146,7 +184,7 @@ fun FnoLiteracyPrimer(
         FnoLiteracyMode.SCANNER ->
             "Futures = agreement to buy/sell later (levered). Options = paid right to buy (call) or sell (put). Practice here first."
         FnoLiteracyMode.OPTIONS ->
-            "Load a chain, start at the ATM strike, then preview a simple recipe. Numbers are educational — not a live ticket."
+            "Load a chain, start at the strike closest to today’s spot, then preview a simple recipe. No live ticket."
         FnoLiteracyMode.FUTURES ->
             "1 lot controls a large notional. Preview margin before you place a paper ticket. Max loss can exceed margin."
     }

@@ -23,7 +23,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -177,7 +176,7 @@ fun SearchScreen(
             item {
                 ScreenHeader(
                     title = "Search Stocks",
-                    subtitle = "Full NSE listed catalog (~2,400+). Add to watchlist or open detail.",
+                    subtitle = "Full NSE listed catalog (~2,400+). Tap a name for detail.",
                 )
             }
 
@@ -339,30 +338,20 @@ fun SearchScreen(
                     val directSymbol = exactSymbolCandidate.orEmpty()
                     item {
                         SearchSectionHeader(
-                            title = "Open ticker",
-                            subtitle = "No catalog hit yet — open this symbol directly.",
+                            title = "Ticker",
+                            subtitle = "No catalog hit yet — tap to open this symbol.",
                         )
                     }
                     item {
                         Card(
+                            onClick = { openSymbol(directSymbol) },
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = theme.card),
                             shape = RoundedCornerShape(14.dp),
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(directSymbol, fontWeight = FontWeight.Bold, color = theme.text, fontSize = 16.sp)
-                                    Text("Open symbol detail", fontSize = 12.sp, color = theme.textSecondary)
-                                }
-                                Button(onClick = { openSymbol(directSymbol) }, shape = RoundedCornerShape(12.dp)) {
-                                    Text("Open")
-                                }
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(directSymbol, fontWeight = FontWeight.Bold, color = theme.text, fontSize = 16.sp)
+                                Text("Tap to open detail", fontSize = 12.sp, color = theme.textSecondary)
                             }
                         }
                     }
@@ -449,6 +438,7 @@ private fun DiscoveryQuoteCard(
     isWatchlisted: Boolean,
 ) {
     Card(
+        onClick = onOpen,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
         shape = RoundedCornerShape(14.dp),
@@ -487,22 +477,17 @@ private fun DiscoveryQuoteCard(
                     )
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                when {
-                    isWatchlisted -> {
-                        Text("Watching", fontSize = 11.sp, color = LocalAppTheme.current.positive, fontWeight = FontWeight.SemiBold)
-                    }
-                    onWatch != null -> {
-                        OutlinedButton(
-                            onClick = onWatch,
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp),
-                            modifier = Modifier.height(34.dp),
-                        ) { Text("Watch", fontSize = 12.sp) }
-                    }
+            when {
+                isWatchlisted -> {
+                    Text("Watching", fontSize = 11.sp, color = LocalAppTheme.current.positive, fontWeight = FontWeight.SemiBold)
                 }
-                Button(onClick = onOpen, shape = RoundedCornerShape(10.dp), modifier = Modifier.height(34.dp)) {
-                    Text("Open", fontSize = 12.sp)
+                onWatch != null -> {
+                    OutlinedButton(
+                        onClick = onWatch,
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp),
+                        modifier = Modifier.height(34.dp),
+                    ) { Text("Watch", fontSize = 12.sp) }
                 }
             }
         }
@@ -518,6 +503,7 @@ private fun SearchResultCard(
     isWatchlisted: Boolean = false,
 ) {
     Card(
+        onClick = onOpen,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
         shape = RoundedCornerShape(14.dp),
@@ -554,29 +540,24 @@ private fun SearchResultCard(
                     )
                 } else {
                     Text(
-                        text = "Tap Open for live quote",
+                        text = "Tap for live quote",
                         style = MaterialTheme.typography.bodySmall,
                         color = LocalAppTheme.current.textSecondary,
                         modifier = Modifier.padding(top = 5.dp),
                     )
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                when {
-                    isWatchlisted -> {
-                        Text("Watching", fontSize = 11.sp, color = LocalAppTheme.current.positive, fontWeight = FontWeight.SemiBold)
-                    }
-                    onAddToWatchlist != null -> {
-                        OutlinedButton(
-                            onClick = onAddToWatchlist,
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp),
-                            modifier = Modifier.height(34.dp),
-                        ) { Text("Watch", fontSize = 12.sp) }
-                    }
+            when {
+                isWatchlisted -> {
+                    Text("Watching", fontSize = 11.sp, color = LocalAppTheme.current.positive, fontWeight = FontWeight.SemiBold)
                 }
-                Button(onClick = onOpen, shape = RoundedCornerShape(10.dp), modifier = Modifier.height(34.dp)) {
-                    Text("Open", fontSize = 12.sp)
+                onAddToWatchlist != null -> {
+                    OutlinedButton(
+                        onClick = onAddToWatchlist,
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp),
+                        modifier = Modifier.height(34.dp),
+                    ) { Text("Watch", fontSize = 12.sp) }
                 }
             }
         }

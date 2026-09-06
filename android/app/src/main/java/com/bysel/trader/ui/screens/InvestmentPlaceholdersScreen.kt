@@ -40,6 +40,7 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,11 +58,9 @@ import com.bysel.trader.ui.components.FnoLiteracyMode
 import com.bysel.trader.ui.components.FnoLiteracyPrimer
 import com.bysel.trader.ui.components.HabitLiteracyCatalog
 import com.bysel.trader.ui.components.InvestorTipsCard
-import com.bysel.trader.ui.components.atmIvPlainEnglish
-import com.bysel.trader.ui.components.callMoneyness
-import com.bysel.trader.ui.components.ivSkewPlainEnglish
-import com.bysel.trader.ui.components.pcrPlainEnglish
-import com.bysel.trader.ui.components.putMoneyness
+import com.bysel.trader.ui.components.callPlainEnglish
+import com.bysel.trader.ui.components.optionTapePlainEnglish
+import com.bysel.trader.ui.components.putPlainEnglish
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.theme.byselCardBorder
 import com.bysel.trader.ui.theme.byselCardColors
@@ -1844,6 +1843,8 @@ fun DerivativesIntelligenceScreen(
     var strategyLegsInput by remember {
         mutableStateOf("CALL:BUY:22500:120\nCALL:SELL:23000:80")
     }
+    var showMoreStrikes by rememberSaveable { mutableStateOf(false) }
+    var showGreeks by rememberSaveable { mutableStateOf(false) }
 
     // Auto-load once so the Options tab isn't an empty form on first open.
     LaunchedEffect(Unit) {
@@ -1860,9 +1861,10 @@ fun DerivativesIntelligenceScreen(
         }
     }
 
-    val chainContracts = remember(optionChain) {
+    val chainContracts = remember(optionChain, showMoreStrikes) {
         val chain = optionChain ?: return@remember emptyList()
-        chain.contracts.sortedBy { kotlin.math.abs(it.strike - chain.spot) }.take(12)
+        val limit = if (showMoreStrikes) 12 else 5
+        chain.contracts.sortedBy { kotlin.math.abs(it.strike - chain.spot) }.take(limit)
     }
 
     LazyColumn(
@@ -1978,42 +1980,20 @@ fun DerivativesIntelligenceScreen(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            "Source: ${chain.source.uppercase()} • Expiry: ${chain.expiry} • Near ATM: ${chainContracts.size} of ${chain.contracts.size}",
+                            "Source: ${chain.source.uppercase()} • Expiry: ${chain.expiry} • Showing ${chainContracts.size} of ${chain.contracts.size} nearest strikes",
                             color = LocalAppTheme.current.textSecondary,
                             fontSize = 12.sp,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        val pcrText = chain.pcr?.let { String.format("%.2f", it) } ?: "—"
-                        val skewText = chain.ivSkew?.let { String.format("%+.2f%%", it * 100.0) } ?: "—"
-                        val atmIvText = chain.atmIv?.let { String.format("%.1f%%", it * 100.0) } ?: "—"
                         Text(
-                            "PCR (OI) $pcrText · IV skew (P−C) $skewText · ATM IV $atmIvText",
+                            optionTapePlainEnglish(chain.pcr, chain.atmIv, chain.ivSkew),
                             color = LocalAppTheme.current.text,
                             fontWeight = FontWeight.Medium,
                             fontSize = 12.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
+                            lineHeight = 16.sp,
                         )
-                        Text(
-                            pcrPlainEnglish(chain.pcr),
-                            color = LocalAppTheme.current.textSecondary,
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp,
-                        )
-                        Text(
-                            atmIvPlainEnglish(chain.atmIv),
-                            color = LocalAppTheme.current.textSecondary,
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp,
-                        )
-                        Text(
-                            ivSkewPlainEnglish(chain.ivSkew),
-                            color = LocalAppTheme.current.textSecondary,
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp,
-                        )
-                        chain.notes.take(2).forEach { note ->
+                        chain.notes.take(1).forEach { note ->
                             Text(
                                 note,
                                 color = LocalAppTheme.current.textSecondary,
@@ -2029,10 +2009,8 @@ fun DerivativesIntelligenceScreen(
                                     .padding(vertical = 4.dp),
                                 verticalArrangement = Arrangement.spacedBy(2.dp),
                             ) {
-                                val callIvPct = (contract.callIv ?: contract.impliedVolatility) * 100.0
-                                val putIvPct = (contract.putIv ?: contract.impliedVolatility) * 100.0
                                 Text(
-                                    "Strike ${String.format("%.0f", contract.strike)} · Call ${callMoneyness(chain.spot, contract.strike)} · Put ${putMoneyness(chain.spot, contract.strike)} · IV C ${String.format("%.1f", callIvPct)}% / P ${String.format("%.1f", putIvPct)}%",
+                                    "₹${String.format("%.0f", contract.strike)}  ·  ${callPlainEnglish(chain.spot, contract.strike)}  ·  ${putPlainEnglish(chain.spot, contract.strike)}",
                                     color = LocalAppTheme.current.text,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 12.sp,
@@ -2040,25 +2018,41 @@ fun DerivativesIntelligenceScreen(
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
-                                    "CE Δ ${String.format("%.2f", contract.callDelta)} · OI ${contract.callOi} (${if (contract.callOiChange >= 0) "+" else ""}${contract.callOiChange}) · LTP ₹${String.format("%.1f", contract.callLtp)}",
+                                    "Call last ₹${String.format("%.1f", contract.callLtp)}   ·   Put last ₹${String.format("%.1f", contract.putLtp)}",
                                     color = LocalAppTheme.current.textSecondary,
                                     fontSize = 11.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
-                                    "PE Δ ${String.format("%.2f", contract.putDelta)} · OI ${contract.putOi} (${if (contract.putOiChange >= 0) "+" else ""}${contract.putOiChange}) · LTP ₹${String.format("%.1f", contract.putLtp)}",
+                                    "Call OI ${contract.callOi}   ·   Put OI ${contract.putOi}",
                                     color = LocalAppTheme.current.textSecondary,
                                     fontSize = 11.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
+                                if (showGreeks) {
+                                    Text(
+                                        "Call Δ ${String.format("%.2f", contract.callDelta)}  ·  Put Δ ${String.format("%.2f", contract.putDelta)}  ·  Θ ${String.format("%.1f", contract.theta)}  ·  Vega ${String.format("%.1f", contract.vega)}",
+                                        color = LocalAppTheme.current.textSecondary,
+                                        fontSize = 11.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { showMoreStrikes = !showMoreStrikes }) {
                                 Text(
-                                    "Γ ${String.format("%.4f", contract.gamma)} · Θ ${String.format("%.2f", contract.theta)} · Vega ${String.format("%.2f", contract.vega)}",
-                                    color = LocalAppTheme.current.textSecondary,
-                                    fontSize = 11.sp,
+                                    if (showMoreStrikes) "Fewer strikes" else "More strikes",
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            TextButton(onClick = { showGreeks = !showGreeks }) {
+                                Text(
+                                    if (showGreeks) "Hide Greeks" else "Show Greeks",
+                                    maxLines = 1,
                                 )
                             }
                         }

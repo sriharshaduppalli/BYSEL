@@ -357,6 +357,31 @@ def test_indic_trans_needs_nmt_skips_formulas():
     assert needs_nmt("RSI 52") is False
     assert needs_nmt("Disclaimer: Educational / informational only") is False
     assert needs_nmt("• Entry zone: 1288.7 — 1320.5") is False
+    assert needs_nmt("**కారణం:** RSI 52 is mid-range") is False
+    assert needs_nmt("**కారణం:** RSI 52 మధ్యస్థంలో ఉంది") is False
+    assert needs_nmt("Momentum (RSI): RSI 49 neutral") is False
+    assert needs_nmt("**WIPRO** — Wipro Limited — news & catalysts") is False
+    assert needs_nmt("| RELIANCE | 1322.0 | 55.14 | Neutral |") is False
+
+
+def test_indic_trans_does_not_nmt_mixed_telugu_lines(monkeypatch):
+    from indian_stock_llm import indic_trans
+
+    called: list[list[str]] = []
+
+    monkeypatch.setattr(indic_trans, "indic_trans_enabled", lambda: True)
+    monkeypatch.setattr(
+        indic_trans,
+        "translate_english_batch",
+        lambda texts: called.append(list(texts)) or texts,
+    )
+    mixed = (
+        "**కారణం:** RSI 52 is mid-range\n"
+        "The tape looks mixed today and you should wait."
+    )
+    out = indic_trans.translate_leftover_english(mixed)
+    assert called == [["The tape looks mixed today and you should wait."]]
+    assert "**కారణం:** RSI 52 is mid-range" in out
 
 
 def test_indic_trans_rejects_nllb_garbage():
@@ -365,6 +390,8 @@ def test_indic_trans_rejects_nllb_garbage():
     assert usable_telugu_line("Why: RSI 52 is mid-range", ":::::") is False
     assert usable_telugu_line("Why: RSI 52 is mid-range", "# # # # # # #") is False
     assert usable_telugu_line("Why: RSI 52 is mid-range", "RSI 52 మధ్యస్థంలో ఉంది") is True
+    assert usable_telugu_line("**WIPRO** — news", "* * విప్రో * *-వార్తలు") is False
+    assert usable_telugu_line("| RELIANCE | 1322.0 |", "| విశ్వసనీయత | 1322.0 |") is False
 
 
 def test_indic_trans_off_keeps_phrase_table(monkeypatch):
@@ -379,3 +406,17 @@ def test_indic_trans_off_keeps_phrase_table(monkeypatch):
     )
     assert "నేరుగా సమాధానం" in localized
     assert "మధ్యస్థం" in localized
+
+
+def test_nifty_how_is_it_uses_index_not_clarifier():
+    contract = resolve_query_contract("Nifty ela undi?")
+    assert contract.clarifier is None
+    assert contract.slots.symbol in {"NIFTY50", "NIFTY"}
+    assert contract.profile == "quote"
+    pe = resolve_query_contract(
+        "Nifty 50 PE ratio",
+        screen_context={"symbol": "RELIANCE"},
+    )
+    assert pe.profile == "fundamentals"
+    assert pe.slots.symbol is None
+    assert pe.clarifier is None

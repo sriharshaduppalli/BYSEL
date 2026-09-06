@@ -2122,20 +2122,35 @@ def _build_stock_suggestions(
             "calculations": "analysis",
         }.get(profile, exclude)
 
-    pool: List[tuple[str, str]] = [
-        ("buy_sell", f"Should I buy {symbol}?"),
-        ("prediction", f"Predict {symbol} price"),
-        ("analysis", f"Analyze {symbol}"),
-        ("technical", f"Technical analysis of {symbol}"),
-        ("news", f"Latest news on {symbol}"),
-        ("sentiment", f"{symbol} market sentiment"),
-        ("quote", f"What is the price of {symbol}?"),
-        ("fundamentals", f"Is {symbol} overvalued?"),
-        ("fundamentals", f"What is fair value for {symbol}?"),
-        ("levels", f"Support and resistance for {symbol}"),
-        ("risk", f"What are risks in {symbol} right now?"),
-        ("buy_sell", f"Should I wait for a dip in {symbol}?"),
-    ]
+    index_sym = symbol in {
+        "NIFTY50", "NIFTY", "SENSEX", "BANKNIFTY", "NIFTYIT", "NIFTYBANK",
+    }
+    if index_sym:
+        pool: List[tuple[str, str]] = [
+            ("quote", f"How is {symbol} now?"),
+            ("prediction", f"Predict {symbol} price"),
+            ("analysis", f"Analyze {symbol}"),
+            ("technical", f"Technical analysis of {symbol}"),
+            ("news", f"Latest news on {symbol}"),
+            ("sentiment", f"{symbol} market sentiment"),
+            ("fundamentals", f"What is {symbol} PE?"),
+            ("levels", f"Support and resistance for {symbol}"),
+        ]
+    else:
+        pool: List[tuple[str, str]] = [
+            ("buy_sell", f"Should I buy {symbol}?"),
+            ("prediction", f"Predict {symbol} price"),
+            ("analysis", f"Analyze {symbol}"),
+            ("technical", f"Technical analysis of {symbol}"),
+            ("news", f"Latest news on {symbol}"),
+            ("sentiment", f"{symbol} market sentiment"),
+            ("quote", f"What is the price of {symbol}?"),
+            ("fundamentals", f"Is {symbol} overvalued?"),
+            ("fundamentals", f"What is fair value for {symbol}?"),
+            ("levels", f"Support and resistance for {symbol}"),
+            ("risk", f"What are risks in {symbol} right now?"),
+            ("buy_sell", f"Should I wait for a dip in {symbol}?"),
+        ]
 
     peers = _SECTOR_PEERS.get(symbol, [])
     if peers:

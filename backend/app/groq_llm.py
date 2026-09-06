@@ -689,7 +689,7 @@ def classify_intent(query: str, conversation_history=None) -> dict:
     except Exception:
         contract = None
 
-    small_talk_type = _detect_small_talk_type(q)
+    small_talk_type = _detect_small_talk_type(query)
     if small_talk_type:
         return {
             "intent": "SMALL_TALK",
@@ -949,11 +949,12 @@ def classify_intent(query: str, conversation_history=None) -> dict:
     return result
 
 
-def _detect_small_talk_type(query_lower: str) -> Optional[str]:
+def _detect_small_talk_type(query: str) -> Optional[str]:
     """Detect light conversational small-talk categories."""
-    q = (query_lower or "").strip()
-    if not q:
+    raw = (query or "").strip()
+    if not raw:
         return None
+    q = raw.lower()
 
     # Normalize punctuation to spaces for safer token checks.
     q_norm = re.sub(r"[^a-z0-9\s]", " ", q)
@@ -969,7 +970,7 @@ def _detect_small_talk_type(query_lower: str) -> Optional[str]:
     try:
         from indian_stock_llm.query_language import telugu_small_talk_kind
 
-        te_kind = telugu_small_talk_kind(query)
+        te_kind = telugu_small_talk_kind(raw)
         if te_kind:
             return te_kind
     except Exception:
@@ -1001,7 +1002,7 @@ def _detect_small_talk_type(query_lower: str) -> Optional[str]:
 
 def get_small_talk_response(query: str, response_style: str = "concise") -> Optional[str]:
     """Return deterministic responses for small-talk queries, else None."""
-    small_talk_type = _detect_small_talk_type((query or "").lower())
+    small_talk_type = _detect_small_talk_type(query)
     if not small_talk_type:
         return None
 
@@ -1015,7 +1016,8 @@ def get_small_talk_response(query: str, response_style: str = "concise") -> Opti
         from indian_stock_llm.query_language import is_telugu_query, telugu_small_talk_replies
 
         if is_telugu_query(query):
-            concise_map = telugu_small_talk_replies()
+            te_map = telugu_small_talk_replies()
+            return te_map.get(small_talk_type) or concise_map.get(small_talk_type)
     except Exception:
         pass
 

@@ -2903,6 +2903,19 @@ def get_education_answer(query: str) -> Optional[str]:
     ):
         return None
 
+    # "how is Nifty" / "Nifty ela undi" / "nifty dhara" → live quote, not the primer.
+    if (
+        re.search(r"\b(nifty|sensex|bank\s*nifty|banknifty|nifty\s*50)\b", q)
+        and re.search(
+            r"\b(how is|how'?s|how are|how much|status|trading at|current|"
+            r"live|today|now|cmp|ltp|last price|quote|price|"
+            r"ela undi|entha|dhara|kaise hai|kya haal)\b",
+            q,
+        )
+        and not re.search(r"\b(what is|what are|explain|define|definition|meaning)\b", q)
+    ):
+        return None
+
     # "Bank Nifty expiry this week" → dated F&O card, not the BANK NIFTY primer.
     if (
         re.search(r"\b(expir(y|ies)|weekly expiry|monthly expiry)\b", q)
