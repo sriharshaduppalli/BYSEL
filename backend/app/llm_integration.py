@@ -567,10 +567,22 @@ def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | N
             re.search(r"\bbeta\b", cleaned.lower())
         ) and (has_of_symbol or bool(re.search(rf"\b{re.escape(resolved_symbol.lower())}\b", cleaned.lower())))
         nifty_outlook_ask = bool(
-            re.search(r"\b(nifty|banknifty|sensex)\b", cleaned.lower())
-            and re.search(
-                r"\b(outlook|view|bias|forecast|how is|how much|ela undi|entha|dhara|status)\b",
-                cleaned.lower(),
+            (
+                re.search(r"\b(nifty|banknifty|sensex)\b", cleaned.lower())
+                or re.search(
+                    r"\u0c2e\u0c3e\u0c30\u0c4d\u0c15\u0c46\u0c1f\u0c4d|"
+                    r"(?:today'?s?\s+)?\bmarket\b(?!\s+sentiment)",
+                    cleaned,
+                    flags=re.I,
+                )
+            )
+            and (
+                re.search(
+                    r"\b(outlook|view|bias|forecast|how is|how much|ela undi|entha|dhara|status)\b",
+                    cleaned.lower(),
+                )
+                or ("\u0c0e\u0c32\u0c3e" in cleaned and "\u0c09\u0c02\u0c26\u0c3f" in cleaned)
+                or "\u0c07\u0c35\u0c3e\u0c33" in cleaned
             )
             and not definitional
         )

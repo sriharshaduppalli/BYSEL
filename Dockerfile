@@ -12,15 +12,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ .
 
-# Pin is backend/ISM_PIN (tag bysel-ism-v2026.08.31). Submodule files are
-# copied when the build context ran git submodule update --init.
-# Clone the public tag if the checkout was missing.
-ARG ISM_GIT_TAG=bysel-ism-v2026.08.31
-RUN if [ ! -f /app/vendor/indian_stock_market/src/indian_stock_llm/__init__.py ]; then \
-      git clone --depth 1 --branch "$ISM_GIT_TAG" \
-        https://github.com/sriharshaduppalli/Indian_stock_market.git \
-        /app/vendor/indian_stock_market; \
-    fi
+# Always pin ISM. GitHub/Cloud Build checkouts often omit the submodule, and
+# the old tag fallback silently served English for Tenglish "ela undi" asks.
+ARG ISM_GIT_COMMIT=c5bc671e1a29c4221445eb4943fe0a354c0d5118
+RUN rm -rf /app/vendor/indian_stock_market \
+    && git init /app/vendor/indian_stock_market \
+    && git -C /app/vendor/indian_stock_market remote add origin \
+         https://github.com/sriharshaduppalli/Indian_stock_market.git \
+    && git -C /app/vendor/indian_stock_market fetch --depth 1 origin "$ISM_GIT_COMMIT" \
+    && git -C /app/vendor/indian_stock_market checkout FETCH_HEAD
 
 ENV PYTHONPATH=/app/vendor/indian_stock_market/src
 
