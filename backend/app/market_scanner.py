@@ -397,7 +397,7 @@ def _safe_float(value: Any) -> Optional[float]:
         number = float(value)
     except (TypeError, ValueError):
         return None
-    if number != number:  # NaN
+    if number != number or number in (float("inf"), float("-inf")):  # NaN / ±inf
         return None
     return number
 
@@ -2392,9 +2392,11 @@ def build_scanner_payload(
                 eps_years=row.get("profitCagrYears") or row.get("epsYears"),
                 loss_streak=row.get("lossStreak"),
             ),
-            "qmBadge": qm_style_badge(scores.get("quality"), scores.get("momentum")),
-            "qualityMomentum": qm_style_badge(scores.get("quality"), scores.get("momentum"))
-            == "Quality Momentum",
+            "qmBadge": qm_style_badge(scores.get("quality"), scores.get("momentum")) or "",
+            "qualityMomentum": (
+                qm_style_badge(scores.get("quality"), scores.get("momentum"))
+                == "Quality Momentum"
+            ),
             "qualityScreen": quality_screen,
             "missing": scores["missing"],
             "anomalies": scores.get("anomalies") or [],

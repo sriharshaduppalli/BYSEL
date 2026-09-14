@@ -1,3 +1,4 @@
+from app.models.schemas import ScannerResponse
 from app.market_scanner import (
     SCANNER_MODES,
     band_cagr,
@@ -446,6 +447,25 @@ def test_get_market_scanner_warms_sibling_modes(monkeypatch):
     assert swing["cached"] is True
     assert swing["mode"] == "swing"
     assert "swing" in swing["byMode"]
+    ScannerResponse.model_validate(first)
+    ScannerResponse.model_validate(swing)
+
+
+def test_scanner_response_accepts_empty_qm_badge():
+    """Missing / mid-band Q+M used to send qmBadge=None and FastAPI 500'd every tab."""
+    payload = build_scanner_payload(
+        [
+            {"symbol": "MIXED", "last": 100.0, "roe": 16.0},
+            {"symbol": "MID", "last": 110.0, "rsi": 55.0},
+        ],
+        mode="long_term",
+        limit=10,
+    )
+    assert all(isinstance(row.get("qmBadge"), str) for row in payload["rows"])
+    payload["byMode"] = {mode: list(payload["rows"]) for mode in SCANNER_MODES}
+    parsed = ScannerResponse.model_validate(payload)
+    assert parsed.rows
+    assert all(isinstance(row.qmBadge, str) for row in parsed.rows)
 
 
 def test_daily_snapshot_roundtrip_without_migration():

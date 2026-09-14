@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from typing import Optional, List, Dict
 from datetime import datetime
 
@@ -838,6 +838,11 @@ class ScannerRow(BaseModel):
     qualityMomentum: bool = False
     qmBadge: str = ""
     qualityGate: Optional[dict] = None
+
+    @field_validator("qmBadge", mode="before")
+    @classmethod
+    def _qm_badge_never_null(cls, value):
+        return value or ""
 
 
 class ScannerResponse(BaseModel):
