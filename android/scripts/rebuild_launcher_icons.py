@@ -131,11 +131,16 @@ def main() -> None:
         folder.mkdir(parents=True, exist_ok=True)
 
         legacy = int(LEGACY_DP * scale)
-        _branded_tile(legacy).save(folder / "ic_launcher.png", "PNG")
-        _branded_tile(legacy, circular=True).save(folder / "ic_launcher_round.png", "PNG")
-
         canvas = int(ADAPTIVE_DP * scale)
-        _adaptive_foreground(canvas).save(folder / "ic_launcher_foreground.png", "PNG")
+        tile = _branded_tile(legacy)
+        round_tile = _branded_tile(legacy, circular=True)
+        foreground = _adaptive_foreground(canvas)
+        # New resource names bust OEM caches that pin the first
+        # @mipmap/ic_launcher ever installed for com.bysel.trader.
+        for prefix in ("ic_launcher", "ic_bysel_launcher"):
+            tile.save(folder / f"{prefix}.png", "PNG")
+            round_tile.save(folder / f"{prefix}_round.png", "PNG")
+            foreground.save(folder / f"{prefix}_foreground.png", "PNG")
         print(f"{name}: launcher {legacy} foreground {canvas}")
 
 

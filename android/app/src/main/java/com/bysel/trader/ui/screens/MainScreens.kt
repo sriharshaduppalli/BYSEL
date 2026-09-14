@@ -63,8 +63,6 @@ import com.bysel.trader.ui.theme.byselCardBorder
 import com.bysel.trader.ui.theme.byselCardColors
 import com.bysel.trader.ui.theme.byselCardElevation
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -382,7 +380,6 @@ private data class PortfolioQtyAsk(
     val lastPrice: Double? = null,
 )
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PortfolioScreen(
     holdings: List<Holding>,
@@ -471,10 +468,6 @@ fun PortfolioScreen(
     val etfHoldings = classified[HoldingAssetClass.ETF].orEmpty()
     val mfHoldings = classified[HoldingAssetClass.MUTUAL_FUND].orEmpty()
     val fnoHoldings = classified[HoldingAssetClass.FNO].orEmpty()
-    fun categoryValue(rows: List<Holding>): Double = rows.sumOf { h ->
-        val last = quoteBySymbol[h.symbol.uppercase()]?.last?.takeIf { it > 0 } ?: h.last
-        last * h.qty
-    }
     var categoryFilter by rememberSaveable { mutableStateOf("ALL") }
     val visibleHoldings = when (categoryFilter) {
         "EQUITY" -> equityHoldings
@@ -618,27 +611,23 @@ fun PortfolioScreen(
 
             if (holdings.isNotEmpty() || sipPlans.isNotEmpty() || hasImported) {
                 PortfolioAllocationStrip(
-                    equityValue = categoryValue(equityHoldings),
                     equityCount = equityHoldings.size,
-                    etfValue = categoryValue(etfHoldings),
                     etfCount = etfHoldings.size,
                     mfCount = mfHoldings.size + sipPlans.size,
                     fnoCount = fnoHoldings.size,
                     selected = categoryFilter,
                     onSelect = { categoryFilter = it },
                 )
-                FlowRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    PortfolioSortMode.entries.forEach { mode ->
-                        FilterChip(
+                    items(PortfolioSortMode.entries.toList(), key = { it.name }) { mode ->
+                        CompactPortfolioChip(
                             selected = sortMode == mode,
                             onClick = { sortModeName = mode.name },
-                            label = { Text(mode.label, fontSize = 11.sp) },
+                            label = mode.label,
                         )
                     }
                 }
@@ -888,59 +877,59 @@ private fun LazyListScope.portfolioCategoryBlock(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CompactPortfolioChip(
+    selected: Boolean,
+    onClick: () -> Unit,
+    label: String,
+) {
+    val theme = LocalAppTheme.current
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        modifier = Modifier.height(28.dp),
+        label = {
+            Text(
+                label,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = theme.primary.copy(alpha = 0.18f),
+            selectedLabelColor = theme.text,
+        ),
+    )
+}
+
 @Composable
 private fun PortfolioAllocationStrip(
-    equityValue: Double,
     equityCount: Int,
-    etfValue: Double,
     etfCount: Int,
     mfCount: Int,
     fnoCount: Int,
     selected: String,
     onSelect: (String) -> Unit,
 ) {
-    val theme = LocalAppTheme.current
-    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-        Text(
-            "Holdings by type",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = theme.text,
-        )
-        Text(
-            "Equity, ETFs, and mutual funds stay in their own buckets — a stock buy does not land under funds.",
-            fontSize = 11.sp,
-            color = theme.textSecondary,
-            modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
-        )
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            FilterChip(selected = selected == "ALL", onClick = { onSelect("ALL") }, label = { Text("All", fontSize = 11.sp) })
-            FilterChip(
-                selected = selected == "EQUITY",
-                onClick = { onSelect("EQUITY") },
-                label = { Text("Equity · $equityCount · ${formatInr(equityValue)}", fontSize = 11.sp) },
+    val chips = buildList {
+        add("ALL" to "All")
+        add("EQUITY" to "Equity $equityCount")
+        add("ETF" to "ETF $etfCount")
+        add("MF" to "MF $mfCount")
+        if (fnoCount > 0) add("FNO" to "F&O $fnoCount")
+    }
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        items(chips, key = { it.first }) { (id, label) ->
+            CompactPortfolioChip(
+                selected = selected == id,
+                onClick = { onSelect(id) },
+                label = label,
             )
-            FilterChip(
-                selected = selected == "ETF",
-                onClick = { onSelect("ETF") },
-                label = { Text("ETFs · $etfCount · ${formatInr(etfValue)}", fontSize = 11.sp) },
-            )
-            FilterChip(
-                selected = selected == "MF",
-                onClick = { onSelect("MF") },
-                label = { Text("Mutual funds · $mfCount", fontSize = 11.sp) },
-            )
-            if (fnoCount > 0) {
-                FilterChip(
-                    selected = selected == "FNO",
-                    onClick = { onSelect("FNO") },
-                    label = { Text("F&O · $fnoCount", fontSize = 11.sp) },
-                )
-            }
         }
     }
 }

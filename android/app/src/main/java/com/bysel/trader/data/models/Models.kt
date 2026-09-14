@@ -1229,6 +1229,7 @@ data class ScannerEducation(
     @SerializedName("riskNote") val riskNote: String = "",
     @SerializedName("disclaimer") val disclaimer: String = "",
     @SerializedName("dataLimits") val dataLimits: String = "",
+    @SerializedName("formulaChangedDate") val formulaChangedDate: String = "",
 )
 
 data class ScannerMetrics(
@@ -1250,6 +1251,12 @@ data class ScannerMetrics(
     @SerializedName("evEbitda") val evEbitda: Double? = null,
     @SerializedName("revenueGrowth") val revenueGrowth: Double? = null,
     @SerializedName("earningsGrowth") val earningsGrowth: Double? = null,
+    @SerializedName("r122") val r122: Double? = null,
+    @SerializedName("r122Pct") val r122Pct: Double? = null,
+    @SerializedName("h52") val h52: Double? = null,
+    @SerializedName("smooth") val smooth: Double? = null,
+    @SerializedName("qmRank") val qmRank: Int? = null,
+    @SerializedName("advInr") val advInr: Double? = null,
 )
 
 data class QualityScreenCheck(
@@ -1315,6 +1322,8 @@ data class ScannerPillar(
     @SerializedName("colorBand") val colorBand: String = "none",
     @SerializedName("topMetrics") val topMetrics: List<ScannerTopMetric> = emptyList(),
     @SerializedName("metrics") val metrics: Map<String, ScannerMetricCell> = emptyMap(),
+    @SerializedName("incomplete") val incomplete: Boolean = false,
+    @SerializedName("status") val status: String = "",
 )
 
 data class ScannerPillars(
@@ -1350,6 +1359,11 @@ data class ScannerRow(
     @SerializedName("qualityScreen") val qualityScreen: QualityScreenResult? = null,
     @SerializedName("missing") val missing: List<String> = emptyList(),
     @SerializedName("anomalies") val anomalies: List<ScannerAnomaly> = emptyList(),
+    @SerializedName("incomplete") val incomplete: Boolean = false,
+    @SerializedName("styleMode") val styleMode: String = "",
+    @SerializedName("qmRank") val qmRank: Int? = null,
+    @SerializedName("qualityMomentum") val qualityMomentum: Boolean = false,
+    @SerializedName("qmBadge") val qmBadge: String = "",
 ) {
     val displayValuation: Int? get() = valuation ?: value
     val displayScore: Int get() = byselScore ?: overall
@@ -1399,6 +1413,9 @@ data class ScannerResponse(
     @SerializedName("universeSize") val universeSize: Int = 0,
     @SerializedName("quotedCount") val quotedCount: Int = 0,
     @SerializedName("disclaimer") val disclaimer: String = "",
+    @SerializedName("formulaNote") val formulaNote: String = "",
+    @SerializedName("formulaChangedDate") val formulaChangedDate: String = "",
+    @SerializedName("qmRegime") val qmRegime: String? = null,
     @SerializedName("education") val education: ScannerEducation = ScannerEducation(),
     @SerializedName("rows") val rows: List<ScannerRow> = emptyList(),
     @SerializedName("cached") val cached: Boolean = false,

@@ -73,7 +73,7 @@ private enum class ScannerModeChip(val apiMode: String, val title: String) {
     LONG_TERM("long_term", "Long-term"),
     SWING("swing", "Swing"),
     HIGH_QUALITY("high_quality", "High Quality"),
-    MOMENTUM("momentum", "Momentum"),
+    MOMENTUM("momentum", "QM Leaders"),
     VALUE("value", "Value"),
     QUALITY_SCREEN("quality_screen", "Quality screen"),
     CUSTOM("custom", "Custom"),
@@ -222,6 +222,33 @@ fun ScannerScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    item {
+                        val changed = payload?.formulaChangedDate.orEmpty()
+                            .ifBlank { payload?.education?.formulaChangedDate.orEmpty() }
+                        Text(
+                            if (changed.isBlank()) {
+                                "BYSEL Score = 0.35Q + 0.25V + 0.20T + 0.20M. Strong / Good / Mixed / Weak / Poor — never Buy/Sell."
+                            } else {
+                                "BYSEL Score = 0.35Q + 0.25V + 0.20T + 0.20M. Last changed $changed. Strong / Good / Mixed / Weak / Poor — never Buy/Sell."
+                            },
+                            fontSize = 12.sp,
+                            color = theme.textSecondary,
+                        )
+                    }
+                    if (selected == ScannerModeChip.MOMENTUM) {
+                        item {
+                            val regime = when (payload?.qmRegime) {
+                                "on" -> "Regime On — Nifty 12-month return is positive in this snapshot."
+                                "off" -> "Regime Off — QM late-cycle. Not a buy label."
+                                else -> "Regime — until a full Nifty 12-month series is cached."
+                            }
+                            Text(
+                                "Quality first, then 12-2 among survivors. Q and M stay separate. Not official Quality 30 / Momentum 30. $regime",
+                                fontSize = 12.sp,
+                                color = theme.textSecondary,
+                            )
+                        }
+                    }
                     if (sectorFocus != null) {
                         item {
                             FilterChip(
@@ -289,6 +316,8 @@ fun ScannerScreen(
                                         "No names match these chips. Clear a chip or refresh."
                                     ScannerModeChip.QUALITY_SCREEN ->
                                         "No Quality-screen names yet. Refresh to score this list again."
+                                    ScannerModeChip.MOMENTUM ->
+                                        "No quality survivors in this universe yet. Speculative runners stay off this list."
                                     else ->
                                         "No names in this list yet. Refresh to try again."
                                 },
@@ -473,6 +502,26 @@ private fun ScannerStockRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
+                val badge = row.qmBadge.ifBlank {
+                    if (row.qualityMomentum) "Quality Momentum" else ""
+                }
+                if (badge.isNotBlank()) {
+                    Text(
+                        badge,
+                        fontSize = 11.sp,
+                        color = theme.text,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                when (badge) {
+                                    "Speculative momentum" -> theme.negative.copy(alpha = 0.12f)
+                                    "Weak" -> theme.textSecondary.copy(alpha = 0.12f)
+                                    else -> theme.primary.copy(alpha = 0.10f)
+                                }
+                            )
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                    )
+                }
                 row.tabFacts(mode).forEach { fact ->
                     Text(
                         fact,
@@ -560,6 +609,11 @@ fun ByselExplainabilityCard(
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Why this score?", fontWeight = FontWeight.SemiBold, color = theme.text)
+            Text(
+                "0.35Q + 0.25V + 0.20T + 0.20M · last changed 14 Sep 2026. Analysis, not a call.",
+                fontSize = 11.sp,
+                color = theme.textSecondary,
+            )
             AnomalyBadgeRow(row.detectedAnomalies())
             ByselScoreStrip(row = row, compact = false)
             Text(
@@ -613,7 +667,12 @@ private fun PillarBreakdown(
     val score = pillar?.score ?: fallbackScore
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, fontWeight = FontWeight.Medium, color = theme.text, modifier = Modifier.weight(1f))
+            Text(
+                if (pillar?.incomplete == true) "$title · Incomplete" else title,
+                fontWeight = FontWeight.Medium,
+                color = theme.text,
+                modifier = Modifier.weight(1f),
+            )
             Text(
                 score?.toString() ?: "—",
                 fontWeight = FontWeight.Bold,
@@ -734,9 +793,10 @@ fun scoreBandColor(score: Int?, theme: AppTheme): Color {
     if (score == null) return theme.textSecondary
     return when {
         score >= 80 -> theme.positive
-        score >= 65 -> Color(0xFF81C784)
-        score >= 50 -> Color(0xFFFFC107)
-        else -> Color(0xFFFF7043)
+        score >= 65 -> theme.primary
+        score >= 50 -> theme.textSecondary
+        score >= 35 -> Color(0xFFFFB300)
+        else -> theme.negative
     }
 }
 
@@ -779,8 +839,9 @@ private fun ScannerRow.tabFacts(mode: ScannerModeChip): List<String> {
             "ROCE ${formatPctFact(metrics.roce)}",
         )
         ScannerModeChip.MOMENTUM -> listOf(
-            "RSI ${formatFact(metrics.rsi, 0)}",
-            "Vol ${formatVolFact(metrics.volumeRatio)}",
+            "Q ${quality?.toString() ?: "—"}",
+            qmRank?.let { "12-2 rank $it" } ?: "12-2 rank —",
+            qmBadge.ifBlank { "Badge —" },
         )
         ScannerModeChip.VALUE -> listOf(
             "PE ${formatFact(metrics.pe)}",

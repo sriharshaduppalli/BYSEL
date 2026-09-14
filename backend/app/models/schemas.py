@@ -727,6 +727,7 @@ class ScannerEducation(BaseModel):
     riskNote: str = ""
     disclaimer: str = ""
     dataLimits: str = ""
+    formulaChangedDate: str = ""
 
 
 class ScannerMetrics(BaseModel):
@@ -753,6 +754,12 @@ class ScannerMetrics(BaseModel):
     nseSectorPe: Optional[float] = None
     roceAvg: Optional[float] = None
     promoter: Optional[float] = None
+    r122: Optional[float] = None
+    r122Pct: Optional[float] = None
+    h52: Optional[float] = None
+    smooth: Optional[float] = None
+    qmRank: Optional[int] = None
+    advInr: Optional[float] = None
 
 
 class QualityScreenCheck(BaseModel):
@@ -825,6 +832,12 @@ class ScannerRow(BaseModel):
     qualityScreen: Optional[QualityScreenResult] = None
     missing: List[str] = []
     anomalies: List[ScannerAnomaly] = []
+    incomplete: bool = False
+    styleMode: str = "balanced"
+    qmRank: Optional[int] = None
+    qualityMomentum: bool = False
+    qmBadge: str = ""
+    qualityGate: Optional[dict] = None
 
 
 class ScannerResponse(BaseModel):
@@ -836,6 +849,8 @@ class ScannerResponse(BaseModel):
     quotedCount: int = 0
     disclaimer: str = ""
     formulaNote: str = ""
+    formulaChangedDate: str = ""
+    qmRegime: Optional[str] = None
     education: ScannerEducation
     rows: List[ScannerRow] = []
     cached: bool = False

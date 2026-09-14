@@ -43,26 +43,24 @@ def test_missing_quality_metrics_are_skipped_not_defaulted():
 def test_quality_renormalizes_when_only_roe_exists():
     only_roe, _, _ = score_quality(roe=22.0, roce=None, debt_to_equity=None)
     both, _, _ = score_quality(roe=22.0, roce=16.0, debt_to_equity=None)
-    assert only_roe == 100
+    assert only_roe == 70
     assert both is not None
     assert both < only_roe
-    assert both == 81
+    assert both == 51
 
 
 def test_roce_roe_debt_band_edges():
     assert band_roce(None) is None
-    assert band_roce(25) == 100
-    assert band_roce(20) == 85
-    assert band_roce(15) == 65
-    assert band_roce(10) == 40
-    assert band_roce(9.9) == 15
-    assert band_roe(20) == 100
-    assert band_roe(15) == 85
-    assert band_roe(7) == 15
+    assert band_roce(8) == 0
+    assert band_roce(30) == 100
+    assert band_roce(22) == 64
+    assert band_roe(8) == 0
+    assert band_roe(28) == 100
+    assert band_roe(18) == 50
     assert band_de(None) is None
-    assert band_de(0.5) == 100
-    assert band_de(1.0) == 85
-    assert band_de(2.1) == 15
+    assert band_de(0.3) == 100
+    assert band_de(0.6) == 84
+    assert band_de(1.8) == 20
     assert band_interest_coverage(None) is None
     assert band_interest_coverage(8) == 100
     assert band_interest_coverage(4) == 85
@@ -85,14 +83,16 @@ def test_renormalize_skips_none_and_does_not_use_zero_defaults():
 
 def test_rsi_band_and_score_label_tokens():
     assert band_rsi(None) is None
-    assert band_rsi(50) == 90
-    assert band_rsi(65) == 100
-    assert score_label_token(80) == "high_conviction"
-    assert score_label_token(65) == "attractive"
-    assert score_label_token(50) == "neutral"
-    assert score_label_token(35) == "caution"
-    assert score_label_token(20) == "weak"
+    assert band_rsi(50) == 80
+    assert band_rsi(65) == 90
+    assert band_rsi(20, trend_score=70) == 80
+    assert score_label_token(80) == "strong"
+    assert score_label_token(65) == "good"
+    assert score_label_token(50) == "mixed"
+    assert score_label_token(35) == "weak"
+    assert score_label_token(20) == "poor"
     assert "buy" not in score_label_token(90)
+    assert "sell" not in score_label_token(90)
 
 
 def test_score_row_json_has_pillars_and_skips_unknown_roce():
@@ -114,10 +114,11 @@ def test_score_row_json_has_pillars_and_skips_unknown_roce():
     assert scores["pillars"]["quality"]["metrics"]["roe"]["used"] is True
     assert "BYSEL Score" in scores["ai_summary"]
     assert "not investment advice" in scores["ai_summary"].lower()
-    assert scores["score_label"] in {"high_conviction", "attractive", "neutral", "caution", "weak", "insufficient"}
+    assert scores["score_label"] in {"strong", "good", "mixed", "weak", "poor", "insufficient"}
     assert "buy" not in scores["score_label"]
     assert scores["bysel_score"] == scores["byselScore"]
-    assert scores["colorBand"] in {"green", "light_green", "yellow", "orange_red", "none"}
+    assert scores["colorBand"] in {"teal", "blue", "grey", "amber", "red", "none"}
+    assert scores["formulaChangedDate"] == "2026-09-14"
     q_top = scores["pillars"]["quality"]["topMetrics"]
     assert len(q_top) <= 3
     assert all(item["id"] != "roce" for item in q_top)
@@ -127,37 +128,36 @@ def test_score_row_json_has_pillars_and_skips_unknown_roce():
 def test_top_metrics_skip_missing_and_cap_three():
     metrics = {
         "roce": {"value": None, "score": None, "used": False},
-        "roe": {"value": 22.0, "score": 100, "used": True},
-        "debtToEquity": {"value": 0.4, "score": 100, "used": True},
-        "interestCoverage": {"value": None, "score": None, "used": False},
-        "salesCagr": {"value": 12.0, "score": 85, "used": True},
-        "profitCagr": {"value": 8.0, "score": 65, "used": True},
-        "promoterPledge": {"value": None, "score": None, "used": False},
+        "roe": {"value": 22.0, "score": 70, "used": True},
+        "debtToEquity": {"value": 0.4, "score": 95, "used": True},
+        "cfo": {"value": None, "score": None, "used": False},
+        "margin": {"value": None, "score": None, "used": False},
+        "gov": {"value": 8.0, "score": 70, "used": True},
     }
     weights = {
         "roce": 0.25,
         "roe": 0.20,
-        "debtToEquity": 0.15,
-        "interestCoverage": 0.10,
-        "salesCagr": 0.15,
-        "profitCagr": 0.10,
-        "promoterPledge": 0.05,
+        "debtToEquity": 0.20,
+        "cfo": 0.15,
+        "margin": 0.10,
+        "gov": 0.10,
     }
     top = top_contributing_metrics(metrics, weights, limit=3)
     assert len(top) == 3
-    assert all(item["id"] in {"roe", "debtToEquity", "salesCagr", "profitCagr"} for item in top)
+    assert all(item["id"] in {"roe", "debtToEquity", "gov"} for item in top)
     assert "roce" not in {item["id"] for item in top}
     assert top[0]["contribution"] >= top[-1]["contribution"]
 
 
 def test_color_band_thresholds():
     assert color_band(None) == "none"
-    assert color_band(80) == "green"
-    assert color_band(79) == "light_green"
-    assert color_band(65) == "light_green"
-    assert color_band(64) == "yellow"
-    assert color_band(50) == "yellow"
-    assert color_band(49) == "orange_red"
+    assert color_band(80) == "teal"
+    assert color_band(79) == "blue"
+    assert color_band(65) == "blue"
+    assert color_band(64) == "grey"
+    assert color_band(50) == "grey"
+    assert color_band(49) == "amber"
+    assert color_band(34) == "red"
 
 
 def test_swing_setup_has_paper_levels_and_no_invented_winrate():
@@ -222,7 +222,7 @@ def test_build_payload_keeps_missing_honest():
     assert infy["pillars"]["quality"]["score"] is None
     assert infy["pillars"]["quality"]["metrics"]["roce"]["used"] is False
     assert "pledge" in infy["missing"]
-    assert infy["score_label"] in {"high_conviction", "attractive", "neutral", "caution", "weak", "insufficient"}
+    assert infy["score_label"] in {"strong", "good", "mixed", "weak", "poor", "insufficient"}
     assert "buy" not in infy["score_label"]
     assert "Never Strong Buy" in payload["education"]["scoreGuide"]
 
@@ -473,3 +473,157 @@ def test_daily_snapshot_roundtrip_without_migration():
         db.commit()
     finally:
         db.close()
+
+
+def test_worked_example_quality_and_balanced_total():
+    from app.market_scanner import (
+        FORMULA_CHANGED_DATE,
+        _weighted_bysel_score,
+        band_cfo_ratio,
+        band_de,
+        band_roce,
+        band_roe,
+        score_quality,
+    )
+
+    assert band_roce(22) == 64
+    assert band_roe(18) == 50
+    assert band_de(0.6) == 84
+    assert band_cfo_ratio(1.1) == 89
+    quality, notes, parts = score_quality(
+        roce=22,
+        roe=18,
+        debt_to_equity=0.6,
+        cfo=110,
+        pat=100,
+        margin=12,
+        margin_avg_3y=12,
+        pledge=8,
+    )
+    assert quality == 69
+    assert parts["gov"] == 70
+    assert "Pledge 8%" in " ".join(notes)
+    total = _weighted_bysel_score(69, 58, 72, 61, mode="custom", incomplete=False)
+    assert total == 65
+    assert FORMULA_CHANGED_DATE == "2026-09-14"
+
+
+def test_incomplete_pillar_caps_total_at_70():
+    from app.market_scanner import _weighted_bysel_score
+
+    uncapped = _weighted_bysel_score(90, 90, 90, 90, mode="custom", incomplete=False)
+    capped = _weighted_bysel_score(90, 90, 90, 90, mode="custom", incomplete=True)
+    assert uncapped == 90
+    assert capped == 70
+
+
+def test_style_tilt_changes_weights_not_metric_math():
+    from app.market_scanner import _style_weights, _weighted_bysel_score
+
+    q = v = t = m = 80
+    balanced = _weighted_bysel_score(q, v, t, m, mode="custom")
+    long_term = _weighted_bysel_score(q, v, t, m, mode="long_term")
+    swing = _weighted_bysel_score(q, v, t, m, mode="swing")
+    assert balanced == long_term == swing == 80
+    assert _style_weights("long_term")["quality"] == 0.45
+    assert _style_weights("swing")["trend"] == 0.30
+    assert _style_weights("fno")["momentum"] == 0.40
+    assert _style_weights("custom") == _style_weights("balanced")
+
+
+def test_long_term_momentum_is_qm_not_rsi():
+    scores = score_row(
+        {
+            "symbol": "INFY",
+            "last": 1500.0,
+            "pe": 24.0,
+            "roe": 20.0,
+            "rsi": 62.0,
+            "macd": 4.0,
+            "r122Pct": 88.0,
+            "smooth": 0.72,
+            "h52": 0.94,
+            "fiftyTwoWeekHigh": 1600.0,
+            "sector": "IT",
+        },
+        "long_term",
+        sector_pe=26.0,
+    )
+    assert scores["pillars"]["momentum"]["metrics"]["r122"]["used"] is True
+    assert "rsi" not in scores["pillars"]["momentum"]["metrics"]
+    assert "buy" not in scores["convictionLabel"].lower()
+    swing = score_row(
+        {
+            "symbol": "INFY",
+            "last": 1500.0,
+            "rsi": 62.0,
+            "fiftyDayAverage": 1480.0,
+            "twoHundredDayAverage": 1400.0,
+        },
+        "swing",
+        sector_pe=26.0,
+    )
+    assert swing["pillars"]["momentum"]["metrics"]["rsi"]["used"] is True
+    assert "r122" not in swing["pillars"]["momentum"]["metrics"]
+
+
+def test_qm_leaders_payload_copy_is_analysis():
+    payload = build_scanner_payload(
+        [
+            {
+                "symbol": "WIN",
+                "last": 200.0,
+                "r122": 0.45,
+                "smooth": 0.8,
+                "fiftyTwoWeekHigh": 210.0,
+                "roe": 22.0,
+            },
+            {
+                "symbol": "LAG",
+                "last": 80.0,
+                "r122": -0.1,
+                "smooth": 0.4,
+                "fiftyTwoWeekHigh": 120.0,
+            },
+            {
+                "symbol": "JUICE",
+                "last": 40.0,
+                "r122": 0.90,
+                "smooth": 0.3,
+                "fiftyTwoWeekHigh": 42.0,
+                "roe": 5.0,
+                "debtToEquity": 2.8,
+                "pledge": 28.0,
+            },
+        ],
+        mode="momentum",
+        limit=10,
+    )
+    assert payload["education"]["title"] == "QM Leaders"
+    assert "buy list" in payload["education"]["summary"].lower()
+    assert "sequential" in payload["education"]["summary"].lower()
+    symbols = [row["symbol"] for row in payload["rows"]]
+    assert "WIN" in symbols
+    assert "JUICE" not in symbols
+    win = next(row for row in payload["rows"] if row["symbol"] == "WIN")
+    assert win["qualityGate"]["passed"] is True
+
+
+def test_missing_governance_and_supertrend_are_not_invented():
+    scores = score_row(
+        {
+            "symbol": "INFY",
+            "last": 1500.0,
+            "pe": 24.0,
+            "roe": 20.0,
+            "sector": "IT",
+        },
+        "custom",
+        sector_pe=26.0,
+    )
+    assert scores["pillars"]["quality"]["metrics"]["gov"]["used"] is False
+    assert scores["pillars"]["trend"]["metrics"]["st"]["used"] is False
+    assert "supertrend" in scores["missing"]
+    assert "buy" not in (scores.get("score_label") or "").lower()
+    assert "sell" not in (scores.get("convictionLabel") or "").lower()
+    assert scores["convictionLabel"] in {"Strong", "Good", "Mixed", "Weak", "Poor", "Insufficient data"}

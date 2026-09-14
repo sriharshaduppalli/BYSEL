@@ -1,12 +1,16 @@
 """
 Long-term + Swing hybrid scanner.
 
-BYSEL Score = Quality×0.35 + Valuation×0.25 + Trend×0.20 + Momentum×0.20.
-Missing pillars and missing sub-metrics are skipped; remaining weights
-are renormalized. ROCE / pledge / delivery / MACD / 5yr PE median / HH-HL
-are never invented. Risk is a separate readout.
+BYSEL Score = 0.35Q + 0.25V + 0.20T + 0.20M (balanced default).
+Style tilt changes only pillar weights, never metric math:
+  long-term 45/30/15/10, swing 25/20/30/25, F&O 15/10/35/40.
+Missing metrics are skipped and remaining weights renormalized.
+A pillar with <50% coverage is Incomplete and the total is capped at 70.
+Fields we do not have (auditor, RPT, SuperTrend, 63d RS, G-Sec, CFO)
+stay as — and are never invented.
 
-Conviction labels are educational (not Buy / Hold / Avoid).
+Band labels are Strong / Good / Mixed / Weak / Poor — never Buy / Sell.
+Long-term M is quantitative 12-2 (skip last month), not RSI.
 """
 
 from __future__ import annotations
@@ -207,82 +211,120 @@ DISCLAIMER = (
     "and does not place live orders."
 )
 
+FORMULA_CHANGED_DATE = "2026-09-14"
+INCOMPLETE_PILLAR_COVERAGE = 0.50
+INCOMPLETE_TOTAL_CAP = 70
 PILLAR_WEIGHTS = {
     "quality": 0.35,
     "valuation": 0.25,
     "trend": 0.20,
     "momentum": 0.20,
 }
+STYLE_WEIGHTS = {
+    "balanced": dict(PILLAR_WEIGHTS),
+    "long_term": {"quality": 0.45, "valuation": 0.30, "trend": 0.15, "momentum": 0.10},
+    "swing": {"quality": 0.25, "valuation": 0.20, "trend": 0.30, "momentum": 0.25},
+    "fno": {"quality": 0.15, "valuation": 0.10, "trend": 0.35, "momentum": 0.40},
+}
 QUALITY_WEIGHTS = {
     "roce": 0.25,
     "roe": 0.20,
-    "de": 0.15,
-    "interestCoverage": 0.10,
-    "salesCagr": 0.15,
-    "profitCagr": 0.10,
-    "promoterPledge": 0.05,
+    "de": 0.20,
+    "cfo": 0.15,
+    "margin": 0.10,
+    "gov": 0.10,
 }
 VALUATION_WEIGHTS = {
-    "pe": 0.35,
-    "peg": 0.25,
-    "pb": 0.20,
-    "evEbitda": 0.20,
+    "rel": 0.40,
+    "earn": 0.25,
+    "fcf": 0.20,
+    "growth": 0.15,
 }
 TREND_WEIGHTS = {
-    "vs200": 0.30,
-    "vs50": 0.25,
-    "cross": 0.20,
-    "hhhl": 0.15,
-    "week52": 0.10,
+    "ma": 0.30,
+    "st": 0.25,
+    "hhhl": 0.20,
+    "rs": 0.15,
+    "volume": 0.10,
 }
 MOMENTUM_WEIGHTS = {
     "rsi": 0.30,
     "macd": 0.25,
-    "rsNifty": 0.20,
-    "volume": 0.15,
-    "roc": 0.10,
+    "ret": 0.25,
+    "breadth": 0.20,
 }
+QM_MOMENTUM_WEIGHTS = {
+    "r122": 0.40,
+    "smooth": 0.25,
+    "h52": 0.20,
+    "earn": 0.15,
+}
+PB_SECTORS = BANK_LIKE_SECTORS
+EV_EBITDA_SECTORS = {
+    "Metals", "Energy", "Oil & Gas", "OilGas", "Commodities", "Cement",
+    "Chemicals", "Mining", "Power", "Steel",
+}
+PE_SECTORS = {"IT", "FMCG", "Consumer", "Software", "Platforms"}
 FORMULA_NOTE = (
-    "BYSEL Score = Quality×0.35 + Valuation×0.25 + Trend×0.20 + Momentum×0.20. "
-    "Missing pillars and missing sub-metrics are skipped and remaining weights "
-    "are renormalized. ROCE, pledge, delivery, MACD, 5yr PE median, and HH/HL "
-    "are not invented when missing."
+    "BYSEL Score = 0.35Q + 0.25V + 0.20T + 0.20M (balanced). "
+    "Long-term 45/30/15/10, Swing 25/20/30/25, F&O 15/10/35/40 — same metric math. "
+    "Missing metrics are skipped. A pillar with under 50% coverage is Incomplete "
+    f"and the total is capped at {INCOMPLETE_TOTAL_CAP}. "
+    "Long-term Momentum is 12-2 rank + smoothness + 52-week closeness, not RSI. "
+    "Auditor, RPT, SuperTrend, 63-day RS, G-Sec, CFO/PAT, and EPS revisions stay as — when absent. "
+    f"Formula last changed {FORMULA_CHANGED_DATE}. Ranking/analysis only — never Buy/Sell."
 )
 METRIC_LABELS = {
     "roce": "ROCE",
     "roe": "ROE",
+    "roa": "RoA",
     "de": "D/E",
     "debtToEquity": "D/E",
+    "cfo": "CFO / PAT",
+    "margin": "OP margin trend",
+    "gov": "Governance",
     "interestCoverage": "Interest cover",
     "salesCagr": "Sales CAGR",
     "profitCagr": "Profit CAGR",
     "promoterPledge": "Pledge",
+    "rel": "Relative multiple",
+    "earn": "Earnings yield vs G-Sec",
+    "fcf": "FCF yield",
+    "growth": "PEG",
     "pe": "PE vs baseline",
     "peg": "PEG",
     "pb": "P/B",
     "evEbitda": "EV/EBITDA",
+    "ma": "50/200 DMA",
+    "st": "SuperTrend",
     "vs200": "vs 200 DMA",
     "vs50": "vs 50 DMA",
     "cross": "50 vs 200 DMA",
     "hhhl": "HH/HL",
+    "rs": "RS vs Nifty 500",
     "week52": "52-week range",
     "fiftyDayAverage": "50 DMA",
     "twoHundredDayAverage": "200 DMA",
     "rsi": "RSI",
     "macd": "MACD",
+    "ret": "21d risk-adjusted",
+    "breadth": "Up-close breadth",
     "rsNifty": "RS vs Nifty",
     "volume": "Volume",
     "volumeRatio": "Volume",
     "roc": "ROC",
+    "r122": "12-2 rank",
+    "smooth": "Path smoothness",
+    "h52": "52-week closeness",
+    "earn": "EPS revision 3m",
 }
 QUALITY_METRIC_WEIGHTS = {
     "roce": QUALITY_WEIGHTS["roce"],
     "roe": QUALITY_WEIGHTS["roe"],
     "debtToEquity": QUALITY_WEIGHTS["de"],
-    "interestCoverage": QUALITY_WEIGHTS["interestCoverage"],
-    "salesCagr": QUALITY_WEIGHTS["salesCagr"],
-    "profitCagr": QUALITY_WEIGHTS["profitCagr"],
-    "promoterPledge": QUALITY_WEIGHTS["promoterPledge"],
+    "cfo": QUALITY_WEIGHTS["cfo"],
+    "margin": QUALITY_WEIGHTS["margin"],
+    "gov": QUALITY_WEIGHTS["gov"],
 }
 VALUATION_METRIC_WEIGHTS = dict(VALUATION_WEIGHTS)
 TREND_METRIC_WEIGHTS = dict(TREND_WEIGHTS)
@@ -463,19 +505,6 @@ def _score_int(value: Optional[float]) -> Optional[int]:
     return int(round(float(value)))
 
 
-def color_band(score: Optional[int]) -> str:
-    """80+ green, 65–79 light green, 50–64 yellow, <50 orange/red."""
-    if score is None:
-        return "none"
-    if score >= 80:
-        return "green"
-    if score >= 65:
-        return "light_green"
-    if score >= 50:
-        return "yellow"
-    return "orange_red"
-
-
 def top_contributing_metrics(
     metrics: Dict[str, Dict[str, Any]],
     weights: Dict[str, float],
@@ -512,55 +541,105 @@ def _pillar_payload(
     score: Optional[int],
     metrics: Dict[str, Dict[str, Any]],
     weights: Dict[str, float],
+    *,
+    coverage: Optional[float] = None,
+    incomplete: bool = False,
 ) -> Dict[str, Any]:
     return {
         "score": score,
         "colorBand": color_band(score),
         "metrics": metrics,
         "topMetrics": top_contributing_metrics(metrics, weights, limit=3),
+        "coverage": None if coverage is None else round(coverage, 2),
+        "incomplete": bool(incomplete),
+        "status": "incomplete" if incomplete else ("scored" if score is not None else "missing"),
     }
 
 
-def band_roce(value: Optional[float]) -> Optional[int]:
+def _linear_band(
+    value: Optional[float],
+    x0: float,
+    x1: float,
+    y0: float,
+    y1: float,
+    *,
+    below: Optional[float] = None,
+    above: Optional[float] = None,
+) -> Optional[float]:
     if value is None:
         return None
-    if value >= 25:
-        return 100
-    if value >= 20:
-        return 85
-    if value >= 15:
-        return 65
-    if value >= 10:
-        return 40
-    return 15
+    if value <= x0:
+        return float(y0 if below is None else below)
+    if value >= x1:
+        return float(y1 if above is None else above)
+    return y0 + (y1 - y0) * (value - x0) / (x1 - x0)
+
+
+def _style_weights(mode: str) -> Dict[str, float]:
+    if mode == "long_term":
+        return STYLE_WEIGHTS["long_term"]
+    if mode == "swing":
+        return STYLE_WEIGHTS["swing"]
+    if mode == "fno":
+        return STYLE_WEIGHTS["fno"]
+    return STYLE_WEIGHTS["balanced"]
+
+
+def _pillar_coverage(parts: Dict[str, Optional[float]], slots: Sequence[str]) -> Tuple[int, int, float, bool]:
+    used = sum(1 for key in slots if parts.get(key) is not None)
+    total = len(slots)
+    coverage = (used / total) if total else 0.0
+    incomplete = used > 0 and coverage < INCOMPLETE_PILLAR_COVERAGE
+    return used, total, coverage, incomplete
+
+
+def band_roce(value: Optional[float]) -> Optional[int]:
+    raw = _linear_band(value, 8.0, 30.0, 0.0, 100.0)
+    return _score_int(raw)
 
 
 def band_roe(value: Optional[float]) -> Optional[int]:
-    if value is None:
-        return None
-    if value >= 20:
-        return 100
-    if value >= 15:
-        return 85
-    if value >= 12:
-        return 65
-    if value >= 8:
-        return 40
-    return 15
+    raw = _linear_band(value, 8.0, 28.0, 0.0, 100.0)
+    return _score_int(raw)
+
+
+def band_roa(value: Optional[float]) -> Optional[int]:
+    raw = _linear_band(value, 0.6, 2.0, 0.0, 100.0)
+    return _score_int(raw)
 
 
 def band_de(value: Optional[float]) -> Optional[int]:
-    if value is None:
+    raw = _linear_band(value, 0.3, 1.8, 100.0, 20.0)
+    return _score_int(raw)
+
+
+def band_car(value: Optional[float]) -> Optional[int]:
+    raw = _linear_band(value, 11.0, 18.0, 0.0, 100.0)
+    return _score_int(raw)
+
+
+def band_cfo_ratio(ratio: Optional[float], *, pat: Optional[float] = None, cfo: Optional[float] = None) -> Optional[int]:
+    if pat is not None and cfo is not None:
+        if pat < 0 and cfo > 0:
+            return 55
+        if pat < 0 and cfo < 0:
+            return 10
+    if ratio is None:
         return None
-    if value <= 0.5:
+    raw = _linear_band(ratio, 0.3, 1.2, 0.0, 100.0)
+    return _score_int(raw)
+
+
+def band_margin_trend(delta_bps: Optional[float], current_margin: Optional[float] = None) -> Optional[int]:
+    if current_margin is not None and current_margin < 0:
+        return 0
+    if delta_bps is None:
+        return None
+    if delta_bps >= 150:
         return 100
-    if value <= 1.0:
-        return 85
-    if value <= 1.5:
-        return 65
-    if value <= 2.0:
-        return 40
-    return 15
+    if delta_bps <= -150:
+        return 20
+    return 60
 
 
 def band_interest_coverage(value: Optional[float]) -> Optional[int]:
@@ -591,18 +670,46 @@ def band_cagr(value: Optional[float]) -> Optional[int]:
     return 15
 
 
-def band_pe_vs_median(ratio: Optional[float]) -> Optional[int]:
-    if ratio is None:
+def band_cheapness(cheapness: Optional[float]) -> Optional[int]:
+    if cheapness is None:
         return None
-    if ratio <= 0.7:
+    if cheapness >= 1.4:
         return 100
-    if ratio <= 0.9:
-        return 80
-    if ratio <= 1.1:
-        return 55
-    if ratio <= 1.4:
-        return 30
-    return 15
+    if cheapness < 0.6:
+        return 0
+    return _score_int(50.0 + 125.0 * (cheapness - 1.0))
+
+
+def band_earn_spread(spread_pct: Optional[float]) -> Optional[int]:
+    raw = _linear_band(spread_pct, -2.0, 6.0, 0.0, 100.0)
+    return _score_int(raw)
+
+
+def band_fcf_yield(yield_pct: Optional[float], sales_growth: Optional[float] = None) -> Optional[int]:
+    if yield_pct is None:
+        return None
+    if yield_pct < 0:
+        return 15 if (sales_growth is not None and sales_growth >= 20) else 0
+    raw = _linear_band(yield_pct, 0.0, 8.0, 0.0, 100.0)
+    return _score_int(raw)
+
+
+def band_peg(peg: Optional[float], *, negative_earnings: bool = False) -> Optional[int]:
+    if negative_earnings:
+        return 10
+    if peg is None:
+        return None
+    if peg <= 0.8:
+        return 100
+    if peg > 2.0:
+        return 10
+    return _score_int(100.0 - 80.0 * (peg - 0.8) / 1.2)
+
+
+def band_pe_vs_median(ratio: Optional[float]) -> Optional[int]:
+    if ratio is None or ratio <= 0:
+        return None
+    return band_cheapness(1.0 / ratio)
 
 
 def band_dma_pct(last: Optional[float], dma: Optional[float]) -> Optional[int]:
@@ -620,40 +727,197 @@ def band_dma_pct(last: Optional[float], dma: Optional[float]) -> Optional[int]:
     return 20
 
 
-def band_rsi(value: Optional[float]) -> Optional[int]:
+def band_ma_stack(
+    last: Optional[float],
+    fifty: Optional[float],
+    two_hundred: Optional[float],
+    *,
+    fifty_rising: Optional[bool] = None,
+) -> Optional[int]:
+    if last is None or (fifty is None and two_hundred is None):
+        return None
+    above_50 = fifty is not None and last > fifty
+    below_50 = fifty is not None and last < fifty
+    above_200 = two_hundred is not None and last > two_hundred
+    below_200 = two_hundred is not None and last < two_hundred
+    fifty_above_200 = (
+        fifty is not None and two_hundred is not None and fifty > two_hundred
+    )
+    fifty_below_200 = (
+        fifty is not None and two_hundred is not None and fifty < two_hundred
+    )
+    if above_50 and fifty_above_200 and fifty_rising is not False:
+        return 100 if fifty_rising is True or fifty_rising is None else 70
+    if above_200 and (fifty is None or not fifty_above_200):
+        return 70
+    if fifty is not None and two_hundred is not None:
+        low_ma, high_ma = (fifty, two_hundred) if fifty <= two_hundred else (two_hundred, fifty)
+        if low_ma <= last <= high_ma:
+            return 45
+    if below_200 and (fifty_rising is False or fifty is None):
+        return 20
+    if below_50 and fifty_below_200:
+        return 5
+    if below_200:
+        return 20
+    if below_50:
+        return 5
+    return 45
+
+
+def band_supertrend(
+    *,
+    above: Optional[bool] = None,
+    days_above: Optional[int] = None,
+    fresh_flip_up: Optional[bool] = None,
+    fresh_flip_down: Optional[bool] = None,
+) -> Optional[int]:
+    if fresh_flip_down:
+        return 5
+    if above is False:
+        return 15
+    if fresh_flip_up:
+        return 75
+    if above is True and days_above is not None and days_above >= 10:
+        return 95
+    if above is True:
+        return 90
+    return None
+
+
+def band_hhhl(structure: Optional[str]) -> Optional[int]:
+    if not structure:
+        return None
+    key = str(structure).strip().lower()
+    if key in {"hhhl", "higher_highs_higher_lows"}:
+        return 100
+    if key in {"mixed"}:
+        return 50
+    if key in {"lhll", "lower_highs_lower_lows"}:
+        return 10
+    return None
+
+
+def band_rs_63(rs: Optional[float]) -> Optional[int]:
+    raw = _linear_band(rs, -0.15, 0.20, 0.0, 100.0)
+    return _score_int(raw)
+
+
+def band_volume_trend(
+    vol_ratio: Optional[float],
+    *,
+    uptrend: Optional[bool] = None,
+) -> Optional[int]:
+    if vol_ratio is None or uptrend is None:
+        return None
+    if uptrend and vol_ratio >= 1.3:
+        return 100
+    if uptrend and vol_ratio < 0.8:
+        return 35
+    if not uptrend and vol_ratio >= 1.3:
+        return 20
+    return 55
+
+
+def band_rsi(value: Optional[float], *, trend_score: Optional[int] = None) -> Optional[int]:
     if value is None:
         return None
-    if 50 <= value <= 65:
-        return int(round(90 + (value - 50) / 15.0 * 10))
-    if 40 <= value < 50 or 65 < value <= 70:
-        return 70
-    if 30 <= value < 40 or 70 < value <= 75:
+    if value < 30 and trend_score is not None and trend_score >= 60:
+        return 80
+    if value < 30:
         return 40
+    if value <= 55:
+        return int(round(40 + 2 * (value - 30)))
+    if value <= 68:
+        return 90
+    if value <= 75:
+        return 70
+    return 35
+
+
+def band_macd_state(
+    macd: Optional[float],
+    *,
+    signal: Optional[float] = None,
+    histogram: Optional[float] = None,
+    histogram_prev: Optional[float] = None,
+) -> Optional[int]:
+    expanding = (
+        histogram is not None
+        and histogram_prev is not None
+        and histogram > histogram_prev
+    )
+    shrinking = (
+        histogram is not None
+        and histogram_prev is not None
+        and histogram < histogram_prev
+    )
+    if histogram is not None and histogram > 0 and expanding:
+        return 100
+    if signal is not None and macd is not None and macd > signal and shrinking:
+        return 65
+    if signal is not None and macd is not None and macd < signal and expanding:
+        return 45
+    if macd is not None and signal is not None and macd < 0 and signal < 0 and shrinking:
+        return 10
+    if macd is None:
+        return None
+    # Sign-only fallback — do not invent expanding/shrinking.
+    return 65 if macd > 0 else 45
+
+
+def band_risk_adjusted(ratio: Optional[float]) -> Optional[int]:
+    raw = _linear_band(ratio, -1.0, 1.5, 0.0, 100.0)
+    return _score_int(raw)
+
+
+def band_up_closes(up_closes: Optional[int]) -> Optional[int]:
+    if up_closes is None:
+        return None
+    if up_closes >= 8:
+        return 90
+    if up_closes >= 5:
+        return 55
     return 20
+
+
+def color_band(score: Optional[int]) -> str:
+    """Strong teal, Good blue, Mixed grey, Weak amber, Poor red."""
+    if score is None:
+        return "none"
+    if score >= 80:
+        return "teal"
+    if score >= 65:
+        return "blue"
+    if score >= 50:
+        return "grey"
+    if score >= 35:
+        return "amber"
+    return "red"
 
 
 def score_label_token(score: Optional[int]) -> str:
     if score is None:
         return "insufficient"
     if score >= 80:
-        return "high_conviction"
+        return "strong"
     if score >= 65:
-        return "attractive"
+        return "good"
     if score >= 50:
-        return "neutral"
+        return "mixed"
     if score >= 35:
-        return "caution"
-    return "weak"
+        return "weak"
+    return "poor"
 
 
 def conviction_label(score: Optional[int]) -> str:
     token = score_label_token(score)
     return {
-        "high_conviction": "High conviction setup (education)",
-        "attractive": "Attractive on these factors",
-        "neutral": "Neutral",
-        "caution": "Caution",
-        "weak": "Weak on these factors",
+        "strong": "Strong",
+        "good": "Good",
+        "mixed": "Mixed",
+        "weak": "Weak",
+        "poor": "Poor",
         "insufficient": "Insufficient data",
     }[token]
 
@@ -672,58 +936,132 @@ def score_quality(
     promoter: Optional[float] = None,
     fcf: Optional[float] = None,
     sector: str = "Other",
-) -> Tuple[Optional[int], List[str]]:
-    """Quality from available fundamentals only. No large-cap invention."""
-    _ = symbol, market_cap
+    roa: Optional[float] = None,
+    capital_adequacy: Optional[float] = None,
+    cfo: Optional[float] = None,
+    pat: Optional[float] = None,
+    margin: Optional[float] = None,
+    margin_avg_3y: Optional[float] = None,
+    auditor_change: Optional[bool] = None,
+    qualified_opinion: Optional[bool] = None,
+    rpt_revenue_pct: Optional[float] = None,
+    asm_gsm: Optional[bool] = None,
+    promoter_delta_4q: Optional[float] = None,
+) -> Tuple[Optional[int], List[str], Dict[str, Optional[float]]]:
+    """Quality from available fundamentals only. Never invent missing filings."""
+    _ = symbol, market_cap, sales_cagr, profit_cagr, fcf, promoter
     notes: List[str] = []
     parts: Dict[str, Optional[float]] = {}
+    bank_like = sector in BANK_LIKE_SECTORS
 
-    roce_score = band_roce(roce)
-    parts["roce"] = roce_score
-    notes.append(f"ROCE {roce:.0f}%" if roce is not None else "ROCE —")
+    if bank_like:
+        parts["roce"] = band_roa(roa)
+        notes.append(f"RoA {roa:.2f}%" if roa is not None else "RoA — (bank; ROCE skipped)")
+    else:
+        parts["roce"] = band_roce(roce)
+        notes.append(f"ROCE {roce:.0f}%" if roce is not None else "ROCE —")
 
-    roe_score = band_roe(roe)
-    parts["roe"] = roe_score
+    parts["roe"] = band_roe(roe)
     notes.append(f"ROE {roe:.0f}%" if roe is not None else "ROE —")
 
-    if sector in BANK_LIKE_SECTORS:
-        parts["de"] = None
-        notes.append("D/E n/a (bank)")
+    if bank_like:
+        parts["de"] = band_car(capital_adequacy)
+        notes.append(
+            f"CAR {capital_adequacy:.1f}%" if capital_adequacy is not None else "CAR — (bank; D/E skipped)"
+        )
     else:
-        parts["de"] = band_de(debt_to_equity)
-        notes.append(f"D/E {debt_to_equity:.2f}" if debt_to_equity is not None else "D/E —")
-
-    parts["interestCoverage"] = band_interest_coverage(interest_coverage)
-    notes.append(
-        f"Interest cover {interest_coverage:.1f}" if interest_coverage is not None else "Interest cover —"
-    )
-    parts["salesCagr"] = band_cagr(sales_cagr)
-    notes.append(f"Sales CAGR {sales_cagr:.0f}%" if sales_cagr is not None else "Sales CAGR —")
-    parts["profitCagr"] = band_cagr(profit_cagr)
-    notes.append(f"Profit CAGR {profit_cagr:.0f}%" if profit_cagr is not None else "Profit CAGR —")
-
-    if pledge is None and promoter is None:
-        parts["promoterPledge"] = None
-        notes.append("Pledge —")
-    elif pledge is not None:
-        if pledge <= 5:
-            parts["promoterPledge"] = 100
-        elif pledge <= 15:
-            parts["promoterPledge"] = 65
+        de_score = band_de(debt_to_equity)
+        if de_score is not None and interest_coverage is not None and interest_coverage < 2:
+            de_score = int(round(de_score * 0.6))
+            notes.append(f"D/E {debt_to_equity:.2f} (interest cover {interest_coverage:.1f}×0.6)")
         else:
-            parts["promoterPledge"] = 20
-        notes.append(f"Pledge {pledge:.0f}%")
+            notes.append(f"D/E {debt_to_equity:.2f}" if debt_to_equity is not None else "D/E —")
+        parts["de"] = de_score
+
+    cfo_ratio = None
+    if cfo is not None and pat is not None and pat != 0:
+        cfo_ratio = cfo / pat
+    parts["cfo"] = band_cfo_ratio(cfo_ratio, pat=pat, cfo=cfo)
+    notes.append(f"CFO/PAT {cfo_ratio:.2f}" if cfo_ratio is not None else "CFO/PAT —")
+
+    delta_bps = None
+    if margin is not None and margin_avg_3y is not None:
+        delta_bps = (margin - margin_avg_3y) * 100.0
+    parts["margin"] = band_margin_trend(delta_bps, current_margin=margin)
+    if margin is not None and margin < 0:
+        notes.append(f"OP margin {margin:.1f}% (negative)")
+    elif delta_bps is not None:
+        notes.append(f"OP margin vs 3Y {delta_bps:+.0f} bps")
     else:
-        parts["promoterPledge"] = None
-        notes.append("Pledge —")
+        notes.append("OP margin trend —")
+
+    gov_inputs = any(
+        value is not None
+        for value in (
+            pledge, auditor_change, qualified_opinion, rpt_revenue_pct, asm_gsm, promoter_delta_4q,
+        )
+    )
+    if gov_inputs:
+        gov = 80
+        if pledge is not None and pledge >= 20:
+            gov -= 25
+            notes.append(f"Pledge {pledge:.0f}% (−25)")
+        elif pledge is not None and pledge >= 5:
+            gov -= 10
+            notes.append(f"Pledge {pledge:.0f}% (−10)")
+        elif pledge is not None:
+            notes.append(f"Pledge {pledge:.0f}%")
+        if auditor_change:
+            gov -= 15
+            notes.append("Auditor change (−15)")
+        if qualified_opinion:
+            gov -= 40
+            notes.append("Qualified/adverse opinion (−40)")
+        if rpt_revenue_pct is not None and rpt_revenue_pct >= 10:
+            gov -= 15
+            notes.append(f"RPT revenue {rpt_revenue_pct:.0f}% (−15)")
+        if asm_gsm:
+            gov -= 30
+            notes.append("ASM/GSM (−30)")
+        if promoter_delta_4q is not None and promoter_delta_4q < -5:
+            gov -= 10
+            notes.append(f"Promoter {promoter_delta_4q:.1f} pp (−10)")
+        parts["gov"] = max(gov, 0)
+    else:
+        parts["gov"] = None
+        notes.append("Governance —")
 
     blended = renormalized_score(parts, QUALITY_WEIGHTS)
     if blended is None:
         return None, notes, parts
-    if fcf is not None and fcf > 0:
-        notes.append("FCF bonus")
-        blended = min(100.0, blended + 8)
     return int(round(blended)), notes, parts
+
+
+def _primary_multiple(
+    *,
+    sector: str,
+    pe: Optional[float],
+    pb: Optional[float],
+    ev_ebitda: Optional[float],
+    ps: Optional[float],
+    sales_growth: Optional[float],
+    earnings: Optional[float],
+) -> Tuple[Optional[float], str]:
+    if sector in PB_SECTORS:
+        return pb, "PB"
+    if sector in EV_EBITDA_SECTORS:
+        return ev_ebitda, "EV/EBITDA"
+    if earnings is not None and earnings <= 0:
+        if sales_growth is not None and sales_growth > 20:
+            return ps, "PS"
+        return None, "PE skipped (loss-making)"
+    if sector in PE_SECTORS or pe is not None:
+        return pe, "PE"
+    if ev_ebitda is not None:
+        return ev_ebitda, "EV/EBITDA"
+    if pb is not None:
+        return pb, "PB"
+    return None, "multiple"
 
 
 def score_value(
@@ -734,44 +1072,84 @@ def score_value(
     peg: Optional[float] = None,
     pb: Optional[float] = None,
     ev_ebitda: Optional[float] = None,
-) -> Tuple[Optional[int], List[str]]:
-    """Valuation: PE vs 5yr median (else sector-ish), PEG, PB, EV/EBITDA."""
+    sector: str = "Other",
+    sector_pb: Optional[float] = None,
+    sector_ev_ebitda: Optional[float] = None,
+    own_median: Optional[float] = None,
+    eps: Optional[float] = None,
+    last: Optional[float] = None,
+    gsec_10y: Optional[float] = None,
+    fcf: Optional[float] = None,
+    market_cap: Optional[float] = None,
+    sales_growth: Optional[float] = None,
+    profit_cagr: Optional[float] = None,
+    price_to_sales: Optional[float] = None,
+) -> Tuple[Optional[int], List[str], Dict[str, Optional[float]]]:
+    """Valuation vs sector/own history. Never force PE on banks or loss-makers."""
     notes: List[str] = []
     parts: Dict[str, Optional[float]] = {}
 
-    baseline = pe_median_5y if pe_median_5y and pe_median_5y > 0 else None
-    baseline_label = "5yr median"
-    if baseline is None and sector_pe and sector_pe > 0:
-        baseline = sector_pe
-        baseline_label = "sector"
-    if pe is not None and pe > 0 and baseline:
-        ratio = pe / baseline
-        parts["pe"] = band_pe_vs_median(ratio)
-        notes.append(f"PE {pe:.0f} vs {baseline_label} ~{baseline:.0f}")
-    else:
-        parts["pe"] = None
-        notes.append("PE vs median —" if pe is None else f"PE {pe:.0f} (no median)")
+    multiple, multiple_name = _primary_multiple(
+        sector=sector,
+        pe=pe,
+        pb=pb,
+        ev_ebitda=ev_ebitda,
+        ps=price_to_sales,
+        sales_growth=sales_growth,
+        earnings=eps,
+    )
+    sector_median = None
+    if multiple_name == "PB":
+        sector_median = sector_pb
+    elif multiple_name == "EV/EBITDA":
+        sector_median = sector_ev_ebitda
+    elif multiple_name in {"PE", "PS"}:
+        sector_median = sector_pe
+    history_median = own_median if own_median and own_median > 0 else pe_median_5y
 
-    if peg is None:
-        parts["peg"] = None
-    elif peg <= 1.0:
-        parts["peg"] = 100
-    elif peg <= 1.5:
-        parts["peg"] = 75
-    elif peg <= 2.0:
-        parts["peg"] = 45
+    sector_score = None
+    history_score = None
+    if multiple is not None and multiple > 0 and sector_median and sector_median > 0:
+        sector_score = band_cheapness(sector_median / multiple)
+        notes.append(f"{multiple_name} {multiple:.1f} vs sector {sector_median:.1f}")
     else:
-        parts["peg"] = 20
-    notes.append(f"PEG {peg:.1f}" if peg is not None else "PEG —")
-    parts["pb"] = None
-    notes.append("P/B —" if pb is None else f"P/B {pb:.1f}")
-    ev_sector = None
-    if ev_ebitda is not None and ev_sector:
-        parts["evEbitda"] = band_pe_vs_median(ev_ebitda / ev_sector)
-        notes.append(f"EV/EBITDA {ev_ebitda:.1f} vs sector")
+        notes.append(f"{multiple_name} vs sector —")
+    if multiple is not None and multiple > 0 and history_median and history_median > 0:
+        history_score = band_cheapness(history_median / multiple)
+        notes.append(f"{multiple_name} vs own 5Y {history_median:.1f}")
     else:
-        parts["evEbitda"] = None
-        notes.append("EV/EBITDA —")
+        notes.append(f"{multiple_name} vs own 5Y —")
+    if sector_score is not None and history_score is not None:
+        parts["rel"] = 0.6 * sector_score + 0.4 * history_score
+    elif sector_score is not None:
+        parts["rel"] = float(sector_score)
+    elif history_score is not None:
+        parts["rel"] = float(history_score)
+    else:
+        parts["rel"] = None
+
+    if eps is not None and last and last > 0 and gsec_10y is not None:
+        spread = (eps / last) * 100.0 - gsec_10y
+        parts["earn"] = band_earn_spread(spread)
+        notes.append(f"EY spread {spread:+.1f} pp vs G-Sec")
+    else:
+        parts["earn"] = None
+        notes.append("EY vs G-Sec —")
+
+    if fcf is not None and market_cap and market_cap > 0:
+        fcf_yield = (fcf / market_cap) * 100.0
+        parts["fcf"] = band_fcf_yield(fcf_yield, sales_growth)
+        notes.append(f"FCF yield {fcf_yield:.1f}%")
+    else:
+        parts["fcf"] = None
+        notes.append("FCF yield —")
+
+    growth_peg = peg
+    if growth_peg is None and pe is not None and pe > 0 and profit_cagr is not None:
+        growth_peg = pe / max(profit_cagr, 1.0)
+    negative_eps = eps is not None and eps < 0
+    parts["growth"] = band_peg(growth_peg, negative_earnings=negative_eps)
+    notes.append(f"PEG {growth_peg:.1f}" if growth_peg is not None else "PEG —")
 
     blended = renormalized_score(parts, VALUATION_WEIGHTS)
     if blended is None:
@@ -787,60 +1165,61 @@ def score_trend(
     week52_high: Optional[float] = None,
     week52_low: Optional[float] = None,
     hhhl: Optional[float] = None,
-) -> Tuple[Optional[int], List[str]]:
-    """Trend: vs 200 DMA, vs 50 DMA, 50 vs 200, HH/HL, 52w distance."""
+    fifty_rising: Optional[bool] = None,
+    supertrend_above: Optional[bool] = None,
+    supertrend_days: Optional[int] = None,
+    supertrend_flip_up: Optional[bool] = None,
+    supertrend_flip_down: Optional[bool] = None,
+    hhhl_structure: Optional[str] = None,
+    rs_63: Optional[float] = None,
+    volume_ratio: Optional[float] = None,
+) -> Tuple[Optional[int], List[str], Dict[str, Optional[float]]]:
+    """Trend from DMA stack plus optional SuperTrend / HHHL / 63d RS. No invented series."""
+    _ = week52_high, week52_low
     notes: List[str] = []
-    parts: Dict[str, Optional[float]] = {
-        "vs200": band_dma_pct(last, two_hundred),
-        "vs50": band_dma_pct(last, fifty_day),
-        "cross": None,
-        "hhhl": None,
-        "week52": None,
-    }
-    if two_hundred:
-        notes.append("Above 200 DMA" if parts["vs200"] and parts["vs200"] >= 80 else (
-            "Below 200 DMA" if two_hundred and last and last < two_hundred else "200 DMA —"
-        ))
-    else:
-        notes.append("200 DMA —")
-    if fifty_day:
-        notes.append("Above 50 DMA" if parts["vs50"] and parts["vs50"] >= 80 else (
-            "Below 50 DMA" if fifty_day and last and last < fifty_day else "50 DMA —"
-        ))
-    else:
-        notes.append("50 DMA —")
+    parts: Dict[str, Optional[float]] = {}
 
-    if fifty_day and two_hundred and two_hundred > 0:
-        parts["cross"] = 100 if fifty_day >= two_hundred else 20
-        notes.append("Golden cross 50>200" if fifty_day >= two_hundred else "Death cross 50<200")
+    parts["ma"] = band_ma_stack(last, fifty_day, two_hundred, fifty_rising=fifty_rising)
+    if parts["ma"] is not None:
+        notes.append(f"DMA stack {int(parts['ma'])}")
     else:
-        notes.append("50 vs 200 —")
+        notes.append("50/200 DMA —")
 
-    if hhhl is None:
-        notes.append("HH/HL —")
-    else:
-        notes.append("HH/HL present")
+    parts["st"] = band_supertrend(
+        above=supertrend_above,
+        days_above=supertrend_days,
+        fresh_flip_up=supertrend_flip_up,
+        fresh_flip_down=supertrend_flip_down,
+    )
+    notes.append("SuperTrend present" if parts["st"] is not None else "SuperTrend —")
 
-    if last and week52_high and week52_low and week52_high > week52_low:
-        pos = (last - week52_low) / (week52_high - week52_low)
-        if 0.40 <= pos <= 0.70:
-            parts["week52"] = 80
-        elif 0.20 <= pos < 0.40 or 0.70 < pos <= 0.85:
-            parts["week52"] = 60
-        elif pos > 0.85:
-            parts["week52"] = 40
+    structure = hhhl_structure
+    if structure is None and hhhl is not None:
+        if hhhl > 0:
+            structure = "hhhl"
+        elif hhhl < 0:
+            structure = "lhll"
         else:
-            parts["week52"] = 35
-        notes.append(f"52w {pos * 100:.0f}%")
-    else:
-        notes.append("52w —")
+            structure = "mixed"
+    parts["hhhl"] = band_hhhl(structure)
+    notes.append("HH/HL present" if parts["hhhl"] is not None else "HH/HL —")
+
+    parts["rs"] = band_rs_63(rs_63)
+    notes.append(f"RS 63d {rs_63:+.1%}" if rs_63 is not None else "RS vs Nifty 500 —")
+
+    uptrend = None
+    if last is not None and (fifty_day or two_hundred):
+        uptrend = bool(
+            (fifty_day and last > fifty_day) or (two_hundred and last > two_hundred)
+        )
+    parts["volume"] = band_volume_trend(volume_ratio, uptrend=uptrend)
+    notes.append(
+        f"vol {volume_ratio:.1f}x" if volume_ratio is not None and parts["volume"] is not None else "vol trend —"
+    )
 
     blended = renormalized_score(parts, TREND_WEIGHTS)
     if blended is None:
         return None, notes, parts
-    if hhhl is not None and hhhl > 0:
-        notes.append("HH/HL bonus")
-        blended = min(100.0, blended + 8)
     return int(round(blended)), notes, parts
 
 
@@ -856,85 +1235,52 @@ def score_momentum(
     rs_vs_nifty: Optional[float] = None,
     delivery_pct: Optional[float] = None,
     roc: Optional[float] = None,
-) -> Tuple[Optional[int], List[str]]:
-    """Momentum: RSI 50–65 ideal, MACD, RS vs Nifty, volume/delivery, ROC."""
-    _ = last, fifty_day, two_hundred
+    trend_score: Optional[int] = None,
+    macd_signal: Optional[float] = None,
+    macd_hist: Optional[float] = None,
+    macd_hist_prev: Optional[float] = None,
+    ret_21: Optional[float] = None,
+    vol_21: Optional[float] = None,
+    up_closes: Optional[int] = None,
+    oi_build: Optional[str] = None,
+    fno_mode: bool = False,
+) -> Tuple[Optional[int], List[str], Dict[str, Optional[float]]]:
+    """Momentum: usable RSI, honest MACD, optional 21d ratio / breadth. No invented series."""
+    _ = last, fifty_day, two_hundred, vol_ratio, pct_change, rs_vs_nifty, delivery_pct, roc
     notes: List[str] = []
     parts: Dict[str, Optional[float]] = {}
 
-    parts["rsi"] = band_rsi(rsi)
+    parts["rsi"] = band_rsi(rsi, trend_score=trend_score)
     notes.append(f"RSI {rsi:.0f}" if rsi is not None else "RSI —")
 
-    if macd is None:
-        parts["macd"] = None
-        notes.append("MACD —")
-    else:
-        parts["macd"] = 80 if macd > 0 else 30
-        notes.append("MACD +") if macd > 0 else notes.append("MACD −")
+    parts["macd"] = band_macd_state(
+        macd,
+        signal=macd_signal,
+        histogram=macd_hist,
+        histogram_prev=macd_hist_prev,
+    )
+    notes.append("MACD present" if parts["macd"] is not None else "MACD —")
 
-    if rs_vs_nifty is None:
-        parts["rsNifty"] = None
-        notes.append("RS vs Nifty —")
-    elif rs_vs_nifty > 1.5:
-        parts["rsNifty"] = 100
-        notes.append(f"RS vs Nifty {rs_vs_nifty:+.1f}%")
-    elif rs_vs_nifty >= 0:
-        parts["rsNifty"] = 80
-        notes.append(f"RS vs Nifty {rs_vs_nifty:+.1f}%")
-    elif rs_vs_nifty >= -1.5:
-        parts["rsNifty"] = 50
-        notes.append(f"RS vs Nifty {rs_vs_nifty:+.1f}%")
-    else:
-        parts["rsNifty"] = 20
-        notes.append(f"RS vs Nifty {rs_vs_nifty:+.1f}%")
+    ratio = None
+    if ret_21 is not None:
+        ratio = ret_21 / max(vol_21 if vol_21 is not None else 0.01, 0.01)
+    parts["ret"] = band_risk_adjusted(ratio)
+    notes.append(f"21d ratio {ratio:.2f}" if ratio is not None else "21d risk-adjusted —")
 
-    vol_score = None
-    if vol_ratio is not None:
-        if vol_ratio >= 2.0:
-            vol_score = 100
-        elif vol_ratio >= 1.5:
-            vol_score = 80
-        elif vol_ratio >= 1.0:
-            vol_score = 50
+    if fno_mode and oi_build:
+        build = str(oi_build).strip().lower()
+        if build in {"long_build", "long"}:
+            parts["breadth"] = 90
+            notes.append("OI long build-up")
+        elif build in {"short_build", "short"}:
+            parts["breadth"] = 15
+            notes.append("OI short build-up")
         else:
-            vol_score = 30
-        notes.append(f"vol {vol_ratio:.1f}x")
+            parts["breadth"] = 40
+            notes.append("OI unwinding")
     else:
-        notes.append("vol —")
-    if delivery_pct is not None:
-        if delivery_pct >= 50:
-            delivery_score = 100
-        elif delivery_pct >= 40:
-            delivery_score = 80
-        elif delivery_pct >= 30:
-            delivery_score = 50
-        else:
-            delivery_score = 20
-        notes.append(f"delivery {delivery_pct:.0f}%")
-        vol_score = (vol_score + delivery_score) / 2.0 if vol_score is not None else float(delivery_score)
-    else:
-        notes.append("delivery —")
-    parts["volume"] = vol_score
-
-    roc_value = roc if roc is not None else pct_change
-    if roc_value is None:
-        parts["roc"] = None
-        notes.append("ROC —")
-    elif 0.5 <= roc_value <= 3.0:
-        parts["roc"] = 80
-        notes.append(f"ROC {roc_value:+.1f}%")
-    elif 3.0 < roc_value <= 6.0:
-        parts["roc"] = 60
-        notes.append(f"ROC {roc_value:+.1f}%")
-    elif roc_value > 6.0:
-        parts["roc"] = 40
-        notes.append(f"ROC {roc_value:+.1f}%")
-    elif -2.0 <= roc_value < 0.5:
-        parts["roc"] = 55
-        notes.append(f"ROC {roc_value:+.1f}%")
-    else:
-        parts["roc"] = 30
-        notes.append(f"ROC {roc_value:+.1f}%")
+        parts["breadth"] = band_up_closes(up_closes)
+        notes.append(f"{up_closes}/10 up closes" if up_closes is not None else "Up-close breadth —")
 
     blended = renormalized_score(parts, MOMENTUM_WEIGHTS)
     if blended is None:
@@ -1076,6 +1422,9 @@ def _weighted_bysel_score(
     valuation: Optional[int],
     trend: Optional[int],
     momentum: Optional[int],
+    *,
+    mode: str = "balanced",
+    incomplete: bool = False,
 ) -> Optional[int]:
     blended = renormalized_score(
         {
@@ -1084,11 +1433,14 @@ def _weighted_bysel_score(
             "trend": float(trend) if trend is not None else None,
             "momentum": float(momentum) if momentum is not None else None,
         },
-        PILLAR_WEIGHTS,
+        _style_weights(mode),
     )
     if blended is None:
         return None
-    return int(round(blended))
+    score = int(round(blended))
+    if incomplete:
+        score = min(score, INCOMPLETE_TOTAL_CAP)
+    return score
 
 
 def detect_anomalies(row: Dict[str, Any]) -> List[Dict[str, str]]:
@@ -1162,17 +1514,25 @@ def missing_fields(row: Dict[str, Any]) -> List[str]:
         ("roe", "roe"),
         ("roce", "roce"),
         ("debtToEquity", "debtToEquity"),
-        ("interestCoverage", "interestCoverage"),
-        ("salesCagr", "salesCagr"),
-        ("profitCagr", "profitCagr"),
+        ("cfo", "cfo"),
+        ("pat", "pat"),
+        ("marginAvg3y", "marginAvg3y"),
         ("peg", "peg"),
         ("pb", "pb"),
         ("evEbitda", "evEbitda"),
         ("peMedian5y", "peMedian5y"),
+        ("eps", "eps"),
+        ("fcf", "fcf"),
         ("rsi", "rsi"),
         ("macd", "macd"),
-        ("deliveryPct", "delivery"),
         ("hhhl", "hhhl"),
+        ("rs63", "rs63"),
+        ("ret21", "ret21"),
+        ("r122", "r122"),
+        ("smooth", "smooth"),
+        ("h52", "h52"),
+        ("supertrendAbove", "supertrend"),
+        ("gsec10y", "gsec"),
         ("pe", "pe"),
         ("fiftyDayAverage", "fiftyDayAverage"),
         ("twoHundredDayAverage", "twoHundredDayAverage"),
@@ -1249,6 +1609,10 @@ def score_row(
     sector_pe: Optional[float],
     nifty_change: Optional[float] = None,
 ) -> Dict[str, Any]:
+    gsec_10y = _safe_float(row.get("gsec10y"))
+    if gsec_10y is None:
+        raw_gsec = os.getenv("INDIA_GSEC_10Y", "").strip()
+        gsec_10y = _safe_float(raw_gsec) if raw_gsec else None
     quality, q_notes, q_parts = score_quality(
         symbol=str(row.get("symbol") or ""),
         market_cap=_safe_float(row.get("marketCap")),
@@ -1262,6 +1626,17 @@ def score_row(
         promoter=row.get("promoter"),
         fcf=row.get("fcf"),
         sector=str(row.get("sector") or "Other"),
+        roa=row.get("roa"),
+        capital_adequacy=row.get("capitalAdequacy"),
+        cfo=row.get("cfo"),
+        pat=row.get("pat"),
+        margin=row.get("marginPct"),
+        margin_avg_3y=row.get("marginAvg3y"),
+        auditor_change=row.get("auditorChange"),
+        qualified_opinion=row.get("qualifiedOpinion"),
+        rpt_revenue_pct=row.get("rptRevenuePct"),
+        asm_gsm=row.get("asmGsm"),
+        promoter_delta_4q=row.get("promoterDelta4q"),
     )
     valuation, v_notes, v_parts = score_value(
         pe=row.get("pe"),
@@ -1270,6 +1645,18 @@ def score_row(
         peg=row.get("peg"),
         pb=row.get("pb"),
         ev_ebitda=row.get("evEbitda"),
+        sector=str(row.get("sector") or "Other"),
+        sector_pb=row.get("sectorPb"),
+        sector_ev_ebitda=row.get("sectorEvEbitda"),
+        own_median=row.get("ownMultipleMedian5y"),
+        eps=row.get("eps"),
+        last=row.get("last"),
+        gsec_10y=gsec_10y,
+        fcf=row.get("fcf"),
+        market_cap=row.get("marketCap"),
+        sales_growth=row.get("salesCagr") if row.get("salesCagr") is not None else row.get("revenueGrowth"),
+        profit_cagr=row.get("profitCagr"),
+        price_to_sales=row.get("priceToSales"),
     )
     trend, t_notes, t_parts = score_trend(
         last=row.get("last"),
@@ -1278,20 +1665,48 @@ def score_row(
         week52_high=row.get("fiftyTwoWeekHigh"),
         week52_low=row.get("fiftyTwoWeekLow"),
         hhhl=row.get("hhhl"),
+        fifty_rising=row.get("fiftyRising"),
+        supertrend_above=row.get("supertrendAbove"),
+        supertrend_days=row.get("supertrendDays"),
+        supertrend_flip_up=row.get("supertrendFlipUp"),
+        supertrend_flip_down=row.get("supertrendFlipDown"),
+        hhhl_structure=row.get("hhhlStructure"),
+        rs_63=row.get("rs63"),
+        volume_ratio=row.get("volumeRatio"),
     )
     rs_vs_nifty = None
     if nifty_change is not None and row.get("pctChange") is not None:
         rs_vs_nifty = float(row["pctChange"]) - float(nifty_change)
-    momentum, m_notes, m_parts = score_momentum(
-        last=row.get("last"),
-        rsi=row.get("rsi"),
-        vol_ratio=row.get("volumeRatio"),
-        pct_change=row.get("pctChange"),
-        macd=row.get("macd"),
-        rs_vs_nifty=rs_vs_nifty,
-        delivery_pct=row.get("deliveryPct"),
-        roc=row.get("roc"),
-    )
+    from .quantitative_momentum import score_momentum_qm, uses_qm_momentum
+
+    use_qm = uses_qm_momentum(mode)
+    if use_qm:
+        momentum, m_notes, m_parts = score_momentum_qm(
+            r122_percentile=row.get("r122Pct"),
+            smoothness=row.get("smooth"),
+            h52=row.get("h52"),
+            earn_percentile=row.get("earnPct"),
+        )
+    else:
+        momentum, m_notes, m_parts = score_momentum(
+            last=row.get("last"),
+            rsi=row.get("rsi"),
+            vol_ratio=row.get("volumeRatio"),
+            pct_change=row.get("pctChange"),
+            macd=row.get("macd"),
+            rs_vs_nifty=rs_vs_nifty,
+            delivery_pct=row.get("deliveryPct"),
+            roc=row.get("roc"),
+            trend_score=trend,
+            macd_signal=row.get("macdSignal"),
+            macd_hist=row.get("macdHist"),
+            macd_hist_prev=row.get("macdHistPrev"),
+            ret_21=row.get("ret21"),
+            vol_21=row.get("vol21"),
+            up_closes=row.get("upCloses"),
+            oi_build=row.get("oiBuild"),
+            fno_mode=mode == "fno",
+        )
     risk_score, risk_label, risk_notes = score_risk(
         debt_to_equity=row.get("debtToEquity"),
         pledge=row.get("pledge"),
@@ -1299,47 +1714,73 @@ def score_row(
         sector=str(row.get("sector") or "Other"),
     )
     missing = missing_fields(row)
-    bysel = _weighted_bysel_score(quality, valuation, trend, momentum)
+    q_used, q_total, q_cov, q_incomplete = _pillar_coverage(q_parts, list(QUALITY_WEIGHTS))
+    v_used, v_total, v_cov, v_incomplete = _pillar_coverage(v_parts, list(VALUATION_WEIGHTS))
+    t_used, t_total, t_cov, t_incomplete = _pillar_coverage(t_parts, list(TREND_WEIGHTS))
+    momentum_weights = QM_MOMENTUM_WEIGHTS if use_qm else MOMENTUM_WEIGHTS
+    m_used, m_total, m_cov, m_incomplete = _pillar_coverage(m_parts, list(momentum_weights))
+    _ = q_used, q_total, v_used, v_total, t_used, t_total, m_used, m_total
+    any_incomplete = q_incomplete or v_incomplete or t_incomplete or m_incomplete
+    bysel = _weighted_bysel_score(
+        quality, valuation, trend, momentum,
+        mode=mode,
+        incomplete=any_incomplete,
+    )
     rank_score = bysel if bysel is not None else 0
     rank_score = min(max(int(round(rank_score * _soft_filter_multiplier(mode, row))), 0), 100)
     label = conviction_label(bysel)
     quality_metrics = {
-        "roce": _metric(row.get("roce"), _score_int(q_parts.get("roce"))),
+        "roce": _metric(row.get("roa") if str(row.get("sector") or "") in BANK_LIKE_SECTORS else row.get("roce"), _score_int(q_parts.get("roce"))),
         "roe": _metric(row.get("roe"), _score_int(q_parts.get("roe"))),
         "debtToEquity": _metric(row.get("debtToEquity"), _score_int(q_parts.get("de"))),
-        "interestCoverage": _metric(row.get("interestCoverage"), _score_int(q_parts.get("interestCoverage"))),
-        "salesCagr": _metric(row.get("salesCagr"), _score_int(q_parts.get("salesCagr"))),
-        "profitCagr": _metric(row.get("profitCagr"), _score_int(q_parts.get("profitCagr"))),
-        "promoterPledge": _metric(row.get("pledge"), _score_int(q_parts.get("promoterPledge"))),
+        "cfo": _metric(row.get("cfo"), _score_int(q_parts.get("cfo"))),
+        "margin": _metric(row.get("marginPct"), _score_int(q_parts.get("margin"))),
+        "gov": _metric(row.get("pledge"), _score_int(q_parts.get("gov"))),
     }
     valuation_metrics = {
-        "pe": _metric(row.get("pe"), _score_int(v_parts.get("pe"))),
-        "peg": _metric(row.get("peg"), _score_int(v_parts.get("peg"))),
-        "pb": _metric(row.get("pb"), _score_int(v_parts.get("pb"))),
-        "evEbitda": _metric(row.get("evEbitda"), _score_int(v_parts.get("evEbitda"))),
+        "rel": _metric(row.get("pe"), _score_int(v_parts.get("rel"))),
+        "earn": _metric(row.get("eps"), _score_int(v_parts.get("earn"))),
+        "fcf": _metric(row.get("fcf"), _score_int(v_parts.get("fcf"))),
+        "growth": _metric(row.get("peg"), _score_int(v_parts.get("growth"))),
     }
     trend_metrics = {
-        "vs200": _metric(row.get("twoHundredDayAverage"), _score_int(t_parts.get("vs200"))),
-        "vs50": _metric(row.get("fiftyDayAverage"), _score_int(t_parts.get("vs50"))),
-        "cross": _metric(None, _score_int(t_parts.get("cross"))),
+        "ma": _metric(row.get("fiftyDayAverage"), _score_int(t_parts.get("ma"))),
+        "st": _metric(row.get("supertrendAbove"), _score_int(t_parts.get("st"))),
         "hhhl": _metric(row.get("hhhl"), _score_int(t_parts.get("hhhl"))),
-        "week52": _metric(None, _score_int(t_parts.get("week52"))),
-        "fiftyDayAverage": _metric(row.get("fiftyDayAverage"), _score_int(t_parts.get("vs50"))),
-        "twoHundredDayAverage": _metric(row.get("twoHundredDayAverage"), _score_int(t_parts.get("vs200"))),
+        "rs": _metric(row.get("rs63"), _score_int(t_parts.get("rs"))),
+        "volume": _metric(row.get("volumeRatio"), _score_int(t_parts.get("volume"))),
     }
-    momentum_metrics = {
-        "rsi": _metric(row.get("rsi"), _score_int(m_parts.get("rsi"))),
-        "macd": _metric(row.get("macd"), _score_int(m_parts.get("macd"))),
-        "rsNifty": _metric(rs_vs_nifty, _score_int(m_parts.get("rsNifty"))),
-        "volume": _metric(row.get("volumeRatio"), _score_int(m_parts.get("volume"))),
-        "volumeRatio": _metric(row.get("volumeRatio"), _score_int(m_parts.get("volume"))),
-        "roc": _metric(row.get("roc") if row.get("roc") is not None else row.get("pctChange"), _score_int(m_parts.get("roc"))),
-    }
+    if use_qm:
+        momentum_metrics = {
+            "r122": _metric(row.get("r122Pct"), _score_int(m_parts.get("r122"))),
+            "smooth": _metric(row.get("smooth"), _score_int(m_parts.get("smooth"))),
+            "h52": _metric(row.get("h52"), _score_int(m_parts.get("h52"))),
+            "earn": _metric(row.get("earnPct"), _score_int(m_parts.get("earn"))),
+        }
+    else:
+        momentum_metrics = {
+            "rsi": _metric(row.get("rsi"), _score_int(m_parts.get("rsi"))),
+            "macd": _metric(row.get("macd"), _score_int(m_parts.get("macd"))),
+            "ret": _metric(row.get("ret21"), _score_int(m_parts.get("ret"))),
+            "breadth": _metric(row.get("upCloses"), _score_int(m_parts.get("breadth"))),
+        }
     pillars = {
-        "quality": _pillar_payload(quality, quality_metrics, QUALITY_METRIC_WEIGHTS),
-        "valuation": _pillar_payload(valuation, valuation_metrics, VALUATION_METRIC_WEIGHTS),
-        "trend": _pillar_payload(trend, trend_metrics, TREND_METRIC_WEIGHTS),
-        "momentum": _pillar_payload(momentum, momentum_metrics, MOMENTUM_METRIC_WEIGHTS),
+        "quality": _pillar_payload(
+            quality, quality_metrics, QUALITY_METRIC_WEIGHTS,
+            coverage=q_cov, incomplete=q_incomplete,
+        ),
+        "valuation": _pillar_payload(
+            valuation, valuation_metrics, VALUATION_METRIC_WEIGHTS,
+            coverage=v_cov, incomplete=v_incomplete,
+        ),
+        "trend": _pillar_payload(
+            trend, trend_metrics, TREND_METRIC_WEIGHTS,
+            coverage=t_cov, incomplete=t_incomplete,
+        ),
+        "momentum": _pillar_payload(
+            momentum, momentum_metrics, momentum_weights,
+            coverage=m_cov, incomplete=m_incomplete,
+        ),
     }
     top_bits: List[str] = []
     for name in ("quality", "valuation", "trend", "momentum"):
@@ -1355,6 +1796,9 @@ def score_row(
     token = score_label_token(bysel)
     setup = practice_setup(row, momentum_score=momentum) if mode == "swing" else None
     anomalies = detect_anomalies(row)
+    for flag in row.get("qmFlags") or []:
+        if isinstance(flag, dict) and flag.get("id"):
+            anomalies.append(flag)
     return {
         "quality": quality,
         "valuation": valuation,
@@ -1371,6 +1815,10 @@ def score_row(
         "convictionLabel": label,
         "score_label": token,
         "scoreLabel": token,
+        "styleMode": "long_term" if mode == "long_term" else ("swing" if mode == "swing" else ("fno" if mode == "fno" else "balanced")),
+        "styleWeights": _style_weights(mode),
+        "incomplete": any_incomplete,
+        "formulaChangedDate": FORMULA_CHANGED_DATE,
         "explanation": explanation,
         "ai_summary": explanation,
         "aiSummary": explanation,
@@ -1484,6 +1932,31 @@ def normalize_quote_row(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "fcf": fcf,
         "hhhl": _optional_metric(raw, "hhhl"),
         "pledge": _optional_metric(raw, "pledge"),
+        "cfo": _optional_metric(raw, "cfo", "operatingCashflow"),
+        "pat": _optional_metric(raw, "pat", "netIncomeToCommon"),
+        "eps": _optional_metric(raw, "eps", "trailingEps", "epsTrailingTwelveMonths"),
+        "roa": normalize_roe_pct(_first_present(raw, "roa", "returnOnAssets")) if _first_present(raw, "roa", "returnOnAssets") not in (None, "") else None,
+        "capitalAdequacy": _optional_metric(raw, "capitalAdequacy", "car"),
+        "marginAvg3y": _optional_metric(raw, "marginAvg3y"),
+        "rs63": _optional_metric(raw, "rs63"),
+        "ret21": _optional_metric(raw, "ret21"),
+        "vol21": _optional_metric(raw, "vol21"),
+        "gsec10y": _optional_metric(raw, "gsec10y"),
+        "supertrendAbove": raw.get("supertrendAbove"),
+        "hhhlStructure": raw.get("hhhlStructure"),
+        "upCloses": _safe_int(raw.get("upCloses")),
+        "r122": _optional_metric(raw, "r122"),
+        "r122Pct": _optional_metric(raw, "r122Pct"),
+        "r1m": _optional_metric(raw, "r1m"),
+        "r1mPct": _optional_metric(raw, "r1mPct"),
+        "smooth": _optional_metric(raw, "smooth"),
+        "h52": _optional_metric(raw, "h52"),
+        "earnPct": _optional_metric(raw, "earnPct"),
+        "epsRevision3m": _optional_metric(raw, "epsRevision3m"),
+        "qmRank": _safe_int(raw.get("qmRank")),
+        "listedSessions": _safe_int(raw.get("listedSessions")),
+        "qmFlags": raw.get("qmFlags") if isinstance(raw.get("qmFlags"), list) else [],
+        "asmGsm": raw.get("asmGsm"),
         "promoter": _optional_metric(raw, "promoter"),
         "nseSectorPe": _optional_metric(raw, "nseSectorPe"),
         "salesCagrYears": _safe_int(raw.get("salesCagrYears")),
@@ -1744,8 +2217,16 @@ def _education(mode: str) -> Dict[str, Any]:
         title = "High Quality"
         summary = "Sorted by the Quality pillar from available ROE/ROCE/D/E only. Missing metrics are skipped."
     elif mode == "momentum":
-        title = "Momentum"
-        summary = "Sorted by the Momentum pillar (RSI/volume/ROC when present). MACD stays — when missing."
+        title = "QM Leaders"
+        summary = (
+            "Quality Momentum is sequential, not a fifth pillar: drop names that fail "
+            "the quality bar (ROE ≥ 12%, D/E ≤ 1.5 and interest cover ≥ 2 for non-financials, "
+            "pledge < 20%, no ASM/GSM), then rank survivors on 12-2 + smoothness + 52-week closeness. "
+            "Quality and momentum stay separate numbers. "
+            "Badges: Quality Momentum · Quality, trend mixed · Speculative momentum · Weak. "
+            "Not official Nifty200 Quality 30 / Momentum 30 and not a buy list. "
+            "Missing ROE fails the bar; missing pledge/D/E is skipped, not invented."
+        )
     elif mode == "value":
         title = "Value"
         summary = "Sorted by the Valuation pillar (PE vs sector-ish / PEG when present)."
@@ -1784,10 +2265,10 @@ def _education(mode: str) -> Dict[str, Any]:
         "summary": summary,
         "filters": filters,
         "scoreGuide": FORMULA_NOTE + (
-            " Labels: 80–100 High conviction setup (education); 65–79 Attractive on these factors; "
-            "50–64 Neutral; 35–49 Caution; <35 Weak on these factors. "
+            " Labels: 80–100 Strong; 65–79 Good; 50–64 Mixed; 35–49 Weak; 0–34 Poor. "
             "Never Strong Buy / Buy / Hold / Avoid."
         ),
+        "formulaChangedDate": FORMULA_CHANGED_DATE,
         "riskNote": risk_note,
         "disclaimer": DISCLAIMER,
         "dataLimits": (
@@ -1819,6 +2300,18 @@ def build_scanner_payload(
         normalized = normalize_quote_row(raw)
         if normalized:
             rows.append(normalized)
+
+    from .quantitative_momentum import (
+        apply_qm_to_rows,
+        cached_closes,
+        evaluate_quality_gates,
+        nifty_absolute_regime,
+        qm_style_badge,
+        sequential_qm_sleeve,
+    )
+
+    qm_regime = nifty_absolute_regime(cached_closes("NIFTY50") or cached_closes("NIFTY") or cached_closes("^NSEI"))
+    apply_qm_to_rows(rows, regime=qm_regime)
 
     sector_pe = _sector_pe_map(rows)
     scored: List[Dict[str, Any]] = []
@@ -1881,10 +2374,32 @@ def build_scanner_payload(
                 "profitCagr": row.get("profitCagr"),
                 "nseSectorPe": row.get("nseSectorPe"),
                 "roceAvg": row.get("roceAvg"),
+                "r122": row.get("r122"),
+                "r122Pct": row.get("r122Pct"),
+                "h52": row.get("h52"),
+                "smooth": row.get("smooth"),
+                "qmRank": row.get("qmRank"),
+                "advInr": row.get("advInr"),
             },
+            "qmRank": row.get("qmRank"),
+            "qualityGate": evaluate_quality_gates(
+                roe=row.get("roe"),
+                debt_to_equity=row.get("debtToEquity"),
+                interest_coverage=row.get("interestCoverage"),
+                pledge=row.get("pledge"),
+                asm_gsm=row.get("asmGsm"),
+                sector=str(row.get("sector") or "Other"),
+                eps_years=row.get("profitCagrYears") or row.get("epsYears"),
+                loss_streak=row.get("lossStreak"),
+            ),
+            "qmBadge": qm_style_badge(scores.get("quality"), scores.get("momentum")),
+            "qualityMomentum": qm_style_badge(scores.get("quality"), scores.get("momentum"))
+            == "Quality Momentum",
             "qualityScreen": quality_screen,
             "missing": scores["missing"],
             "anomalies": scores.get("anomalies") or [],
+            "incomplete": scores.get("incomplete") or False,
+            "styleMode": scores.get("styleMode") or "balanced",
         })
 
     def _rank(item: Dict[str, Any]) -> Tuple[int, int, str]:
@@ -1912,6 +2427,9 @@ def build_scanner_payload(
         with_setup = [item for item in scored if item.get("setup")]
         cap = min(max(int(limit), 5), 15)
         shortlist = with_setup[:cap]
+    elif mode_key == "momentum":
+        sleeve = sequential_qm_sleeve(scored, limit=min(max(int(limit), 5), 30))
+        shortlist = sleeve
     elif mode_key == "custom":
         shortlist = scored[: min(max(int(limit), 5), 40)]
     elif mode_key == "quality_screen":
@@ -1936,6 +2454,8 @@ def build_scanner_payload(
         "quotedCount": len(rows),
         "disclaimer": DISCLAIMER,
         "formulaNote": FORMULA_NOTE,
+        "formulaChangedDate": FORMULA_CHANGED_DATE,
+        "qmRegime": qm_regime,
         "education": _education(mode_key),
         "rows": shortlist,
     }
@@ -2011,6 +2531,12 @@ def get_market_scanner(
                         merged_quotes.append(quote)
                 quotes = merged_quotes
                 schedule_nse_quality_fill(symbols, limit=12)
+                try:
+                    from .quantitative_momentum import schedule_qm_history_fill
+
+                    schedule_qm_history_fill(["NIFTY50", *symbols], limit=12)
+                except Exception as exc:
+                    logger.debug("scanner.qm_fill_schedule_failed reason=%s", exc)
             except Exception as exc:
                 logger.debug("scanner.nse_quality_overlay_failed reason=%s", exc)
         except TypeError:
