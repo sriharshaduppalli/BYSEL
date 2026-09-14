@@ -114,7 +114,7 @@ from ..stock_enricher import normalize_hinglish
 from ..market_data import (
     fetch_quote, fetch_quote_history, fetch_quotes, get_all_symbols, get_default_symbols,
     search_stocks, get_symbols_with_names, get_stock_name, INDIAN_STOCKS,
-    fetch_market_movers, get_stock_catalog,
+    fetch_market_movers, get_stock_catalog, last_known_print,
 )
 from ..market_news import (
     MARKET_NEWS_TIMEOUT_SECONDS,
@@ -1621,10 +1621,21 @@ async def get_all_quotes_endpoint():
 
 @router.get("/quotes/{symbol}", response_model=Quote, response_model_exclude_none=True)
 async def get_single_quote_endpoint(symbol: str):
-    """Get a live quote for a single stock symbol."""
-    q = await asyncio.to_thread(fetch_quote, symbol.upper())
-    if q["last"] == 0:
-        raise HTTPException(status_code=404, detail=f"Quote not found for {symbol}")
+    """Live quote for one symbol. last=0 is a miss, not 'stock not found'."""
+    token = (symbol or "").strip().upper()
+    if not token:
+        raise HTTPException(status_code=400, detail="Symbol is required")
+    q = await asyncio.to_thread(fetch_quote, token)
+    try:
+        last_px = float((q or {}).get("last") or 0.0)
+    except (TypeError, ValueError):
+        last_px = 0.0
+    if last_px <= 0:
+        known = await asyncio.to_thread(last_known_print, token)
+        if known and float((known or {}).get("last") or 0.0) > 0:
+            q = known
+    if not q:
+        q = {"symbol": token, "last": 0.0, "pctChange": 0.0}
     return _quote_from_raw(q)
 
 
@@ -2158,6 +2169,10 @@ async def market_news_endpoint(
         )
         stale = peek_stale_news(requested_symbols or None, limit)
         return stale or empty_market_news(requested_symbols or None, limit)
+    except Exception as exc:
+        logger.warning("market_news_failed reason=%s", exc)
+        stale = peek_stale_news(requested_symbols or None, limit)
+        return stale or empty_market_news(requested_symbols or None, limit)
 
 
 @router.get("/market/movers", response_model=MarketMoversResponse)
@@ -2555,10 +2570,19 @@ async def ai_ask_endpoint(
         ):
             try:
                 from ..ai_engine import _build_stock_suggestions
+                from ..trade_cta import allow_response_symbol, user_named_symbol
                 symbol = str(result.get("symbol") or "").strip().upper()
                 if not symbol:
-                    symbol = str(extract_symbol_from_query(normalized_query) or "").strip().upper()
-                if symbol:
+                    symbol = str(user_named_symbol(user_text) or "").strip().upper()
+                if symbol and allow_response_symbol(
+                    user_text,
+                    source=source,
+                    profile=str((query_contract.profile if query_contract else "") or ""),
+                    intent=intent_name,
+                    follow_up=bool(
+                        query_contract and getattr(query_contract.slots, "follow_up", False)
+                    ),
+                ):
                     exclude = {
                         "PREDICT": "prediction",
                         "BUY_SELL": "buy_sell",
@@ -2582,7 +2606,20 @@ async def ai_ask_endpoint(
         if suggestions:
             user_response["suggestions"] = list(suggestions)[:8]
 
-        return user_response
+        from ..trade_cta import sanitize_ask_payload
+
+        return sanitize_ask_payload(
+            user_response,
+            user_text,
+            source=source,
+            profile=str(
+                (query_contract.profile if query_contract else "")
+                or (intent_result or {}).get("profile")
+                or ""
+            ),
+            intent=str(feedback_intent or intent_name or ""),
+            follow_up=bool(query_contract and getattr(query_contract.slots, "follow_up", False)),
+        )
 
     # Parse tier preference
     requested_tier = (body.tier or "auto").lower().strip()
@@ -2602,14 +2639,41 @@ async def ai_ask_endpoint(
     user_text = _extract_user_query(body.query)
     expanded_query = expand_acronyms_in_query(user_text)
     normalized_query = normalize_hinglish(expanded_query)
+    if re.search(
+        r"^(both|both of (them|those)|compare both|those two)\b",
+        (user_text or "").strip(),
+        flags=re.I,
+    ) and body.conversation_history:
+        try:
+            from indian_stock_llm.query_contract import _prior_compare_pair
+
+            pair = _prior_compare_pair(body.conversation_history)
+            if pair:
+                normalized_query = f"Compare {pair[0]} and {pair[1]}"
+        except Exception:
+            pass
     query_contract = None
     try:
-        from indian_stock_llm.query_contract import resolve_query_contract
+        from indian_stock_llm.query_contract import (
+            detect_profile,
+            resolve_query_contract,
+            should_inherit_symbol,
+        )
+        from ..trade_cta import is_trade_followup, user_named_symbol
 
+        history_for_contract = body.conversation_history
+        screen_for_contract = body.screen_context
+        _profile_guess, _, _ = detect_profile(normalized_query)
+        _named = bool(user_named_symbol(user_text))
+        if not should_inherit_symbol(_profile_guess, user_text, _named) and not is_trade_followup(
+            user_text
+        ):
+            history_for_contract = None
+            screen_for_contract = None
         query_contract = resolve_query_contract(
             normalized_query,
-            conversation_history=body.conversation_history,
-            screen_context=body.screen_context,
+            conversation_history=history_for_contract,
+            screen_context=screen_for_contract,
         )
         if query_contract.resolved_query:
             normalized_query = query_contract.resolved_query
@@ -2666,7 +2730,9 @@ async def ai_ask_endpoint(
     }
     detected_intent = intent_result.get("intent", "GENERAL")
     intent_confidence = int(intent_result.get("confidence", 0) or 0)
-    explicit_symbol = extract_symbol_from_query(normalized_query)
+    from ..trade_cta import user_named_symbol as _named_stock
+
+    explicit_symbol = _named_stock(user_text) or extract_symbol_from_query(user_text)
     educational_like = (
         detected_intent in {"EDUCATIONAL", "CALCULATION", "COMPARE_CONCEPTS"}
         or bool(query_contract and query_contract.profile in {"literacy", "session", "compare_concepts"})
@@ -2677,7 +2743,16 @@ async def ai_ask_endpoint(
             flags=re.IGNORECASE,
         ))
     )
-    if query_contract and query_contract.clarifier and not educational_like:
+    named_compare = bool(
+        query_contract
+        and query_contract.profile == "compare"
+        and (
+            query_contract.slots.peer_symbols
+            or bool(query_contract.slots.symbol)
+        )
+        and re.search(r"\b(compare|vs|versus|against|with)\b", user_text, flags=re.I)
+    )
+    if query_contract and query_contract.clarifier and not educational_like and not named_compare:
         return _validated({"answer": query_contract.clarifier}, "clarifier", requested_tier)
     if (
         detected_intent in stock_intents
@@ -2744,11 +2819,9 @@ async def ai_ask_endpoint(
     if needs_rule_first:
         rule_result = await asyncio.to_thread(ai_assistant, rule_query, None, auth_user_id)
     else:
-        light_symbol = (
-            explicit_symbol
-            or extract_symbol_from_query(normalized_query)
-            or extract_symbol_from_query(body.query)
-        )
+        light_symbol = explicit_symbol
+        if not light_symbol and query_contract and query_contract.slots.follow_up:
+            light_symbol = query_contract.slots.symbol
         rule_result = {"symbol": light_symbol, "answer": "", "data": {}}
         # Price comes from enrich() on the LLM path — a second Yahoo fetch_quote
         # (ticker.info) used to add 5–15s before the model even started.
@@ -2763,24 +2836,24 @@ async def ai_ask_endpoint(
         # Extract symbols from USER TEXT ONLY — never from the Android
         # "user_query:… | context:holdings=HCLTECH:…,ICICIBANK:…" wrapper.
         from ..stock_enricher import extract_all_symbols_from_query, extract_entities_from_query, normalize_hinglish, extract_time_window_from_query, order_symbols_in_query
-        all_symbols = extract_all_symbols_from_query(normalized_query)
+        symbol_source = (
+            normalized_query
+            if query_contract and query_contract.slots.follow_up
+            else user_text
+        )
+        all_symbols = extract_all_symbols_from_query(symbol_source)
         # Preserve left-to-right order as written, but never let prefix tokens
         # like TECH beat TECHM in "tech mahindra".
         if all_symbols:
-            all_symbols = order_symbols_in_query(all_symbols, normalized_query)
+            all_symbols = order_symbols_in_query(all_symbols, symbol_source)
 
-        # Resolve primary: prefer tickers named in the user question (compare/buy),
-        # then rule-engine, then context wrapper as last resort.
-        query_symbol = all_symbols[0] if all_symbols else extract_symbol_from_query(normalized_query)
+        # Resolve primary from the user's words only — never the Android
+        # "user_query:… | context:symbol=TCS" wrapper or an open quote.
+        query_symbol = all_symbols[0] if all_symbols else extract_symbol_from_query(symbol_source)
         if detected_intent == "COMPARE" and all_symbols:
             symbol = all_symbols[0]
         else:
-            symbol = (
-                query_symbol
-                or rule_result.get("symbol")
-                or (rule_result.get("detected_stock") or {}).get("symbol")
-                or extract_symbol_from_query(body.query)
-            )
+            symbol = query_symbol or rule_result.get("symbol")
 
         entities = extract_entities_from_query(normalized_query)
         time_window = extract_time_window_from_query(normalized_query)
@@ -2968,7 +3041,6 @@ async def ai_ask_endpoint(
                     sym = str((row or {}).get("symbol") or "").upper()
                     if sym:
                         tips.append(f"Analyze {sym}")
-                        tips.append(f"Should I buy {sym}?")
                 rule_result["suggestions"] = tips[:6]
             return _validated(rule_result, "rule-engine", requested_tier)
 
@@ -3048,6 +3120,14 @@ async def ai_ask_endpoint(
                 except Exception:
                     pass
                 llm_context["original_query"] = user_text
+                if query_contract and query_contract.profile in {
+                    "literacy",
+                    "small_talk",
+                    "compare_concepts",
+                    "session",
+                } and not query_contract.slots.follow_up:
+                    llm_context.pop("symbol", None)
+                    llm_context.pop("conversation_history", None)
                 llm_result = await asyncio.to_thread(ask_llm, ism_query, llm_context or None)
                 ism_answer = str((llm_result or {}).get("answer") or "").strip()
                 # App chat is ISM-first: keep a real ISM answer even if confidence is
@@ -3076,7 +3156,6 @@ async def ai_ask_endpoint(
                                 sym = str((row or {}).get("symbol") or "").upper()
                                 if sym:
                                     tips.append(f"Analyze {sym}")
-                                    tips.append(f"Should I buy {sym}?")
                             merged["suggestions"] = tips[:6]
                     else:
                         if not merged.get("symbol"):

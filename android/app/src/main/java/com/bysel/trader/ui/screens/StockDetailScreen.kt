@@ -76,6 +76,7 @@ import com.bysel.trader.data.models.StockAnalysis
 import com.bysel.trader.data.models.StockPredictionResponse
 import com.bysel.trader.ui.components.appOutlinedTextFieldColors
 import com.bysel.trader.ui.components.PaperPositionSizeHelper
+import com.bysel.trader.ui.components.PaperTradeQtyDialog
 import com.bysel.trader.ui.components.StockLiteracyCatalog
 import com.bysel.trader.ui.components.PriceHistoryChart
 import com.bysel.trader.ui.components.InfoChip
@@ -136,6 +137,7 @@ fun StockDetailScreen(
     val symbolXray by viewModel.symbolXray.collectAsStateWithLifecycle()
     val scoreHistory by viewModel.scoreHistory.collectAsStateWithLifecycle()
     val walletBalance by viewModel.walletBalance.collectAsStateWithLifecycle()
+    val holdings by viewModel.holdings.collectAsStateWithLifecycle()
     val stockAnalysis by viewModel.stockAnalysis.collectAsStateWithLifecycle()
     val stockPrediction by viewModel.stockPrediction.collectAsStateWithLifecycle()
     val stockResearchLoading by viewModel.stockResearchLoading.collectAsStateWithLifecycle()
@@ -152,14 +154,14 @@ fun StockDetailScreen(
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    "Stock not found",
+                    "Opening this stock…",
                     color = theme.text,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    "That chart link didn’t resolve to a valid NSE symbol. Go back and try again from a stock-specific reply.",
+                    "Waiting for the last saved price. This is not a missing listing — go back and tap the name again if it stays blank.",
                     color = theme.textSecondary,
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -378,8 +380,10 @@ fun StockDetailScreen(
             StockDetailActionBar(
                 quote = quote,
                 tradeQuantity = tradeQuantity,
-                onBuy = { onBuy(quote.symbol, tradeQuantity) },
-                onSell = { onSell(quote.symbol, tradeQuantity) },
+                heldQty = holdings.firstOrNull { it.symbol.equals(quote.symbol, ignoreCase = true) }?.qty,
+                walletBalance = walletBalance,
+                onBuy = { qty -> onBuy(quote.symbol, qty) },
+                onSell = { qty -> onSell(quote.symbol, qty) },
             )
         }
     ) { paddingValues ->
@@ -1447,8 +1451,10 @@ private fun DetailSnapshotCard(quote: Quote) {
 private fun StockDetailActionBar(
     quote: Quote,
     tradeQuantity: Int,
-    onBuy: () -> Unit,
-    onSell: () -> Unit,
+    heldQty: Int? = null,
+    walletBalance: Double = 0.0,
+    onBuy: (Int) -> Unit,
+    onSell: (Int) -> Unit,
 ) {
     val theme = LocalAppTheme.current
     var showConfirmDialog by remember { mutableStateOf(false) }
@@ -1497,44 +1503,18 @@ private fun StockDetailActionBar(
     }
 
     if (showConfirmDialog) {
-        val estValue = quote.last * tradeQuantity
-        AlertDialog(
-            onDismissRequest = { showConfirmDialog = false },
-            title = {
-                Text(
-                    "Confirm $pendingAction Order",
-                    fontWeight = FontWeight.Bold,
-                    color = if (pendingAction == "BUY") theme.positive else theme.negative
-                )
+        PaperTradeQtyDialog(
+            symbol = quote.symbol,
+            side = pendingAction,
+            lastPrice = quote.last.takeIf { it > 0 },
+            initialQty = tradeQuantity.coerceAtLeast(1),
+            maxSellQty = heldQty,
+            walletBalance = walletBalance,
+            onDismiss = { showConfirmDialog = false },
+            onConfirm = { qty ->
+                showConfirmDialog = false
+                if (pendingAction == "BUY") onBuy(qty) else onSell(qty)
             },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("${quote.symbol} • $tradeQuantity share${if (tradeQuantity == 1) "" else "s"}")
-                    Text("Market price: ${formatCurrency(quote.last)}")
-                    Text(
-                        "Est. value: ₹${String.format("%,.2f", estValue)}",
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showConfirmDialog = false
-                        if (pendingAction == "BUY") onBuy() else onSell()
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (pendingAction == "BUY") theme.positive else theme.negative
-                    )
-                ) {
-                    Text("Confirm $pendingAction")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showConfirmDialog = false }) {
-                    Text("Cancel")
-                }
-            }
         )
     }
 }

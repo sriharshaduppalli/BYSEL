@@ -6,6 +6,7 @@ import com.bysel.trader.data.api.PortfolioValue
 import com.bysel.trader.data.api.RetrofitClient
 import com.bysel.trader.data.live.LiveMarketDataClient
 import com.bysel.trader.data.api.TradeHistory
+import com.bysel.trader.data.WatchlistSymbols
 import com.bysel.trader.data.local.BYSELDatabase
 import com.bysel.trader.data.fno.TeachingFutures
 import com.bysel.trader.data.fno.TeachingOptionChain
@@ -13,6 +14,7 @@ import com.bysel.trader.data.models.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flow
 import retrofit2.HttpException
 import java.util.UUID
@@ -141,10 +143,29 @@ open class TradingRepository(private val database: BYSELDatabase) {
     suspend fun getQuote(symbol: String): Result<Quote> {
         return try {
             val quote = apiService.getQuote(symbol)
-            database.quoteDao().insertQuote(quote)
+            if (quote.last > 0.0) {
+                database.quoteDao().insertQuote(quote)
+            }
             Result.Success(quote)
         } catch (e: Exception) {
-            Result.Error(e.message ?: "Unknown error")
+            val cached = cachedQuoteOrNull(symbol)
+            if (cached != null) {
+                Result.Success(cached)
+            } else {
+                Result.Error(NetworkErrorMessages.forMarket(e, "Couldn't refresh that price"))
+            }
+        }
+    }
+
+    private suspend fun cachedQuoteOrNull(symbol: String): Quote? {
+        val aliases = WatchlistSymbols.aliases(symbol).toList().ifEmpty { listOf(symbol) }
+        return try {
+            database.quoteDao().getQuotesBySymbols(aliases).firstOrNull().orEmpty()
+                .firstOrNull { WatchlistSymbols.matches(it.symbol, symbol) && it.last > 0.0 }
+                ?: database.quoteDao().getQuotesBySymbols(aliases).firstOrNull().orEmpty()
+                    .firstOrNull { WatchlistSymbols.matches(it.symbol, symbol) }
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -473,7 +494,7 @@ open class TradingRepository(private val database: BYSELDatabase) {
             val response = apiService.getMarketNews(symbols = symbolQuery, limit = limit)
             Result.Success(response)
         } catch (e: Exception) {
-            Result.Error(toNetworkErrorMessage(e, "Failed to load market news"))
+            Result.Error(NetworkErrorMessages.forNews(e))
         }
     }
 

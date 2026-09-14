@@ -121,6 +121,14 @@ class NetworkErrorMessagesTest {
     }
 
     @Test
+    fun newsHttp5xxIsNotMarketServerCopy() {
+        val msg = NetworkErrorMessages.forNews(RuntimeException("HTTP 503"))
+        assertFalse(msg.contains("Market server", ignoreCase = true))
+        assertTrue(msg.contains("headlines", ignoreCase = true))
+        assertTrue(msg.contains("refresh", ignoreCase = true))
+    }
+
+    @Test
     fun marketOfflineKeepsLastSavedCopy() {
         val msg = NetworkErrorMessages.forMarket(
             UnknownHostException("Unable to resolve host"),

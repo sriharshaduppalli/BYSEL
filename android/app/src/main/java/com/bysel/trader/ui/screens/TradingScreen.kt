@@ -422,7 +422,7 @@ fun TradingScreen(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun SpotTradingWorkspace(
     isLoading: Boolean,
@@ -446,6 +446,7 @@ private fun SpotTradingWorkspace(
     val sortMode = remember(sortModeName) {
         runCatching { WatchlistSortMode.valueOf(sortModeName) }.getOrDefault(WatchlistSortMode.MOVE)
     }
+    var pendingRemoveSymbol by remember { mutableStateOf<String?>(null) }
     val watchlistSymbols by viewModel.watchlist.collectAsStateWithLifecycle()
     LaunchedEffect(error) {
         if (error != null && isDerivativesFormMessage(error)) {
@@ -677,6 +678,25 @@ private fun SpotTradingWorkspace(
             }
         }
 
+        pendingRemoveSymbol?.let { symbol ->
+            AlertDialog(
+                onDismissRequest = { pendingRemoveSymbol = null },
+                title = { Text("Remove from My Watchlist?") },
+                text = { Text("$symbol will be taken off this device list.") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            viewModel.removeFromWatchlist(symbol)
+                            pendingRemoveSymbol = null
+                        }
+                    ) { Text("Remove") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingRemoveSymbol = null }) { Text("Keep") }
+                },
+            )
+        }
+
         if (showAddWatchlistDialog) {
             AddToWatchlistSheet(
                 query = watchSearchQuery,
@@ -827,13 +847,14 @@ private fun SpotTradingWorkspace(
                                 SpotSessionBanner(marketStatus = marketStatus)
                             }
                         }
-                        items(watchlistQuotes, key = { it.symbol }) { quote ->
+                        items(watchlistQuotes, key = { WatchlistSymbols.normalize(it.symbol) }) { quote ->
+                            key(WatchlistSymbols.normalize(quote.symbol)) {
                             val swipeDismissState = rememberSwipeToDismissBoxState(
                                 confirmValueChange = { value ->
                                     if (value == SwipeToDismissBoxValue.EndToStart) {
-                                        viewModel.removeFromWatchlist(quote.symbol)
-                                        true
-                                    } else false
+                                        pendingRemoveSymbol = quote.symbol
+                                    }
+                                    false
                                 }
                             )
                             SwipeToDismissBox(
@@ -863,6 +884,7 @@ private fun SpotTradingWorkspace(
                                 enableDismissFromEndToStart = true,
                             ) {
                                 TradingQuoteCard(quote) { onSelectQuote(quote) }
+                            }
                             }
                         }
                         if (watchlistQuotes.isEmpty() && missingWatchlistSymbols.isEmpty()) {
@@ -959,9 +981,9 @@ private fun SpotTradingWorkspace(
                             val swipeDismissState = rememberSwipeToDismissBoxState(
                                 confirmValueChange = { value ->
                                     if (value == SwipeToDismissBoxValue.EndToStart) {
-                                        viewModel.removeFromWatchlist(quote.symbol)
-                                        true
-                                    } else false
+                                        pendingRemoveSymbol = quote.symbol
+                                    }
+                                    false
                                 }
                             )
                             SwipeToDismissBox(

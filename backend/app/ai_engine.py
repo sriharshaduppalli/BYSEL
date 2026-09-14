@@ -2185,6 +2185,15 @@ def _build_stock_suggestions(
         exclude_set.add("quote")
     if exclude == "overvaluation":
         exclude_set.add("fundamentals")
+    try:
+        from .trade_cta import allow_buy_sell_chips, is_non_stock_topic
+
+        if is_non_stock_topic(query, intent=intent, profile=profile) or not allow_buy_sell_chips(
+            query, intent=intent, profile=profile, symbol=symbol
+        ):
+            exclude_set.add("buy_sell")
+    except Exception:
+        pass
 
     ranked = sorted(
         pool,

@@ -385,7 +385,7 @@ _NAME_TO_SYMBOL: dict[str, str] = {
     "tcs": "TCS", "tata consultancy": "TCS",
     "infosys": "INFY", "infy": "INFY",
     "hdfc bank": "HDFCBANK", "hdfc": "HDFCBANK",
-    "icici bank": "ICICIBANK", "icici": "ICICIBANK",
+    "icici bank": "ICICIBANK", "icici": "ICICIBANK", "icicbank": "ICICIBANK",
     "wipro": "WIPRO",
     "hcl": "HCLTECH", "hcltech": "HCLTECH",
     "sbi": "SBIN", "state bank": "SBIN",

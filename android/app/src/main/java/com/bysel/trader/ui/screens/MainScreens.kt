@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -41,7 +42,11 @@ import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.Holding
 import com.bysel.trader.data.models.PaperPortfolioRisk
 import com.bysel.trader.data.models.PortfolioHealthScore
+import com.bysel.trader.data.models.SipPlan
+import com.bysel.trader.portfolio.HoldingAssetClass
+import com.bysel.trader.portfolio.HoldingsClassifier
 import com.bysel.trader.portfolio.PaperPortfolioRiskMath
+import com.bysel.trader.ui.components.PaperTradeQtyDialog
 import com.bysel.trader.ui.components.QuoteCard
 import com.bysel.trader.ui.components.StockNotesIcon
 import com.bysel.trader.ui.components.LoadingScreen
@@ -83,14 +88,13 @@ fun WatchlistScreen(
     val sortMode = remember(sortModeName) {
         runCatching { WatchlistSortMode.valueOf(sortModeName) }.getOrDefault(WatchlistSortMode.MOVE)
     }
+    var pendingRemoveSymbol by remember { mutableStateOf<String?>(null) }
     val displayQuotes = remember(quotes, watchlistSymbols) {
         val saved = WatchlistSymbols.normalizeAll(watchlistSymbols)
-        if (saved.isEmpty()) {
-            quotes
-        } else {
-            saved.map { symbol ->
-                WatchlistSymbols.findQuote(quotes, symbol) ?: Quote(symbol = symbol)
-            }
+        // Never substitute the live tape for an empty saved list — that looked
+        // like "My Watchlist" and swipe-remove then persisted an empty overwrite.
+        saved.map { symbol ->
+            WatchlistSymbols.findQuote(quotes, symbol) ?: Quote(symbol = symbol)
         }
     }
     val sortedQuotes = remember(displayQuotes, sortMode) { displayQuotes.sortedByWatchlistMode(sortMode) }
@@ -206,11 +210,13 @@ fun WatchlistScreen(
                             .padding(horizontal = 8.dp),
                         contentPadding = PaddingValues(bottom = 96.dp),
                     ) {
-                        items(items = sortedQuotes, key = { it.symbol }) { quote ->
+                        items(items = sortedQuotes, key = { WatchlistSymbols.normalize(it.symbol) }) { quote ->
+                            key(WatchlistSymbols.normalize(quote.symbol)) {
                             SwipeToDismissItem(
                                 item = quote,
                                 modifier = Modifier.fillMaxWidth(),
-                                onDismiss = { onRemove(quote.symbol) },
+                                onDismiss = { pendingRemoveSymbol = quote.symbol },
+                                requireConfirmation = true,
                                 dismissIcon = Icons.Filled.Delete,
                                 dismissLabel = "Remove from My list",
                             ) {
@@ -244,11 +250,31 @@ fun WatchlistScreen(
                                     UpgradedQuoteCard(quote) { onQuoteClick(quote) }
                                 }
                             }
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    pendingRemoveSymbol?.let { symbol ->
+        AlertDialog(
+            onDismissRequest = { pendingRemoveSymbol = null },
+            title = { Text("Remove from My Watchlist?") },
+            text = { Text("$symbol will be taken off this device list.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onRemove(symbol)
+                        pendingRemoveSymbol = null
+                    }
+                ) { Text("Remove") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRemoveSymbol = null }) { Text("Keep") }
+            },
+        )
     }
 }
 
@@ -348,6 +374,14 @@ fun UpgradedQuoteCard(quote: Quote, onClick: () -> Unit) {
     }
 }
 
+private data class PortfolioQtyAsk(
+    val symbol: String,
+    val side: String,
+    val initialQty: Int,
+    val maxSellQty: Int? = null,
+    val lastPrice: Double? = null,
+)
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PortfolioScreen(
@@ -360,6 +394,11 @@ fun PortfolioScreen(
     paperRisk: PaperPortfolioRisk? = null,
     scannerScores: Map<String, Int> = emptyMap(),
     importedBook: ImportedBook? = null,
+    etfSymbols: Set<String> = emptySet(),
+    sipPlans: List<SipPlan> = emptyList(),
+    onBrowseEtfs: () -> Unit = {},
+    onBrowseMutualFunds: () -> Unit = {},
+    walletBalance: Double = 0.0,
     onImportCsv: (String, String) -> Unit = { _, _ -> },
     onClearImport: () -> Unit = {},
     onOpenImportedSymbol: (String) -> Unit = {},
@@ -416,48 +455,51 @@ fun PortfolioScreen(
     val sortedHoldings = remember(holdings, quoteBySymbol, sortMode) {
         holdings.sortedByPortfolioMode(sortMode, quoteBySymbol)
     }
+    val classified = remember(sortedHoldings, etfSymbols, importedBook) {
+        val importedMeta = importedBook?.rows.orEmpty().associateBy { it.symbol.uppercase() }
+        sortedHoldings.groupBy { holding ->
+            val row = importedMeta[holding.symbol.uppercase()]
+            HoldingsClassifier.classify(
+                symbol = holding.symbol,
+                name = row?.name.orEmpty(),
+                isin = row?.isin.orEmpty(),
+                etfSymbols = etfSymbols,
+            )
+        }
+    }
+    val equityHoldings = classified[HoldingAssetClass.EQUITY].orEmpty()
+    val etfHoldings = classified[HoldingAssetClass.ETF].orEmpty()
+    val mfHoldings = classified[HoldingAssetClass.MUTUAL_FUND].orEmpty()
+    val fnoHoldings = classified[HoldingAssetClass.FNO].orEmpty()
+    fun categoryValue(rows: List<Holding>): Double = rows.sumOf { h ->
+        val last = quoteBySymbol[h.symbol.uppercase()]?.last?.takeIf { it > 0 } ?: h.last
+        last * h.qty
+    }
+    var categoryFilter by rememberSaveable { mutableStateOf("ALL") }
+    val visibleHoldings = when (categoryFilter) {
+        "EQUITY" -> equityHoldings
+        "ETF" -> etfHoldings
+        "MF" -> mfHoldings
+        "FNO" -> fnoHoldings
+        else -> sortedHoldings
+    }
 
-    var pendingSell by remember { mutableStateOf<Holding?>(null) }
+    var pendingTrade by remember { mutableStateOf<PortfolioQtyAsk?>(null) }
 
-    pendingSell?.let { holding ->
-        val proceeds = holding.last * holding.qty
-        val invested = holding.avgPrice * holding.qty
-        val pnl = proceeds - invested
-        AlertDialog(
-            onDismissRequest = { pendingSell = null },
-            title = { Text("Sell entire ${holding.symbol} holding?") },
-            text = {
-                Column {
-                    Text("${holding.qty} share(s) at ₹${String.format("%.2f", holding.last)}")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Estimated proceeds: ₹${String.format("%.2f", proceeds)}")
-                    Text(
-                        text = "Realised P&L: ${if (pnl >= 0) "+" else ""}₹${String.format("%.2f", pnl)}",
-                        color = if (pnl >= 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "This closes the whole position and cannot be undone.",
-                        fontSize = 12.sp,
-                        color = LocalAppTheme.current.textSecondary
-                    )
-                }
+    pendingTrade?.let { ask ->
+        val live = quoteBySymbol[ask.symbol.uppercase()]?.last
+        PaperTradeQtyDialog(
+            symbol = ask.symbol,
+            side = ask.side,
+            lastPrice = live?.takeIf { it > 0 } ?: ask.lastPrice,
+            initialQty = ask.initialQty,
+            maxSellQty = ask.maxSellQty,
+            walletBalance = walletBalance,
+            onDismiss = { pendingTrade = null },
+            onConfirm = { qty ->
+                if (ask.side == "BUY") onBuy(ask.symbol, qty) else onSell(ask.symbol, qty)
+                pendingTrade = null
             },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        onSell(holding.symbol, holding.qty)
-                        pendingSell = null
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.negative)
-                ) {
-                    Text("Sell all")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingSell = null }) { Text("Cancel") }
-            },
-            containerColor = LocalAppTheme.current.card
         )
     }
 
@@ -574,7 +616,17 @@ fun PortfolioScreen(
                 }
             }
 
-            if (holdings.isNotEmpty()) {
+            if (holdings.isNotEmpty() || sipPlans.isNotEmpty() || hasImported) {
+                PortfolioAllocationStrip(
+                    equityValue = categoryValue(equityHoldings),
+                    equityCount = equityHoldings.size,
+                    etfValue = categoryValue(etfHoldings),
+                    etfCount = etfHoldings.size,
+                    mfCount = mfHoldings.size + sipPlans.size,
+                    fnoCount = fnoHoldings.size,
+                    selected = categoryFilter,
+                    onSelect = { categoryFilter = it },
+                )
                 FlowRow(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -602,7 +654,7 @@ fun PortfolioScreen(
                 )
             }
 
-            if (holdings.isEmpty() && !hasImported && isLoading) {
+            if (holdings.isEmpty() && !hasImported && sipPlans.isEmpty() && isLoading) {
                 // Without this the first load flashes "No holdings yet" at users who do
                 // in fact hold stock, because holdings are empty until the call returns.
                 PortfolioSkeletonLoader(
@@ -610,7 +662,7 @@ fun PortfolioScreen(
                         .weight(1f)
                         .fillMaxWidth(),
                 )
-            } else if (holdings.isEmpty() && !hasImported) {
+            } else if (holdings.isEmpty() && !hasImported && sipPlans.isEmpty()) {
                 val loadFailed = !error.isNullOrBlank()
                 Box(
                     modifier = Modifier
@@ -713,35 +765,301 @@ fun PortfolioScreen(
                         }
                     }
 
-                    items(items = sortedHoldings, key = { it.symbol }) { holding ->
-                        val quote = quoteBySymbol[holding.symbol.uppercase()]
-                        val displayHolding = if (quote != null && quote.last > 0.0) {
-                            holding.copy(
-                                last = quote.last,
-                                pnl = (quote.last - holding.avgPrice) * holding.qty,
-                            )
-                        } else {
-                            holding
+                    if (categoryFilter == "ALL") {
+                        portfolioCategoryBlock(
+                            title = "Equity",
+                            rows = equityHoldings,
+                            quoteBySymbol = quoteBySymbol,
+                            emptyHint = "No equity holdings yet. Paper-buy a stock from Trade or Search.",
+                            onBrowse = onNavigateToTrade,
+                            browseLabel = "Find stocks",
+                            onAskTrade = { pendingTrade = it },
+                        )
+                        portfolioCategoryBlock(
+                            title = "ETFs",
+                            rows = etfHoldings,
+                            quoteBySymbol = quoteBySymbol,
+                            emptyHint = "No ETF holdings yet. Gold, Nifty, and sector ETFs live here.",
+                            onBrowse = onBrowseEtfs,
+                            browseLabel = "Browse ETFs",
+                            onAskTrade = { pendingTrade = it },
+                        )
+                        item(key = "mf-header") {
+                            PortfolioCategoryHeader("Mutual funds", mfHoldings.size + sipPlans.size)
                         }
-                        SwipeToDismissItem(
-                            item = displayHolding,
-                            onDismiss = { pendingSell = it },
-                            enabled = true,
-                            requireConfirmation = true,
-                            dismissIcon = Icons.Filled.Sell,
-                            dismissLabel = "Sell entire holding"
-                        ) {
-                            UpgradedPortfolioHoldingItem(
-                                holding = displayHolding,
-                                dayPctChange = quote?.pctChange ?: 0.0,
-                                onBuy = { onBuy(holding.symbol, 1) },
-                                onSell = { onSell(holding.symbol, 1) }
+                        if (mfHoldings.isEmpty() && sipPlans.isEmpty()) {
+                            item(key = "mf-empty") {
+                                PortfolioCategoryEmpty(
+                                    hint = "No mutual funds or SIPs yet. Practice a SIP from the funds desk.",
+                                    actionLabel = "Browse mutual funds",
+                                    onAction = onBrowseMutualFunds,
+                                )
+                            }
+                        } else {
+                            items(items = mfHoldings, key = { "mf-${it.symbol}" }) { holding ->
+                                PortfolioHoldingRow(
+                                    holding = holding,
+                                    quote = quoteBySymbol[holding.symbol.uppercase()],
+                                    onAskTrade = { pendingTrade = it },
+                                )
+                            }
+                            items(items = sipPlans, key = { "sip-${it.id}" }) { plan ->
+                                PortfolioSipRow(plan)
+                            }
+                        }
+                        if (fnoHoldings.isNotEmpty()) {
+                            portfolioCategoryBlock(
+                                title = "F&O",
+                                rows = fnoHoldings,
+                                quoteBySymbol = quoteBySymbol,
+                                emptyHint = "",
+                                onBrowse = onNavigateToTrade,
+                                browseLabel = "Trade",
+                                onAskTrade = { pendingTrade = it },
                             )
+                        }
+                    } else {
+                        if (visibleHoldings.isEmpty() && !(categoryFilter == "MF" && sipPlans.isNotEmpty())) {
+                            item {
+                                PortfolioCategoryEmpty(
+                                    hint = when (categoryFilter) {
+                                        "ETF" -> "No ETF holdings in this paper book."
+                                        "MF" -> "No mutual-fund holdings yet."
+                                        "FNO" -> "No F&O positions in holdings."
+                                        else -> "No equity holdings yet."
+                                    },
+                                    actionLabel = when (categoryFilter) {
+                                        "ETF" -> "Browse ETFs"
+                                        "MF" -> "Browse mutual funds"
+                                        else -> "Find stocks"
+                                    },
+                                    onAction = when (categoryFilter) {
+                                        "ETF" -> onBrowseEtfs
+                                        "MF" -> onBrowseMutualFunds
+                                        else -> onNavigateToTrade
+                                    },
+                                )
+                            }
+                        }
+                        items(items = visibleHoldings, key = { it.symbol }) { holding ->
+                            PortfolioHoldingRow(
+                                holding = holding,
+                                quote = quoteBySymbol[holding.symbol.uppercase()],
+                                onAskTrade = { pendingTrade = it },
+                            )
+                        }
+                        if (categoryFilter == "MF") {
+                            items(items = sipPlans, key = { "sip-${it.id}" }) { plan ->
+                                PortfolioSipRow(plan)
+                            }
                         }
                     }
                 }
                 }
             }
+        }
+    }
+}
+
+private fun LazyListScope.portfolioCategoryBlock(
+    title: String,
+    rows: List<Holding>,
+    quoteBySymbol: Map<String, Quote>,
+    emptyHint: String,
+    onBrowse: () -> Unit,
+    browseLabel: String,
+    onAskTrade: (PortfolioQtyAsk) -> Unit,
+) {
+    item(key = "hdr-$title") {
+        PortfolioCategoryHeader(title, rows.size)
+    }
+    if (rows.isEmpty()) {
+        item(key = "empty-$title") {
+            PortfolioCategoryEmpty(hint = emptyHint, actionLabel = browseLabel, onAction = onBrowse)
+        }
+    } else {
+        items(items = rows, key = { "$title-${it.symbol}" }) { holding ->
+            PortfolioHoldingRow(
+                holding = holding,
+                quote = quoteBySymbol[holding.symbol.uppercase()],
+                onAskTrade = onAskTrade,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PortfolioAllocationStrip(
+    equityValue: Double,
+    equityCount: Int,
+    etfValue: Double,
+    etfCount: Int,
+    mfCount: Int,
+    fnoCount: Int,
+    selected: String,
+    onSelect: (String) -> Unit,
+) {
+    val theme = LocalAppTheme.current
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Text(
+            "Holdings by type",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = theme.text,
+        )
+        Text(
+            "Equity, ETFs, and mutual funds stay in their own buckets — a stock buy does not land under funds.",
+            fontSize = 11.sp,
+            color = theme.textSecondary,
+            modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            FilterChip(selected = selected == "ALL", onClick = { onSelect("ALL") }, label = { Text("All", fontSize = 11.sp) })
+            FilterChip(
+                selected = selected == "EQUITY",
+                onClick = { onSelect("EQUITY") },
+                label = { Text("Equity · $equityCount · ${formatInr(equityValue)}", fontSize = 11.sp) },
+            )
+            FilterChip(
+                selected = selected == "ETF",
+                onClick = { onSelect("ETF") },
+                label = { Text("ETFs · $etfCount · ${formatInr(etfValue)}", fontSize = 11.sp) },
+            )
+            FilterChip(
+                selected = selected == "MF",
+                onClick = { onSelect("MF") },
+                label = { Text("Mutual funds · $mfCount", fontSize = 11.sp) },
+            )
+            if (fnoCount > 0) {
+                FilterChip(
+                    selected = selected == "FNO",
+                    onClick = { onSelect("FNO") },
+                    label = { Text("F&O · $fnoCount", fontSize = 11.sp) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PortfolioCategoryHeader(title: String, count: Int) {
+    val theme = LocalAppTheme.current
+    Text(
+        text = if (count > 0) "$title · $count" else title,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Bold,
+        color = theme.text,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+    )
+}
+
+@Composable
+private fun PortfolioCategoryEmpty(hint: String, actionLabel: String, onAction: () -> Unit) {
+    val theme = LocalAppTheme.current
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
+        shape = RoundedCornerShape(10.dp),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(hint, fontSize = 12.sp, color = theme.textSecondary, lineHeight = 16.sp)
+            TextButton(onClick = onAction) { Text(actionLabel) }
+        }
+    }
+}
+
+@Composable
+private fun PortfolioHoldingRow(
+    holding: Holding,
+    quote: Quote?,
+    onAskTrade: (PortfolioQtyAsk) -> Unit,
+) {
+    val displayHolding = if (quote != null && quote.last > 0.0) {
+        holding.copy(
+            last = quote.last,
+            pnl = (quote.last - holding.avgPrice) * holding.qty,
+        )
+    } else {
+        holding
+    }
+    SwipeToDismissItem(
+        item = displayHolding,
+        onDismiss = {
+            onAskTrade(
+                PortfolioQtyAsk(
+                    symbol = it.symbol,
+                    side = "SELL",
+                    initialQty = it.qty.coerceAtLeast(1),
+                    maxSellQty = it.qty,
+                    lastPrice = it.last,
+                )
+            )
+        },
+        enabled = true,
+        requireConfirmation = true,
+        dismissIcon = Icons.Filled.Sell,
+        dismissLabel = "Sell holding",
+    ) {
+        UpgradedPortfolioHoldingItem(
+            holding = displayHolding,
+            dayPctChange = quote?.pctChange ?: 0.0,
+            onBuy = {
+                onAskTrade(
+                    PortfolioQtyAsk(
+                        symbol = holding.symbol,
+                        side = "BUY",
+                        initialQty = 1,
+                        lastPrice = displayHolding.last,
+                    )
+                )
+            },
+            onSell = {
+                onAskTrade(
+                    PortfolioQtyAsk(
+                        symbol = holding.symbol,
+                        side = "SELL",
+                        initialQty = 1,
+                        maxSellQty = holding.qty,
+                        lastPrice = displayHolding.last,
+                    )
+                )
+            },
+        )
+    }
+}
+
+@Composable
+private fun PortfolioSipRow(plan: SipPlan) {
+    val theme = LocalAppTheme.current
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
+        shape = RoundedCornerShape(10.dp),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(plan.schemeName.ifBlank { plan.schemeCode }, fontWeight = FontWeight.SemiBold, color = theme.text, fontSize = 14.sp)
+            Text(
+                "SIP · ${formatInr(plan.amount)} · ${plan.frequency.lowercase()} · next ${plan.nextInstallmentDate}",
+                fontSize = 12.sp,
+                color = theme.textSecondary,
+            )
+            Text(
+                if (plan.isActive) "Active practice SIP" else "Paused",
+                fontSize = 11.sp,
+                color = if (plan.isActive) theme.positive else theme.textSecondary,
+            )
         }
     }
 }

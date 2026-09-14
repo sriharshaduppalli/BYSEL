@@ -150,6 +150,47 @@ def test_or_compare_names_the_pair_even_without_second_tape():
     assert "pass a second ticker" not in low
 
 
+def test_literacy_followup_does_not_reuse_last_symbol():
+    history = [
+        {"role": "user", "content": "Technical analysis of TCS"},
+        {"role": "assistant", "content": "**TCS** — RSI 55"},
+    ]
+    contract = resolve_query_contract("What is RSI?", conversation_history=history)
+    assert contract.profile == "literacy"
+    assert contract.slots.follow_up is False
+    assert "TCS" not in (contract.resolved_query or "").upper()
+
+
+def test_short_compare_chip_is_not_an_ambiguous_name():
+    for query in (
+        "Compare HDFCBANK with ICICIBANK",
+        "Compare HDFCBANK with ICICBANK",
+        "Compare ICICI Bank and HDFC Bank",
+    ):
+        contract = resolve_query_contract(query)
+        assert contract.profile == "compare", query
+        assert contract.clarifier is None, query
+        names = {contract.slots.symbol, *contract.slots.peer_symbols}
+        assert "HDFCBANK" in names, query
+        assert "ICICIBANK" in names, query
+
+
+def test_both_followup_compares_the_named_pair():
+    history = [
+        {"role": "user", "content": "Compare HDFCBANK with ICICIBANK"},
+        {
+            "role": "assistant",
+            "content": "That name matches more than one listed company (HDFCBANK, ICICIBANK). Which symbol do you want?",
+        },
+    ]
+    contract = resolve_query_contract("both", conversation_history=history)
+    assert contract.profile == "compare"
+    assert contract.slots.follow_up is True
+    assert contract.clarifier is None
+    assert "HDFCBANK" in contract.resolved_query.upper()
+    assert "ICICIBANK" in contract.resolved_query.upper()
+
+
 def test_followup_reuses_last_symbol_and_changes_shape():
     history = [
         {"role": "user", "content": "Technical analysis of RELIANCE"},

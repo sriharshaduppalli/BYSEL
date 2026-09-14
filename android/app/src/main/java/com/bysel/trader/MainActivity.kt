@@ -69,6 +69,7 @@ import com.bysel.trader.data.repository.AuthRepository
 import com.bysel.trader.data.repository.Result
 import com.bysel.trader.data.repository.TradingRepository
 import com.bysel.trader.navigation.ShortcutActions
+import com.bysel.trader.ui.components.PaperTradeQtyDialog
 import com.bysel.trader.ui.screens.*
 import com.bysel.trader.ui.theme.ByselShapes
 import com.bysel.trader.ui.theme.ByselTypography
@@ -212,6 +213,7 @@ class MainActivity : FragmentActivity() {
 
                 if (!isLoggedIn) {
                     manualLogoutInProgress = false
+                    runCatching { tradingViewModel?.persistWatchlistBeforeSessionEnd() }
                     tradingViewModel = null
                     activeTradingViewModel = null
                     viewModelStore.clear()
@@ -555,6 +557,12 @@ fun BYSELApp(
     LaunchedEffect(heatmapInterval) {
         viewModel.setRefreshIntervalMs(heatmapInterval.toLong())
     }
+    LaunchedEffect(selectedTab) {
+        if (selectedTab == 3) {
+            viewModel.loadEtfs()
+            viewModel.loadSipPlans()
+        }
+    }
     val density = LocalDensity.current
     val windowLayout = rememberWindowLayoutInfo()
     val contentHorizontalPadding = if (windowLayout.isWide) 24.dp else 0.dp
@@ -568,6 +576,8 @@ fun BYSELApp(
     val quotes by viewModel.quotes.collectAsStateWithLifecycle()
     val watchlistSymbols by viewModel.watchlist.collectAsStateWithLifecycle()
     val holdings by viewModel.holdings.collectAsStateWithLifecycle()
+    val etfInstruments by viewModel.etfInstruments.collectAsStateWithLifecycle()
+    val sipPlans by viewModel.sipPlans.collectAsStateWithLifecycle()
     val alerts by viewModel.alerts.collectAsStateWithLifecycle()
     val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
@@ -761,46 +771,21 @@ fun BYSELApp(
             shapes = ByselShapes,
         ) {
             pendingAiTrade?.let { trade ->
-                val livePrice = quotes.firstOrNull { it.symbol == trade.symbol }?.last
-                val estimate = livePrice?.let { it * trade.quantity }
-                AlertDialog(
-                    onDismissRequest = { pendingAiTrade = null },
-                    title = { Text("${trade.side} ${trade.quantity} ${trade.symbol}?") },
-                    text = {
-                        Column {
-                            if (livePrice != null) {
-                                Text("Last traded price: ₹${String.format("%.2f", livePrice)}")
-                                Text("Approximate order value: ₹${String.format("%.2f", estimate)}")
-                            } else {
-                                Text("Live price unavailable — the order will execute at the prevailing market price.")
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "This order was suggested by the AI assistant. AI analysis can be wrong; " +
-                                    "you are responsible for the trade.",
-                                fontSize = 12.sp,
-                                color = appTheme.textSecondary
-                            )
-                        }
+                val livePrice = quotes.firstOrNull { it.symbol.equals(trade.symbol, ignoreCase = true) }?.last
+                val heldQty = holdings.firstOrNull { it.symbol.equals(trade.symbol, ignoreCase = true) }?.qty
+                PaperTradeQtyDialog(
+                    symbol = trade.symbol,
+                    side = trade.side,
+                    lastPrice = livePrice,
+                    initialQty = trade.quantity.coerceAtLeast(1),
+                    maxSellQty = heldQty,
+                    walletBalance = walletBalance,
+                    onDismiss = { pendingAiTrade = null },
+                    onConfirm = { qty ->
+                        viewModel.placeOrder(trade.symbol, qty, trade.side)
+                        pendingAiTrade = null
+                        selectedTab = 2
                     },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                viewModel.placeOrder(trade.symbol, trade.quantity, trade.side)
-                                pendingAiTrade = null
-                                selectedTab = 2
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (trade.side == "BUY") appTheme.positive else appTheme.negative
-                            )
-                        ) {
-                            Text("Confirm ${trade.side.lowercase()}")
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { pendingAiTrade = null }) { Text("Cancel") }
-                    },
-                    containerColor = appTheme.card
                 )
             }
             if (showHomeAddFundsDialog) {
@@ -1075,7 +1060,8 @@ fun BYSELApp(
                                                     Toast.LENGTH_SHORT,
                                                 ).show()
                                             } else {
-                                                viewModel.placeOrder(symbol, qty, "BUY")
+                                                viewModel.fetchAndSelectQuote(symbol)
+                                                pendingAiTrade = AiTradeRequest(symbol, "BUY", qty.coerceAtLeast(1))
                                             }
                                         },
                                         onPracticeAlert = { symbol, price, alertType ->
@@ -1180,6 +1166,11 @@ fun BYSELApp(
                                         healthLoading = healthLoading,
                                         paperRisk = paperPortfolioRisk,
                                         importedBook = importedBook,
+                                        etfSymbols = etfInstruments.map { it.symbol }.toSet(),
+                                        sipPlans = sipPlans,
+                                        walletBalance = walletBalance,
+                                        onBrowseEtfs = { selectedTab = 13 },
+                                        onBrowseMutualFunds = { selectedTab = 11 },
                                         onImportCsv = { text, name -> viewModel.importHoldingsCsv(text, name) },
                                         onClearImport = { viewModel.clearImportedBook() },
                                         onOpenImportedSymbol = { symbol ->

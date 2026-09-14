@@ -56,6 +56,7 @@ import com.bysel.trader.ui.components.exclusiveHorizontalScroll
 import com.bysel.trader.ui.components.ProfitSignal
 import com.bysel.trader.ui.components.ProfitSignalCard
 import com.bysel.trader.ui.components.ProfitSignalExtractor
+import com.bysel.trader.utils.TradeCtaPolicy
 import com.bysel.trader.utils.TradeIntentParser
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -439,11 +440,20 @@ private fun buildAdaptiveSuggestions(
     val askedPrompts = userPrompts.map { normalizePrompt(it) }.toSet()
     val latestUser = userPrompts.lastOrNull().orEmpty()
     val sectorTheme = isSectorThemePrompt(latestUser)
-    // For sector asks, ignore the currently selected quote ticker (avoids Buy INFY after defence).
-    val focusSymbol = selectedSymbol?.trim()?.uppercase()?.takeIf { it.isNotBlank() && !sectorTheme }
+    val generalTopic = TradeCtaPolicy.isGeneralTopic(latestUser)
+    // For sector / glossary asks, ignore the currently selected quote ticker
+    // (avoids Buy INFY after "what is RSI?" or "defence stocks").
+    val focusSymbol = selectedSymbol?.trim()?.uppercase()?.takeIf {
+        it.isNotBlank() && !sectorTheme && !generalTopic && TradeCtaPolicy.allowsAttachedSymbol(latestUser)
+    }
 
-    val allMentioned = extractMentionedSymbols(userPrompts, focusSymbol)
-    val primarySymbol = if (sectorTheme) null else allMentioned.firstOrNull()
+    val mentionSource = when {
+        generalTopic -> emptyList()
+        TradeCtaPolicy.isFollowUp(latestUser) -> userPrompts.takeLast(3)
+        else -> listOf(latestUser)
+    }
+    val allMentioned = extractMentionedSymbols(mentionSource, focusSymbol)
+    val primarySymbol = if (sectorTheme || generalTopic) null else allMentioned.firstOrNull()
     val secondarySymbol = if (sectorTheme) null else allMentioned.drop(1).firstOrNull()
 
     // Prefer server follow-ups attached to the latest assistant reply when present.
@@ -454,6 +464,7 @@ private fun buildAdaptiveSuggestions(
             if (clean.isBlank()) null
             else clean to Icons.Filled.Lightbulb
         }
+        .filterNot { generalTopic && TradeCtaPolicy.isBuySellChip(it.first) }
 
     val suggestions = linkedSetOf<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>>()
     serverFollowUps.forEach { suggestions.add(it) }
@@ -614,7 +625,6 @@ private fun buildSectorThemeSuggestions(
         .toList()
     answerTickers.forEach { sym ->
         out.add("Analyze $sym" to Icons.Filled.Analytics)
-        out.add("Should I buy $sym?" to Icons.AutoMirrored.Filled.TrendingUp)
     }
     if (answerTickers.size >= 2) {
         out.add(
@@ -633,8 +643,16 @@ private fun normalizePrompt(text: String): String {
 }
 
 private fun buildDefaultSuggestionPool(): List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>> = listOf(
-    // Buy / Invest — specific stocks
+    // Empty chat: literacy and market first — not a wall of buy/sell chips.
+    "How is Nifty now?" to Icons.AutoMirrored.Filled.ShowChart,
+    "What is RSI?" to Icons.AutoMirrored.Filled.Help,
+    "How does SIP work?" to Icons.AutoMirrored.Filled.Help,
+    "Explain delivery vs intraday" to Icons.AutoMirrored.Filled.Help,
+    "Best bank stocks in India" to Icons.Filled.AccountBalance,
+    "Analyze RELIANCE" to Icons.Filled.Analytics,
+    "What is the price of TCS?" to Icons.Filled.PriceCheck,
     "Should I buy RELIANCE?" to Icons.AutoMirrored.Filled.TrendingUp,
+    // Buy / Invest — specific stocks
     "Should I buy TCS?" to Icons.AutoMirrored.Filled.TrendingUp,
     "Should I buy HDFCBANK?" to Icons.AutoMirrored.Filled.TrendingUp,
     "Should I buy SBIN?" to Icons.AutoMirrored.Filled.TrendingUp,
@@ -902,6 +920,7 @@ private fun ChatBubble(
         message.lastPrice,
         message.signal,
         message.confidence,
+        priorUserQuery,
     ) {
         if (message.isUser) return@remember null
         val apiConfidencePct = message.confidence
@@ -933,7 +952,10 @@ private fun ChatBubble(
                     confidence = extracted.confidence ?: apiConfidencePct,
                 )
             }
-            contextSymbol != null && message.lastPrice != null && message.lastPrice >= 10.0 -> {
+            contextSymbol != null &&
+                message.lastPrice != null &&
+                message.lastPrice >= 10.0 &&
+                TradeCtaPolicy.allowsPracticeTrade(priorUserQuery, message.text, contextSymbol) -> {
                 val entry = message.lastPrice
                 ProfitSignal(
                     symbol = contextSymbol,
@@ -1190,7 +1212,11 @@ private fun ChatBubble(
             }
             ProfitSignalCard(
                 signal = cardSignal,
-                onBuy = if (onTradeAction != null && !isBearish) {
+                onBuy = if (
+                    onTradeAction != null &&
+                    !isBearish &&
+                    TradeCtaPolicy.allowsPracticeTrade(priorUserQuery, message.text, cardSignal.symbol)
+                ) {
                     { onTradeAction.invoke(cardSignal.symbol, "BUY", null) }
                 } else null,
                 onSetAlert = if (onAlertAction != null) {
@@ -1204,6 +1230,7 @@ private fun ChatBubble(
         } else if (
             !message.isUser &&
             actionSymbol != null &&
+            TradeCtaPolicy.allowsAttachedSymbol(priorUserQuery) &&
             (onTradeAction != null || onAlertAction != null || onNavigateToStock != null)
         ) {
             // Fallback when reply has a symbol but no Entry/Target formatting.
@@ -1215,7 +1242,11 @@ private fun ChatBubble(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                if (onTradeAction != null && !isBearish) {
+                if (
+                    onTradeAction != null &&
+                    !isBearish &&
+                    TradeCtaPolicy.allowsPracticeTrade(priorUserQuery, message.text, actionSymbol)
+                ) {
                     Button(
                         onClick = { onTradeAction.invoke(actionSymbol, "BUY", null) },
                         colors = ButtonDefaults.buttonColors(

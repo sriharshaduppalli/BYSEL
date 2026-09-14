@@ -120,7 +120,7 @@ fun NewsWidget(
 
                 headlines.isEmpty() -> {
                     Text(
-                        text = "Live headline context is unavailable right now.",
+                        text = "No headlines yet. Pull to refresh — this is not a price outage.",
                         fontSize = 14.sp,
                         color = LocalAppTheme.current.textSecondary
                     )

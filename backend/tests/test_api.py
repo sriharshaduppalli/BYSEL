@@ -1603,6 +1603,16 @@ def test_ai_ask_small_talk_responses_are_deterministic(monkeypatch, query, expec
     assert expected_hint in payload["answer"].lower()
 
 
+def test_ai_ask_literacy_does_not_attach_buy_cta():
+    response = client.post("/ai/ask", json={"query": "What is RSI?"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload.get("symbol") in (None, "")
+    assert payload.get("signal") in (None, "")
+    tips = " ".join(payload.get("suggestions") or []).lower()
+    assert "should i buy" not in tips
+
+
 def test_ai_ask_stock_query_does_not_use_greeting_short_circuit(monkeypatch):
     monkeypatch.setattr(
         routes_module,
@@ -2091,6 +2101,20 @@ def test_market_news_endpoint_uses_normalized_headlines(monkeypatch):
     assert payload["symbolsConsidered"] == ["RELIANCE", "TCS"]
 
 
+def test_market_news_endpoint_never_returns_503(monkeypatch):
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("rss provider exploded")
+
+    monkeypatch.setattr(routes_module, "get_market_headlines", _boom)
+    monkeypatch.setattr(routes_module, "peek_stale_news", lambda *_a, **_k: None)
+
+    response = client.get("/market/news?symbols=RELIANCE&limit=5")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["headlines"] == []
+
+
 def test_ai_compare_query_includes_headline_context(monkeypatch):
     def fake_analysis(symbol: str):
         return {
@@ -2293,6 +2317,38 @@ def test_single_quote_endpoint_includes_snapshot_fields(monkeypatch):
     assert payload["bid"] == 999.5
     assert payload["dividendYield"] == 0.8
     assert payload["prevClose"] == 987.0
+
+
+def test_single_quote_zero_last_is_not_stock_not_found(monkeypatch):
+    monkeypatch.setattr(
+        routes_module,
+        "fetch_quote",
+        lambda symbol: {"symbol": symbol, "last": 0.0, "pctChange": 0.0},
+    )
+    monkeypatch.setattr(routes_module, "last_known_print", lambda symbol: None)
+
+    response = client.get("/quotes/RELIANCE")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["symbol"] == "RELIANCE"
+    assert payload["last"] == 0.0
+
+
+def test_single_quote_uses_last_known_print(monkeypatch):
+    monkeypatch.setattr(
+        routes_module,
+        "fetch_quote",
+        lambda symbol: {"symbol": symbol, "last": 0.0, "pctChange": 0.0},
+    )
+    monkeypatch.setattr(
+        routes_module,
+        "last_known_print",
+        lambda symbol: {"symbol": symbol, "last": 1420.5, "pctChange": -0.4},
+    )
+
+    response = client.get("/quotes/TCS")
+    assert response.status_code == 200
+    assert response.json()["last"] == 1420.5
 
 
 def test_investor_tips_endpoint_supports_topics():

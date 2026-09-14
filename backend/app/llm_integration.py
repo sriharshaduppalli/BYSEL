@@ -490,10 +490,24 @@ def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | N
         except Exception:
             symbol_hint = None
     # Follow-ups like "what about sentiment?" keep the prior ticker.
+    # Literacy / how-to / greetings must not inherit the last open quote.
     if not symbol_hint and isinstance(history, list):
-        prior = _prior_symbol_from_history(history)
-        if prior:
-            symbol_hint = _sanitize_symbol(prior, cleaned)
+        inherit_ok = True
+        try:
+            from indian_stock_llm.query_contract import should_inherit_symbol
+
+            inherit_ok = should_inherit_symbol(query_profile, cleaned, False)
+        except Exception:
+            inherit_ok = query_profile not in {
+                "literacy",
+                "small_talk",
+                "compare_concepts",
+                "session",
+            }
+        if inherit_ok:
+            prior = _prior_symbol_from_history(history)
+            if prior:
+                symbol_hint = _sanitize_symbol(prior, cleaned)
     if symbol_hint:
         ctx["symbol"] = symbol_hint
     else:

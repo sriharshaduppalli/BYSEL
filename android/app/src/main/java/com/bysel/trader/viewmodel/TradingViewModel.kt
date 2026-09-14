@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.firstOrNull
 import com.bysel.trader.ui.components.HabitLiteracyCatalog
 import com.bysel.trader.utils.MarketSession
 import com.bysel.trader.utils.PromptBuilder
+import com.bysel.trader.utils.TradeCtaPolicy
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.ConnectivityManager
@@ -529,6 +530,16 @@ class TradingViewModel(
     private fun watchlistAppContext(): Context = getApplication()
 
     private fun currentWatchlistUserId(): Int? = AuthSessionManager.getUserId()
+
+    /** Flush the in-memory list to disk before logout / session expiry tears down this VM. */
+    fun persistWatchlistBeforeSessionEnd() {
+        val current = WatchlistSymbols.normalizeAll(_watchlist.value)
+        if (current.isEmpty()) {
+            ensureWatchlistLoaded()
+            return
+        }
+        persistWatchlist(current, allowEmpty = false)
+    }
 
     private fun persistWatchlist(symbols: List<String>, allowEmpty: Boolean) {
         val saved = WatchlistStore.writeSync(
@@ -1367,11 +1378,12 @@ class TradingViewModel(
         _detailLoading.value = true
         _quoteHistoryLoading.value = true
         activeHistoryRequestKey = requestKey
-        // Keep prior quote only if same symbol; otherwise clear to avoid wrong-stock flash.
-        if (_selectedQuote.value?.symbol?.uppercase() != normalizedSymbol) {
-            _selectedQuote.value = null
+        val previous = _selectedQuote.value
+        if (previous == null || !WatchlistSymbols.matches(previous.symbol, normalizedSymbol)) {
             _quoteHistory.value = emptyList()
         }
+        val seed = seedQuoteForSymbol(normalizedSymbol)
+        _selectedQuote.value = seed
 
         viewModelScope.launch {
             val quoteDeferred = async { repository.getQuote(normalizedSymbol) }
@@ -1382,24 +1394,25 @@ class TradingViewModel(
             when (val quoteResult = quoteDeferred.await()) {
                 is Result.Success -> {
                     if (_pendingDetailSymbol.value == normalizedSymbol) {
-                        _selectedQuote.value = quoteResult.data
+                        val incoming = quoteResult.data
+                        val current = _selectedQuote.value
+                        _selectedQuote.value = if (incoming.last > 0.0) {
+                            incoming.withSnapshotFrom(current)
+                        } else {
+                            current?.takeIf { it.last > 0.0 } ?: incoming.withSnapshotFrom(current)
+                        }
                         _error.value = null
-                        refreshDetailNews(quoteResult.data.symbol)
+                        refreshDetailNews(normalizedSymbol)
                     }
                 }
                 is Result.Error -> {
+                    // Keep the seed quote so the sheet is never "Stock not found"
+                    // just because Yahoo/Cloud Run missed a last print.
                     if (_pendingDetailSymbol.value == normalizedSymbol) {
-                        _error.value = quoteResult.message
-                        _detailLoading.value = false
-                        _quoteHistoryLoading.value = false
+                        refreshDetailNews(normalizedSymbol)
                     }
-                    return@launch
                 }
-                else -> {
-                    _detailLoading.value = false
-                    _quoteHistoryLoading.value = false
-                    return@launch
-                }
+                else -> Unit
             }
 
             // Show detail shell as soon as quote is ready; candles fill in next.
@@ -1433,6 +1446,20 @@ class TradingViewModel(
                 _quoteHistoryLoading.value = false
             }
         }
+    }
+
+    private fun seedQuoteForSymbol(symbol: String): Quote {
+        val fromTape = WatchlistSymbols.findQuote(_quotes.value, symbol)
+        if (fromTape != null) return fromTape
+        val holding = _holdings.value.firstOrNull { WatchlistSymbols.matches(it.symbol, symbol) }
+        if (holding != null && holding.last > 0.0) {
+            return Quote(symbol = WatchlistSymbols.normalize(symbol).ifBlank { symbol }, last = holding.last)
+        }
+        val current = _selectedQuote.value
+        if (current != null && WatchlistSymbols.matches(current.symbol, symbol)) {
+            return current
+        }
+        return Quote(symbol = WatchlistSymbols.normalize(symbol).ifBlank { symbol })
     }
 
     /** Reject prose words that chat parsers sometimes treat as tickers (e.g. OVERALL). */
@@ -2937,7 +2964,7 @@ class TradingViewModel(
         return mentioned
             .filter { it.length in 2..12 && it !in SECTOR_SUGGESTION_STOPWORDS }
             .take(3)
-            .flatMap { listOf("Analyze $it", "Should I buy $it?") }
+            .flatMap { listOf("Analyze $it") }
             .distinct()
             .take(6)
     }
@@ -2980,9 +3007,12 @@ class TradingViewModel(
             // Habit Learn chips are literacy, not a plan for the open quote.
             val sectorThemeAsk = isSectorThemeQuery(cleanedQuery)
             val habitLearnAsk = HabitLiteracyCatalog.isHabitLearnQuery(cleanedQuery)
-            val symbol = _selectedQuote.value?.symbol?.takeUnless { sectorThemeAsk || habitLearnAsk }
+            val generalTopicAsk = TradeCtaPolicy.isGeneralTopic(cleanedQuery)
+            val attachOpenQuote = !sectorThemeAsk && !habitLearnAsk && !generalTopicAsk &&
+                TradeCtaPolicy.allowsAttachedSymbol(cleanedQuery)
+            val symbol = _selectedQuote.value?.symbol?.takeUnless { !attachOpenQuote }
             symbol?.let { contextParts.add("symbol=$it") }
-            if (!sectorThemeAsk && !habitLearnAsk) {
+            if (attachOpenQuote) {
                 _selectedQuote.value?.let { q ->
                     contextParts.add("price=${q.last}")
                     q.pctChange.let { contextParts.add("pctChange=${it}") }
@@ -2992,7 +3022,7 @@ class TradingViewModel(
             // Prefer in-memory candles only — never block the chat send on a DB/network history read.
             val recentHistory = _quoteHistory.value.takeLast(10)
 
-            if (recentHistory.isNotEmpty()) {
+            if (recentHistory.isNotEmpty() && attachOpenQuote) {
                 val closes = recentHistory.map { it.close }
                 val avgClose = closes.average()
                 val variance = closes.map { (it - avgClose) * (it - avgClose) }.average()
@@ -3004,9 +3034,10 @@ class TradingViewModel(
                 contextParts.add("history_closes=[$closesShort]")
             }
 
-            val prompt = if (habitLearnAsk) {
-                // Learn chips are literacy. Do not wrap a selected quote / candles
-                // around them or /ai/ask treats "Teach …" as a stock clarifier.
+            val prompt = if (habitLearnAsk || generalTopicAsk) {
+                // Learn chips and glossary asks are literacy. Do not wrap a
+                // selected quote / candles around them or /ai/ask treats
+                // "What is RSI?" as a plan for the open ticker.
                 cleanedQuery
             } else {
                 PromptBuilder.buildPrompt(
@@ -3014,8 +3045,8 @@ class TradingViewModel(
                     holdingsSummary,
                     wallet,
                     portfolio?.overallScore,
-                    if (sectorThemeAsk) null else _selectedQuote.value,
-                    if (sectorThemeAsk) emptyList() else recentHistory
+                    if (sectorThemeAsk || !attachOpenQuote) null else _selectedQuote.value,
+                    if (sectorThemeAsk || !attachOpenQuote) emptyList() else recentHistory
                 )
             }
 
@@ -3038,17 +3069,18 @@ class TradingViewModel(
                     refreshAiColdStartFlag()
                     _aiResponse.value = r.data
                     val replySymbol = when {
-                        sectorThemeAsk || habitLearnAsk -> null
-                        else -> r.data.symbol?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
-                            ?: symbol?.trim()?.uppercase()
+                        sectorThemeAsk || habitLearnAsk || generalTopicAsk -> null
+                        TradeCtaPolicy.allowsAttachedSymbol(cleanedQuery) ->
+                            r.data.symbol?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
+                        else -> null
                     }
-                    val replyPrice = if (sectorThemeAsk || habitLearnAsk) null else extractAiReferencePrice(r.data)
+                    val replyPrice = if (replySymbol == null) null else extractAiReferencePrice(r.data)
                     val replySuggestions = if (sectorThemeAsk) {
                         filterSuggestionsForSector(cleanedQuery, r.data.answer, r.data.suggestions)
-                    } else if (habitLearnAsk) {
-                        emptyList()
+                    } else if (habitLearnAsk || generalTopicAsk) {
+                        TradeCtaPolicy.filterSuggestions(cleanedQuery, r.data.suggestions)
                     } else {
-                        r.data.suggestions
+                        TradeCtaPolicy.filterSuggestions(cleanedQuery, r.data.suggestions)
                     }
                     _chatHistory.value = _chatHistory.value + ChatMessage(
                         r.data.answer,
@@ -3057,7 +3089,7 @@ class TradingViewModel(
                         source = r.data.source,
                         confidence = r.data.confidence,
                         symbol = replySymbol,
-                        signal = if (sectorThemeAsk || habitLearnAsk) null else r.data.signal,
+                        signal = if (sectorThemeAsk || habitLearnAsk || generalTopicAsk) null else r.data.signal,
                         lastPrice = replyPrice,
                         intent = r.data.intent,
                     )

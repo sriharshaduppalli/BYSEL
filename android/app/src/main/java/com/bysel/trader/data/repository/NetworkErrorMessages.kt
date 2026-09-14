@@ -77,6 +77,24 @@ object NetworkErrorMessages {
         }
     }
 
+    fun forNews(e: Exception): String {
+        val raw = e.message.orEmpty()
+        val httpCode = httpCodeOf(e, raw)
+        return when {
+            isRateLimited(e) || httpCode == 429 ->
+                "Headlines are busy right now. Try again in a few seconds."
+            isTimeout(e, raw) ->
+                "Headlines are taking longer than usual. Pull to refresh."
+            isServerError(httpCode, raw) ->
+                "Couldn't load headlines right now. Pull to refresh."
+            isExplicitOffline(e) ->
+                "No internet connection. Showing last saved headlines when available."
+            isConnectFailure(e, raw) ->
+                "Couldn't reach headline servers. Pull to refresh."
+            else -> forException(e, "Couldn't load headlines")
+        }
+    }
+
     fun forMarket(e: Exception, fallback: String): String {
         val raw = e.message.orEmpty()
         val httpCode = httpCodeOf(e, raw)

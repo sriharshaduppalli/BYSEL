@@ -4,6 +4,7 @@ package com.bysel.trader.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.bysel.trader.data.MarketNewsStore
 import com.bysel.trader.data.PinnedStocksStore
 import com.bysel.trader.data.PinnedWidgetsStore
 import com.bysel.trader.data.local.BYSELDatabase
@@ -118,6 +119,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         loadPinnedStocks()
         loadPinnedWidgets()
         loadWidgetOrder()
+        restoreCachedNews()
         // Stagger Home secondary fetches so they don't stampede wallet/holdings on cold start.
         viewModelScope.launch {
             delay(1_200) // let first Home frame + priority quotes win
@@ -131,6 +133,14 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             delay(800)
             refreshPracticeIdeas()
         }
+    }
+
+    private fun restoreCachedNews() {
+        if (_marketNews.value.isNotEmpty()) return
+        val cached = MarketNewsStore.read(getApplication()) ?: return
+        _marketNews.value = cached.headlines
+        _newsSymbols.value = cached.symbolsConsidered
+        _newsError.value = null
     }
 
     /**
@@ -150,18 +160,25 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             if (!hasHeadlines) _newsLoading.value = true
             when (val response = repository.getMarketNews(symbols = normalized, limit = 10)) {
                 is Result.Success -> {
-                    _marketNews.value = response.data.headlines
-                    _newsSymbols.value = response.data.symbolsConsidered
-                    _newsError.value = null
+                    val headlines = response.data.headlines
+                    if (headlines.isNotEmpty()) {
+                        _marketNews.value = headlines
+                        _newsSymbols.value = response.data.symbolsConsidered
+                        _newsError.value = null
+                        MarketNewsStore.write(getApplication(), response.data)
+                    } else if (_marketNews.value.isEmpty()) {
+                        _newsError.value = null
+                    }
                 }
 
                 is Result.Error -> {
-                    // Keep prior headlines on timeout; only show error if the feed is empty.
+                    // Keep last headlines (memory or disk). Do not reuse the quotes 5xx banner.
                     if (_marketNews.value.isEmpty()) {
-                        _newsError.value = response.message
+                        restoreCachedNews()
+                    }
+                    _newsError.value = if (_marketNews.value.isEmpty()) response.message else null
+                    if (_marketNews.value.isEmpty()) {
                         _newsSymbols.value = emptyList()
-                    } else {
-                        _newsError.value = null
                     }
                 }
 
