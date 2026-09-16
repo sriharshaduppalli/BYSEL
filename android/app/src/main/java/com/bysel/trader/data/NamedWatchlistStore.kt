@@ -1,8 +1,9 @@
 package com.bysel.trader.data
 
 import android.content.Context
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
+import com.google.gson.JsonArray
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import java.util.UUID
 
 data class NamedWatchlist(
@@ -139,21 +140,62 @@ object NamedWatchlists {
 /** Device-local named boards. Master watchlist symbols stay in [WatchlistStore]. */
 object NamedWatchlistStore {
     private const val PREFS = "bysel_named_watchlists"
-    private val gson = Gson()
-    private val type = object : TypeToken<NamedWatchlistBoard>() {}.type
 
     fun read(context: Context, userId: Int?, seedSymbols: List<String>): NamedWatchlistBoard {
-        val raw = prefs(context).getString(key(userId), null)
-        val parsed = raw?.let {
-            runCatching { gson.fromJson<NamedWatchlistBoard>(it, type) }.getOrNull()
-        }
-        return NamedWatchlists.ensureSeeded(parsed ?: NamedWatchlistBoard(), seedSymbols)
+        val raw = runCatching { prefs(context).getString(key(userId), null) }.getOrNull()
+        val parsed = decode(raw)
+        return NamedWatchlists.ensureSeeded(parsed, seedSymbols)
     }
 
     fun write(context: Context, userId: Int?, board: NamedWatchlistBoard) {
         val seeded = NamedWatchlists.ensureSeeded(board, board.allSymbols)
-        prefs(context).edit().putString(key(userId), gson.toJson(seeded)).apply()
+        runCatching {
+            prefs(context).edit().putString(key(userId), encode(seeded)).apply()
+        }
     }
+
+    internal fun encode(board: NamedWatchlistBoard): String {
+        val lists = JsonArray()
+        board.lists.forEach { list ->
+            val node = JsonObject()
+            node.addProperty("id", list.id)
+            node.addProperty("name", list.name)
+            node.addProperty("pinned", list.pinned)
+            val symbols = JsonArray()
+            list.symbols.forEach { symbols.add(it) }
+            node.add("symbols", symbols)
+            lists.add(node)
+        }
+        val root = JsonObject()
+        root.addProperty("activeId", board.activeId)
+        root.add("lists", lists)
+        return root.toString()
+    }
+
+    internal fun decode(raw: String?): NamedWatchlistBoard {
+        if (raw.isNullOrBlank()) return NamedWatchlistBoard()
+        return runCatching {
+            val root = JsonParser.parseString(raw).asJsonObject
+            val listsJson = root.getAsJsonArray("lists") ?: JsonArray()
+            val lists = listsJson.mapNotNull { element ->
+                val node = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
+                val symbolsJson = node.getAsJsonArray("symbols") ?: JsonArray()
+                NamedWatchlist(
+                    id = node.stringOrEmpty("id"),
+                    name = node.stringOrEmpty("name"),
+                    symbols = symbolsJson.map { it.asString },
+                    pinned = node.get("pinned")?.takeIf { it.isJsonPrimitive }?.asBoolean == true,
+                )
+            }
+            NamedWatchlistBoard(
+                lists = lists,
+                activeId = root.stringOrEmpty("activeId"),
+            )
+        }.getOrDefault(NamedWatchlistBoard())
+    }
+
+    private fun JsonObject.stringOrEmpty(key: String): String =
+        get(key)?.takeIf { it.isJsonPrimitive }?.asString.orEmpty()
 
     private fun key(userId: Int?) = "board_${WatchlistSymbols.userKey(userId)}"
 

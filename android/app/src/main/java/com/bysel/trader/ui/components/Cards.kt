@@ -6,6 +6,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.Holding
@@ -180,14 +181,21 @@ fun AlertCard(
             Button(
                 onClick = onDelete,
                 modifier = Modifier
-                    .width(60.dp)
+                    .defaultMinSize(minWidth = 72.dp, minHeight = 36.dp)
                     .height(36.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = theme.negative,
-                    contentColor = MaterialTheme.colorScheme.onError,
+                    contentColor = theme.onNegative,
                 ),
             ) {
-                Text("Delete", style = MaterialTheme.typography.labelSmall)
+                Text(
+                    text = "Delete",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    softWrap = false,
+                )
             }
         }
     }

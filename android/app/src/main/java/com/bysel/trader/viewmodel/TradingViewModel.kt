@@ -572,30 +572,42 @@ class TradingViewModel(
     }
 
     private fun loadNamedWatchlists() {
-        val board = NamedWatchlistStore.read(
-            watchlistAppContext(),
-            currentWatchlistUserId(),
-            seedSymbols = _watchlist.value,
-        )
-        persistWatchlistBoard(board)
+        try {
+            val board = NamedWatchlistStore.read(
+                watchlistAppContext(),
+                currentWatchlistUserId(),
+                seedSymbols = _watchlist.value,
+            )
+            persistWatchlistBoard(board)
+        } catch (e: Exception) {
+            android.util.Log.e("TradingViewModel", "Named watchlists failed to load", e)
+            _watchlistBoard.value = NamedWatchlists.seed(_watchlist.value)
+        }
     }
 
     private fun persistWatchlistBoard(board: NamedWatchlistBoard) {
-        val seeded = NamedWatchlists.ensureSeeded(board, _watchlist.value)
-        NamedWatchlistStore.write(watchlistAppContext(), currentWatchlistUserId(), seeded)
-        _watchlistBoard.value = seeded
-        val union = seeded.allSymbols
-        if (union != WatchlistSymbols.normalizeAll(_watchlist.value)) {
-            persistWatchlistInternal(union, allowEmpty = union.isEmpty())
+        try {
+            val seeded = NamedWatchlists.ensureSeeded(board, _watchlist.value)
+            NamedWatchlistStore.write(watchlistAppContext(), currentWatchlistUserId(), seeded)
+            _watchlistBoard.value = seeded
+            val union = seeded.allSymbols
+            if (union != WatchlistSymbols.normalizeAll(_watchlist.value)) {
+                persistWatchlistInternal(union, allowEmpty = union.isEmpty())
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("TradingViewModel", "Named watchlists failed to save", e)
         }
     }
 
     private fun absorbMasterIntoBoards() {
         if (_watchlistBoard.value.lists.isEmpty()) return
-        val absorbed = NamedWatchlists.absorbUnassigned(_watchlistBoard.value, _watchlist.value)
-        if (absorbed != _watchlistBoard.value) {
-            NamedWatchlistStore.write(watchlistAppContext(), currentWatchlistUserId(), absorbed)
-            _watchlistBoard.value = absorbed
+        try {
+            val absorbed = NamedWatchlists.absorbUnassigned(_watchlistBoard.value, _watchlist.value)
+            if (absorbed != _watchlistBoard.value) {
+                persistWatchlistBoard(absorbed)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("TradingViewModel", "Named watchlists failed to absorb", e)
         }
     }
 
@@ -802,7 +814,7 @@ class TradingViewModel(
             lastGood = emptyList(),
         )
         _watchlist.value = restoredWatchlist
-        _importedBook.value = ImportedBookStore.read(getApplication())
+        _importedBook.value = runCatching { ImportedBookStore.read(getApplication()) }.getOrNull()
         if (restoredWatchlist.isNotEmpty()) {
             persistWatchlistInternal(restoredWatchlist, allowEmpty = false)
         }
@@ -3692,18 +3704,28 @@ class TradingViewModel(
     }
 
     private fun loadScannerBoards() {
-        _scannerBoards.value = ScannerBoardStore.read(
-            watchlistAppContext(),
-            currentWatchlistUserId(),
-        )
-        scannerBoardsLoaded = true
+        try {
+            _scannerBoards.value = ScannerBoardStore.read(
+                watchlistAppContext(),
+                currentWatchlistUserId(),
+            )
+            scannerBoardsLoaded = true
+        } catch (e: Exception) {
+            android.util.Log.e("TradingViewModel", "Scanner boards failed to load", e)
+            _scannerBoards.value = ScannerBoardShelf()
+            scannerBoardsLoaded = true
+        }
     }
 
     private fun persistScannerBoards(shelf: ScannerBoardShelf) {
-        val clean = ScannerBoards.sanitize(shelf)
-        ScannerBoardStore.write(watchlistAppContext(), currentWatchlistUserId(), clean)
-        _scannerBoards.value = clean
-        scannerBoardsLoaded = true
+        try {
+            val clean = ScannerBoards.sanitize(shelf)
+            ScannerBoardStore.write(watchlistAppContext(), currentWatchlistUserId(), clean)
+            _scannerBoards.value = clean
+            scannerBoardsLoaded = true
+        } catch (e: Exception) {
+            android.util.Log.e("TradingViewModel", "Scanner boards failed to save", e)
+        }
     }
 
     fun toggleCustomScannerMinScore(value: Int) {

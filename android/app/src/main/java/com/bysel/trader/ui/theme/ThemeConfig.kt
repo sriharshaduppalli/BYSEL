@@ -189,15 +189,15 @@ data class AppTheme(
 ) {
     /** Label / icon color that stays readable on [primary] buttons. */
     val onPrimary: Color
-        get() = if (primary.luminance() > 0.55f) Color(0xFF121212) else Color.White
+        get() = contentColorForFill(primary)
 
     /** Label color on [positive] fill (Buy / gains CTAs). */
     val onPositive: Color
-        get() = if (positive.luminance() > 0.55f) Color(0xFF121212) else Color.White
+        get() = contentColorForFill(positive)
 
     /** Label color on [negative] fill (Sell / loss CTAs). */
     val onNegative: Color
-        get() = if (negative.luminance() > 0.55f) Color(0xFF121212) else Color.White
+        get() = contentColorForFill(negative)
 
     /** Hairline card outline — neutral so PnL and CTAs stay the only color. */
     val cardOutline: Color

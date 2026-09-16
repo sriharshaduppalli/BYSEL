@@ -51,8 +51,11 @@ fun harmonizeAccent(accent: Color, toward: Color, amount: Float = 0.18f): Color 
     accent.blendToward(toward, amount.coerceIn(0f, 0.4f))
 
 /** Pick readable content color for an arbitrary fill. */
-fun contentColorForFill(fill: Color): Color =
-    if (fill.luminance() > 0.55f) Color(0xFF121212) else Color.White
+fun contentColorForFill(fill: Color): Color {
+    val dark = Color(0xFF121212)
+    val light = Color.White
+    return if (contrastRatio(dark, fill) >= contrastRatio(light, fill)) dark else light
+}
 
 internal fun Color.ensureContrastOn(background: Color, preferLight: Boolean): Color {
     val ratio = contrastRatio(this, background)

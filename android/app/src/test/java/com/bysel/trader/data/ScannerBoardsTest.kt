@@ -63,6 +63,27 @@ class ScannerBoardsTest {
     }
 
     @Test
+    fun jsonRoundTripKeepsCustomChips() {
+        val created = ScannerBoards.create(
+            shelf = ScannerBoardShelf(),
+            rawName = "My quality",
+            mode = "CUSTOM",
+            setupFilter = "ALL",
+            filters = CustomScannerFilters(minScore = 65, rsi = "40-65"),
+        )
+        val restored = ScannerBoardStore.decode(ScannerBoardStore.encode(created))
+        assertEquals("CUSTOM", restored.active?.mode)
+        assertEquals(65, restored.active?.filters?.minScore)
+        assertEquals("40-65", restored.active?.filters?.rsi)
+    }
+
+    @Test
+    fun decodeBadJsonFallsBackEmpty() {
+        val decoded = ScannerBoardStore.decode("[]")
+        assertEquals(0, decoded.boards.size)
+    }
+
+    @Test
     fun cannotExceedMaxBoards() {
         var shelf = ScannerBoardShelf()
         repeat(ScannerBoards.MAX_BOARDS + 2) { index ->

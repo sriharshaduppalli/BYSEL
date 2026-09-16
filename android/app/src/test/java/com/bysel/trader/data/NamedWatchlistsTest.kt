@@ -44,4 +44,19 @@ class NamedWatchlistsTest {
         val board = NamedWatchlists.seed(listOf("RELIANCE"))
         assertEquals(1, NamedWatchlists.delete(board, NamedWatchlists.DEFAULT_ID).lists.size)
     }
+
+    @Test
+    fun jsonRoundTripKeepsPinnedList() {
+        val original = NamedWatchlists.seed(listOf("RELIANCE", "TCS"))
+        val restored = NamedWatchlistStore.decode(NamedWatchlistStore.encode(original))
+        assertEquals(original.activeId, restored.activeId)
+        assertEquals(original.featured?.symbols, restored.featured?.symbols)
+        assertEquals(true, restored.featured?.pinned)
+    }
+
+    @Test
+    fun decodeBadJsonFallsBackEmpty() {
+        val decoded = NamedWatchlistStore.decode("{not-json")
+        assertEquals(0, decoded.lists.size)
+    }
 }

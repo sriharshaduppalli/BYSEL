@@ -1,8 +1,9 @@
 package com.bysel.trader.data
 
 import android.content.Context
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
+import com.google.gson.JsonArray
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import java.util.UUID
 
 data class ScannerBoard(
@@ -133,21 +134,95 @@ object ScannerBoards {
 /** Device-local named Scanner snapshots. Does not change live scan results. */
 object ScannerBoardStore {
     private const val PREFS = "bysel_scanner_boards"
-    private val gson = Gson()
-    private val type = object : TypeToken<ScannerBoardShelf>() {}.type
 
     fun read(context: Context, userId: Int?): ScannerBoardShelf {
-        val raw = prefs(context).getString(key(userId), null)
-        val parsed = raw?.let {
-            runCatching { gson.fromJson<ScannerBoardShelf>(it, type) }.getOrNull()
-        }
-        return ScannerBoards.sanitize(parsed ?: ScannerBoardShelf())
+        val raw = runCatching { prefs(context).getString(key(userId), null) }.getOrNull()
+        return ScannerBoards.sanitize(decode(raw))
     }
 
     fun write(context: Context, userId: Int?, shelf: ScannerBoardShelf) {
         val clean = ScannerBoards.sanitize(shelf)
-        prefs(context).edit().putString(key(userId), gson.toJson(clean)).apply()
+        runCatching {
+            prefs(context).edit().putString(key(userId), encode(clean)).apply()
+        }
     }
+
+    internal fun encode(shelf: ScannerBoardShelf): String {
+        val boards = JsonArray()
+        shelf.boards.forEach { board ->
+            val node = JsonObject()
+            node.addProperty("id", board.id)
+            node.addProperty("name", board.name)
+            node.addProperty("mode", board.mode)
+            node.addProperty("setupFilter", board.setupFilter)
+            node.add("filters", encodeFilters(board.filters))
+            boards.add(node)
+        }
+        val root = JsonObject()
+        root.addProperty("activeId", shelf.activeId)
+        root.add("boards", boards)
+        return root.toString()
+    }
+
+    internal fun decode(raw: String?): ScannerBoardShelf {
+        if (raw.isNullOrBlank()) return ScannerBoardShelf()
+        return runCatching {
+            val root = JsonParser.parseString(raw).asJsonObject
+            val boardsJson = root.getAsJsonArray("boards") ?: JsonArray()
+            val boards = boardsJson.mapNotNull { element ->
+                val node = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
+                ScannerBoard(
+                    id = node.stringOrEmpty("id"),
+                    name = node.stringOrEmpty("name"),
+                    mode = node.stringOrEmpty("mode"),
+                    setupFilter = node.stringOrEmpty("setupFilter").ifBlank { "ALL" },
+                    filters = decodeFilters(node.getAsJsonObjectOrNull("filters")),
+                )
+            }
+            ScannerBoardShelf(
+                boards = boards,
+                activeId = root.stringOrEmpty("activeId"),
+            )
+        }.getOrDefault(ScannerBoardShelf())
+    }
+
+    private fun encodeFilters(filters: CustomScannerFilters): JsonObject {
+        val root = JsonObject()
+        filters.minScore?.let { root.addProperty("minScore", it) }
+        filters.rsi?.let { root.addProperty("rsi", it) }
+        filters.dma?.let { root.addProperty("dma", it) }
+        filters.minVolume?.let { root.addProperty("minVolume", it) }
+        filters.maxPe?.let { root.addProperty("maxPe", it) }
+        filters.minChange?.let { root.addProperty("minChange", it) }
+        return root
+    }
+
+    private fun decodeFilters(root: JsonObject?): CustomScannerFilters {
+        if (root == null) return CustomScannerFilters()
+        return CustomScannerFilters(
+            minScore = root.intOrNull("minScore"),
+            rsi = root.stringOrNull("rsi"),
+            dma = root.stringOrNull("dma"),
+            minVolume = root.doubleOrNull("minVolume"),
+            maxPe = root.doubleOrNull("maxPe"),
+            minChange = root.doubleOrNull("minChange"),
+        )
+    }
+
+    private fun JsonObject.stringOrEmpty(key: String): String =
+        get(key)?.takeIf { it.isJsonPrimitive }?.asString.orEmpty()
+
+    private fun JsonObject.stringOrNull(key: String): String? =
+        get(key)?.takeIf { it.isJsonPrimitive }?.asString?.takeIf { it.isNotBlank() }
+
+    private fun JsonObject.intOrNull(key: String): Int? =
+        get(key)?.takeIf { it.isJsonPrimitive }?.asInt
+
+    private fun JsonObject.doubleOrNull(key: String): Double? =
+        get(key)?.takeIf { it.isJsonPrimitive }?.asDouble
+
+    private fun JsonObject.getAsJsonObjectOrNull(key: String): JsonObject? =
+        get(key)?.takeIf { it.isJsonObject }?.asJsonObject
 
     private fun key(userId: Int?) = "shelf_${WatchlistSymbols.userKey(userId)}"
 

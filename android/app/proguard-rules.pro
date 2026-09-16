@@ -25,6 +25,14 @@
 # Retrofit/Gson DTOs live here too (Risk Lab, Earnings, AI v2, etc.)
 -keep class com.bysel.trader.data.api.** { *; }
 -keepclassmembers class com.bysel.trader.data.api.** { <fields>; }
+-keep class com.bysel.trader.data.NamedWatchlist { *; }
+-keep class com.bysel.trader.data.NamedWatchlistBoard { *; }
+-keep class com.bysel.trader.data.ScannerBoard { *; }
+-keep class com.bysel.trader.data.ScannerBoardShelf { *; }
+-keep class com.bysel.trader.data.CustomScannerFilters { *; }
+-keep class com.bysel.trader.data.importbook.ImportedBook { *; }
+-keep class com.bysel.trader.data.importbook.ImportedHolding { *; }
+-keep class com.bysel.trader.data.importbook.ImportParseResult { *; }
 
 # Room
 -keep class androidx.room.** { *; }
