@@ -181,8 +181,8 @@ private fun RiskLabContent(
                 RiskSectionCard(title = "Portfolio", appTheme = appTheme) {
                     if (data.symbols.isNotEmpty()) {
                         RiskRow(
-                            label = "Symbols",
-                            value = data.symbols.joinToString(", "),
+                            label = "Names in this view",
+                            value = "${data.symbols.size}",
                             valueColor = appTheme.text,
                         )
                     }
@@ -191,9 +191,9 @@ private fun RiskLabContent(
                             label = "Risk level",
                             value = riskLevel,
                             valueColor = when (riskLevel.lowercase()) {
-                                "low" -> Color(0xFF4CAF50)
-                                "high" -> Color(0xFFE53935)
-                                else -> Color(0xFFFF9800)
+                                "low" -> appTheme.positive
+                                "high" -> appTheme.negative
+                                else -> appTheme.caution
                             },
                         )
                     }
@@ -206,8 +206,8 @@ private fun RiskLabContent(
                 title = if (sampleNumbers) "Illustrative VaR (sample, 1-day)" else "Value at Risk (1-day)",
                 appTheme = appTheme,
             ) {
-                RiskRow("VaR 95%", formatSignedPct(metrics.var95), Color(0xFFFF7043))
-                RiskRow("VaR 99%", formatSignedPct(metrics.var99), Color(0xFFE53935))
+                RiskRow("VaR 95%", formatSignedPct(metrics.var95), appTheme.caution)
+                RiskRow("VaR 99%", formatSignedPct(metrics.var99), appTheme.negative)
                 Text(
                     if (sampleNumbers) {
                         "Sample figure only — not a modelled loss on your paper book."
@@ -229,15 +229,15 @@ private fun RiskLabContent(
                 RiskRow(
                     "Annualised Return",
                     formatSignedPct(metrics.annualizedReturn),
-                    if (metrics.annualizedReturn >= 0) Color(0xFF4CAF50) else Color(0xFFE53935),
+                    if (metrics.annualizedReturn >= 0) appTheme.positive else appTheme.negative,
                 )
-                RiskRow("Annualised Volatility", "$annualizedVolPct%", Color(0xFFFF9800))
+                RiskRow("Annualised Volatility", "$annualizedVolPct%", appTheme.caution)
                 RiskRow(
                     "Sharpe Ratio",
                     sharpeRatio,
-                    if (metrics.sharpeRatio >= 1) Color(0xFF4CAF50) else Color(0xFFFF9800),
+                    if (metrics.sharpeRatio >= 1) appTheme.positive else appTheme.caution,
                 )
-                RiskRow("Max Drawdown", formatSignedPct(metrics.maxDrawdown), Color(0xFFE53935))
+                RiskRow("Max Drawdown", formatSignedPct(metrics.maxDrawdown), appTheme.negative)
             }
         }
 
@@ -250,13 +250,13 @@ private fun RiskLabContent(
                 },
                 appTheme = appTheme,
             ) {
-                RiskRow("Best Case (P95)", formatSignedPct(mcP95), Color(0xFF4CAF50))
+                RiskRow("Best Case (P95)", formatSignedPct(mcP95), appTheme.positive)
                 RiskRow(
                     "Median Outcome",
                     formatSignedPct(mcMedian),
-                    if (mcMedian >= 0) Color(0xFF4CAF50) else Color(0xFFE53935),
+                    if (mcMedian >= 0) appTheme.positive else appTheme.negative,
                 )
-                RiskRow("Worst Case (P5)", formatSignedPct(mcP5), Color(0xFFE53935))
+                RiskRow("Worst Case (P5)", formatSignedPct(mcP5), appTheme.negative)
 
                 Spacer(modifier = Modifier.height(8.dp))
                 MonteCarloBar(
@@ -268,12 +268,26 @@ private fun RiskLabContent(
         }
 
         if (data.correlationMatrix.isNotEmpty() && data.symbols.size > 1) {
+            val peak = peakPairwiseCorrelation(data.correlationMatrix)
             item {
-                RiskSectionCard(title = "Correlation Matrix", appTheme = appTheme) {
-                    CorrelationMatrixView(
-                        symbols = data.symbols,
-                        matrix = data.correlationMatrix,
-                        appTheme = appTheme,
+                RiskSectionCard(title = "How names move together", appTheme = appTheme) {
+                    RiskRow(
+                        "Names used",
+                        "${data.symbols.size}",
+                        appTheme.text,
+                    )
+                    if (peak != null) {
+                        RiskRow(
+                            "Closest pairing",
+                            safeNumber(peak, 2),
+                            if (peak >= 0.7) appTheme.negative else appTheme.caution,
+                        )
+                    }
+                    Text(
+                        "Tickers stay on the Portfolio tab. This lab shows the book as a whole.",
+                        fontSize = 11.sp,
+                        color = appTheme.textSecondary,
+                        modifier = Modifier.padding(top = 4.dp),
                     )
                 }
             }
@@ -382,62 +396,16 @@ private fun MonteCarloBar(
     }
 }
 
-@Composable
-private fun CorrelationMatrixView(
-    symbols: List<String>,
-    matrix: List<List<Double>>,
-    appTheme: com.bysel.trader.ui.theme.AppTheme
-) {
-    Column {
-        Row {
-            Box(modifier = Modifier.width(60.dp))
-            symbols.forEach { sym ->
-                Text(
-                    sym.take(5),
-                    modifier = Modifier.width(52.dp),
-                    fontSize = 10.sp,
-                    color = appTheme.textSecondary,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-        matrix.forEachIndexed { rowIdx, row ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    symbols.getOrElse(rowIdx) { "" }.take(5),
-                    modifier = Modifier.width(60.dp),
-                    fontSize = 10.sp,
-                    color = appTheme.textSecondary,
-                    fontWeight = FontWeight.Bold
-                )
-                row.forEach { corr ->
-                    val bg = when {
-                        !corr.isFinite() -> appTheme.card
-                        corr >= 0.7 -> Color(0xFFE53935).copy(alpha = 0.5f)
-                        corr >= 0.3 -> Color(0xFFFF9800).copy(alpha = 0.4f)
-                        corr <= -0.3 -> Color(0xFF4CAF50).copy(alpha = 0.4f)
-                        else -> appTheme.card
-                    }
-                    Box(
-                        modifier = Modifier
-                            .width(52.dp)
-                            .height(28.dp)
-                            .padding(2.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(bg),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            safeNumber(corr, 2),
-                            fontSize = 9.sp,
-                            color = appTheme.text,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-            }
+private fun peakPairwiseCorrelation(matrix: List<List<Double>>): Double? {
+    var peak: Double? = null
+    matrix.forEachIndexed { i, row ->
+        row.forEachIndexed { j, corr ->
+            if (i == j || !corr.isFinite()) return@forEachIndexed
+            val current = peak
+            if (current == null || corr > current) peak = corr
         }
     }
+    return peak
 }
 
 private fun safeNumber(value: Double, decimals: Int): String {

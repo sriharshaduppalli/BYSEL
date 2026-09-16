@@ -1,5 +1,6 @@
 package com.bysel.trader.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -448,6 +449,7 @@ fun MutualFundsScreen(
     val compareResult by viewModel.mutualFundCompare.collectAsStateWithLifecycle()
     var selected by remember { mutableStateOf<MutualFund?>(null) }
     var sipTarget by remember { mutableStateOf<MutualFund?>(null) }
+    BackHandler(enabled = selected != null) { selected = null }
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("ALL") }
     var sortBy by remember { mutableStateOf("name") }
@@ -918,6 +920,7 @@ fun IpoListingsScreen(
     val loading by viewModel.productsLoading.collectAsStateWithLifecycle()
     var selected by remember { mutableStateOf<IPOListing?>(null) }
     var applyTarget by remember { mutableStateOf<IPOListing?>(null) }
+    BackHandler(enabled = selected != null) { selected = null }
     var selectedTab by remember { mutableStateOf(IpoListingTab.OPEN) }
 
     LaunchedEffect(Unit) {
@@ -1129,6 +1132,7 @@ fun EtfScreen(viewModel: TradingViewModel) {
     val etfs by viewModel.etfInstruments.collectAsStateWithLifecycle()
     val loading by viewModel.productsLoading.collectAsStateWithLifecycle()
     var selected by remember { mutableStateOf<ETFInstrument?>(null) }
+    BackHandler(enabled = selected != null) { selected = null }
 
     LaunchedEffect(Unit) { viewModel.loadEtfs() }
 

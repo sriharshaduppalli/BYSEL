@@ -41,6 +41,7 @@ fun WatchlistWidget(
     onQuoteClick: (Quote) -> Unit,
     onTradeClick: ((Quote) -> Unit)? = null,
     trackedCount: Int = quotes.size,
+    title: String = "My Watchlist",
 ) {
     val theme = LocalAppTheme.current
     var sort by rememberSaveable { mutableStateOf(WatchlistSortMode.MOVE.name) }
@@ -67,7 +68,7 @@ fun WatchlistWidget(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "My Watchlist",
+                    text = title,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = theme.text,
@@ -253,20 +254,12 @@ private fun WatchRow(
                     color = theme.textSecondary,
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (onTrade != null) {
                 TextButton(
-                    onClick = onOpen,
+                    onClick = onTrade,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                 ) {
-                    Text("Open", fontSize = 11.sp, color = theme.primary)
-                }
-                if (onTrade != null) {
-                    TextButton(
-                        onClick = onTrade,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                    ) {
-                        Text("Trade", fontSize = 11.sp, color = theme.positive)
-                    }
+                    Text("Trade", fontSize = 11.sp, color = theme.positive)
                 }
             }
         }

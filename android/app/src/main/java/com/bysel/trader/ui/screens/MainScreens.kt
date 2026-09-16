@@ -13,7 +13,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.automirrored.filled.TrendingDown
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.HealthAndSafety
@@ -36,6 +39,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bysel.trader.data.NamedWatchlist
+import com.bysel.trader.data.NamedWatchlists
 import com.bysel.trader.data.WatchlistSymbols
 import com.bysel.trader.data.importbook.ImportedBook
 import com.bysel.trader.data.models.Quote
@@ -51,7 +56,16 @@ import com.bysel.trader.ui.components.QuoteCard
 import com.bysel.trader.ui.components.StockNotesIcon
 import com.bysel.trader.ui.components.LoadingScreen
 import com.bysel.trader.ui.components.PullToRefreshBox
+import com.bysel.trader.ui.components.CompactFilterChip
 import com.bysel.trader.ui.components.exclusiveHorizontalScroll
+import com.bysel.trader.ui.components.rememberHideOnScrollState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.animateContentSize
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.bysel.trader.ui.components.SwipeToDismissItem
 import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
 import com.bysel.trader.ui.components.PortfolioSkeletonLoader
@@ -75,20 +89,34 @@ import com.bysel.trader.ui.format.formatSignedPct
 fun WatchlistScreen(
     quotes: List<Quote>,
     watchlistSymbols: List<String> = emptyList(),
+    lists: List<NamedWatchlist> = emptyList(),
+    activeListId: String = "",
     isLoading: Boolean,
     error: String?,
     onRefresh: () -> Unit,
     onQuoteClick: (Quote) -> Unit,
     onErrorDismiss: () -> Unit,
     onRemove: (String) -> Unit = {},
+    onSelectList: (String) -> Unit = {},
+    onCreateList: (String) -> Unit = {},
+    onPinList: (String) -> Unit = {},
+    onDeleteList: (String) -> Unit = {},
 ) {
     var sortModeName by rememberSaveable { mutableStateOf(WatchlistSortMode.MOVE.name) }
     val sortMode = remember(sortModeName) {
         runCatching { WatchlistSortMode.valueOf(sortModeName) }.getOrDefault(WatchlistSortMode.MOVE)
     }
     var pendingRemoveSymbol by remember { mutableStateOf<String?>(null) }
-    val displayQuotes = remember(quotes, watchlistSymbols) {
-        val saved = WatchlistSymbols.normalizeAll(watchlistSymbols)
+    var showNewListDialog by remember { mutableStateOf(false) }
+    var newListName by remember { mutableStateOf("") }
+    var pendingDeleteListId by remember { mutableStateOf<String?>(null) }
+    val activeList = remember(lists, activeListId) {
+        lists.firstOrNull { it.id == activeListId } ?: lists.firstOrNull()
+    }
+    val displaySymbols = activeList?.symbols ?: watchlistSymbols
+    val displayTitle = activeList?.name ?: "My Watchlist"
+    val displayQuotes = remember(quotes, displaySymbols) {
+        val saved = WatchlistSymbols.normalizeAll(displaySymbols)
         // Never substitute the live tape for an empty saved list — that looked
         // like "My Watchlist" and swipe-remove then persisted an empty overwrite.
         saved.map { symbol ->
@@ -98,17 +126,27 @@ fun WatchlistScreen(
     val sortedQuotes = remember(displayQuotes, sortMode) { displayQuotes.sortedByWatchlistMode(sortMode) }
     // Quote-load failures only. Order/F&O validation lives on other channels.
     val watchlistLoadError = error
+    val canCreateMore = lists.size < NamedWatchlists.MAX_LISTS
+    val canDeleteActive = lists.size > 1 && activeList != null
 
     if (isLoading && quotes.isEmpty()) {
         DashboardSkeletonLoader(
             modifier = Modifier.fillMaxSize().background(LocalAppTheme.current.surface)
         )
     } else {
+        val hideOnScroll = rememberHideOnScrollState()
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(LocalAppTheme.current.surface)
+                .nestedScroll(hideOnScroll.connection)
+                .animateContentSize()
         ) {
+            AnimatedVisibility(
+                visible = hideOnScroll.expanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
+            ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -118,7 +156,7 @@ fun WatchlistScreen(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "My Watchlist",
+                        text = displayTitle,
                         fontSize = 28.sp,
                         fontWeight = FontWeight.Bold,
                         color = LocalAppTheme.current.text
@@ -127,7 +165,7 @@ fun WatchlistScreen(
                         text = if (sortedQuotes.isEmpty()) {
                             "Empty · add from Search (full NSE catalog)"
                         } else {
-                            "${sortedQuotes.size} tracked · ${sortMode.label} · swipe left to remove"
+                            "${sortedQuotes.size} on this list · ${sortMode.label} · swipe left to remove"
                         },
                         fontSize = 12.sp,
                         color = LocalAppTheme.current.textSecondary,
@@ -142,24 +180,107 @@ fun WatchlistScreen(
                     Text("Refresh", fontSize = 12.sp)
                 }
             }
+            }
 
-            if (quotes.isNotEmpty()) {
+            if (lists.isNotEmpty()) {
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp)
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
                         .exclusiveHorizontalScroll(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    items(WatchlistSortMode.entries, key = { it.name }) { mode ->
+                    items(lists, key = { it.id }) { list ->
                         FilterChip(
-                            selected = sortMode == mode,
-                            onClick = { sortModeName = mode.name },
-                            label = { Text(mode.label, fontSize = 11.sp) },
+                            selected = list.id == activeList?.id,
+                            onClick = { onSelectList(list.id) },
+                            label = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (list.pinned) {
+                                        Icon(
+                                            imageVector = Icons.Filled.PushPin,
+                                            contentDescription = "Pinned on Home",
+                                            modifier = Modifier.size(14.dp),
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                    }
+                                    Text(
+                                        text = "${list.name} · ${list.symbols.size}",
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = LocalAppTheme.current.primary.copy(alpha = 0.18f),
+                                selectedLabelColor = LocalAppTheme.current.text,
+                            ),
+                        )
+                    }
+                    item(key = "new_list") {
+                        FilterChip(
+                            selected = false,
+                            enabled = canCreateMore,
+                            onClick = {
+                                newListName = ""
+                                showNewListDialog = true
+                            },
+                            label = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Add,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("New list", fontSize = 11.sp)
+                                }
+                            },
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+                if (activeList != null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        TextButton(
+                            onClick = { onPinList(activeList.id) },
+                            enabled = !activeList.pinned,
+                        ) {
+                            Text(
+                                if (activeList.pinned) "Pinned on Home" else "Pin this list on Home",
+                                fontSize = 12.sp,
+                            )
+                        }
+                        if (canDeleteActive) {
+                            TextButton(onClick = { pendingDeleteListId = activeList.id }) {
+                                Text("Delete list", fontSize = 12.sp, color = LocalAppTheme.current.negative)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (quotes.isNotEmpty() || displayQuotes.isNotEmpty()) {
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .exclusiveHorizontalScroll(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    items(WatchlistSortMode.entries, key = { it.name }) { mode ->
+                        CompactFilterChip(
+                            selected = sortMode == mode,
+                            onClick = { sortModeName = mode.name },
+                            label = mode.label,
+                        )
+                    }
+                }
             }
 
             if (watchlistLoadError != null) {
@@ -196,7 +317,7 @@ fun WatchlistScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Search the full NSE listed universe, tap Watch, then open Trade → My list.",
+                            text = "Search the full NSE listed universe, tap Watch, then it lands on the list you have open.",
                             color = LocalAppTheme.current.textSecondary,
                             fontSize = 13.sp,
                         )
@@ -216,7 +337,7 @@ fun WatchlistScreen(
                                 onDismiss = { pendingRemoveSymbol = quote.symbol },
                                 requireConfirmation = true,
                                 dismissIcon = Icons.Filled.Delete,
-                                dismissLabel = "Remove from My list",
+                                dismissLabel = "Remove from this list",
                             ) {
                                 if (quote.last <= 0.0) {
                                     Card(
@@ -237,7 +358,7 @@ fun WatchlistScreen(
                                                 color = LocalAppTheme.current.text,
                                             )
                                             Text(
-                                                text = "Saved on My list · last price still loading",
+                                                text = "Saved on this list · last price still loading",
                                                 fontSize = 13.sp,
                                                 color = LocalAppTheme.current.textSecondary,
                                                 modifier = Modifier.padding(top = 4.dp),
@@ -259,8 +380,8 @@ fun WatchlistScreen(
     pendingRemoveSymbol?.let { symbol ->
         AlertDialog(
             onDismissRequest = { pendingRemoveSymbol = null },
-            title = { Text("Remove from My Watchlist?") },
-            text = { Text("$symbol will be taken off this device list.") },
+            title = { Text("Remove from $displayTitle?") },
+            text = { Text("$symbol will leave this list. Other lists that still have it keep it.") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -271,6 +392,52 @@ fun WatchlistScreen(
             },
             dismissButton = {
                 TextButton(onClick = { pendingRemoveSymbol = null }) { Text("Keep") }
+            },
+        )
+    }
+
+    if (showNewListDialog) {
+        AlertDialog(
+            onDismissRequest = { showNewListDialog = false },
+            title = { Text("New list") },
+            text = {
+                OutlinedTextField(
+                    value = newListName,
+                    onValueChange = { newListName = it.take(NamedWatchlists.MAX_NAME) },
+                    label = { Text("List name") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onCreateList(newListName)
+                        showNewListDialog = false
+                    }
+                ) { Text("Create") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNewListDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    pendingDeleteListId?.let { listId ->
+        val name = lists.firstOrNull { it.id == listId }?.name ?: "this list"
+        AlertDialog(
+            onDismissRequest = { pendingDeleteListId = null },
+            title = { Text("Delete $name?") },
+            text = { Text("Names that only live here leave your watchlist. Names still on another list stay.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteList(listId)
+                        pendingDeleteListId = null
+                    }
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteListId = null }) { Text("Keep") }
             },
         )
     }
@@ -399,6 +566,7 @@ fun PortfolioScreen(
     onImportCsv: (String, String) -> Unit = { _, _ -> },
     onClearImport: () -> Unit = {},
     onOpenImportedSymbol: (String) -> Unit = {},
+    onOpenSymbol: (String) -> Unit = {},
     onRefresh: () -> Unit,
     onRefreshHealth: () -> Unit,
     onBuy: (String, Int) -> Unit,
@@ -503,12 +671,20 @@ fun PortfolioScreen(
             modifier = Modifier.fillMaxSize().background(LocalAppTheme.current.surface)
         )
     } else {
+        val hideOnScroll = rememberHideOnScrollState()
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(LocalAppTheme.current.surface)
+                .nestedScroll(hideOnScroll.connection)
+                .animateContentSize()
         ) {
             val theme = LocalAppTheme.current
+            AnimatedVisibility(
+                visible = hideOnScroll.expanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
+            ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -524,15 +700,28 @@ fun PortfolioScreen(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    val overallPct = if (riskSnapshot.totalInvested > 0.0) {
+                        riskSnapshot.totalPnl / riskSnapshot.totalInvested * 100.0
+                    } else {
+                        0.0
+                    }
                     Text(
-                        text = if (holdings.isEmpty()) {
-                            "Paper Practice · Simulated holdings"
-                        } else {
-                            "Paper Practice · ${sortMode.label}"
+                        text = when {
+                            holdings.isEmpty() && !hasImported -> "Paper Practice · Simulated holdings"
+                            riskSnapshot.totalInvested > 0.0 -> {
+                                val sign = if (riskSnapshot.totalPnl >= 0.0) "+" else "-"
+                                "Overall $sign${formatInr(kotlin.math.abs(riskSnapshot.totalPnl))} · ${formatSignedPct(overallPct)} since entry"
+                            }
+                            else -> "Paper Practice · ${sortMode.label}"
                         },
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
-                        color = theme.primary,
+                        color = when {
+                            holdings.isEmpty() && !hasImported -> theme.primary
+                            riskSnapshot.totalInvested <= 0.0 -> theme.primary
+                            riskSnapshot.totalPnl >= 0.0 -> theme.positive
+                            else -> theme.negative
+                        },
                         modifier = Modifier.padding(top = 2.dp),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -608,23 +797,33 @@ fun PortfolioScreen(
                     Text(if (isLoading) "Updating" else "Refresh", fontSize = 12.sp, color = theme.onPrimary)
                 }
             }
+            }
 
             if (holdings.isNotEmpty() || sipPlans.isNotEmpty() || hasImported) {
-                PortfolioAllocationStrip(
-                    equityCount = equityHoldings.size,
-                    etfCount = etfHoldings.size,
-                    mfCount = mfHoldings.size + sipPlans.size,
-                    fnoCount = fnoHoldings.size,
-                    selected = categoryFilter,
-                    onSelect = { categoryFilter = it },
-                )
                 LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .exclusiveHorizontalScroll(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    items(PortfolioSortMode.entries.toList(), key = { it.name }) { mode ->
-                        CompactPortfolioChip(
+                    val chips = buildList {
+                        add("ALL" to "All")
+                        add("EQUITY" to "Equity ${equityHoldings.size}")
+                        add("ETF" to "ETF ${etfHoldings.size}")
+                        add("MF" to "MF ${mfHoldings.size + sipPlans.size}")
+                        if (fnoHoldings.isNotEmpty()) add("FNO" to "F&O ${fnoHoldings.size}")
+                    }
+                    items(chips, key = { it.first }) { (id, label) ->
+                        CompactFilterChip(
+                            selected = categoryFilter == id,
+                            onClick = { categoryFilter = id },
+                            label = label,
+                        )
+                    }
+                    items(PortfolioSortMode.entries.toList(), key = { "sort-${it.name}" }) { mode ->
+                        CompactFilterChip(
                             selected = sortMode == mode,
                             onClick = { sortModeName = mode.name },
                             label = mode.label,
@@ -763,6 +962,7 @@ fun PortfolioScreen(
                             onBrowse = onNavigateToTrade,
                             browseLabel = "Find stocks",
                             onAskTrade = { pendingTrade = it },
+                            onOpenSymbol = onOpenSymbol,
                         )
                         portfolioCategoryBlock(
                             title = "ETFs",
@@ -772,6 +972,7 @@ fun PortfolioScreen(
                             onBrowse = onBrowseEtfs,
                             browseLabel = "Browse ETFs",
                             onAskTrade = { pendingTrade = it },
+                            onOpenSymbol = onOpenSymbol,
                         )
                         item(key = "mf-header") {
                             PortfolioCategoryHeader("Mutual funds", mfHoldings.size + sipPlans.size)
@@ -790,6 +991,7 @@ fun PortfolioScreen(
                                     holding = holding,
                                     quote = quoteBySymbol[holding.symbol.uppercase()],
                                     onAskTrade = { pendingTrade = it },
+                                    onOpenSymbol = onOpenSymbol,
                                 )
                             }
                             items(items = sipPlans, key = { "sip-${it.id}" }) { plan ->
@@ -805,6 +1007,7 @@ fun PortfolioScreen(
                                 onBrowse = onNavigateToTrade,
                                 browseLabel = "Trade",
                                 onAskTrade = { pendingTrade = it },
+                                onOpenSymbol = onOpenSymbol,
                             )
                         }
                     } else {
@@ -835,6 +1038,7 @@ fun PortfolioScreen(
                                 holding = holding,
                                 quote = quoteBySymbol[holding.symbol.uppercase()],
                                 onAskTrade = { pendingTrade = it },
+                                onOpenSymbol = onOpenSymbol,
                             )
                         }
                         if (categoryFilter == "MF") {
@@ -858,6 +1062,7 @@ private fun LazyListScope.portfolioCategoryBlock(
     onBrowse: () -> Unit,
     browseLabel: String,
     onAskTrade: (PortfolioQtyAsk) -> Unit,
+    onOpenSymbol: (String) -> Unit,
 ) {
     item(key = "hdr-$title") {
         PortfolioCategoryHeader(title, rows.size)
@@ -872,63 +1077,7 @@ private fun LazyListScope.portfolioCategoryBlock(
                 holding = holding,
                 quote = quoteBySymbol[holding.symbol.uppercase()],
                 onAskTrade = onAskTrade,
-            )
-        }
-    }
-}
-
-@Composable
-private fun CompactPortfolioChip(
-    selected: Boolean,
-    onClick: () -> Unit,
-    label: String,
-) {
-    val theme = LocalAppTheme.current
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        modifier = Modifier.height(28.dp),
-        label = {
-            Text(
-                label,
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-        colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = theme.primary.copy(alpha = 0.18f),
-            selectedLabelColor = theme.text,
-        ),
-    )
-}
-
-@Composable
-private fun PortfolioAllocationStrip(
-    equityCount: Int,
-    etfCount: Int,
-    mfCount: Int,
-    fnoCount: Int,
-    selected: String,
-    onSelect: (String) -> Unit,
-) {
-    val chips = buildList {
-        add("ALL" to "All")
-        add("EQUITY" to "Equity $equityCount")
-        add("ETF" to "ETF $etfCount")
-        add("MF" to "MF $mfCount")
-        if (fnoCount > 0) add("FNO" to "F&O $fnoCount")
-    }
-    LazyRow(
-        modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        items(chips, key = { it.first }) { (id, label) ->
-            CompactPortfolioChip(
-                selected = selected == id,
-                onClick = { onSelect(id) },
-                label = label,
+                onOpenSymbol = onOpenSymbol,
             )
         }
     }
@@ -970,6 +1119,7 @@ private fun PortfolioHoldingRow(
     holding: Holding,
     quote: Quote?,
     onAskTrade: (PortfolioQtyAsk) -> Unit,
+    onOpenSymbol: (String) -> Unit,
 ) {
     val displayHolding = if (quote != null && quote.last > 0.0) {
         holding.copy(
@@ -1000,6 +1150,7 @@ private fun PortfolioHoldingRow(
         UpgradedPortfolioHoldingItem(
             holding = displayHolding,
             dayPctChange = quote?.pctChange ?: 0.0,
+            onOpen = { onOpenSymbol(holding.symbol) },
             onBuy = {
                 onAskTrade(
                     PortfolioQtyAsk(
@@ -1057,6 +1208,7 @@ private fun PortfolioSipRow(plan: SipPlan) {
 fun UpgradedPortfolioHoldingItem(
     holding: Holding,
     dayPctChange: Double = 0.0,
+    onOpen: () -> Unit = {},
     onBuy: () -> Unit,
     onSell: () -> Unit
 ) {
@@ -1070,7 +1222,8 @@ fun UpgradedPortfolioHoldingItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .clickable(onClick = onOpen),
         colors = byselCardColors(),
         elevation = byselCardElevation(),
         border = byselCardBorder(),
@@ -1110,15 +1263,15 @@ fun UpgradedPortfolioHoldingItem(
 
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "${if (holding.pnl > 0) "+" else ""}₹${String.format("%.2f", holding.pnl)}",
+                        text = "${if (holding.pnl >= 0) "+" else ""}₹${String.format("%.2f", holding.pnl)}  ${formatSignedPct(pnlPct)}",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (holding.pnl > 0) theme.positive else theme.negative,
+                        color = if (holding.pnl >= 0) theme.positive else theme.negative,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = formatSignedPct(dayPctChange),
+                        text = "Day ${formatSignedPct(dayPctChange)}",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = if (dayPctChange >= 0) theme.positive else theme.negative,
@@ -1308,69 +1461,66 @@ fun PortfolioHealthCard(
                 }
             }
         } else if (health != null) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                // Header with score
+            var expanded by rememberSaveable { mutableStateOf(false) }
+            val theme = LocalAppTheme.current
+            val gradeColor = when {
+                health.overallScore >= 75 -> theme.positive
+                health.overallScore >= 55 -> theme.caution
+                health.overallScore >= 35 -> theme.caution
+                else -> theme.negative
+            }
+            val scoreColor = when {
+                health.overallScore >= 75 -> theme.positive
+                health.overallScore >= 55 -> theme.caution
+                health.overallScore >= 35 -> theme.caution
+                else -> theme.negative
+            }
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { expanded = !expanded },
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Filled.HealthAndSafety,
-                            contentDescription = null,
-                            tint = LocalAppTheme.current.primary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        Icons.Filled.HealthAndSafety,
+                        contentDescription = null,
+                        tint = theme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             "Portfolio Health",
-                            color = LocalAppTheme.current.text,
+                            color = theme.text,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
+                            fontSize = 15.sp,
                         )
-                    }
-                    // Grade badge
-                    val theme = LocalAppTheme.current
-                    val gradeColor = when {
-                        health.overallScore >= 75 -> theme.positive
-                        health.overallScore >= 55 -> Color(0xFFFFB300)
-                        health.overallScore >= 35 -> Color(0xFFFF9100)
-                        else -> theme.negative
-                    }
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(
-                                Brush.radialGradient(
-                                    colors = listOf(gradeColor, gradeColor.copy(alpha = 0.3f))
-                                )
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
                         Text(
-                            health.grade,
-                            color = LocalAppTheme.current.text,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 18.sp
+                            "${health.grade} · ${health.overallScore}/100 · ${health.riskLevel.ifBlank { "—" }.uppercase()}",
+                            color = gradeColor,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    // Refresh action for the health card
                     IconButton(onClick = onRefresh) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh health", tint = LocalAppTheme.current.text)
+                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh health", tint = theme.text)
                     }
+                    Icon(
+                        imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = if (expanded) "Hide health details" else "Show health details",
+                        tint = theme.textSecondary,
+                    )
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Score bar
-                val scoreColor = when {
-                    health.overallScore >= 75 -> Color(0xFF00C853)
-                    health.overallScore >= 55 -> Color(0xFFFFB300)
-                    health.overallScore >= 35 -> Color(0xFFFF9100)
-                    else -> Color(0xFFE53935)
-                }
+                AnimatedVisibility(
+                    visible = expanded,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut(),
+                ) {
+                Column {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -1468,10 +1618,10 @@ fun PortfolioHealthCard(
                 // Risk level
                 Spacer(modifier = Modifier.height(8.dp))
                 val riskColor = when (health.riskLevel) {
-                    "low" -> Color(0xFF00C853)
-                    "moderate" -> Color(0xFFFFB300)
-                    "high" -> Color(0xFFFF9100)
-                    else -> Color(0xFFE53935)
+                    "low" -> theme.positive
+                    "moderate" -> theme.caution
+                    "high" -> theme.caution
+                    else -> theme.negative
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
@@ -1516,6 +1666,8 @@ fun PortfolioHealthCard(
                             modifier = Modifier.padding(vertical = 2.dp)
                         )
                     }
+                }
+                }
                 }
             }
         }

@@ -4,6 +4,7 @@ package com.bysel.trader.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.bysel.trader.data.DailyRecommendationsStore
 import com.bysel.trader.data.MarketNewsStore
 import com.bysel.trader.data.PinnedStocksStore
 import com.bysel.trader.data.PinnedWidgetsStore
@@ -12,6 +13,7 @@ import com.bysel.trader.data.models.IntradayTipsResponse
 import com.bysel.trader.data.models.InvestorTipsResponse
 import com.bysel.trader.data.models.MarketMoverQuote
 import com.bysel.trader.data.models.MarketNewsHeadline
+import com.bysel.trader.data.models.StockRecommendationsResponse
 import com.bysel.trader.data.repository.Result
 import com.bysel.trader.data.repository.TradingRepository
 import com.bysel.trader.ui.components.localInvestorTips
@@ -96,6 +98,12 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     private val _practiceIdeasDisclaimer = MutableStateFlow("")
     val practiceIdeasDisclaimer: StateFlow<String> = _practiceIdeasDisclaimer.asStateFlow()
 
+    private val _dailyRecommendations = MutableStateFlow<StockRecommendationsResponse?>(null)
+    val dailyRecommendations: StateFlow<StockRecommendationsResponse?> = _dailyRecommendations.asStateFlow()
+
+    private val _dailyRecommendationsLoading = MutableStateFlow(false)
+    val dailyRecommendationsLoading: StateFlow<Boolean> = _dailyRecommendationsLoading.asStateFlow()
+
     private val _intradayTips = MutableStateFlow<IntradayTipsResponse?>(null)
     val intradayTips: StateFlow<IntradayTipsResponse?> = _intradayTips.asStateFlow()
 
@@ -120,12 +128,14 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         loadPinnedWidgets()
         loadWidgetOrder()
         restoreCachedNews()
+        restoreCachedRecommendations()
         // Stagger Home secondary fetches so they don't stampede wallet/holdings on cold start.
         viewModelScope.launch {
             delay(1_200) // let first Home frame + priority quotes win
             refreshMarketNews()
             delay(1_200)
             refreshMarketMovers()
+            refreshDailyRecommendations()
             delay(400)
             refreshIntradayTips()
             delay(400)
@@ -206,6 +216,33 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                 Result.Loading -> Unit
             }
             _moversLoading.value = false
+        }
+    }
+
+    private fun restoreCachedRecommendations() {
+        if (_dailyRecommendations.value != null) return
+        _dailyRecommendations.value = DailyRecommendationsStore.read(getApplication())
+    }
+
+    fun refreshDailyRecommendations(limit: Int = 9) {
+        viewModelScope.launch {
+            val hasRows = _dailyRecommendations.value.hasPicks()
+            if (!hasRows) _dailyRecommendationsLoading.value = true
+            when (val response = repository.getStockRecommendations(limit = limit)) {
+                is Result.Success -> {
+                    if (response.data.hasPicks()) {
+                        _dailyRecommendations.value = response.data
+                        DailyRecommendationsStore.write(getApplication(), response.data)
+                    }
+                }
+                is Result.Error -> {
+                    if (_dailyRecommendations.value == null) {
+                        restoreCachedRecommendations()
+                    }
+                }
+                Result.Loading -> Unit
+            }
+            _dailyRecommendationsLoading.value = false
         }
     }
 
@@ -350,4 +387,9 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             PinnedWidgetsStore.setNewsPinned(context, newValue)
         }
     }
+}
+
+private fun StockRecommendationsResponse?.hasPicks(): Boolean {
+    val feed = this ?: return false
+    return feed.allScored.isNotEmpty() || feed.recommendations.values.any { it.isNotEmpty() }
 }

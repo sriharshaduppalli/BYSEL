@@ -1,6 +1,12 @@
 package com.bysel.trader.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -14,6 +20,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
@@ -21,6 +29,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +57,26 @@ import java.util.Locale
 @Composable
 fun PortfolioRiskDashboardCard(risk: PaperPortfolioRisk) {
     val theme = LocalAppTheme.current
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val overallPct = if (risk.totalInvested > 0.0) {
+        risk.totalPnl / risk.totalInvested * 100.0
+    } else {
+        0.0
+    }
+    val hasOverall = risk.totalInvested > 0.0
+    val headline = buildString {
+        append(formatInrCompact(risk.totalValue))
+        if (hasOverall) {
+            append("  ·  ")
+            append(signedInr(risk.totalPnl))
+            append(" ")
+            append(formatSignedPct(overallPct))
+        }
+        if (risk.dayPnlAvailable) {
+            append("  ·  Day ")
+            append(formatSignedPct(risk.dayPnlPercent))
+        }
+    }
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -59,7 +91,12 @@ fun PortfolioRiskDashboardCard(risk: PaperPortfolioRisk) {
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 10.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Icon(
                     Icons.Filled.Shield,
                     contentDescription = null,
@@ -67,23 +104,40 @@ fun PortfolioRiskDashboardCard(risk: PaperPortfolioRisk) {
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    "Portfolio risk",
-                    color = theme.text,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                Text(
-                    "Paper · educational",
-                    color = theme.primary,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium,
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Portfolio risk",
+                        color = theme.text,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                    )
+                    Text(
+                        headline.ifBlank { "Paper · educational" },
+                        color = when {
+                            !hasOverall -> theme.textSecondary
+                            risk.totalPnl >= 0.0 -> theme.positive
+                            else -> theme.negative
+                        },
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Icon(
+                    imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = if (expanded) "Hide risk details" else "Show risk details",
+                    tint = theme.textSecondary,
                 )
             }
 
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
+            ) {
+            Column {
             Spacer(modifier = Modifier.height(8.dp))
-
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -92,6 +146,31 @@ fun PortfolioRiskDashboardCard(risk: PaperPortfolioRisk) {
                     label = "Value",
                     value = formatInrCompact(risk.totalValue),
                     color = theme.text,
+                )
+                CompactStat(
+                    label = "Invested",
+                    value = if (hasOverall) formatInrCompact(risk.totalInvested) else "—",
+                    color = theme.text,
+                    alignEnd = true,
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                CompactStat(
+                    label = "Overall P&L",
+                    value = if (hasOverall) {
+                        "${signedInr(risk.totalPnl)}  ${formatSignedPct(overallPct)}"
+                    } else {
+                        "—"
+                    },
+                    color = when {
+                        !hasOverall -> theme.textSecondary
+                        risk.totalPnl >= 0.0 -> theme.positive
+                        else -> theme.negative
+                    },
                 )
                 CompactStat(
                     label = "Day P&L",
@@ -255,6 +334,8 @@ fun PortfolioRiskDashboardCard(risk: PaperPortfolioRisk) {
                 lineHeight = 13.sp,
                 modifier = Modifier.padding(top = 6.dp),
             )
+            }
+            }
         }
     }
 }
@@ -286,15 +367,15 @@ private fun RiskGaugeBar(value: Int, higherIsRiskier: Boolean) {
     val color = if (higherIsRiskier) {
         when {
             clamped >= 60 -> theme.negative
-            clamped >= 40 -> Color(0xFFFF9100)
-            clamped >= 25 -> Color(0xFFFFB300)
+            clamped >= 40 -> theme.caution
+            clamped >= 25 -> theme.caution
             else -> theme.positive
         }
     } else {
         when {
             clamped >= 70 -> theme.positive
-            clamped >= 50 -> Color(0xFFFFB300)
-            clamped >= 30 -> Color(0xFFFF9100)
+            clamped >= 50 -> theme.caution
+            clamped >= 30 -> theme.caution
             else -> theme.negative
         }
     }

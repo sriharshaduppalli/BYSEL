@@ -1215,7 +1215,7 @@ def get_best_stocks_to_buy(limit: int = 10) -> Dict:
                 "oneMonth": _MODEL_PERFORMANCE.get("one_month", {}).get("accuracy", 68),
                 "threeMonths": _MODEL_PERFORMANCE.get("three_months", {}).get("accuracy", 62),
             },
-            "disclaimer": "AI recommendations are for educational purposes. Not financial advice.",
+            "disclaimer": "Educational paper suggestions from BYSEL models. Not SEBI-registered advice. Not a forecast — returns are not guaranteed.",
             "generatedAt": datetime.utcnow().isoformat(),
         }
         

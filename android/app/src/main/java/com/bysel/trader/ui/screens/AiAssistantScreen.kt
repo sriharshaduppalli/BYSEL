@@ -53,6 +53,8 @@ import com.bysel.trader.ui.components.SentimentCard
 import com.bysel.trader.ui.components.QueryUnderstandingCard
 import com.bysel.trader.ui.components.AiChatStyledText
 import com.bysel.trader.ui.components.exclusiveHorizontalScroll
+import com.bysel.trader.ui.components.rememberHideOnScrollState
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.bysel.trader.ui.components.ProfitSignal
 import com.bysel.trader.ui.components.ProfitSignalCard
 import com.bysel.trader.ui.components.ProfitSignalExtractor
@@ -107,11 +109,20 @@ fun AiAssistantScreen(
         }
     }
 
+    val hideOnScroll = rememberHideOnScrollState()
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(appTheme.surface)
+            .nestedScroll(hideOnScroll.connection)
+            .animateContentSize()
     ) {
+        AnimatedVisibility(
+            visible = hideOnScroll.expanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+        ) {
+            Column {
         // Header
         Row(
             modifier = Modifier
@@ -196,6 +207,17 @@ fun AiAssistantScreen(
                 color = appTheme.text,
                 lineHeight = 14.sp
             )
+        }
+            }
+        }
+        if (!hideOnScroll.expanded && onNavigateBack != null) {
+            IconButton(onClick = onNavigateBack) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = backLabel ?: "Back",
+                    tint = appTheme.text,
+                )
+            }
         }
 
         // Chat messages

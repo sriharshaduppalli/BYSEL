@@ -79,8 +79,13 @@ import com.bysel.trader.ui.theme.byselCardBorder
 import com.bysel.trader.ui.theme.byselCardColors
 import com.bysel.trader.ui.theme.byselCardElevation
 import com.bysel.trader.ui.components.PullToRefreshBox
+import com.bysel.trader.ui.components.CompactFilterChip
 import com.bysel.trader.ui.components.exclusiveHorizontalScroll
 import com.bysel.trader.ui.components.preferVerticalScroll
+import com.bysel.trader.ui.components.BindToList
+import com.bysel.trader.ui.components.HideOnScrollState
+import com.bysel.trader.ui.components.rememberHideOnScrollState
+import androidx.compose.animation.animateContentSize
 import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
 import com.bysel.trader.ui.components.OrderRejectionBanner
 import com.bysel.trader.ui.components.RejectionCategory
@@ -146,6 +151,57 @@ private val TRADE_WORKSPACE_TABS = listOf(
     TradeWorkspaceTab("Options", "Learn the chain"),
     TradeWorkspaceTab("Futures", "Lots & margin"),
 )
+
+@Composable
+private fun PracticeWalletChip(
+    walletBalance: Double,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+) {
+    AssistChip(
+        onClick = onClick,
+        modifier = modifier.height(if (compact) 28.dp else 36.dp),
+        label = {
+            if (walletBalance > 0.0) {
+                AnimatedAmountText(
+                    amount = walletBalance,
+                    formatter = { "₹${String.format("%,.0f", it)}" },
+                    style = if (compact) {
+                        MaterialTheme.typography.labelMedium
+                    } else {
+                        MaterialTheme.typography.labelLarge
+                    },
+                    color = LocalAppTheme.current.text,
+                    fontWeight = FontWeight.Bold,
+                )
+            } else {
+                Text(
+                    "Add credit",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        },
+        leadingIcon = if (compact) {
+            null
+        } else {
+            {
+                Icon(
+                    Icons.Filled.AccountBalanceWallet,
+                    contentDescription = "Practice wallet",
+                    modifier = Modifier.size(18.dp),
+                    tint = LocalAppTheme.current.primary,
+                )
+            }
+        },
+        colors = AssistChipDefaults.assistChipColors(
+            containerColor = LocalAppTheme.current.primary.copy(alpha = 0.14f),
+            labelColor = LocalAppTheme.current.text,
+            leadingIconContentColor = LocalAppTheme.current.primary,
+        ),
+    )
+}
 
 @Composable
 fun TradingScreen(
@@ -278,94 +334,91 @@ fun TradingScreen(
         )
     }
 
+    val hideOnScroll = rememberHideOnScrollState()
+    LaunchedEffect(selectedWorkspaceIndex) {
+        if (selectedWorkspaceIndex != 0) hideOnScroll.updateExpanded(true)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(LocalAppTheme.current.surface)
     ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            colors = byselCardColors(),
-            elevation = byselCardElevation(),
-            border = byselCardBorder(),
-            shape = MaterialTheme.shapes.medium,
+        AnimatedVisibility(
+            visible = hideOnScroll.expanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
         ) {
-            ScreenHeader(
-                title = "Trade",
-                subtitle = "Practice wallet",
-                compact = true,
-                modifier = Modifier.padding(14.dp),
-                trailing = {
-                    // Practice wallet amount — tap to add simulated credit.
-                    AssistChip(
-                        onClick = { showAddFundsDialog = true },
-                        label = {
-                            if (walletBalance > 0.0) {
-                                AnimatedAmountText(
-                                    amount = walletBalance,
-                                    formatter = { "₹${String.format("%,.0f", it)}" },
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = LocalAppTheme.current.text,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            } else {
-                                Text(
-                                    "Add credit",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                        },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Filled.AccountBalanceWallet,
-                                contentDescription = "Practice wallet",
-                                modifier = Modifier.size(18.dp),
-                                tint = LocalAppTheme.current.primary,
-                            )
-                        },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = LocalAppTheme.current.primary.copy(alpha = 0.14f),
-                            labelColor = LocalAppTheme.current.text,
-                            leadingIconContentColor = LocalAppTheme.current.primary,
-                        ),
-                    )
-                },
-            )
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                colors = byselCardColors(),
+                elevation = byselCardElevation(),
+                border = byselCardBorder(),
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                ScreenHeader(
+                    title = "Trade",
+                    subtitle = "Practice wallet",
+                    compact = true,
+                    modifier = Modifier.padding(14.dp),
+                    trailing = {
+                        PracticeWalletChip(
+                            walletBalance = walletBalance,
+                            onClick = { showAddFundsDialog = true },
+                        )
+                    },
+                )
+            }
         }
 
-        ScrollableTabRow(
-            selectedTabIndex = selectedWorkspaceIndex,
-            modifier = Modifier
-                .fillMaxWidth()
-                .exclusiveHorizontalScroll(),
-            edgePadding = 12.dp,
-            containerColor = LocalAppTheme.current.surface,
-            contentColor = LocalAppTheme.current.text,
-            divider = {}
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            TRADE_WORKSPACE_TABS.forEachIndexed { index, tab ->
-                Tab(
-                    selected = selectedWorkspaceIndex == index,
-                    onClick = { selectedWorkspaceIndex = index },
-                    text = {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                tab.title,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                tab.caption,
-                                fontSize = 10.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+            ScrollableTabRow(
+                selectedTabIndex = selectedWorkspaceIndex,
+                modifier = Modifier
+                    .weight(1f)
+                    .exclusiveHorizontalScroll(),
+                edgePadding = 8.dp,
+                containerColor = LocalAppTheme.current.surface,
+                contentColor = LocalAppTheme.current.text,
+                divider = {}
+            ) {
+                TRADE_WORKSPACE_TABS.forEachIndexed { index, tab ->
+                    Tab(
+                        selected = selectedWorkspaceIndex == index,
+                        onClick = { selectedWorkspaceIndex = index },
+                        text = {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    tab.title,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = if (hideOnScroll.expanded) 14.sp else 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                if (hideOnScroll.expanded) {
+                                    Text(
+                                        tab.caption,
+                                        fontSize = 10.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
                         }
-                    }
+                    )
+                }
+            }
+            if (!hideOnScroll.expanded) {
+                PracticeWalletChip(
+                    walletBalance = walletBalance,
+                    onClick = { showAddFundsDialog = true },
+                    compact = true,
+                    modifier = Modifier.padding(end = 8.dp),
                 )
             }
         }
@@ -398,6 +451,7 @@ fun TradingScreen(
                         onOpenAdvancedWorkspace = { selectedWorkspaceIndex = 1 },
                         onOpenDerivativesWorkspace = { selectedWorkspaceIndex = 2 },
                         onOpenSearch = onOpenSearch,
+                        hideOnScroll = hideOnScroll,
                         viewModel = viewModel,
                     )
                     1 -> AdvancedOrdersScreen(
@@ -437,6 +491,7 @@ private fun SpotTradingWorkspace(
     @Suppress("UNUSED_PARAMETER")
     onOpenDerivativesWorkspace: () -> Unit,
     onOpenSearch: (() -> Unit)? = null,
+    hideOnScroll: HideOnScrollState,
     viewModel: TradingViewModel,
 ) {
     var showAddWatchlistDialog by remember { mutableStateOf(false) }
@@ -519,6 +574,8 @@ private fun SpotTradingWorkspace(
     }
     val watchlistListState = rememberLazyListState()
     val liveBoardListState = rememberLazyListState()
+    val activeListState = if (boardModeWatchlist) watchlistListState else liveBoardListState
+    hideOnScroll.BindToList(activeListState)
 
     LaunchedEffect(showAddWatchlistDialog) {
         if (showAddWatchlistDialog) {
@@ -582,98 +639,105 @@ private fun SpotTradingWorkspace(
         modifier = Modifier
             .fillMaxSize()
             .background(LocalAppTheme.current.surface)
+            .animateContentSize()
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+        AnimatedVisibility(
+            visible = hideOnScroll.expanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "My Watchlist",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = LocalAppTheme.current.text,
-                )
-                Text(
-                    text = if (activeWatchlistSymbols.isEmpty()) {
-                        "Search any listed NSE name to start tracking"
-                    } else {
-                        "${activeWatchlistSymbols.size} tracked · $quoteFreshnessLabel"
-                    },
-                    fontSize = 11.sp,
-                    color = if (activeWatchlistSymbols.isEmpty()) {
-                        LocalAppTheme.current.textSecondary
-                    } else {
-                        quoteFreshnessColor
-                    },
-                )
-            }
             Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (onOpenSearch != null) {
-                    IconButton(onClick = onOpenSearch) {
-                        Icon(
-                            Icons.Filled.Search,
-                            contentDescription = "Search stocks",
-                            tint = LocalAppTheme.current.primary,
-                        )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "My Watchlist",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = LocalAppTheme.current.text,
+                    )
+                    Text(
+                        text = if (activeWatchlistSymbols.isEmpty()) {
+                            "Search any listed NSE name to start tracking"
+                        } else {
+                            "${activeWatchlistSymbols.size} tracked · $quoteFreshnessLabel"
+                        },
+                        fontSize = 11.sp,
+                        color = if (activeWatchlistSymbols.isEmpty()) {
+                            LocalAppTheme.current.textSecondary
+                        } else {
+                            quoteFreshnessColor
+                        },
+                    )
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (onOpenSearch != null) {
+                        IconButton(onClick = onOpenSearch) {
+                            Icon(
+                                Icons.Filled.Search,
+                                contentDescription = "Search stocks",
+                                tint = LocalAppTheme.current.primary,
+                            )
+                        }
+                    }
+                    Button(
+                        onClick = { showAddWatchlistDialog = true },
+                        modifier = Modifier.height(36.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                    ) {
+                        Text("+ Add", fontSize = 12.sp)
                     }
                 }
-                Button(
-                    onClick = { showAddWatchlistDialog = true },
-                    modifier = Modifier.height(36.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp),
-                ) {
-                    Text("+ Add", fontSize = 12.sp)
-                }
             }
         }
 
-        Row(
+        LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .exclusiveHorizontalScroll(),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            FilterChip(
-                selected = boardModeWatchlist,
-                onClick = { boardModeWatchlist = true },
-                label = { Text("My list") },
-            )
-            FilterChip(
-                selected = !boardModeWatchlist,
-                onClick = { boardModeWatchlist = false },
-                label = { Text("Live board") },
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            StreamHealthPill(health = streamHealth)
-            TextButton(
-                onClick = onOpenAdvancedWorkspace,
-                contentPadding = PaddingValues(horizontal = 8.dp),
-            ) {
-                Text("Tools", fontSize = 11.sp, maxLines = 1)
+            item(key = "board-mylist") {
+                CompactFilterChip(
+                    selected = boardModeWatchlist,
+                    onClick = { boardModeWatchlist = true },
+                    label = "My list",
+                )
             }
-        }
-
-        if (boardModeWatchlist && activeWatchlistSymbols.isNotEmpty()) {
-            // FlowRow keeps every sort chip visible (wrap) instead of hiding them in a LazyRow.
-            FlowRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                WatchlistSortMode.entries.forEach { mode ->
-                    FilterChip(
+            item(key = "board-live") {
+                CompactFilterChip(
+                    selected = !boardModeWatchlist,
+                    onClick = { boardModeWatchlist = false },
+                    label = "Live board",
+                )
+            }
+            if (boardModeWatchlist && activeWatchlistSymbols.isNotEmpty()) {
+                items(WatchlistSortMode.entries.toList(), key = { it.name }) { mode ->
+                    CompactFilterChip(
                         selected = sortMode == mode,
                         onClick = { sortModeName = mode.name },
-                        label = { Text(mode.label, fontSize = 11.sp) },
+                        label = mode.label,
                     )
+                }
+            }
+            if (hideOnScroll.expanded) {
+                item(key = "health") {
+                    StreamHealthPill(health = streamHealth)
+                }
+                item(key = "tools") {
+                    TextButton(
+                        onClick = onOpenAdvancedWorkspace,
+                        contentPadding = PaddingValues(horizontal = 8.dp),
+                    ) {
+                        Text("Tools", fontSize = 11.sp, maxLines = 1)
+                    }
                 }
             }
         }

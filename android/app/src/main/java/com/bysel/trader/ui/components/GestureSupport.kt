@@ -4,6 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
@@ -24,8 +25,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.bysel.trader.ui.theme.LocalAppTheme
 
 /**
  * Keep leftover horizontal drag on chip rails / LazyRows so the root
@@ -49,6 +53,67 @@ fun Modifier.blockParentHorizontalPager(): Modifier =
  */
 fun Modifier.preferVerticalScroll(): Modifier =
     this.nestedScroll(PreferVerticalNestedScroll)
+
+/**
+ * Shrink Trade / Portfolio chrome when the list leaves the top; expand it
+ * again when the user returns to the top. Nested-scroll deltas alone are
+ * unreliable on Trade (pager + pull-to-refresh + swipe-to-dismiss).
+ */
+class HideOnScrollState {
+    var expanded by mutableStateOf(true)
+        private set
+
+    fun updateExpanded(value: Boolean) {
+        if (expanded != value) expanded = value
+    }
+
+    val connection: NestedScrollConnection = object : NestedScrollConnection {
+        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+            val dy = available.y
+            if (dy < -8f) updateExpanded(false)
+            else if (dy > 8f) updateExpanded(true)
+            return Offset.Zero
+        }
+    }
+}
+
+@Composable
+fun rememberHideOnScrollState(): HideOnScrollState = remember { HideOnScrollState() }
+
+@Composable
+fun HideOnScrollState.BindToList(listState: LazyListState) {
+    val atTop by remember(listState) {
+        derivedStateOf { !listState.canScrollBackward }
+    }
+    LaunchedEffect(atTop) { updateExpanded(atTop) }
+}
+
+@Composable
+fun CompactFilterChip(
+    selected: Boolean,
+    onClick: () -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+) {
+    val theme = LocalAppTheme.current
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        modifier = modifier.height(28.dp),
+        label = {
+            Text(
+                label,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = theme.primary.copy(alpha = 0.18f),
+            selectedLabelColor = theme.text,
+        ),
+    )
+}
 
 private object BlockParentHorizontalPagerScroll : NestedScrollConnection {
     override fun onPreScroll(

@@ -1,7 +1,15 @@
 package com.bysel.trader.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.bysel.trader.ui.components.rememberHideOnScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -46,11 +54,19 @@ fun TradeJournalScreen(
 
     LaunchedEffect(Unit) { load() }
 
+    val hideOnScroll = rememberHideOnScrollState()
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(appTheme.surface)
+            .nestedScroll(hideOnScroll.connection)
+            .animateContentSize()
     ) {
+        AnimatedVisibility(
+            visible = hideOnScroll.expanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+        ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -67,6 +83,12 @@ fun TradeJournalScreen(
             }
             IconButton(onClick = { load() }) {
                 Icon(Icons.Filled.Refresh, contentDescription = "Refresh", tint = appTheme.primary)
+            }
+        }
+        }
+        if (!hideOnScroll.expanded) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = appTheme.text)
             }
         }
 

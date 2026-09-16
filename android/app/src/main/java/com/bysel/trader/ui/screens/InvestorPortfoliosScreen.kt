@@ -1,5 +1,6 @@
 package com.bysel.trader.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -63,6 +64,7 @@ fun InvestorPortfoliosScreen(
 ) {
     val theme = LocalAppTheme.current
     var selectedInvestorId by rememberSaveable { mutableStateOf<String?>(null) }
+    BackHandler(enabled = selectedInvestorId != null) { selectedInvestorId = null }
     val selectedPortfolio = portfolios.firstOrNull { it.id == selectedInvestorId }
     val selectedPortfolioChanges = portfolioChanges.firstOrNull { it.investorId == selectedInvestorId }
     val selectedIdeas = ideas.filter { idea ->

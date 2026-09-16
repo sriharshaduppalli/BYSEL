@@ -16,25 +16,17 @@ fun OnboardingScreen(onFinish: () -> Unit) {
     var page by remember { mutableStateOf(0) }
     val pages = listOf(
         OnboardingPage(
-            title = "Welcome to BYSEL!",
-            description = "Your AI-powered stock trading companion. Let's take a quick tour!"
+            title = "Paper practice for NSE",
+            description = "Rehearse buys and sells with simulated money. No demat, no UPI, no real rupees."
         ),
         OnboardingPage(
-            title = "Live Market Data",
-            description = "Track live prices, heatmaps, and analytics while the app is open."
+            title = "Educational answers",
+            description = "Ask about a name, the session, or a paper plan. This is not SEBI-registered advice and not a forecast."
         ),
         OnboardingPage(
-            title = "AI Assistant",
-            description = "Get instant answers, insights, and trade ideas from our AI."
+            title = "Learn the loop",
+            description = "Idea → paper trade or alert → review. Your wallet stays at ₹0 until you add practice credit."
         ),
-        OnboardingPage(
-            title = "Paper practice wallet",
-            description = "Your wallet starts at ₹0. Add practice credit in Trade whenever you want — no real money, no UPI."
-        ),
-        OnboardingPage(
-            title = "Seamless Experience",
-            description = "Personalize your settings and start paper trading."
-        )
     )
 
     Surface(
@@ -83,7 +75,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary)
             ) {
-                Text(if (page < pages.size - 1) "Next" else "Get Started")
+                Text(if (page < pages.size - 1) "Next" else "Start practicing")
             }
         }
     }

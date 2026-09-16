@@ -7,6 +7,12 @@ import com.bysel.trader.ai.OnDeviceLlmManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.bysel.trader.data.NamedWatchlistBoard
+import com.bysel.trader.data.NamedWatchlistStore
+import com.bysel.trader.data.NamedWatchlists
+import com.bysel.trader.data.ScannerBoardShelf
+import com.bysel.trader.data.ScannerBoardStore
+import com.bysel.trader.data.ScannerBoards
 import com.bysel.trader.data.WatchlistStore
 import com.bysel.trader.data.WatchlistSymbols
 import com.bysel.trader.data.CustomScannerFilters
@@ -110,6 +116,8 @@ class TradingViewModel(
     // Watchlist: per-user SharedPreferences string + DataStore mirror (never StringSet).
     private val _watchlist = MutableStateFlow<List<String>>(emptyList())
     val watchlist: StateFlow<List<String>> = _watchlist.asStateFlow()
+    private val _watchlistBoard = MutableStateFlow(NamedWatchlistBoard())
+    val watchlistBoard: StateFlow<NamedWatchlistBoard> = _watchlistBoard.asStateFlow()
     private var watchlistOwnerKey: String = WatchlistSymbols.userKey(AuthSessionManager.getUserId())
     private val _watchlistSyncError = MutableStateFlow<String?>(null)
     val watchlistSyncError: StateFlow<String?> = _watchlistSyncError.asStateFlow()
@@ -310,7 +318,10 @@ class TradingViewModel(
     val scoreHistory: StateFlow<ScoreHistoryResponse?> = _scoreHistory.asStateFlow()
     private val _customScannerFilters = MutableStateFlow(CustomScannerFilters())
     val customScannerFilters: StateFlow<CustomScannerFilters> = _customScannerFilters.asStateFlow()
+    private val _scannerBoards = MutableStateFlow(ScannerBoardShelf())
+    val scannerBoards: StateFlow<ScannerBoardShelf> = _scannerBoards.asStateFlow()
     private var customFiltersLoaded = false
+    private var scannerBoardsLoaded = false
     private var lastScannerRefreshAt = 0L
     private var lastScannerMode: String = "long_term"
     private val scannerFetchedAt = mutableMapOf<String, Long>()
@@ -542,6 +553,11 @@ class TradingViewModel(
     }
 
     private fun persistWatchlist(symbols: List<String>, allowEmpty: Boolean) {
+        persistWatchlistInternal(symbols, allowEmpty)
+        absorbMasterIntoBoards()
+    }
+
+    private fun persistWatchlistInternal(symbols: List<String>, allowEmpty: Boolean) {
         val saved = WatchlistStore.writeSync(
             context = watchlistAppContext(),
             userId = currentWatchlistUserId(),
@@ -553,6 +569,55 @@ class TradingViewModel(
         viewModelScope.launch {
             WatchlistStore.writeDataStore(watchlistAppContext(), currentWatchlistUserId(), saved)
         }
+    }
+
+    private fun loadNamedWatchlists() {
+        val board = NamedWatchlistStore.read(
+            watchlistAppContext(),
+            currentWatchlistUserId(),
+            seedSymbols = _watchlist.value,
+        )
+        persistWatchlistBoard(board)
+    }
+
+    private fun persistWatchlistBoard(board: NamedWatchlistBoard) {
+        val seeded = NamedWatchlists.ensureSeeded(board, _watchlist.value)
+        NamedWatchlistStore.write(watchlistAppContext(), currentWatchlistUserId(), seeded)
+        _watchlistBoard.value = seeded
+        val union = seeded.allSymbols
+        if (union != WatchlistSymbols.normalizeAll(_watchlist.value)) {
+            persistWatchlistInternal(union, allowEmpty = union.isEmpty())
+        }
+    }
+
+    private fun absorbMasterIntoBoards() {
+        if (_watchlistBoard.value.lists.isEmpty()) return
+        val absorbed = NamedWatchlists.absorbUnassigned(_watchlistBoard.value, _watchlist.value)
+        if (absorbed != _watchlistBoard.value) {
+            NamedWatchlistStore.write(watchlistAppContext(), currentWatchlistUserId(), absorbed)
+            _watchlistBoard.value = absorbed
+        }
+    }
+
+    fun setActiveWatchlist(id: String) {
+        persistWatchlistBoard(NamedWatchlists.setActive(_watchlistBoard.value, id))
+    }
+
+    fun createWatchlist(name: String) {
+        persistWatchlistBoard(NamedWatchlists.create(_watchlistBoard.value, name))
+    }
+
+    fun pinWatchlist(id: String) {
+        persistWatchlistBoard(NamedWatchlists.pin(_watchlistBoard.value, id))
+    }
+
+    fun deleteWatchlist(id: String) {
+        persistWatchlistBoard(NamedWatchlists.delete(_watchlistBoard.value, id))
+    }
+
+    fun removeFromActiveWatchlist(symbol: String) {
+        val activeId = _watchlistBoard.value.active?.id ?: return
+        persistWatchlistBoard(NamedWatchlists.removeSymbol(_watchlistBoard.value, activeId, symbol))
     }
 
     /** Reload disk into memory without ever replacing a non-empty list with empty. */
@@ -611,8 +676,10 @@ class TradingViewModel(
         val merged = WatchlistSymbols.unionPreserveOrder(lastGood, loaded)
         _watchlist.value = merged
         if (merged.isNotEmpty()) {
-            persistWatchlist(merged, allowEmpty = false)
+            persistWatchlistInternal(merged, allowEmpty = false)
         }
+        loadNamedWatchlists()
+        loadScannerBoards()
     }
 
     private fun userIdFromWatchlistKey(key: String): Int? =
@@ -737,8 +804,9 @@ class TradingViewModel(
         _watchlist.value = restoredWatchlist
         _importedBook.value = ImportedBookStore.read(getApplication())
         if (restoredWatchlist.isNotEmpty()) {
-            persistWatchlist(restoredWatchlist, allowEmpty = false)
+            persistWatchlistInternal(restoredWatchlist, allowEmpty = false)
         }
+        loadNamedWatchlists()
         viewModelScope.launch {
             val fromDataStore = WatchlistStore.readDataStore(watchlistAppContext(), currentWatchlistUserId())
             val merged = WatchlistSymbols.unionPreserveOrder(_watchlist.value, fromDataStore)
@@ -803,9 +871,11 @@ class TradingViewModel(
         ).toMutableList()
         if (current.none { WatchlistSymbols.matches(it, normalized) }) {
             current.add(normalized)
-            persistWatchlist(WatchlistSymbols.normalizeAll(current), allowEmpty = false)
-            refreshQuotes(force = true)
+            persistWatchlistInternal(WatchlistSymbols.normalizeAll(current), allowEmpty = false)
         }
+        val activeId = _watchlistBoard.value.active?.id ?: NamedWatchlists.DEFAULT_ID
+        persistWatchlistBoard(NamedWatchlists.addSymbol(_watchlistBoard.value, activeId, normalized))
+        refreshQuotes(force = true)
     }
 
     fun removeFromWatchlist(symbol: String) {
@@ -822,9 +892,10 @@ class TradingViewModel(
         )
         val updated = current.filterNot { WatchlistSymbols.matches(it, normalized) }
         if (updated.size != current.size) {
-            persistWatchlist(updated, allowEmpty = true)
-            refreshQuotes()
+            persistWatchlistInternal(updated, allowEmpty = true)
         }
+        persistWatchlistBoard(NamedWatchlists.removeSymbolEverywhere(_watchlistBoard.value, normalized))
+        refreshQuotes()
     }
 
     private fun loadAchievements() {
@@ -3567,6 +3638,72 @@ class TradingViewModel(
             _customScannerFilters.value = CustomScannerFiltersStore.read(getApplication())
             customFiltersLoaded = true
         }
+    }
+
+    fun ensureScannerBoardsLoaded() {
+        if (scannerBoardsLoaded) {
+            return
+        }
+        loadScannerBoards()
+    }
+
+    fun saveScannerBoard(name: String, mode: String, setupFilter: String) {
+        persistScannerBoards(
+            ScannerBoards.create(
+                shelf = _scannerBoards.value,
+                rawName = name,
+                mode = mode,
+                setupFilter = setupFilter,
+                filters = _customScannerFilters.value,
+            ),
+        )
+    }
+
+    fun applyScannerBoard(id: String) {
+        val next = ScannerBoards.setActive(_scannerBoards.value, id)
+        val board = next.active ?: return
+        persistScannerBoards(next)
+        if (board.mode == "CUSTOM") {
+            updateCustomScannerFilters(board.filters)
+        }
+    }
+
+    fun updateActiveScannerBoard(mode: String, setupFilter: String) {
+        val id = _scannerBoards.value.activeId
+        if (id.isBlank()) return
+        persistScannerBoards(
+            ScannerBoards.update(
+                shelf = _scannerBoards.value,
+                id = id,
+                mode = mode,
+                setupFilter = setupFilter,
+                filters = _customScannerFilters.value,
+            ),
+        )
+    }
+
+    fun deleteScannerBoard(id: String) {
+        persistScannerBoards(ScannerBoards.delete(_scannerBoards.value, id))
+    }
+
+    fun clearActiveScannerBoard() {
+        if (_scannerBoards.value.activeId.isBlank()) return
+        persistScannerBoards(ScannerBoards.setActive(_scannerBoards.value, ""))
+    }
+
+    private fun loadScannerBoards() {
+        _scannerBoards.value = ScannerBoardStore.read(
+            watchlistAppContext(),
+            currentWatchlistUserId(),
+        )
+        scannerBoardsLoaded = true
+    }
+
+    private fun persistScannerBoards(shelf: ScannerBoardShelf) {
+        val clean = ScannerBoards.sanitize(shelf)
+        ScannerBoardStore.write(watchlistAppContext(), currentWatchlistUserId(), clean)
+        _scannerBoards.value = clean
+        scannerBoardsLoaded = true
     }
 
     fun toggleCustomScannerMinScore(value: Int) {

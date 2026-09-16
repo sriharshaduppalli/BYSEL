@@ -5,9 +5,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.BusinessCenter
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.ExpandLess
@@ -42,9 +43,10 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Savings
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Badge
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -61,11 +63,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.BuildConfig
-import com.bysel.trader.ui.components.exclusiveHorizontalScroll
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.theme.ScreenHeader
 import com.bysel.trader.ui.theme.byselCardBorder
@@ -80,9 +83,17 @@ private data class MoreMenuEntry(
     val gradientColors: List<Color>,
     val onClick: () -> Unit,
     val badgeCount: Int = 0,
-)
+    val keywords: String = "",
+) {
+    fun matches(query: String): Boolean {
+        val q = query.trim()
+        if (q.isEmpty()) return true
+        return title.contains(q, ignoreCase = true) ||
+            subtitle.contains(q, ignoreCase = true) ||
+            keywords.contains(q, ignoreCase = true)
+    }
+}
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MoreScreen(
     activeAlertCount: Int = 0,
@@ -113,6 +124,8 @@ fun MoreScreen(
     onMarketCalendarClick: () -> Unit,
 ) {
     var investExpanded by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    val focusManager = LocalFocusManager.current
 
     val labsEntries = listOf(
         MoreMenuEntry(
@@ -121,6 +134,7 @@ fun MoreScreen(
             subtitle = "Long-term, swing, quality, momentum, value",
             gradientColors = listOf(Color(0xFF0D47A1), Color(0xFF42A5F5)),
             onClick = onScannerClick,
+            keywords = "screener quality momentum value swing",
         ),
         MoreMenuEntry(
             icon = Icons.AutoMirrored.Filled.ShowChart,
@@ -230,6 +244,7 @@ fun MoreScreen(
             subtitle = "Educational explorer (not live brokerage)",
             gradientColors = listOf(Color(0xFF1565C0), Color(0xFF42A5F5)),
             onClick = onMutualFundsClick,
+            keywords = "mf funds sip",
         ),
         MoreMenuEntry(
             icon = Icons.Filled.BusinessCenter,
@@ -237,6 +252,7 @@ fun MoreScreen(
             subtitle = "Paper practice apply — not live ASBA",
             gradientColors = listOf(Color(0xFF6A1B9A), Color(0xFFAB47BC)),
             onClick = onIpoClick,
+            keywords = "asba listing ipo",
         ),
         MoreMenuEntry(
             icon = Icons.AutoMirrored.Filled.ShowChart,
@@ -282,6 +298,7 @@ fun MoreScreen(
             subtitle = "Plain-English chain, recipes, and paper risk",
             gradientColors = listOf(Color(0xFF00838F), Color(0xFF4DD0E1)),
             onClick = onDerivativesClick,
+            keywords = "fno f&o futures options chain",
         ),
         MoreMenuEntry(
             icon = Icons.Filled.AccountBalance,
@@ -291,6 +308,27 @@ fun MoreScreen(
             onClick = onWealthOsClick,
         ),
     )
+
+    val tradeEntries = listOf(
+        MoreMenuEntry(
+            icon = Icons.AutoMirrored.Filled.ShowChart,
+            title = "Equity",
+            subtitle = "Spot paper trading on the Trade tab",
+            gradientColors = listOf(Color(0xFF1A237E), Color(0xFF5C6BC0)),
+            onClick = onEquityClick,
+            keywords = "stocks spot trade cash",
+        ),
+        MoreMenuEntry(
+            icon = Icons.Filled.Analytics,
+            title = "F&O",
+            subtitle = "Options and futures practice desks",
+            gradientColors = listOf(Color(0xFF006064), Color(0xFF26C6DA)),
+            onClick = onFnoClick,
+            keywords = "fno futures options derivatives",
+        ),
+    )
+    val catalog = labsEntries + utilityEntries + investingEntries + advancedEntries + tradeEntries
+    val filtered = if (query.isBlank()) emptyList() else catalog.filter { it.matches(query) }
 
     LazyColumn(
         modifier = Modifier
@@ -302,46 +340,60 @@ fun MoreScreen(
         item {
             ScreenHeader(
                 title = "More",
-                subtitle = "Products first — explorers are educational, not live brokerage rails.",
+                subtitle = "Search any tool — explorers are educational, not live brokerage.",
             )
         }
 
-        item { SectionHeader("Products") }
         item {
-            FlowRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .exclusiveHorizontalScroll(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                QuickInfoChip(label = "Equity", onClick = onEquityClick)
-                QuickInfoChip(label = "F&O", onClick = onFnoClick)
-                QuickInfoChip(label = "MF", onClick = onMutualFundsClick)
-                QuickInfoChip(label = "IPO", onClick = onIpoClick)
-                QuickInfoChip(label = "ETF", onClick = onEtfClick)
-                QuickInfoChip(label = "SGB", onClick = onSgbClick)
-            }
+            val theme = LocalAppTheme.current
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = { Text("Search Scanner, IPO, Journal…") },
+                leadingIcon = {
+                    Icon(Icons.Filled.Search, contentDescription = null, tint = theme.textSecondary)
+                },
+                trailingIcon = {
+                    if (query.isNotBlank()) {
+                        IconButton(onClick = { query = "" }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Clear search", tint = theme.textSecondary)
+                        }
+                    }
+                },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = theme.text,
+                    unfocusedTextColor = theme.text,
+                    focusedBorderColor = theme.primary,
+                    unfocusedBorderColor = theme.textSecondary.copy(alpha = 0.35f),
+                    focusedPlaceholderColor = theme.textSecondary,
+                    unfocusedPlaceholderColor = theme.textSecondary,
+                    cursorColor = theme.primary,
+                ),
+                shape = RoundedCornerShape(14.dp),
+            )
         }
 
-        item {
-            FlowRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .exclusiveHorizontalScroll(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                QuickInfoChip(label = "Scanner", onClick = onScannerClick)
-                QuickInfoChip(label = "Signal Lab", onClick = onSignalLabClick)
-                QuickInfoChip(label = "Risk Lab", onClick = onRiskLabClick)
-                QuickInfoChip(label = "Journal", onClick = onTradeJournalClick)
-                QuickInfoChip(label = "Watchlist", onClick = onWatchlistClick)
-                QuickInfoChip(label = "Smart Money", onClick = onInvestorPortfoliosClick)
-                QuickInfoChip(label = "Pre-trade", onClick = onCopilotCenterClick)
+        if (query.isNotBlank()) {
+            if (filtered.isEmpty()) {
+                item {
+                    Text(
+                        text = "No matching tools. Try Scanner, IPO, or Journal.",
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(vertical = 12.dp),
+                    )
+                }
+            } else {
+                item { SectionHeader("Results") }
+                items(filtered, key = { "hit-${it.title}" }) { entry ->
+                    MoreMenuItem(entry = entry)
+                }
             }
-        }
-
+        } else {
         item { SectionHeader("Practice & Labs") }
         items(labsEntries) { entry ->
             MoreMenuItem(entry = entry)
@@ -372,7 +424,7 @@ fun MoreScreen(
                         text = if (investExpanded) {
                             "Educational MF / IPO / ETF / SGB / SIP"
                         } else {
-                            "Collapsed · use Products chips above"
+                            "Collapsed · search above or expand"
                         },
                         fontSize = 11.sp,
                         color = LocalAppTheme.current.textSecondary,
@@ -394,6 +446,7 @@ fun MoreScreen(
         item { SectionHeader("Advanced tools") }
         items(advancedEntries) { entry ->
             MoreMenuItem(entry = entry)
+        }
         }
 
         item {
@@ -417,18 +470,6 @@ private fun SectionHeader(title: String) {
         color = LocalAppTheme.current.primary,
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier.padding(top = 4.dp),
-    )
-}
-
-@Composable
-private fun QuickInfoChip(label: String, onClick: () -> Unit) {
-    AssistChip(
-        onClick = onClick,
-        label = { Text(label) },
-        colors = AssistChipDefaults.assistChipColors(
-            containerColor = LocalAppTheme.current.card,
-            labelColor = LocalAppTheme.current.text,
-        ),
     )
 }
 

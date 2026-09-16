@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -23,15 +24,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,8 +48,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -54,12 +65,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bysel.trader.data.CustomScannerFilters
+import com.bysel.trader.data.ScannerBoard
+import com.bysel.trader.data.ScannerBoards
 import com.bysel.trader.data.WatchlistSymbols
 import com.bysel.trader.data.models.ScannerAnomaly
 import com.bysel.trader.data.models.ScannerPillar
 import com.bysel.trader.data.models.ScannerRow
 import com.bysel.trader.data.models.ScoreHistoryResponse
+import com.bysel.trader.ui.components.CompactFilterChip
 import com.bysel.trader.ui.components.HabitLiteracyCatalog
+import com.bysel.trader.ui.components.exclusiveHorizontalScroll
+import com.bysel.trader.ui.components.rememberHideOnScrollState
 import com.bysel.trader.ui.format.formatSignedPct
 import com.bysel.trader.ui.theme.AppTheme
 import com.bysel.trader.ui.theme.LocalAppTheme
@@ -102,17 +118,31 @@ fun ScannerScreen(
     val error by viewModel.scannerError.collectAsStateWithLifecycle()
     val watchlist by viewModel.watchlist.collectAsStateWithLifecycle()
     val customFilters by viewModel.customScannerFilters.collectAsStateWithLifecycle()
+    val scannerBoards by viewModel.scannerBoards.collectAsStateWithLifecycle()
     val sectorFocus by viewModel.scannerSectorFocus.collectAsStateWithLifecycle()
     var selectedKey by rememberSaveable { mutableStateOf(ScannerModeChip.LONG_TERM.name) }
     var setupFilterKey by rememberSaveable { mutableStateOf(SwingSetupFilter.ALL.name) }
+    var showSaveBoardDialog by rememberSaveable { mutableStateOf(false) }
+    var newBoardName by rememberSaveable { mutableStateOf("") }
+    var pendingDeleteBoardId by rememberSaveable { mutableStateOf<String?>(null) }
     val selected = runCatching { ScannerModeChip.valueOf(selectedKey) }
         .getOrDefault(ScannerModeChip.LONG_TERM)
     val setupFilter = runCatching { SwingSetupFilter.valueOf(setupFilterKey) }
         .getOrDefault(SwingSetupFilter.ALL)
     val payload = scannerByMode[selected.apiMode]
+    val activeBoard = scannerBoards.active
+    val canSaveBoard = selected != ScannerModeChip.FNO &&
+        scannerBoards.boards.size < ScannerBoards.MAX_BOARDS
 
     LaunchedEffect(Unit) {
         viewModel.ensureCustomScannerFiltersLoaded()
+        viewModel.ensureScannerBoardsLoaded()
+    }
+
+    LaunchedEffect(scannerBoards.activeId) {
+        val board = scannerBoards.active ?: return@LaunchedEffect
+        selectedKey = board.mode
+        setupFilterKey = board.setupFilter
     }
 
     LaunchedEffect(selected) {
@@ -121,54 +151,144 @@ fun ScannerScreen(
         }
     }
 
+    val hideOnScroll = rememberHideOnScrollState()
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(theme.surface),
+            .background(theme.surface)
+            .nestedScroll(hideOnScroll.connection)
+            .animateContentSize(),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        AnimatedVisibility(
+            visible = hideOnScroll.expanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
         ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = theme.text)
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Scanner", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = theme.text)
-                Text(
-                    "BYSEL Score · paper practice, not a broker",
-                    fontSize = 12.sp,
-                    color = theme.textSecondary,
-                )
-            }
-            IconButton(
-                onClick = {
-                    if (selected != ScannerModeChip.FNO) {
-                        viewModel.loadMarketScanner(selected.apiMode, force = true)
-                    }
-                },
-                enabled = !loading && selected != ScannerModeChip.FNO,
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Filled.Refresh, contentDescription = "Refresh", tint = theme.primary)
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = theme.text)
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Scanner", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = theme.text)
+                    Text(
+                        "BYSEL Score · paper practice, not a broker",
+                        fontSize = 12.sp,
+                        color = theme.textSecondary,
+                    )
+                }
+                IconButton(
+                    onClick = {
+                        if (selected != ScannerModeChip.FNO) {
+                            viewModel.loadMarketScanner(selected.apiMode, force = true)
+                        }
+                    },
+                    enabled = !loading && selected != ScannerModeChip.FNO,
+                ) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "Refresh", tint = theme.primary)
+                }
             }
         }
 
         LazyRow(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .exclusiveHorizontalScroll()
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (!hideOnScroll.expanded) {
+                item(key = "back") {
+                    IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = theme.text)
+                    }
+                }
+            }
             items(ScannerModeChip.entries.toList(), key = { it.name }) { chip ->
-                FilterChip(
-                    selected = selected == chip,
-                    onClick = { selectedKey = chip.name },
-                    label = { Text(chip.title) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = theme.primary.copy(alpha = 0.2f),
-                        selectedLabelColor = theme.text,
-                    ),
+                CompactFilterChip(
+                    selected = selected == chip && activeBoard == null,
+                    onClick = {
+                        selectedKey = chip.name
+                        viewModel.clearActiveScannerBoard()
+                    },
+                    label = chip.title,
                 )
+            }
+        }
+
+        if (selected != ScannerModeChip.FNO || scannerBoards.boards.isNotEmpty()) {
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .exclusiveHorizontalScroll()
+                    .padding(horizontal = 12.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                items(scannerBoards.boards, key = { it.id }) { board ->
+                    FilterChip(
+                        selected = board.id == activeBoard?.id,
+                        onClick = { viewModel.applyScannerBoard(board.id) },
+                        label = {
+                            Text(
+                                board.chipLabel(),
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = theme.primary.copy(alpha = 0.18f),
+                            selectedLabelColor = theme.text,
+                        ),
+                    )
+                }
+                item(key = "save_board") {
+                    FilterChip(
+                        selected = false,
+                        enabled = canSaveBoard,
+                        onClick = {
+                            newBoardName = ScannerBoards.defaultName(selected.name, scannerBoards.boards.size)
+                            showSaveBoardDialog = true
+                        },
+                        label = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Filled.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Save board", fontSize = 11.sp)
+                            }
+                        },
+                    )
+                }
+            }
+            if (activeBoard != null && selected != ScannerModeChip.FNO) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(
+                        onClick = {
+                            viewModel.updateActiveScannerBoard(selected.name, setupFilter.name)
+                        },
+                    ) {
+                        Text("Update board", fontSize = 12.sp)
+                    }
+                    TextButton(onClick = { pendingDeleteBoardId = activeBoard.id }) {
+                        Text("Delete", fontSize = 12.sp, color = theme.negative)
+                    }
+                }
             }
         }
 
@@ -223,14 +343,8 @@ fun ScannerScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     item {
-                        val changed = payload?.formulaChangedDate.orEmpty()
-                            .ifBlank { payload?.education?.formulaChangedDate.orEmpty() }
                         Text(
-                            if (changed.isBlank()) {
-                                "BYSEL Score = 0.35Q + 0.25V + 0.20T + 0.20M. Strong / Good / Mixed / Weak / Poor — never Buy/Sell."
-                            } else {
-                                "BYSEL Score = 0.35Q + 0.25V + 0.20T + 0.20M. Last changed $changed. Strong / Good / Mixed / Weak / Poor — never Buy/Sell."
-                            },
+                            "Strong / Good / Mixed / Weak / Poor — paper practice, never Buy/Sell.",
                             fontSize = 12.sp,
                             color = theme.textSecondary,
                         )
@@ -239,11 +353,11 @@ fun ScannerScreen(
                         item {
                             val regime = when (payload?.qmRegime) {
                                 "on" -> "Regime On — Nifty 12-month return is positive in this snapshot."
-                                "off" -> "Regime Off — QM late-cycle. Not a buy label."
+                                "off" -> "Regime Off — late-cycle tape. Not a buy label."
                                 else -> "Regime — until a full Nifty 12-month series is cached."
                             }
                             Text(
-                                "Quality first, then 12-2 among survivors. Q and M stay separate. Not official Quality 30 / Momentum 30. $regime",
+                                "Quality names only. Speculative runners stay off this list. $regime",
                                 fontSize = 12.sp,
                                 color = theme.textSecondary,
                             )
@@ -363,6 +477,72 @@ fun ScannerScreen(
             }
         }
     }
+
+    if (showSaveBoardDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveBoardDialog = false },
+            title = { Text("Save this scan") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Stores the open tab and Custom chips on this device. Same paper list — not a buy list.",
+                        fontSize = 13.sp,
+                        color = theme.textSecondary,
+                    )
+                    OutlinedTextField(
+                        value = newBoardName,
+                        onValueChange = { newBoardName = it.take(ScannerBoards.MAX_NAME) },
+                        label = { Text("Board name") },
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.saveScannerBoard(newBoardName, selected.name, setupFilter.name)
+                        showSaveBoardDialog = false
+                    }
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSaveBoardDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    pendingDeleteBoardId?.let { boardId ->
+        val name = scannerBoards.boards.firstOrNull { it.id == boardId }?.name ?: "this board"
+        AlertDialog(
+            onDismissRequest = { pendingDeleteBoardId = null },
+            title = { Text("Delete $name?") },
+            text = { Text("The live scan stays. Only this saved view is removed.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteScannerBoard(boardId)
+                        pendingDeleteBoardId = null
+                    }
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteBoardId = null }) { Text("Keep") }
+            },
+        )
+    }
+}
+
+private fun ScannerBoard.chipLabel(): String {
+    val extra = when (mode) {
+        "CUSTOM" -> if (filters.activeCount > 0) " · ${filters.activeCount}" else ""
+        "SWING" -> when (setupFilter) {
+            "PULLBACK" -> " · Pullback"
+            "BREAKOUT" -> " · Breakout"
+            else -> ""
+        }
+        else -> ""
+    }
+    return name + extra
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -610,7 +790,7 @@ fun ByselExplainabilityCard(
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Why this score?", fontWeight = FontWeight.SemiBold, color = theme.text)
             Text(
-                "0.35Q + 0.25V + 0.20T + 0.20M · last changed 14 Sep 2026. Analysis, not a call.",
+                "Quality, Valuation, Trend, and Momentum from available fields. Analysis, not a call.",
                 fontSize = 11.sp,
                 color = theme.textSecondary,
             )
@@ -795,7 +975,7 @@ fun scoreBandColor(score: Int?, theme: AppTheme): Color {
         score >= 80 -> theme.positive
         score >= 65 -> theme.primary
         score >= 50 -> theme.textSecondary
-        score >= 35 -> Color(0xFFFFB300)
+        score >= 35 -> theme.caution
         else -> theme.negative
     }
 }
@@ -840,7 +1020,7 @@ private fun ScannerRow.tabFacts(mode: ScannerModeChip): List<String> {
         )
         ScannerModeChip.MOMENTUM -> listOf(
             "Q ${quality?.toString() ?: "—"}",
-            qmRank?.let { "12-2 rank $it" } ?: "12-2 rank —",
+            qmRank?.let { "M rank $it" } ?: "M rank —",
             qmBadge.ifBlank { "Badge —" },
         )
         ScannerModeChip.VALUE -> listOf(

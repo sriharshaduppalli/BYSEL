@@ -1,7 +1,13 @@
 package com.bysel.trader.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,6 +23,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.bysel.trader.ui.components.rememberHideOnScrollState
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -190,17 +198,27 @@ fun HeatmapScreen(
         }
     }
 
+    val hideOnScroll = rememberHideOnScrollState()
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(LocalAppTheme.current.surface)
+            .nestedScroll(hideOnScroll.connection)
+            .animateContentSize()
     ) {
-        HeatmapHeader(heatmap)
-
-        MarketStatusBanner(
-            marketOpen = marketOpen,
-            staleReason = heatmap?.staleReason ?: heatmap?.moodDescription?.takeIf { heatmap.isStale },
-        )
+        AnimatedVisibility(
+            visible = hideOnScroll.expanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+        ) {
+            Column {
+                HeatmapHeader(heatmap)
+                MarketStatusBanner(
+                    marketOpen = marketOpen,
+                    staleReason = heatmap?.staleReason ?: heatmap?.moodDescription?.takeIf { heatmap.isStale },
+                )
+            }
+        }
 
         if (isLoading && heatmap == null) {
             Box(

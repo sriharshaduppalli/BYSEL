@@ -51,34 +51,37 @@ fun isDynamicThemeId(themeName: String?): Boolean =
 // Comfort pass: slightly lifted cards, softer secondaries, less neon on long-session themes.
 object ThemeColors {
     object Default {
-        val primary = Color(0xFF42A5F5)
+        val primary = Color(0xFF64B5F6)
         val surface = Color(0xFF0B0C0E)
-        val card = Color(0xFF2A2D33)
-        val positive = Color(0xFF00E676)
-        val negative = Color(0xFFFF5252)
-        val text = Color(0xFFFFFFFF)
-        val textSecondary = Color(0xFF9EACB4)
+        val card = Color(0xFF1C2026)
+        val positive = Color(0xFF66BB6A)
+        val negative = Color(0xFFEF9A9A)
+        val text = Color(0xFFE8EEF4)
+        val textSecondary = Color(0xFF9AABBA)
+        val caution = Color(0xFFFFB74D)
     }
 
     object Ocean {
-        val primary = Color(0xFF26C6DA)
+        val primary = Color(0xFF4DD0E1)
         val surface = Color(0xFF071018)
         val card = Color(0xFF123044)
-        val positive = Color(0xFF1DE9B6)
-        val negative = Color(0xFFFF8A65)
+        val positive = Color(0xFF66BB6A)
+        val negative = Color(0xFFFF8A80)
         val text = Color(0xFFE0F7FA)
-        val textSecondary = Color(0xFF8BC8D4)
+        val textSecondary = Color(0xFF9BB8C4)
+        val caution = Color(0xFFFFB74D)
     }
 
     object Forest {
-        // Card kept dark (not saturated green) so green/red PnL and secondary text stay readable.
+        // Card stays dark; PnL green is cooler so gains are not camouflage.
         val primary = Color(0xFF66BB6A)
         val surface = Color(0xFF08140E)
         val card = Color(0xFF163024)
-        val positive = Color(0xFF4CD964)
+        val positive = Color(0xFF80CBC4)
         val negative = Color(0xFFFF8A80)
         val text = Color(0xFFE8F5E9)
         val textSecondary = Color(0xFF8FBF94)
+        val caution = Color(0xFFFFB74D)
     }
 
     object Sunset {
@@ -88,27 +91,30 @@ object ThemeColors {
         val positive = Color(0xFF66BB6A)
         val negative = Color(0xFFFF8A80)
         val text = Color(0xFFFFF3E0)
-        val textSecondary = Color(0xFFE0B070)
+        val textSecondary = Color(0xFFD7B48A)
+        val caution = Color(0xFFFFB74D)
     }
 
     object Cyberpunk {
         val primary = Color(0xFFCE93D8)
         val surface = Color(0xFF070A1A)
         val card = Color(0xFF1A223F)
-        val positive = Color(0xFF00E676)
-        val negative = Color(0xFFEF5350)
-        val text = Color(0xFFFFFFFF)
+        val positive = Color(0xFF66BB6A)
+        val negative = Color(0xFFEF9A9A)
+        val text = Color(0xFFE8EEF4)
         val textSecondary = Color(0xFF7BCAD6)
+        val caution = Color(0xFFFFB74D)
     }
 
     object Amoled {
         val primary = Color(0xFFB388FF)
         val surface = Color(0xFF050505)
         val card = Color(0xFF161616)
-        val positive = Color(0xFF00E676)
-        val negative = Color(0xFFFF5252)
-        val text = Color(0xFFFFFFFF)
+        val positive = Color(0xFF66BB6A)
+        val negative = Color(0xFFEF9A9A)
+        val text = Color(0xFFE8EEF4)
         val textSecondary = Color(0xFF9EACB4)
+        val caution = Color(0xFFFFB74D)
     }
 
     object Light {
@@ -119,6 +125,7 @@ object ThemeColors {
         val negative = Color(0xFFC62828)
         val text = Color(0xFF121212)
         val textSecondary = Color(0xFF4A4F55)
+        val caution = Color(0xFFE65100)
     }
 
     object Royal {
@@ -126,9 +133,10 @@ object ThemeColors {
         val surface = Color(0xFF120816)
         val card = Color(0xFF2A1A38)
         val positive = Color(0xFF81C784)
-        val negative = Color(0xFFFF80AB)
+        val negative = Color(0xFFE57373)
         val text = Color(0xFFF8EAFB)
         val textSecondary = Color(0xFFC49AD0)
+        val caution = Color(0xFFFFB74D)
     }
 
     object Monochrome {
@@ -136,10 +144,11 @@ object ThemeColors {
         val primary = Color(0xFFCFCFCF)
         val surface = Color(0xFF0A0A0A)
         val card = Color(0xFF1C1C1C)
-        val positive = Color(0xFF69F0AE)
-        val negative = Color(0xFFFF8A80)
-        val text = Color(0xFFFFFFFF)
+        val positive = Color(0xFF81C784)
+        val negative = Color(0xFFEF9A9A)
+        val text = Color(0xFFE8EEF4)
         val textSecondary = Color(0xFFA8A8A8)
+        val caution = Color(0xFFFFB74D)
     }
 
     /** Cool teal→indigo comfort skin — long-session friendly, not neon. */
@@ -151,6 +160,7 @@ object ThemeColors {
         val negative = Color(0xFFFF8A80)
         val text = Color(0xFFE8F5F3)
         val textSecondary = Color(0xFF8FB8B4)
+        val caution = Color(0xFFFFB74D)
     }
 
     /** Soft blue-gray professional skin for reading-heavy sessions. */
@@ -162,6 +172,7 @@ object ThemeColors {
         val negative = Color(0xFFEF9A9A)
         val text = Color(0xFFE8EEF4)
         val textSecondary = Color(0xFF9AABBA)
+        val caution = Color(0xFFFFB74D)
     }
 }
 
@@ -174,6 +185,7 @@ data class AppTheme(
     val text: Color,
     val textSecondary: Color,
     val name: String,
+    val caution: Color = Color(0xFFFFB74D),
 ) {
     /** Label / icon color that stays readable on [primary] buttons. */
     val onPrimary: Color
@@ -187,12 +199,12 @@ data class AppTheme(
     val onNegative: Color
         get() = if (negative.luminance() > 0.55f) Color(0xFF121212) else Color.White
 
-    /** Hairline card outline — tinted on dark skins so edges are not a flat white stroke. */
+    /** Hairline card outline — neutral so PnL and CTAs stay the only color. */
     val cardOutline: Color
         get() = if (isLight) {
             Color.Black.copy(alpha = 0.14f)
         } else {
-            primary.copy(alpha = 0.28f).compositeOver(Color.White.copy(alpha = 0.10f).compositeOver(card))
+            Color.White.copy(alpha = 0.08f).compositeOver(card)
         }
 
     /** Subtle chip / inactive control fill that works on light and dark surfaces. */
@@ -240,6 +252,7 @@ fun getTheme(themeName: String): AppTheme {
             ThemeColors.Ocean.text,
             ThemeColors.Ocean.textSecondary,
             "Ocean",
+            ThemeColors.Ocean.caution,
         )
         "forest" -> AppTheme(
             ThemeColors.Forest.primary,
@@ -250,6 +263,7 @@ fun getTheme(themeName: String): AppTheme {
             ThemeColors.Forest.text,
             ThemeColors.Forest.textSecondary,
             "Forest",
+            ThemeColors.Forest.caution,
         )
         "sunset" -> AppTheme(
             ThemeColors.Sunset.primary,
@@ -260,6 +274,7 @@ fun getTheme(themeName: String): AppTheme {
             ThemeColors.Sunset.text,
             ThemeColors.Sunset.textSecondary,
             "Sunset",
+            ThemeColors.Sunset.caution,
         )
         "cyberpunk" -> AppTheme(
             ThemeColors.Cyberpunk.primary,
@@ -270,6 +285,7 @@ fun getTheme(themeName: String): AppTheme {
             ThemeColors.Cyberpunk.text,
             ThemeColors.Cyberpunk.textSecondary,
             "Cyberpunk",
+            ThemeColors.Cyberpunk.caution,
         )
         "amoled" -> AppTheme(
             ThemeColors.Amoled.primary,
@@ -280,6 +296,7 @@ fun getTheme(themeName: String): AppTheme {
             ThemeColors.Amoled.text,
             ThemeColors.Amoled.textSecondary,
             "Amoled",
+            ThemeColors.Amoled.caution,
         )
         "light" -> AppTheme(
             ThemeColors.Light.primary,
@@ -290,6 +307,7 @@ fun getTheme(themeName: String): AppTheme {
             ThemeColors.Light.text,
             ThemeColors.Light.textSecondary,
             "Light",
+            ThemeColors.Light.caution,
         )
         "royal" -> AppTheme(
             ThemeColors.Royal.primary,
@@ -300,6 +318,7 @@ fun getTheme(themeName: String): AppTheme {
             ThemeColors.Royal.text,
             ThemeColors.Royal.textSecondary,
             "Royal",
+            ThemeColors.Royal.caution,
         )
         "monochrome" -> AppTheme(
             ThemeColors.Monochrome.primary,
@@ -310,6 +329,7 @@ fun getTheme(themeName: String): AppTheme {
             ThemeColors.Monochrome.text,
             ThemeColors.Monochrome.textSecondary,
             "Monochrome",
+            ThemeColors.Monochrome.caution,
         )
         "aurora" -> AppTheme(
             ThemeColors.Aurora.primary,
@@ -320,6 +340,7 @@ fun getTheme(themeName: String): AppTheme {
             ThemeColors.Aurora.text,
             ThemeColors.Aurora.textSecondary,
             "Aurora",
+            ThemeColors.Aurora.caution,
         )
         "slate" -> AppTheme(
             ThemeColors.Slate.primary,
@@ -330,6 +351,7 @@ fun getTheme(themeName: String): AppTheme {
             ThemeColors.Slate.text,
             ThemeColors.Slate.textSecondary,
             "Slate",
+            ThemeColors.Slate.caution,
         )
         "dynamic" -> AppTheme(
             // Fallback only — MainActivity replaces this from the live ColorScheme.
@@ -341,6 +363,7 @@ fun getTheme(themeName: String): AppTheme {
             ThemeColors.Default.text,
             ThemeColors.Default.textSecondary,
             "Dynamic",
+            ThemeColors.Default.caution,
         )
         else -> AppTheme(
             ThemeColors.Default.primary,
@@ -351,6 +374,7 @@ fun getTheme(themeName: String): AppTheme {
             ThemeColors.Default.text,
             ThemeColors.Default.textSecondary,
             DEFAULT_THEME_ID,
+            ThemeColors.Default.caution,
         )
     }
 }
@@ -367,8 +391,9 @@ fun ColorScheme.toAppTheme(name: String = "Dynamic"): AppTheme {
         body.copy(alpha = 0.10f).compositeOver(bg)
     }
     // Keep PnL readable, but nudge toward wallpaper primary (Material You harmonization).
-    val basePositive = if (light) Color(0xFF2E7D32) else Color(0xFF00E676)
-    val baseNegative = if (light) Color(0xFFC62828) else Color(0xFFFF6E6E)
+    val basePositive = if (light) Color(0xFF2E7D32) else Color(0xFF66BB6A)
+    val baseNegative = if (light) Color(0xFFC62828) else Color(0xFFEF9A9A)
+    val baseCaution = if (light) Color(0xFFE65100) else Color(0xFFFFB74D)
     return AppTheme(
         primary = primary,
         surface = bg,
@@ -378,6 +403,7 @@ fun ColorScheme.toAppTheme(name: String = "Dynamic"): AppTheme {
         text = body,
         textSecondary = secondary,
         name = name,
+        caution = harmonizeAccent(baseCaution, primary, 0.12f),
     )
 }
 

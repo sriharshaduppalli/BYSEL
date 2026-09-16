@@ -266,13 +266,10 @@ EV_EBITDA_SECTORS = {
 }
 PE_SECTORS = {"IT", "FMCG", "Consumer", "Software", "Platforms"}
 FORMULA_NOTE = (
-    "BYSEL Score = 0.35Q + 0.25V + 0.20T + 0.20M (balanced). "
-    "Long-term 45/30/15/10, Swing 25/20/30/25, F&O 15/10/35/40 — same metric math. "
-    "Missing metrics are skipped. A pillar with under 50% coverage is Incomplete "
-    f"and the total is capped at {INCOMPLETE_TOTAL_CAP}. "
-    "Long-term Momentum is 12-2 rank + smoothness + 52-week closeness, not RSI. "
-    "Auditor, RPT, SuperTrend, 63-day RS, G-Sec, CFO/PAT, and EPS revisions stay as — when absent. "
-    f"Formula last changed {FORMULA_CHANGED_DATE}. Ranking/analysis only — never Buy/Sell."
+    "BYSEL Score is an educational rank from Quality, Valuation, Trend, and Momentum "
+    "using only fields we actually have. Missing metrics stay as —. "
+    "A pillar with thin coverage is marked Incomplete. "
+    "Ranking/analysis only — never Buy/Sell."
 )
 METRIC_LABELS = {
     "roce": "ROCE",
@@ -313,7 +310,7 @@ METRIC_LABELS = {
     "volume": "Volume",
     "volumeRatio": "Volume",
     "roc": "ROC",
-    "r122": "12-2 rank",
+    "r122": "Momentum rank",
     "smooth": "Path smoothness",
     "h52": "52-week closeness",
     "earn": "EPS revision 3m",
@@ -1590,7 +1587,7 @@ def explain_score(
             + "; ".join(list(top_bits)[:4])
             + "."
         )
-    skip_note = "Missing metrics are skipped and remaining weights are renormalized"
+    skip_note = "Missing metrics are skipped rather than invented"
     if missing:
         shown = ", ".join(list(missing)[:5])
         sentences.append(f"{skip_note} ({shown} stay as —).")

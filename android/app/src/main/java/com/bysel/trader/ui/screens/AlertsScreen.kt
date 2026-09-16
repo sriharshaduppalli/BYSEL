@@ -1,7 +1,15 @@
 package com.bysel.trader.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.bysel.trader.ui.components.rememberHideOnScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,11 +36,19 @@ fun AlertsScreen(
 ) {
     var showDialog by remember { mutableStateOf(false) }
 
+    val hideOnScroll = rememberHideOnScrollState()
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(LocalAppTheme.current.surface)
+            .nestedScroll(hideOnScroll.connection)
+            .animateContentSize()
     ) {
+        AnimatedVisibility(
+            visible = hideOnScroll.expanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+        ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -58,6 +74,19 @@ fun AlertsScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary)
             ) {
                 Text("+ New Alert")
+            }
+        }
+        }
+        if (!hideOnScroll.expanded) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                TextButton(onClick = { showDialog = true }) {
+                    Text("+ New Alert", fontSize = 12.sp)
+                }
             }
         }
 
