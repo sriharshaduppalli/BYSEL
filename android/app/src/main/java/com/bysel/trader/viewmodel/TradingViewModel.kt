@@ -3033,8 +3033,13 @@ class TradingViewModel(
             return "\u0c38\u0c4d\u0c35\u0c3e\u0c17\u0c24\u0c02. \u0c2e\u0c30\u0c4b \u0c38\u0c4d\u0c1f\u0c3e\u0c15\u0c4d \u0c2a\u0c4d\u0c30\u0c36\u0c4d\u0c28 \u0c05\u0c21\u0c17\u0c02\u0c21\u0c3f."
         }
         val n = normalizeGreetingQuery(query)
+        if (n == "namaste" || n == "namaskar" || n == "namaskaram") {
+            return "\u0c28\u0c2e\u0c38\u0c4d\u0c24\u0c47! \u0c28\u0c47\u0c28\u0c41 BYSEL AI. " +
+                "\u0c38\u0c4d\u0c1f\u0c3e\u0c15\u0c4d \u0c27\u0c30, \u0c15\u0c4a\u0c28\u0c3e\u0c32\u0c3e/\u0c05\u0c2e\u0c4d\u0c2e\u0c3e\u0c32\u0c3e, " +
+                "\u0c2a\u0c4b\u0c32\u0c3f\u0c15 \u0c32\u0c47\u0c26\u0c3e \u0c35\u0c3e\u0c32\u0c4d\u0c2f\u0c41\u0c2f\u0c47\u0c37\u0c28\u0c4d \u0c05\u0c21\u0c17\u0c02\u0c21\u0c3f."
+        }
         return when (n) {
-            "hi", "hii", "hiii", "hello", "hey", "yo", "namaste", "namaskar",
+            "hi", "hii", "hiii", "hello", "hey", "yo",
             "hi there", "hello there", "hey there" ->
                 "Hi! I am BYSEL AI. Ask me about stock prices, buy/sell signals, comparisons, or valuation."
             "thanks", "thank you", "thx", "ty" ->

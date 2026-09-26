@@ -130,6 +130,106 @@ def test_forecast_target_is_not_a_trade_plan_card():
     assert "entry zone" not in low
 
 
+def test_how_is_named_stock_is_not_the_market_primer():
+    from indian_stock_llm.answer_composer import compose_structured_answer
+
+    for query in ("RELIANCE how is it?", "How is RELIANCE?", "How is this one?"):
+        answer = compose_structured_answer(
+            query=query if query != "How is this one?" else "How is RELIANCE?",
+            intent="market_literacy",
+            market_context={
+                "symbol": "RELIANCE",
+                "current_price": 1226.0,
+                "technical": {"rsi": 25.7, "trend": "bearish"},
+                "trading_levels": {"support": 1210.5, "resistance": 1330.0},
+            },
+            context_lines=[],
+            profile="stock_analysis",
+        ) or ""
+        assert "How the Indian stock market works" not in answer, query
+        assert "1226" in answer or "1,226" in answer, query
+        assert "RELIANCE" in answer.upper()
+
+
+def test_quote_hides_blank_ohlc():
+    from indian_stock_llm.answer_composer import compose_structured_answer
+
+    answer = compose_structured_answer(
+        query="What is the price of RELIANCE?",
+        intent="price_action",
+        market_context={"symbol": "RELIANCE", "current_price": 1226.0},
+        context_lines=[],
+        profile="quote",
+    ) or ""
+    assert "1226" in answer or "1,226" in answer
+    assert "Open / High / Low" not in answer
+    assert "n/a" not in answer.lower()
+
+
+def test_news_drops_unrelated_headlines():
+    from indian_stock_llm.answer_composer import compose_structured_answer
+
+    answer = compose_structured_answer(
+        query="Any news on HDFCBANK?",
+        intent="events_news",
+        market_context={
+            "symbol": "HDFCBANK",
+            "company_name": "HDFC Bank",
+            "current_price": 1700.0,
+            "news_headlines": [
+                "Microsoft opens a new campus in Hyderabad",
+                "HDFC Bank raises deposit rates",
+                "Chainlink price jumps on crypto flows",
+            ],
+        },
+        context_lines=[],
+        profile="news",
+    ) or ""
+    assert "HDFC Bank raises deposit rates" in answer
+    assert "Microsoft" not in answer
+    assert "Chainlink" not in answer
+
+
+def test_short_followup_does_not_reprint_the_plan():
+    from indian_stock_llm.answer_composer import compose_structured_answer
+
+    answer = compose_structured_answer(
+        query="Why this paper stance on TCS?",
+        intent="price_action",
+        market_context={
+            "symbol": "TCS",
+            "current_price": 2082.0,
+            "technical": {"rsi": 48.0, "trend": "neutral"},
+            "trading_levels": {"support": 1995.0, "resistance": 2212.0},
+        },
+        context_lines=[],
+        profile="trade_plan",
+    ) or ""
+    assert "in short" in answer.lower()
+    assert "**Why:**" in answer
+    assert "Paper ticket" not in answer
+    assert "Entry zone" not in answer
+
+
+def test_cheaper_followup_names_the_lower_price():
+    from indian_stock_llm.answer_composer import compose_structured_answer
+
+    answer = compose_structured_answer(
+        query="Which is cheaper, TCS or INFY?",
+        intent="compare",
+        market_context={
+            "symbol": "TCS",
+            "current_price": 2082.0,
+            "peers": [{"symbol": "INFY", "current_price": 1000.2}],
+        },
+        context_lines=[],
+        profile="compare",
+    ) or ""
+    low = answer.lower()
+    assert "tcs" in low and "infy" in low
+    assert "infy is lower" in low
+
+
 def test_or_compare_names_the_pair_even_without_second_tape():
     from indian_stock_llm.answer_composer import compose_structured_answer
 
@@ -177,6 +277,69 @@ def test_short_compare_chip_is_not_an_ambiguous_name():
         assert "ICICIBANK" in names, query
 
 
+def test_followup_replies_do_not_repeat_or_drop_the_pair():
+    quote_hist = [
+        {"role": "user", "content": "What is the price of RELIANCE?"},
+        {"role": "assistant", "content": "**RELIANCE** last 1226"},
+    ]
+    plan_hist = [
+        {"role": "user", "content": "Should I buy TCS?"},
+        {"role": "assistant", "content": "**TCS** paper plan HOLD"},
+    ]
+    compare_hist = [
+        {"role": "user", "content": "Compare TCS and INFY"},
+        {"role": "assistant", "content": "Comparison TCS INFY"},
+    ]
+    bank_hist = [
+        {"role": "user", "content": "Compare HDFCBANK and ICICIBANK"},
+        {"role": "assistant", "content": "HDFCBANK ICICIBANK"},
+    ]
+    ela_hist = [
+        {"role": "user", "content": "RELIANCE ela undi?"},
+        {"role": "assistant", "content": "**RELIANCE** snapshot"},
+    ]
+
+    why_quote = resolve_query_contract("why?", conversation_history=quote_hist)
+    assert "explain the reliance snapshot" in why_quote.resolved_query.lower()
+    assert why_quote.profile != "quote"
+
+    why_plan = resolve_query_contract("why?", conversation_history=plan_hist)
+    assert "why this paper stance" in why_plan.resolved_query.lower()
+    assert why_plan.profile != "trade_plan"
+
+    more = resolve_query_contract("tell me more", conversation_history=quote_hist)
+    assert "how is reliance doing" in more.resolved_query.lower()
+    assert more.profile == "stock_analysis"
+
+    simple = resolve_query_contract("simplify", conversation_history=plan_hist)
+    assert "simple words" in simple.resolved_query.lower()
+    assert simple.profile != "trade_plan"
+
+    cheaper = resolve_query_contract("which is cheaper?", conversation_history=compare_hist)
+    assert cheaper.profile == "compare"
+    assert "TCS" in cheaper.resolved_query.upper()
+    assert "INFY" in cheaper.resolved_query.upper()
+
+    dono = resolve_query_contract("dono", conversation_history=bank_hist)
+    assert dono.profile == "compare"
+    assert "HDFCBANK" in dono.resolved_query.upper()
+    assert "ICICIBANK" in dono.resolved_query.upper()
+
+    aur = resolve_query_contract("aur INFY?", conversation_history=plan_hist)
+    assert aur.profile == "trade_plan"
+    assert "INFY" in aur.resolved_query.upper()
+    assert aur.slots.symbol == "INFY"
+
+    entha = resolve_query_contract("entha?", conversation_history=ela_hist)
+    assert entha.profile == "quote"
+    assert entha.slots.symbol == "RELIANCE"
+
+    levels = resolve_query_contract("levels?", screen_context={"symbol": "SBIN"})
+    assert "practice levels" in levels.resolved_query.lower()
+    assert levels.slots.symbol == "SBIN"
+    assert levels.profile == "technical"
+
+
 def test_telugu_both_followup_compares_the_named_pair():
     history = [
         {"role": "user", "content": "Compare HDFCBANK with ICICIBANK"},
@@ -185,6 +348,8 @@ def test_telugu_both_followup_compares_the_named_pair():
     for ask in ("rendu", "donu", "రెండు"):
         contract = resolve_query_contract(ask, conversation_history=history)
         assert contract.profile == "compare", ask
+        if ask == "rendu":
+            assert contract.language == "te-en"
         assert contract.clarifier is None, ask
         assert "HDFCBANK" in contract.resolved_query.upper(), ask
         assert "ICICIBANK" in contract.resolved_query.upper(), ask

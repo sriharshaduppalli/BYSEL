@@ -109,3 +109,33 @@ def test_hinglish_detector_and_lead():
     )
     assert session.startswith("**Session:**")
     assert "₹" not in session.splitlines()[0]
+
+
+def test_namaste_replies_in_telugu():
+    from app.groq_llm import get_small_talk_response
+
+    reply = get_small_talk_response("namaste")
+    assert reply
+    assert "నమస్తే" in reply
+    assert "Hi! I am BYSEL" not in reply
+
+
+def test_hinglish_echo_does_not_repeat_glosses():
+    from indian_stock_llm.answer_composer import compose_structured_answer
+    from indian_stock_llm.query_language import normalize_user_query
+
+    once = normalize_user_query("RELIANCE bech dun kya?")
+    twice = normalize_user_query(once)
+    assert twice.count("sell") == once.count("sell") == 1
+    assert "sell sell" not in twice
+    quote = compose_structured_answer(
+        query=normalize_user_query("ITC ka price kitna hai?"),
+        intent="price_action",
+        market_context={"symbol": "ITC", "current_price": 269.0},
+        context_lines=[],
+        profile="quote",
+    ) or ""
+    ask = next(line for line in quote.splitlines() if line.startswith("**Your ask:**"))
+    assert "kitna hai" in ask
+    assert "how much" not in ask
+    assert "is is" not in ask

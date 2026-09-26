@@ -2647,7 +2647,7 @@ async def ai_ask_endpoint(
     normalized_query = normalize_hinglish(expanded_query)
     if re.search(
         r"^(both|both of (them|those)|compare both|those two|"
-        r"rendu|donu|idddarini|"
+        r"rendu|donu|dono|idddarini|"
         r"\u0c30\u0c46\u0c02\u0c21\u0c41)",
         (user_text or "").strip(),
         flags=re.I,
@@ -2724,9 +2724,17 @@ async def ai_ask_endpoint(
         )
 
     # Extra belt-and-suspenders: never let ultra-short greetings reach stock search.
-    if re.fullmatch(r"\s*(hi|hii|hiii|hello|hey|yo|namaste|thanks|thank you|bye)\s*[!.?]*\s*", normalized_query, flags=re.I):
+    if re.fullmatch(r"\s*(hi|hii|hiii|hello|hey|yo|namaste|namaskar|namaskaram|thanks|thank you|bye)\s*[!.?]*\s*", normalized_query, flags=re.I):
+        greeting = "Hi! I am BYSEL AI. Ask me about stock prices, buy/sell signals, comparisons, or valuation."
+        try:
+            from indian_stock_llm.query_language import is_telugu_query, telugu_small_talk_replies
+
+            if is_telugu_query(user_text):
+                greeting = telugu_small_talk_replies().get("greeting") or greeting
+        except Exception:
+            pass
         return _validated(
-            {"answer": "Hi! I am BYSEL AI. Ask me about stock prices, buy/sell signals, comparisons, or valuation."},
+            {"answer": greeting},
             "small-talk",
             requested_tier,
         )
@@ -2758,7 +2766,7 @@ async def ai_ask_endpoint(
             query_contract.slots.peer_symbols
             or bool(query_contract.slots.symbol)
         )
-        and re.search(r"\b(compare|vs|versus|against|with)\b", user_text, flags=re.I)
+        and re.search(r"\b(compare|vs|versus|against|with|or|ya)\b", user_text, flags=re.I)
     )
     if query_contract and query_contract.clarifier and not educational_like and not named_compare:
         return _validated({"answer": query_contract.clarifier}, "clarifier", requested_tier)
