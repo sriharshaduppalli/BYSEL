@@ -37,7 +37,7 @@ object TradeCtaPolicy {
         RegexOption.IGNORE_CASE,
     )
     private val FOLLOW_UP = Regex(
-        """^(what about|how about|and |also |same |yes\b|ok\b|why\?|simplify|tell me more|what next)|(\b(it|that stock|this stock|the same stock|its)\b)""",
+        """^(what about|how about|and |also |same |yes\b|ok\b|why\?|simplify|tell me more|what next)|(\b(it|that stock|this stock|this one|that one|the same stock|its|ee stock|ee scrip)\b)|(\u0c08\u0c38\u0c4d\u0c1f\u0c3e\u0c15\u0c4d|\u0c07\u0c26\u0c3f)""",
         RegexOption.IGNORE_CASE,
     )
     private val TRADE_ASK = Regex(

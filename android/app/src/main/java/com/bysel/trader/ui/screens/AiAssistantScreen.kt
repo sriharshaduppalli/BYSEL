@@ -172,8 +172,10 @@ fun AiAssistantScreen(
                     Text(
                         text = when {
                             !backLabel.isNullOrBlank() -> backLabel
+                            !selectedSymbol.isNullOrBlank() ->
+                                "Looking at $selectedSymbol · not SEBI advice"
                             onNavigateBack != null -> "Swipe from left edge to go back"
-                            else -> "Your smart stock advisor"
+                            else -> "Educational answers · not SEBI advice"
                         },
                         color = appTheme.onPrimary.copy(alpha = 0.82f),
                         fontSize = 12.sp,
@@ -228,7 +230,8 @@ fun AiAssistantScreen(
                     .weight(1f)
                     .fillMaxWidth(),
                 onSuggestionClick = onSuggestionClick,
-                suggestions = adaptiveSuggestions
+                suggestions = adaptiveSuggestions,
+                focusedSymbol = selectedSymbol,
             )
         } else {
             LazyColumn(
@@ -463,10 +466,14 @@ private fun buildAdaptiveSuggestions(
     val latestUser = userPrompts.lastOrNull().orEmpty()
     val sectorTheme = isSectorThemePrompt(latestUser)
     val generalTopic = TradeCtaPolicy.isGeneralTopic(latestUser)
+    val emptyChat = latestUser.isBlank()
     // For sector / glossary asks, ignore the currently selected quote ticker
     // (avoids Buy INFY after "what is RSI?" or "defence stocks").
+    // Empty chat may still show the open stock-detail name.
     val focusSymbol = selectedSymbol?.trim()?.uppercase()?.takeIf {
-        it.isNotBlank() && !sectorTheme && !generalTopic && TradeCtaPolicy.allowsAttachedSymbol(latestUser)
+        it.isNotBlank() && !sectorTheme && (
+            emptyChat || (!generalTopic && TradeCtaPolicy.allowsAttachedSymbol(latestUser))
+        )
     }
 
     val mentionSource = when {
@@ -756,6 +763,7 @@ private fun WelcomeContent(
     modifier: Modifier = Modifier,
     onSuggestionClick: (String) -> Unit,
     suggestions: List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>>,
+    focusedSymbol: String? = null,
 ) {
     val theme = LocalAppTheme.current
     Column(
@@ -792,7 +800,11 @@ private fun WelcomeContent(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            "Ask me anything about Indian stocks.\nI can analyze, predict, and compare stocks for you.",
+            if (!focusedSymbol.isNullOrBlank()) {
+                "You're looking at $focusedSymbol. Ask about this stock or any NSE name."
+            } else {
+                "Ask me anything about Indian stocks.\nI can analyze, predict, and compare stocks for you."
+            },
             color = theme.textSecondary,
             fontSize = 14.sp,
             textAlign = TextAlign.Center,
@@ -1065,23 +1077,11 @@ private fun ChatBubble(
 
         // Source + confidence badge for AI responses
         if (!message.isUser && message.source.isNotBlank()) {
-            val sourceLabel = when (message.source.lowercase()) {
-                "groq" -> "Groq"
-                "gemini" -> "Gemini"
-                "indian-stock-llm", "indian-stock-llm-education", "indian-stock-llm-indicator" -> "India grounded"
-                "rule-engine" -> "Rules"
-                "education" -> "Education"
-                "on-device" -> "On-device"
-                "small-talk" -> "Quick reply"
-                else -> message.source
-            }
-            val conf = message.confidence?.takeIf { it > 0.0 }?.let {
-                " · ${"%.0f".format(it.coerceIn(0.0, 1.0) * 100)}% conf"
-            }.orEmpty()
             Text(
-                text = "Educational · $sourceLabel$conf",
+                text = "Educational · Not SEBI RA",
                 fontSize = 10.sp,
-                color = LocalAppTheme.current.primary.copy(alpha = 0.75f),
+                fontWeight = FontWeight.SemiBold,
+                color = LocalAppTheme.current.primary.copy(alpha = 0.85f),
                 modifier = Modifier.padding(start = 8.dp, top = 2.dp)
             )
         }
@@ -1278,7 +1278,7 @@ private fun ChatBubble(
                         modifier = Modifier.height(32.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                     ) {
-                        Text("Practice buy", fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("Practice BUY", fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
                 if (onNavigateToStock != null) {

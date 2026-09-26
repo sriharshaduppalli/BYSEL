@@ -26,13 +26,15 @@ import com.bysel.trader.ui.components.LoadingScreen
 import com.bysel.trader.ui.components.SwipeToDismissItem
 import com.bysel.trader.ui.components.appFilledTextFieldColors
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.OverlayBackButton
 
 @Composable
 fun AlertsScreen(
     alerts: List<Alert>,
     isLoading: Boolean,
     onCreateAlert: (String, Double, String) -> Unit,
-    onDeleteAlert: (Int) -> Unit
+    onDeleteAlert: (Int) -> Unit,
+    onBack: (() -> Unit)? = null,
 ) {
     var showDialog by remember { mutableStateOf(false) }
 
@@ -56,6 +58,9 @@ fun AlertsScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (onBack != null) {
+                OverlayBackButton(onBack = onBack)
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Price Alerts",

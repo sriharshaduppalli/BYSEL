@@ -35,6 +35,9 @@ class TradeCtaPolicyTest {
         assertTrue(TradeCtaPolicy.isFollowUp("what about sentiment?"))
         assertTrue(TradeCtaPolicy.allowsAttachedSymbol("what about sentiment?"))
         assertFalse(TradeCtaPolicy.allowsPracticeTrade("what about sentiment?", "Mood is mixed", "TCS"))
+        assertTrue(TradeCtaPolicy.isFollowUp("how is this one?"))
+        assertTrue(TradeCtaPolicy.isFollowUp("this stock"))
+        assertTrue(TradeCtaPolicy.allowsAttachedSymbol("this one"))
     }
 
     @Test

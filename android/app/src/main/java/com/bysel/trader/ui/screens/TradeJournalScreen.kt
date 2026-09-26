@@ -217,9 +217,9 @@ private fun InsightCard(
 ) {
     val type = insight["type"] as? String ?: "info"
     val borderColor = when (type) {
-        "warning" -> Color(0xFFFF9800)
-        "error" -> Color(0xFFE53935)
-        else -> Color(0xFF2196F3)
+        "warning" -> appTheme.caution
+        "error" -> appTheme.negative
+        else -> appTheme.primary
     }
 
     Card(
@@ -304,7 +304,7 @@ private fun JournalEntryCard(
     appTheme: com.bysel.trader.ui.theme.AppTheme
 ) {
     val side = entry["side"] as? String ?: "BUY"
-    val sideColor = if (side == "BUY") Color(0xFF4CAF50) else Color(0xFFE53935)
+    val sideColor = if (side == "BUY") LocalAppTheme.current.positive else LocalAppTheme.current.negative
     @Suppress("UNCHECKED_CAST")
     val notes = (entry["autoNotes"] as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
     val timestamp = (entry["timestamp"] as? String)?.take(16)?.replace("T", " ") ?: ""
@@ -355,7 +355,7 @@ private fun JournalEntryCard(
             if (notes.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 notes.forEach { note ->
-                    Text("• $note", fontSize = 11.sp, color = Color(0xFFFF9800))
+                    Text("• $note", fontSize = 11.sp, color = LocalAppTheme.current.caution)
                 }
             }
         }

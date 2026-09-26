@@ -5,25 +5,39 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.OverlayBackButton
 import com.bysel.trader.viewmodel.TradingViewModel
 
 @Composable
-fun AchievementsScreen(viewModel: TradingViewModel) {
+fun AchievementsScreen(
+    viewModel: TradingViewModel,
+    onBack: (() -> Unit)? = null,
+) {
     val achievements by viewModel.achievements.collectAsStateWithLifecycle()
     val appTheme = LocalAppTheme.current
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text(
-            "Achievements",
-            style = MaterialTheme.typography.headlineMedium,
-            color = appTheme.text,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (onBack != null) {
+                OverlayBackButton(onBack = onBack)
+            }
+            Text(
+                "Achievements",
+                style = MaterialTheme.typography.headlineMedium,
+                color = appTheme.text,
+                modifier = Modifier.weight(1f),
+            )
+        }
         Spacer(modifier = Modifier.height(16.dp))
         LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(achievements.size) { i ->
+            items(achievements.size, key = { i -> achievements[i].id }) { i ->
                 val a = achievements[i]
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),

@@ -54,6 +54,7 @@ import com.bysel.trader.ui.theme.LocalAppTheme
 
 @Composable
 fun InvestorPortfoliosScreen(
+    onBack: (() -> Unit)? = null,
     portfolios: List<InvestorPortfolio>,
     portfolioChanges: List<InvestorPortfolioChangeFeed>,
     ideas: List<SmartMoneyIdeaFeedCard>,
@@ -107,6 +108,7 @@ fun InvestorPortfoliosScreen(
                         quarterLabel = quarterLabel,
                         isLoading = isLoading,
                         onRefresh = onRefresh,
+                        onBack = onBack,
                     )
                 }
 
@@ -190,6 +192,7 @@ private fun SmartMoneyHeroCard(
     quarterLabel: String?,
     isLoading: Boolean,
     onRefresh: () -> Unit,
+    onBack: (() -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
     Card(
@@ -212,12 +215,20 @@ private fun SmartMoneyHeroCard(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (onBack != null) {
+                    com.bysel.trader.ui.theme.OverlayBackButton(onBack = onBack)
+                }
             Text(
                 text = "Smart Money",
                 fontSize = 30.sp,
                 fontWeight = FontWeight.Bold,
                 color = theme.text,
             )
+            }
             Text(
                 text = "Curated legendary-investor holdings for discovery — not a live bulk-deal or SEBI filings feed. Quarter-over-quarter changes may be illustrative until filing diffs are wired.",
                 fontSize = 12.sp,

@@ -1,6 +1,7 @@
 package com.bysel.trader.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -30,6 +31,7 @@ fun NewsWidget(
     error: String?,
     onPinClick: () -> Unit,
     onRefresh: () -> Unit,
+    onHeadlineClick: ((String) -> Unit)? = null,
 ) {
     Card(
         modifier = Modifier
@@ -131,6 +133,17 @@ fun NewsWidget(
                         if (index > 0) {
                             Spacer(modifier = Modifier.height(12.dp))
                         }
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (onHeadlineClick != null && headline.symbol.isNotBlank()) {
+                                        Modifier.clickable { onHeadlineClick(headline.symbol) }
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                        ) {
                         Text(
                             text = headline.symbol,
                             fontSize = 11.sp,
@@ -151,6 +164,7 @@ fun NewsWidget(
                                 fontSize = 12.sp,
                                 color = LocalAppTheme.current.textSecondary
                             )
+                        }
                         }
                     }
                 }

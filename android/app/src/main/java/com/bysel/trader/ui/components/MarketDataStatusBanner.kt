@@ -23,10 +23,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bysel.trader.ui.theme.LocalAppTheme
 import kotlinx.coroutines.delay
 
 /**
@@ -72,10 +72,11 @@ fun MarketDataStatusBanner(
         enter = expandVertically(),
         exit = shrinkVertically(),
     ) {
+        val theme = LocalAppTheme.current
         val accent = when {
-            showWake -> Color(0xFFFF8F00)
-            neverLoaded -> Color(0xFFE53935)
-            else -> Color(0xFFFF8F00)
+            showWake -> theme.caution
+            neverLoaded -> theme.negative
+            else -> theme.caution
         }
         val message = when {
             showWake -> "Refreshing prices…"

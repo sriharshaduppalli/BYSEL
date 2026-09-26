@@ -222,6 +222,7 @@ fun TradingScreen(
     viewModel: com.bysel.trader.viewmodel.TradingViewModel,
     onAskAi: (String) -> Unit = { viewModel.askAi(it) },
     onOpenSearch: (() -> Unit)? = null,
+    onOpenWatchlists: (() -> Unit)? = null,
 ) {
     // Only warm the full quote universe while Trade is the active pager page
     // (adjacent pages stay composed via beyondBoundsPageCount).
@@ -451,6 +452,7 @@ fun TradingScreen(
                         onOpenAdvancedWorkspace = { selectedWorkspaceIndex = 1 },
                         onOpenDerivativesWorkspace = { selectedWorkspaceIndex = 2 },
                         onOpenSearch = onOpenSearch,
+                        onOpenWatchlists = onOpenWatchlists,
                         hideOnScroll = hideOnScroll,
                         viewModel = viewModel,
                     )
@@ -491,6 +493,7 @@ private fun SpotTradingWorkspace(
     @Suppress("UNUSED_PARAMETER")
     onOpenDerivativesWorkspace: () -> Unit,
     onOpenSearch: (() -> Unit)? = null,
+    onOpenWatchlists: (() -> Unit)? = null,
     hideOnScroll: HideOnScrollState,
     viewModel: TradingViewModel,
 ) {
@@ -502,15 +505,18 @@ private fun SpotTradingWorkspace(
         runCatching { WatchlistSortMode.valueOf(sortModeName) }.getOrDefault(WatchlistSortMode.MOVE)
     }
     var pendingRemoveSymbol by remember { mutableStateOf<String?>(null) }
+    val watchlistBoard by viewModel.watchlistBoard.collectAsStateWithLifecycle()
     val watchlistSymbols by viewModel.watchlist.collectAsStateWithLifecycle()
     LaunchedEffect(error) {
         if (error != null && isDerivativesFormMessage(error)) {
             onErrorDismiss()
         }
     }
-    val activeWatchlistSymbols = remember(watchlistSymbols) {
-        WatchlistSymbols.normalizeAll(watchlistSymbols)
+    val activeWatchlist = watchlistBoard.active
+    val activeWatchlistSymbols = remember(activeWatchlist, watchlistSymbols) {
+        WatchlistSymbols.normalizeAll(activeWatchlist?.symbols ?: watchlistSymbols)
     }
+    val activeWatchlistName = activeWatchlist?.name?.ifBlank { "My list" } ?: "My list"
     val symbolCatalog by viewModel.symbolCatalog.collectAsStateWithLifecycle()
     val symbolCatalogLoading by viewModel.symbolCatalogLoading.collectAsStateWithLifecycle()
     val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
@@ -562,13 +568,13 @@ private fun SpotTradingWorkspace(
     val quoteFreshnessColor = if (!marketTapeOpen) {
         LocalAppTheme.current.textSecondary
     } else if (lastQuoteUpdateAt <= 0L) {
-        Color(0xFFFFC107)
+        LocalAppTheme.current.caution
     } else {
         val ageSec = ((statusNow - lastQuoteUpdateAt) / 1000L).coerceAtLeast(0L)
         when {
             ageSec <= 4L -> LocalAppTheme.current.positive
-            ageSec < 60L -> Color(0xFF64B5F6)
-            ageSec < 600L -> Color(0xFFFFC107)
+            ageSec < 60L -> LocalAppTheme.current.primary
+            ageSec < 600L -> LocalAppTheme.current.caution
             else -> LocalAppTheme.current.negative
         }
     }
@@ -653,7 +659,7 @@ private fun SpotTradingWorkspace(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "My Watchlist",
+                        text = activeWatchlistName,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = LocalAppTheme.current.text,
@@ -685,6 +691,11 @@ private fun SpotTradingWorkspace(
                             )
                         }
                     }
+                    if (onOpenWatchlists != null) {
+                        TextButton(onClick = onOpenWatchlists) {
+                            Text("Lists", fontSize = 12.sp, maxLines = 1)
+                        }
+                    }
                     Button(
                         onClick = { showAddWatchlistDialog = true },
                         modifier = Modifier.height(36.dp),
@@ -704,12 +715,25 @@ private fun SpotTradingWorkspace(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (watchlistBoard.lists.size > 1) {
+                items(watchlistBoard.lists, key = { "list-${it.id}" }) { list ->
+                    CompactFilterChip(
+                        selected = boardModeWatchlist && list.id == watchlistBoard.activeId,
+                        onClick = {
+                            boardModeWatchlist = true
+                            viewModel.setActiveWatchlist(list.id)
+                        },
+                        label = list.name,
+                    )
+                }
+            } else {
             item(key = "board-mylist") {
                 CompactFilterChip(
                     selected = boardModeWatchlist,
                     onClick = { boardModeWatchlist = true },
-                    label = "My list",
+                    label = activeWatchlistName,
                 )
+            }
             }
             item(key = "board-live") {
                 CompactFilterChip(
@@ -1696,7 +1720,7 @@ fun TradingQuoteCard(
                     modifier = Modifier.weight(1f),
                     height = 40.dp,
                 ) {
-                    Text("Buy", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                    Text("Practice BUY", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1)
                 }
                 TradeActionButton(
                     onClick = onClick,
@@ -1704,7 +1728,7 @@ fun TradingQuoteCard(
                     modifier = Modifier.weight(1f),
                     height = 40.dp,
                 ) {
-                    Text("Sell", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                    Text("Practice SELL", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1)
                 }
             }
         }
@@ -2306,7 +2330,7 @@ private fun TradeBottomSheetContent(
                     contentColor = if (tradeType == "BUY") Color.White else LocalAppTheme.current.text
                 ),
                 shape = RoundedCornerShape(10.dp)
-            ) { Text("Buy", fontWeight = FontWeight.Bold) }
+            ) { Text("Practice BUY", fontWeight = FontWeight.Bold, maxLines = 1) }
             Button(
                 onClick = { tradeType = "SELL" },
                 modifier = Modifier.weight(1f).height(42.dp),
@@ -2315,7 +2339,7 @@ private fun TradeBottomSheetContent(
                     contentColor = if (tradeType == "SELL") Color.White else LocalAppTheme.current.text
                 ),
                 shape = RoundedCornerShape(10.dp)
-            ) { Text("Sell", fontWeight = FontWeight.Bold) }
+            ) { Text("Practice SELL", fontWeight = FontWeight.Bold, maxLines = 1) }
         }
 
         // Order type
@@ -2426,7 +2450,7 @@ private fun TradeBottomSheetContent(
                             Text("Wallet Used", fontSize = 11.sp, color = LocalAppTheme.current.textSecondary)
                             Text("${String.format("%.1f", walletUtilizationPct)}%", fontSize = 11.sp, color = when {
                                 walletUtilizationPct >= 90 -> LocalAppTheme.current.negative
-                                walletUtilizationPct >= 60 -> Color(0xFFFF8F00)
+                                walletUtilizationPct >= 60 -> LocalAppTheme.current.caution
                                 else -> LocalAppTheme.current.positive
                             })
                         }
@@ -2435,7 +2459,7 @@ private fun TradeBottomSheetContent(
                             modifier = Modifier.fillMaxWidth().height(4.dp).padding(top = 2.dp),
                             color = when {
                                 walletUtilizationPct >= 90 -> LocalAppTheme.current.negative
-                                walletUtilizationPct >= 60 -> Color(0xFFFF8F00)
+                                walletUtilizationPct >= 60 -> LocalAppTheme.current.caution
                                 else -> LocalAppTheme.current.positive
                             },
                             trackColor = LocalAppTheme.current.textSecondary.copy(alpha = 0.15f),
@@ -2464,7 +2488,7 @@ private fun TradeBottomSheetContent(
                         effectiveSignal?.let { signal ->
                             val verdictColor = when (signal.verdict.uppercase()) {
                                 "GO" -> LocalAppTheme.current.positive
-                                "CAUTION" -> Color(0xFFFFC107)
+                                "CAUTION" -> LocalAppTheme.current.caution
                                 "BLOCK" -> LocalAppTheme.current.negative
                                 else -> LocalAppTheme.current.textSecondary
                             }
@@ -2853,11 +2877,12 @@ private fun StreamHealthPill(health: TradingViewModel.StreamHealth) {
         animationSpec = infiniteRepeatable(tween(800), RepeatMode.Reverse),
         label = "dotAlpha"
     )
+    val theme = LocalAppTheme.current
     val dotColor = when (health) {
-        TradingViewModel.StreamHealth.LIVE -> Color(0xFF00C853)
-        TradingViewModel.StreamHealth.RECONNECTING -> Color(0xFFFF8F00)
-        TradingViewModel.StreamHealth.CLOSED -> Color(0xFF90A4AE)
-        TradingViewModel.StreamHealth.OFFLINE -> Color(0xFF757575)
+        TradingViewModel.StreamHealth.LIVE -> theme.positive
+        TradingViewModel.StreamHealth.RECONNECTING -> theme.caution
+        TradingViewModel.StreamHealth.CLOSED -> theme.textSecondary
+        TradingViewModel.StreamHealth.OFFLINE -> theme.textSecondary
     }
     val label = when (health) {
         TradingViewModel.StreamHealth.LIVE -> "Live"

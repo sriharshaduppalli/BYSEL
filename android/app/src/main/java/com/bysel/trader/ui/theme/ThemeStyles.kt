@@ -9,7 +9,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -91,11 +95,27 @@ fun AppTheme.colorForChange(change: Double): Color = when {
  * Consistent tab/screen title + supporting line used across Home, Trade, Search, More.
  */
 @Composable
+fun OverlayBackButton(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val theme = LocalAppTheme.current
+    IconButton(onClick = onBack, modifier = modifier) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+            contentDescription = "Back",
+            tint = theme.text,
+        )
+    }
+}
+
+@Composable
 fun ScreenHeader(
     title: String,
     subtitle: String? = null,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    onBack: (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
@@ -107,6 +127,9 @@ fun ScreenHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (onBack != null) {
+            OverlayBackButton(onBack = onBack)
+        }
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(4.dp),

@@ -2519,6 +2519,12 @@ async def ai_ask_endpoint(
             except Exception:
                 pass
             try:
+                from indian_stock_llm.query_language import polish_hinglish_answer
+
+                answer = polish_hinglish_answer(user_text, answer)
+            except Exception:
+                pass
+            try:
                 from ..telugu_reply import localize_suggestions
 
                 tips = localize_suggestions(user_text, result.get("suggestions") or [])
@@ -2640,7 +2646,9 @@ async def ai_ask_endpoint(
     expanded_query = expand_acronyms_in_query(user_text)
     normalized_query = normalize_hinglish(expanded_query)
     if re.search(
-        r"^(both|both of (them|those)|compare both|those two)\b",
+        r"^(both|both of (them|those)|compare both|those two|"
+        r"rendu|donu|idddarini|"
+        r"\u0c30\u0c46\u0c02\u0c21\u0c41)",
         (user_text or "").strip(),
         flags=re.I,
     ) and body.conversation_history:
@@ -2761,7 +2769,23 @@ async def ai_ask_endpoint(
         and not educational_like
         and not (query_contract and query_contract.slots.symbol)
     ):
-        if response_style == "concise":
+        lang = str(getattr(query_contract, "language", "") or "")
+        if lang in {"te", "te-en"}:
+            try:
+                from indian_stock_llm.query_language import telugu_clarifier
+
+                clarifier = telugu_clarifier("symbol")
+            except Exception:
+                clarifier = (
+                    "I need one quick clarification: please share the stock symbol and whether you want "
+                    "buy/sell, technicals, fundamentals, comparison, prediction, or calculation."
+                )
+        elif lang == "hi-en":
+            clarifier = (
+                "Kaunsa NSE/BSE symbol? Quote, news, technicals, valuation, "
+                "compare, paper buy/sell, ya forecast?"
+            )
+        elif response_style == "concise":
             clarifier = (
                 "I need one quick clarification: please share the stock symbol and whether you want "
                 "buy/sell, technicals, fundamentals, comparison, prediction, or calculation."
@@ -2905,6 +2929,7 @@ async def ai_ask_endpoint(
             "fundamental": data.get("fundamental", {}),
             "trading_levels": data.get("trading_levels", {}),
             "sentiment": data.get("sentiment", {}),
+            "screen_context": body.screen_context if isinstance(body.screen_context, dict) else None,
         }
 
         # Skip Yahoo enrich on session / literacy / corp-action / greeting asks.
@@ -3077,6 +3102,8 @@ async def ai_ask_endpoint(
                         llm_context["intent"] = query_contract.ism_intent
                         if query_contract.slots.symbol:
                             llm_context["symbol"] = query_contract.slots.symbol
+                    if isinstance(body.screen_context, dict):
+                        llm_context["screen_context"] = body.screen_context
                 except Exception:
                     ism_query = normalized_query
                 try:
@@ -3128,6 +3155,7 @@ async def ai_ask_endpoint(
                 } and not query_contract.slots.follow_up:
                     llm_context.pop("symbol", None)
                     llm_context.pop("conversation_history", None)
+                    llm_context.pop("screen_context", None)
                 llm_result = await asyncio.to_thread(ask_llm, ism_query, llm_context or None)
                 ism_answer = str((llm_result or {}).get("answer") or "").strip()
                 # App chat is ISM-first: keep a real ISM answer even if confidence is

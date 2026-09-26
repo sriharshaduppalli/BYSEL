@@ -55,7 +55,10 @@ import java.util.Locale
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun PortfolioRiskDashboardCard(risk: PaperPortfolioRisk) {
+fun PortfolioRiskDashboardCard(
+    risk: PaperPortfolioRisk,
+    onOpenRiskLab: () -> Unit = {},
+) {
     val theme = LocalAppTheme.current
     var expanded by rememberSaveable { mutableStateOf(false) }
     val overallPct = if (risk.totalInvested > 0.0) {
@@ -334,8 +337,23 @@ fun PortfolioRiskDashboardCard(risk: PaperPortfolioRisk) {
                 lineHeight = 13.sp,
                 modifier = Modifier.padding(top = 6.dp),
             )
+            Text(
+                "VaR and Monte Carlo live in Risk Lab — not on this summary.",
+                color = theme.textSecondary,
+                fontSize = 10.sp,
+                modifier = Modifier.padding(top = 6.dp),
+            )
             }
             }
+            Text(
+                text = "Open Risk Lab",
+                color = theme.primary,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .padding(top = 8.dp)
+                    .clickable(onClick = onOpenRiskLab),
+            )
         }
     }
 }

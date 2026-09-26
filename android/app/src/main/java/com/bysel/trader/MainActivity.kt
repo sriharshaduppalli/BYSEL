@@ -254,27 +254,32 @@ class MainActivity : FragmentActivity() {
                     }
                 )
             } else if (showLockScreen) {
-                BiometricLockScreen(
-                    onRetry = {
-                        biometricAuthManager.authenticateForAppUnlock(
-                            activity = this@MainActivity,
-                            onSuccess = {
-                                isAuthenticated = true
-                                biometricUnlocked = true
-                            },
-                            onCancel = { }
-                        )
-                    }
-                )
+                ProvideSavedAppTheme {
+                    BiometricLockScreen(
+                        onRetry = {
+                            biometricAuthManager.authenticateForAppUnlock(
+                                activity = this@MainActivity,
+                                onSuccess = {
+                                    isAuthenticated = true
+                                    biometricUnlocked = true
+                                },
+                                onCancel = { }
+                            )
+                        }
+                    )
+                }
             } else if (activeTradingViewModel == null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .safeDrawingPadding()
-                        .background(Color.Black),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
+                ProvideSavedAppTheme {
+                    val bootTheme = LocalAppTheme.current
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .safeDrawingPadding()
+                            .background(bootTheme.surface),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(color = bootTheme.primary)
+                    }
                 }
             } else {
                 val currentTradingViewModel = activeTradingViewModel
@@ -358,11 +363,31 @@ class MainActivity : FragmentActivity() {
 }
 
 @Composable
+private fun ProvideSavedAppTheme(content: @Composable () -> Unit) {
+    val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val themeName = normalizeThemeId(
+        context.getSharedPreferences("bysel_settings", Context.MODE_PRIVATE)
+            .getString("theme", DEFAULT_THEME_ID)
+    )
+    val scheme = remember(themeName, configuration.uiMode) {
+        getMaterialColorScheme(themeName, context)
+    }
+    val theme = remember(themeName, scheme) {
+        if (isDynamicThemeId(themeName)) scheme.toAppTheme("Dynamic") else getTheme(themeName)
+    }
+    CompositionLocalProvider(LocalAppTheme provides theme) {
+        content()
+    }
+}
+
+@Composable
 fun BiometricLockScreen(onRetry: () -> Unit) {
+    val theme = LocalAppTheme.current
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF121212))
+            .background(theme.surface)
             .safeDrawingPadding(),
         contentAlignment = Alignment.Center
     ) {
@@ -374,20 +399,20 @@ fun BiometricLockScreen(onRetry: () -> Unit) {
                 imageVector = Icons.Filled.Lock,
                 contentDescription = "Locked",
                 modifier = Modifier.size(80.dp),
-                tint = Color(0xFF7C4DFF)
+                tint = theme.primary
             )
             
             Text(
                 text = "BYSEL is Locked",
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = theme.text
             )
             
             Text(
                 text = "Authenticate to access your portfolio",
                 fontSize = 14.sp,
-                color = Color.Gray,
+                color = theme.textSecondary,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 32.dp)
             )
@@ -397,7 +422,8 @@ fun BiometricLockScreen(onRetry: () -> Unit) {
             Button(
                 onClick = onRetry,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF7C4DFF)
+                    containerColor = theme.primary,
+                    contentColor = theme.onPrimary,
                 ),
                 modifier = Modifier.height(48.dp)
             ) {
@@ -549,6 +575,7 @@ fun BYSELApp(
         viewModel.setRefreshIntervalMs(heatmapInterval.toLong())
     }
     LaunchedEffect(selectedTab) {
+        viewModel.syncAssistantScreen(selectedTab)
         if (selectedTab == 3) {
             viewModel.loadEtfs()
             viewModel.loadSipPlans()
@@ -602,6 +629,7 @@ fun BYSELApp(
     val signalLabBuckets by viewModel.signalLabBuckets.collectAsStateWithLifecycle()
     val signalLabBucketsLoading by viewModel.signalLabBucketsLoading.collectAsStateWithLifecycle()
     val selectedQuote by viewModel.selectedQuote.collectAsStateWithLifecycle()
+    val aiScreenContext by viewModel.aiScreenContext.collectAsStateWithLifecycle()
     val detailLoading by viewModel.detailLoading.collectAsStateWithLifecycle()
     val quoteHistory by viewModel.quoteHistory.collectAsStateWithLifecycle()
     val quoteHistoryLoading by viewModel.quoteHistoryLoading.collectAsStateWithLifecycle()
@@ -726,7 +754,6 @@ fun BYSELApp(
                     return@collect
                 }
                 if (selectedTab in 0..5 && selectedTab != settledPage) {
-                    pushTab(selectedTab)
                     selectedTab = settledPage
                 }
             }
@@ -788,11 +815,16 @@ fun BYSELApp(
             }
             if (showOnboarding) {
                 com.bysel.trader.ui.screens.OnboardingScreen(
-                    onFinish = {
-                        // Do NOT auto-initialize demo funds. Keep wallet at 0 by default.
-                        // User can opt-in to demo from Settings or explicit UI action.
+                    onFinish = { result ->
                         showOnboarding = false
                         prefs.edit().putBoolean("onboarding_complete", true).apply()
+                        if (result.practiceCredit > 0.0) {
+                            viewModel.addFunds(result.practiceCredit)
+                        }
+                        result.symbols.forEach { viewModel.addToWatchlist(it) }
+                        if (result.openTrade) {
+                            selectRootTab(2)
+                        }
                     }
                 )
             } else {
@@ -1001,6 +1033,7 @@ fun BYSELApp(
                                         watchlistSymbols = watchlistSymbols,
                                         featuredWatchlistSymbols = featuredWatchlistSymbols,
                                         featuredWatchlistTitle = featuredWatchlistTitle,
+                                        onPortfolioClick = { selectRootTab(3) },
                                         onRefresh = { viewModel.refreshQuotes(force = true, showSpinner = true) },
                                         onTradeClick = { symbol ->
                                             viewModel.fetchAndSelectQuote(symbol)
@@ -1033,7 +1066,7 @@ fun BYSELApp(
                                                 showHomeAddFundsDialog = true
                                                 Toast.makeText(
                                                     context,
-                                                    "Add practice credit before Paper Buy",
+                                                    "Add practice credit before Practice BUY",
                                                     Toast.LENGTH_SHORT,
                                                 ).show()
                                             } else {
@@ -1068,7 +1101,9 @@ fun BYSELApp(
                                             else viewModel.askAi(suggestion)
                                         },
                                         onClearChat = { viewModel.clearChatHistory() },
-                                        selectedSymbol = selectedQuote?.symbol,
+                                        selectedSymbol = aiScreenContext.symbol?.takeIf {
+                                            aiScreenContext.allowsStockInherit
+                                        },
                                         onTradeAction = { symbol, side, qty ->
                                             viewModel.fetchAndSelectQuote(symbol)
                                             pendingAiTrade = AiTradeRequest(symbol, side, qty ?: 1)
@@ -1132,6 +1167,7 @@ fun BYSELApp(
                                             navigatePushingCurrent(1)
                                         },
                                         onOpenSearch = { navigatePushingCurrent(6) },
+                                        onOpenWatchlists = { navigatePushingCurrent(25) },
                                         viewModel = viewModel
                                     )
                                     3 -> PortfolioScreen(
@@ -1176,7 +1212,8 @@ fun BYSELApp(
                                         onBuy = { symbol, qty -> viewModel.placeOrder(symbol, qty, "BUY") },
                                         onSell = { symbol, qty -> viewModel.placeOrder(symbol, qty, "SELL") },
                                         onErrorDismiss = { viewModel.clearPortfolioError() },
-                                        onNavigateToTrade = { selectRootTab(2) }
+                                        onNavigateToTrade = { selectRootTab(2) },
+                                        onOpenRiskLab = { navigatePushingCurrent(22) },
                                     )
                                     4 -> HeatmapScreen(
                                         heatmap = marketHeatmap,
@@ -1233,13 +1270,17 @@ fun BYSELApp(
                         } else {
                             // Non-swipeable screens (Search, Alerts, Settings, Detail, Achievements)
                             when (selectedTab) {
-                                10 -> com.bysel.trader.ui.screens.AchievementsScreen(viewModel)
+                                10 -> com.bysel.trader.ui.screens.AchievementsScreen(
+                                    viewModel,
+                                    onBack = { handleSystemBack() },
+                                )
                                 11 -> MutualFundsScreen(
                                     viewModel = viewModel,
                                     onAskAi = { query ->
                                         viewModel.askAi(query)
                                         navigatePushingCurrent(1)
                                     },
+                                    onBack = { handleSystemBack() },
                                 )
                                 12 -> IpoListingsScreen(
                                     viewModel = viewModel,
@@ -1247,27 +1288,30 @@ fun BYSELApp(
                                         viewModel.askAi(query)
                                         navigatePushingCurrent(1)
                                     },
+                                    onBack = { handleSystemBack() },
                                 )
-                                13 -> EtfScreen(viewModel)
-                                14 -> SipPlansScreen(viewModel)
-                                15 -> MyIpoApplicationsScreen(viewModel)
+                                13 -> EtfScreen(viewModel, onBack = { handleSystemBack() })
+                                14 -> SipPlansScreen(viewModel, onBack = { handleSystemBack() })
+                                15 -> MyIpoApplicationsScreen(viewModel, onBack = { handleSystemBack() })
                                 27 -> SgbScreen(
                                     viewModel = viewModel,
                                     onAskAi = { query ->
                                         viewModel.askAi(query)
                                         navigatePushingCurrent(1)
                                     },
+                                    onBack = { handleSystemBack() },
                                 )
-                                16 -> AdvancedOrdersScreen(viewModel)
+                                16 -> AdvancedOrdersScreen(viewModel, onBack = { handleSystemBack() })
                                 17 -> DerivativesIntelligenceScreen(
                                     viewModel = viewModel,
                                     onAskAi = { query ->
                                         viewModel.askAi(query)
                                         navigatePushingCurrent(1)
                                     },
+                                    onBack = { handleSystemBack() },
                                 )
-                                18 -> WealthOsScreen(viewModel)
-                                19 -> CopilotCenterScreen(viewModel)
+                                18 -> WealthOsScreen(viewModel, onBack = { handleSystemBack() })
+                                19 -> CopilotCenterScreen(viewModel, onBack = { handleSystemBack() })
                                 28 -> ScannerScreen(
                                     viewModel = viewModel,
                                     onBack = { handleSystemBack() },
@@ -1275,6 +1319,22 @@ fun BYSELApp(
                                         viewModel.selectScannerRow(row)
                                         viewModel.fetchAndSelectQuote(row.symbol)
                                         openStockDetailTab()
+                                    },
+                                    onPracticeBuy = { row ->
+                                        if (walletBalance <= 0.0) {
+                                            showHomeAddFundsDialog = true
+                                            Toast.makeText(
+                                                context,
+                                                "Add practice credit before Practice BUY",
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                        } else {
+                                            viewModel.fetchAndSelectQuote(row.symbol)
+                                            val qty = row.last.takeIf { it > 0 }?.let {
+                                                (5_000.0 / it).toInt().coerceIn(1, 25)
+                                            } ?: 1
+                                            pendingAiTrade = AiTradeRequest(row.symbol, "BUY", qty)
+                                        }
                                     },
                                     onOpenPaperGym = {
                                         viewModel.requestTradeWorkspace(2)
@@ -1294,6 +1354,7 @@ fun BYSELApp(
                                     },
                                 )
                                 20 -> SignalLabScreen(
+                                    onBack = { handleSystemBack() },
                                     quotes = quotes,
                                     heatmap = marketHeatmap,
                                     backendBuckets = signalLabBuckets,
@@ -1309,6 +1370,7 @@ fun BYSELApp(
                                     },
                                 )
                                 21 -> InvestorPortfoliosScreen(
+                                    onBack = { handleSystemBack() },
                                     portfolios = investorPortfolios,
                                     portfolioChanges = investorPortfolioChanges,
                                     ideas = smartMoneyIdeas,
@@ -1340,6 +1402,7 @@ fun BYSELApp(
                                     onBack = { handleSystemBack() }
                                 )
                                 25 -> WatchlistScreen(
+                                    onBack = { handleSystemBack() },
                                     quotes = quotes.filter { quote ->
                                         activeWatchlistSymbols.any { WatchlistSymbols.matches(it, quote.symbol) }
                                     },
@@ -1362,6 +1425,7 @@ fun BYSELApp(
                                 )
                                 26 -> MarketCalendarScreen(onBack = { handleSystemBack() })
                                 6 -> SearchScreen(
+                                    onBack = { handleSystemBack() },
                                     quotes = quotes,
                                     watchlistSymbols = watchlistSymbols,
                                     backendBuckets = signalLabBuckets,
@@ -1381,6 +1445,7 @@ fun BYSELApp(
                                     onRouteClick = { targetTab -> navigatePushingCurrent(targetTab) }
                                 )
                                 7 -> AlertsScreen(
+                                    onBack = { handleSystemBack() },
                                     alerts = alerts,
                                     isLoading = false,
                                     onCreateAlert = { symbol, price, type ->
@@ -1391,6 +1456,7 @@ fun BYSELApp(
                                     }
                                 )
                                 8 -> SettingsScreen(
+                                    onBack = { handleSystemBack() },
                                     currentTheme = currentThemeName,
                                     biometricAuthManager = biometricAuthManager,
                                     onThemeChange = { theme ->

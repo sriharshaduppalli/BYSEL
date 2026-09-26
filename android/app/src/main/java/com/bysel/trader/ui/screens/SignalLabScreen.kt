@@ -66,6 +66,7 @@ fun SignalLabScreen(
     isLoading: Boolean,
     onRefresh: () -> Unit,
     onOpenSymbol: (String) -> Unit,
+    onBack: (() -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
     var selectedTimeframeKey by rememberSaveable { mutableStateOf(SignalLabTimeframe.INTRADAY.name) }
@@ -137,6 +138,7 @@ fun SignalLabScreen(
                     selectedTimeframe = selectedTimeframe,
                     selectedSector = selectedSector,
                     onRefresh = onRefresh,
+                    onBack = onBack,
                 )
             }
 
@@ -444,6 +446,7 @@ private fun SignalLabHeroCard(
     selectedTimeframe: SignalLabTimeframe,
     selectedSector: String,
     onRefresh: () -> Unit,
+    onBack: (() -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
     Column(
@@ -462,12 +465,20 @@ private fun SignalLabHeroCard(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (onBack != null) {
+                com.bysel.trader.ui.theme.OverlayBackButton(onBack = onBack)
+            }
         Text(
             text = "Signal Lab",
             fontSize = 30.sp,
             fontWeight = FontWeight.Bold,
             color = theme.text,
         )
+        }
         Text(
             text = "Paper practice · not investment advice",
             fontSize = 12.sp,

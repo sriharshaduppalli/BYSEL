@@ -55,7 +55,7 @@ fun PaperTradeQtyDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(if (buy) "How many $symbol to buy?" else "How many $symbol to sell?")
+            Text(if (buy) "Practice BUY — how many $symbol?" else "Practice SELL — how many $symbol?")
         },
         text = {
             Column(
@@ -149,7 +149,7 @@ fun PaperTradeQtyDialog(
                     containerColor = if (buy) theme.positive else theme.negative,
                 ),
             ) {
-                Text(if (buy) "Buy $qty" else "Sell $qty")
+                Text(if (buy) "Practice BUY $qty" else "Practice SELL $qty")
             }
         },
         dismissButton = {

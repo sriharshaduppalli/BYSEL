@@ -63,6 +63,7 @@ import com.bysel.trader.ui.components.callPlainEnglish
 import com.bysel.trader.ui.components.optionTapePlainEnglish
 import com.bysel.trader.ui.components.putPlainEnglish
 import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.OverlayBackButton
 import com.bysel.trader.ui.theme.byselCardBorder
 import com.bysel.trader.ui.theme.byselCardColors
 import com.bysel.trader.ui.theme.byselCardElevation
@@ -75,11 +76,15 @@ private fun LoadingOrEmpty(
     subtitle: String,
     loading: Boolean,
     body: String? = null,
+    onBack: (() -> Unit)? = null,
 ) {
     Box(
         modifier = Modifier.fillMaxSize().background(LocalAppTheme.current.surface).padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
+        if (onBack != null) {
+            OverlayBackButton(onBack = onBack, modifier = Modifier.align(Alignment.TopStart))
+        }
         if (loading) {
             CircularProgressIndicator(color = LocalAppTheme.current.primary)
         } else {
@@ -91,6 +96,25 @@ private fun LoadingOrEmpty(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ExplorerTitle(title: String, onBack: (() -> Unit)? = null) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (onBack != null) {
+            OverlayBackButton(onBack = onBack)
+        }
+        Text(
+            title,
+            color = LocalAppTheme.current.text,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
@@ -274,6 +298,7 @@ private fun SgbLearnCard(onAskAi: () -> Unit) {
 fun SgbScreen(
     viewModel: TradingViewModel,
     onAskAi: (String) -> Unit = { viewModel.askAi(it) },
+    onBack: (() -> Unit)? = null,
 ) {
     LaunchedEffect(Unit) {
         viewModel.loadInvestorTips("sgb")
@@ -284,12 +309,7 @@ fun SgbScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
-            Text(
-                "Sovereign Gold Bonds",
-                color = LocalAppTheme.current.text,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-            )
+            ExplorerTitle("Sovereign Gold Bonds", onBack)
         }
         item {
             Text(
@@ -442,6 +462,7 @@ private fun PreTradeSignalCard(title: String, signal: CopilotSignal) {
 fun MutualFundsScreen(
     viewModel: TradingViewModel,
     onAskAi: (String) -> Unit = { viewModel.askAi(it) },
+    onBack: (() -> Unit)? = null,
 ) {
     val funds by viewModel.mutualFunds.collectAsStateWithLifecycle()
     val loading by viewModel.productsLoading.collectAsStateWithLifecycle()
@@ -495,13 +516,14 @@ fun MutualFundsScreen(
             subtitle = "No funds found yet.",
             loading = loading,
             body = "Browse AMFI NAVs and rehearse paper SIPs. This is not a live purchase rail and returns are not guaranteed.",
+            onBack = onBack,
         )
     } else {
         LazyColumn(
             modifier = Modifier.fillMaxSize().background(LocalAppTheme.current.surface).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            item { Text("Mutual Funds", color = LocalAppTheme.current.text, fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+            item { ExplorerTitle("Mutual Funds", onBack) }
             item {
                 Text(
                     "AMFI NAVs for browsing · SIP is paper-practice only · past returns are not guaranteed",
@@ -915,6 +937,7 @@ private fun MutualFundDetailScreen(fund: MutualFund, onBack: () -> Unit, onStart
 fun IpoListingsScreen(
     viewModel: TradingViewModel,
     onAskAi: (String) -> Unit = { viewModel.askAi(it) },
+    onBack: (() -> Unit)? = null,
 ) {
     val ipos by viewModel.ipoListings.collectAsStateWithLifecycle()
     val loading by viewModel.productsLoading.collectAsStateWithLifecycle()
@@ -949,13 +972,14 @@ fun IpoListingsScreen(
             subtitle = "No practice IPOs in the calendar right now.",
             loading = loading,
             body = "This is a paper IPO browser. Apply here is practice only — no real money, no ASBA block, and not an exchange application.",
+            onBack = onBack,
         )
     } else {
         LazyColumn(
             modifier = Modifier.fillMaxSize().background(LocalAppTheme.current.surface).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            item { Text("IPO Listings", color = LocalAppTheme.current.text, fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+            item { ExplorerTitle("IPO Listings", onBack) }
             item {
                 Text(
                     "Paper IPO calendar for practice applies — not live NSE/BSE filings or ASBA.",
@@ -1128,7 +1152,7 @@ private fun IpoDetailScreen(ipo: IPOListing, onBack: () -> Unit, onApply: () -> 
 }
 
 @Composable
-fun EtfScreen(viewModel: TradingViewModel) {
+fun EtfScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = null) {
     val etfs by viewModel.etfInstruments.collectAsStateWithLifecycle()
     val loading by viewModel.productsLoading.collectAsStateWithLifecycle()
     var selected by remember { mutableStateOf<ETFInstrument?>(null) }
@@ -1139,13 +1163,13 @@ fun EtfScreen(viewModel: TradingViewModel) {
     if (selected != null) {
         EtfDetailScreen(etf = selected!!, onBack = { selected = null })
     } else if (etfs.isEmpty()) {
-        LoadingOrEmpty("ETFs", "No ETFs available right now.", loading)
+        LoadingOrEmpty("ETFs", "No ETFs available right now.", loading, onBack = onBack)
     } else {
         LazyColumn(
             modifier = Modifier.fillMaxSize().background(LocalAppTheme.current.surface).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            item { Text("ETFs", color = LocalAppTheme.current.text, fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+            item { ExplorerTitle("ETFs", onBack) }
             item { ActionBanner(viewModel) }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1196,7 +1220,7 @@ private fun EtfDetailScreen(etf: ETFInstrument, onBack: () -> Unit) {
 }
 
 @Composable
-fun SipPlansScreen(viewModel: TradingViewModel) {
+fun SipPlansScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = null) {
     val plans by viewModel.sipPlans.collectAsStateWithLifecycle()
     val loading by viewModel.productsLoading.collectAsStateWithLifecycle()
     var editTarget by remember { mutableStateOf<com.bysel.trader.data.models.SipPlan?>(null) }
@@ -1209,6 +1233,7 @@ fun SipPlansScreen(viewModel: TradingViewModel) {
             subtitle = "No practice SIP plans yet.",
             loading = loading,
             body = "Create a paper SIP from Mutual Funds. No real money is invested and returns are not guaranteed.",
+            onBack = onBack,
         )
         return
     }
@@ -1217,7 +1242,7 @@ fun SipPlansScreen(viewModel: TradingViewModel) {
         modifier = Modifier.fillMaxSize().background(LocalAppTheme.current.surface).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        item { Text("My SIPs", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold, fontSize = 24.sp) }
+        item { ExplorerTitle("My SIPs", onBack) }
         item {
             ProductPaperBanner("Paper SIPs only — no real AMC debit and returns are not guaranteed.")
         }
@@ -1260,7 +1285,7 @@ fun SipPlansScreen(viewModel: TradingViewModel) {
 }
 
 @Composable
-fun MyIpoApplicationsScreen(viewModel: TradingViewModel) {
+fun MyIpoApplicationsScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = null) {
     val applications by viewModel.myIpoApplications.collectAsStateWithLifecycle()
     val loading by viewModel.productsLoading.collectAsStateWithLifecycle()
     var statusFilter by remember { mutableStateOf("ALL") }
@@ -1279,6 +1304,7 @@ fun MyIpoApplicationsScreen(viewModel: TradingViewModel) {
             subtitle = "No paper IPO applications yet.",
             loading = loading,
             body = "Practice applies from IPO Listings show up here. They are not exchange allotments and no real money is blocked.",
+            onBack = onBack,
         )
         return
     }
@@ -1287,7 +1313,7 @@ fun MyIpoApplicationsScreen(viewModel: TradingViewModel) {
         modifier = Modifier.fillMaxSize().background(LocalAppTheme.current.surface).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        item { Text("My IPO Applications", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold, fontSize = 24.sp) }
+        item { ExplorerTitle("My IPO Applications", onBack) }
         item {
             ProductPaperBanner("Paper applications only — not live ASBA, UPI debit, or exchange allotment.")
         }
@@ -1444,6 +1470,7 @@ private fun IpoApplyDialog(
 fun AdvancedOrdersScreen(
     viewModel: TradingViewModel,
     preferredSymbol: String? = null,
+    onBack: (() -> Unit)? = null,
 ) {
     val loading by viewModel.advancedLoading.collectAsStateWithLifecycle()
     val advancedResponse by viewModel.advancedOrderResponse.collectAsStateWithLifecycle()
@@ -1554,14 +1581,7 @@ fun AdvancedOrdersScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        item {
-            Text(
-                "Triggers & baskets",
-                color = LocalAppTheme.current.text,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 16.sp
-            )
-        }
+        item { ExplorerTitle("Triggers & baskets", onBack) }
         item { ActionBanner(viewModel) }
 
         if (loading) {
@@ -1598,7 +1618,8 @@ fun AdvancedOrdersScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("BUY", "SELL").forEach { option ->
                             TextButton(onClick = { side = option }) {
-                                Text(if (side == option) "● $option" else option)
+                                val label = if (option == "BUY") "Practice BUY" else "Practice SELL"
+                                Text(if (side == option) "● $label" else label)
                             }
                         }
                     }
@@ -1829,6 +1850,7 @@ fun AdvancedOrdersScreen(
 fun DerivativesIntelligenceScreen(
     viewModel: TradingViewModel,
     onAskAi: (String) -> Unit = { viewModel.askAi(it) },
+    onBack: (() -> Unit)? = null,
 ) {
     val optionChain by viewModel.optionChain.collectAsStateWithLifecycle()
     val strategyPreview by viewModel.strategyPreview.collectAsStateWithLifecycle()
@@ -1879,16 +1901,7 @@ fun DerivativesIntelligenceScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(bottom = 24.dp),
     ) {
-        item {
-            Text(
-                "Options desk",
-                color = LocalAppTheme.current.text,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 16.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        item { ExplorerTitle("Options desk", onBack) }
         item {
             Text(
                 "Paper F&O gym: live NSE chain when reachable, else a teaching chain. Educational only — no guaranteed P&L.",
@@ -2169,7 +2182,7 @@ fun DerivativesIntelligenceScreen(
 }
 
 @Composable
-fun WealthOsScreen(viewModel: TradingViewModel) {
+fun WealthOsScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = null) {
     val dashboard by viewModel.familyDashboard.collectAsStateWithLifecycle()
     val goals by viewModel.goalPlans.collectAsStateWithLifecycle()
     val loading by viewModel.wealthLoading.collectAsStateWithLifecycle()
@@ -2221,7 +2234,7 @@ fun WealthOsScreen(viewModel: TradingViewModel) {
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            Text("Wealth OS", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold, fontSize = 24.sp)
+            ExplorerTitle("Wealth OS", onBack)
         }
         item { ActionBanner(viewModel) }
 
@@ -2574,7 +2587,7 @@ private fun WealthMetricTile(title: String, value: String, caption: String) {
 }
 
 @Composable
-fun CopilotCenterScreen(viewModel: TradingViewModel) {
+fun CopilotCenterScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = null) {
     val loading by viewModel.copilotLoading.collectAsStateWithLifecycle()
     val preTradeEstimate by viewModel.preTradeEstimate.collectAsStateWithLifecycle()
     val preTradeSignal by viewModel.copilotPreTradeSignal.collectAsStateWithLifecycle()
@@ -2622,7 +2635,7 @@ fun CopilotCenterScreen(viewModel: TradingViewModel) {
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Pre-Trade Checks", color = LocalAppTheme.current.text, fontWeight = FontWeight.Bold, fontSize = 24.sp)
+                ExplorerTitle("Pre-Trade Checks", onBack)
                 Text(
                     "Rule-based risk checks on live prices, wallet, and orders — not a generative LLM research desk.",
                     color = LocalAppTheme.current.textSecondary,
@@ -2653,7 +2666,8 @@ fun CopilotCenterScreen(viewModel: TradingViewModel) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("BUY", "SELL").forEach { option ->
                             TextButton(onClick = { side = option }) {
-                                Text(if (side == option) "● $option" else option)
+                                val label = if (option == "BUY") "Practice BUY" else "Practice SELL"
+                                Text(if (side == option) "● $label" else label)
                             }
                         }
                     }

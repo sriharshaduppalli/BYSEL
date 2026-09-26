@@ -198,7 +198,7 @@ fun ProfitSignalCard(
     val theme = LocalAppTheme.current
     val accentColor = when {
         isBullish -> theme.positive
-        isTrim -> Color(0xFFF57C00)
+        isTrim -> theme.caution
         isNeutral -> theme.textSecondary
         else -> theme.negative
     }
@@ -337,7 +337,7 @@ fun ProfitSignalCard(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     riskReward?.let {
-                        val rrColor = if (it >= 2.0) theme.positive else if (it >= 1.0) Color(0xFFFFC107) else theme.negative
+                        val rrColor = if (it >= 2.0) theme.positive else if (it >= 1.0) theme.caution else theme.negative
                         Text(
                             text = "R:R ${String.format("%.1f", it)}x",
                             fontSize = 11.sp,
@@ -383,7 +383,7 @@ fun ProfitSignalCard(
                             contentPadding = PaddingValues(0.dp)
                         ) {
                             Text(
-                                "Practice buy",
+                                "Practice BUY",
                                 fontSize = 12.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -505,7 +505,7 @@ private fun ConfidenceBadge(confidence: Double, level: String) {
     val theme = LocalAppTheme.current
     val accent = when {
         confidence >= 75 -> theme.positive
-        confidence >= 60 -> Color(0xFFFFC107)
+        confidence >= 60 -> theme.caution
         else -> theme.negative
     }
     val bgColor = accent.copy(alpha = 0.18f).compositeOver(theme.card)
@@ -542,7 +542,7 @@ private fun ConfidenceGauge(confidence: Double) {
                     .background(
                         color = when {
                             confidence >= 75.0 -> theme.positive
-                            confidence >= 60.0 -> Color(0xFFFFC107)
+                            confidence >= 60.0 -> theme.caution
                             else -> theme.negative
                         },
                         shape = RoundedCornerShape(4.dp)
@@ -656,7 +656,7 @@ fun PredictionReasoningCard(
     modifier: Modifier = Modifier
 ) {
     val theme = LocalAppTheme.current
-    val signalColor = getSignalBackgroundColor(signal)
+    val signalColor = signalAccent(signal, theme)
     val stance = stanceLabel(signal)
     val whyText = whyConfident.ifBlank {
         val label = signal.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
@@ -782,12 +782,10 @@ private fun getSignalIcon(signal: String) = when {
     else -> Icons.Default.Remove
 }
 
-private fun getSignalBackgroundColor(signal: String) = when {
-    signal.contains("STRONG_BUY") -> Color(0xFF28A745)
-    signal.contains("BUY") -> Color(0xFF20C997)
-    signal.contains("STRONG_SELL") -> Color(0xFFDC3545)
-    signal.contains("SELL") -> Color(0xFFFD7E14)
-    else -> Color(0xFF6C757D)
+private fun signalAccent(signal: String, theme: com.bysel.trader.ui.theme.AppTheme) = when {
+    signal.contains("BUY") -> theme.positive
+    signal.contains("SELL") -> theme.negative
+    else -> theme.textSecondary
 }
 
 
@@ -806,10 +804,10 @@ fun EventRiskCard(
     if (eventRisks.isEmpty()) return
     
     val theme = LocalAppTheme.current
-    val warningAccent = Color(0xFFFFB300)
+    val warningAccent = theme.caution
     val warningFill = warningAccent.copy(alpha = if (theme.isLight) 0.22f else 0.16f)
         .compositeOver(theme.card)
-    val warningOn = if (theme.isLight) Color(0xFF6D4C00) else Color(0xFFFFE082)
+    val warningOn = theme.caution
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -1115,7 +1113,7 @@ fun QueryUnderstandingCard(
                 Text(
                     text = "Interpretation confidence: ${(confidence * 100).toInt()}% — ask a more specific question for better results",
                     fontSize = 10.sp,
-                    color = if (theme.isLight) Color(0xFF6D4C00) else Color(0xFFFFE082)
+                    color = theme.caution
                 )
             }
         }

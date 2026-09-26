@@ -69,6 +69,15 @@ def test_leftover_english_labels_are_telugu():
     )
     assert "confirm with live NSE" not in disc
     assert "23897" in disc
+    leftover_quote = apply_telugu_leftovers(
+        "**Your ask:** TCS ధర ఎంత?\n"
+        "• Open / High / Low: n/a / n/a / n/a\n"
+        "• Last: ₹3920\n"
+    )
+    assert "Your ask" not in leftover_quote
+    assert "Open / High / Low" not in leftover_quote
+    assert "n/a / n/a" not in leftover_quote
+    assert "3920" in leftover_quote
 
 
 def test_telugu_nifty_definition_stays_literacy():

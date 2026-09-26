@@ -1,6 +1,7 @@
 package com.bysel.trader.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
@@ -342,9 +343,11 @@ fun <T> SwipeToDismissItem(
         enableDismissFromStartToEnd = enabled && allowStartToEnd,
         enableDismissFromEndToStart = enabled && allowEndToStart,
         backgroundContent = {
+            val theme = LocalAppTheme.current
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .background(theme.negative)
                     .padding(horizontal = 16.dp),
                 contentAlignment = when (dismissState.targetValue) {
                     SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
@@ -355,7 +358,7 @@ fun <T> SwipeToDismissItem(
                 Icon(
                     imageVector = dismissIcon,
                     contentDescription = dismissLabel,
-                    tint = Color.White,
+                    tint = theme.onNegative,
                     modifier = Modifier.size(24.dp)
                 )
             }

@@ -428,6 +428,7 @@ fun DashboardScreen(
     watchlistSymbols: List<String> = emptyList(),
     featuredWatchlistSymbols: List<String> = emptyList(),
     featuredWatchlistTitle: String = "My Watchlist",
+    onPortfolioClick: (() -> Unit)? = null,
     scrollToTopTick: Int = 0,
 ) {
     val context = LocalContext.current
@@ -532,6 +533,7 @@ fun DashboardScreen(
             watchlistSymbols = watchlistSymbols,
             featuredWatchlistSymbols = featuredWatchlistSymbols.ifEmpty { watchlistSymbols },
             featuredWatchlistTitle = featuredWatchlistTitle,
+            onPortfolioClick = onPortfolioClick,
             intradayTips = intradayTips,
             intradayTipsLoading = intradayTipsLoading,
             investorTips = investorTips,
@@ -678,6 +680,7 @@ fun DashboardContent(
     watchlistSymbols: List<String> = emptyList(),
     featuredWatchlistSymbols: List<String> = emptyList(),
     featuredWatchlistTitle: String = "My Watchlist",
+    onPortfolioClick: (() -> Unit)? = null,
     intradayTips: IntradayTipsResponse? = null,
     intradayTipsLoading: Boolean = false,
     investorTips: InvestorTipsResponse = localInvestorTips("long_term"),
@@ -878,6 +881,10 @@ fun DashboardContent(
                     }
                 },
                 onOpenLead = { focusQuotes.firstOrNull()?.let { onTradeClick(it.symbol) } },
+                onHeadlinesClick = {
+                    scope.launch { newsRequester.bringIntoView() }
+                },
+                onBreadthClick = onAiClick,
                 layoutResetHint = layoutResetHint,
             )
             }
@@ -892,8 +899,64 @@ fun DashboardContent(
                 MarketPulseHero(
                     quotes = quotes,
                     marketStatus = marketStatus,
+                    onIndexClick = onTradeClick,
                 )
             }
+        }
+
+        item {
+            TodaysPracticeStrip(
+                habit = practiceHabit,
+                progress = practiceProgress,
+                onReviewClick = onOpenPracticeReview,
+                onIdeaClick = onScannerClick,
+                onTradeClick = practiceHabit.tradedSymbol?.let { symbol ->
+                    { onTradeClick(symbol) }
+                },
+            )
+            InvestorTipCard(
+                tips = investorTips,
+                loading = investorTipsLoading,
+                onAsk = onAiQuery,
+            )
+        }
+
+        item {
+            PaperWalletHomeStrip(
+                balance = walletBalance,
+                onAddFunds = onAddPracticeFunds,
+            )
+        }
+
+        item {
+            TodaysPracticeDeck(
+                items = remember(
+                    practiceIdeas,
+                    dailyRecommendations,
+                    quotes,
+                    topGainers,
+                    topLosers,
+                ) {
+                    buildTodaysPracticeDeck(
+                        ideas = practiceIdeas,
+                        recs = picksForHorizon(dailyRecommendations, DailyHorizon.TODAY),
+                        tapeQuotes = (topGainers + topLosers + quotes).distinctBy { it.symbol },
+                    )
+                },
+                loading = (practiceIdeasLoading && practiceIdeas.isEmpty()) ||
+                    (dailyRecommendationsLoading && dailyRecommendations == null),
+                quotes = quotes,
+                watchlistSymbols = watchlistSymbols,
+                holdingSymbols = holdings.map { it.symbol },
+                sessionHabit = intradayTips?.tips?.firstOrNull()?.let { tip ->
+                    tip.title.takeIf { it.isNotBlank() } ?: tip.body
+                },
+                onOpenSymbol = onTradeClick,
+                onPaperBuy = onPaperBuy,
+                onSeeScanner = onScannerClick,
+                needsPracticeCredit = walletBalance <= 0.0,
+                onAddPracticeFunds = onAddPracticeFunds,
+            )
         }
 
         item {
@@ -903,21 +966,6 @@ fun DashboardContent(
                 onScanner = onScannerClick,
                 onSmartMoney = onSmartMoneyClick,
                 onSearch = onSearchClick,
-            )
-        }
-
-        item {
-            DailyRecommendationsSection(
-                feed = dailyRecommendations,
-                loading = dailyRecommendationsLoading && dailyRecommendations == null,
-                quotes = quotes,
-                watchlistSymbols = watchlistSymbols,
-                holdingSymbols = holdings.map { it.symbol },
-                onOpenSymbol = onTradeClick,
-                onPaperBuy = onPaperBuy,
-                onSeeScanner = onScannerClick,
-                needsPracticeCredit = walletBalance <= 0.0,
-                onAddPracticeFunds = onAddPracticeFunds,
             )
         }
 
@@ -1007,7 +1055,11 @@ fun DashboardContent(
                                             }
                                         }
                                     }
-                                    PortfolioSummaryCard(holdings, quotes)
+                                    PortfolioSummaryCard(
+                                        holdings = holdings,
+                                        quotes = quotes,
+                                        onClick = onPortfolioClick,
+                                    )
                                 }
                             }
                             Spacer(modifier = Modifier.height(20.dp))
@@ -1034,6 +1086,7 @@ fun DashboardContent(
                                     error = newsError,
                                     onPinClick = { dashboardViewModel.toggleNewsPin() },
                                     onRefresh = { dashboardViewModel.refreshMarketNews(newsRefreshSymbols) },
+                                    onHeadlineClick = { onTradeClick(it) },
                                 )
                                 Column {
                                     IconButton(onClick = { dashboardViewModel.moveWidgetUp("news") }, enabled = idx > 0) {
@@ -1096,6 +1149,7 @@ fun DashboardContent(
                     error = newsError,
                     onPinClick = { dashboardViewModel.toggleNewsPin() },
                         onRefresh = { dashboardViewModel.refreshMarketNews(newsRefreshSymbols) },
+                    onHeadlineClick = { onTradeClick(it) },
                 )
                 }
                 Spacer(modifier = Modifier.height(20.dp))
@@ -1136,96 +1190,7 @@ fun DashboardContent(
         }
 
         item {
-            SectionHeader(
-                title = "Momentum Leaders",
-                subtitle = if (moversAreMarketWide && moversUniverseSize > 0) {
-                    "Top gainers across $moversUniverseSize liquid NSE names today."
-                } else {
-                    "Strong relative performers from your current Home quote set (market feed loading…)."
-                },
-            )
-        }
-        items(items = topGainers, key = { "gainer_${it.symbol}" }) { quote ->
-            GainerLosersCard(
-                quote,
-                isGainer = true,
-                isPinned = pinnedStocks.contains(quote.symbol),
-                onPinClick = { dashboardViewModel.togglePin(quote.symbol) },
-                onClick = { onTradeClick(quote.symbol) }
-            )
-        }
-        if (topGainers.isEmpty()) {
-            item {
-                Text(
-                    text = "No names are up in the current snapshot.",
-                    fontSize = 13.sp,
-                    color = LocalAppTheme.current.textSecondary,
-                    modifier = Modifier.padding(bottom = 12.dp),
-                )
-            }
-        }
-
-        item {
-            SectionHeader(
-                title = "Pressure Zone",
-                subtitle = if (moversAreMarketWide && moversUniverseSize > 0) {
-                    "Top losers across $moversUniverseSize liquid NSE names today."
-                } else {
-                    "Names under the heaviest selling pressure in your current Home quote set."
-                },
-            )
-        }
-
-        items(items = topLosers, key = { "loser_${it.symbol}" }) { quote ->
-            GainerLosersCard(
-                quote,
-                isGainer = false,
-                isPinned = pinnedStocks.contains(quote.symbol),
-                onPinClick = { dashboardViewModel.togglePin(quote.symbol) },
-                onClick = { onTradeClick(quote.symbol) }
-            )
-        }
-        if (topLosers.isEmpty()) {
-            item {
-                Text(
-                    text = "No names are down in the current snapshot.",
-                    fontSize = 13.sp,
-                    color = LocalAppTheme.current.textSecondary,
-                    modifier = Modifier.padding(bottom = 12.dp),
-                )
-            }
-        }
-
-        item {
-            PaperWalletHomeStrip(
-                balance = walletBalance,
-                onAddFunds = onAddPracticeFunds,
-            )
-        }
-
-        item {
-            TodaysPracticeStrip(
-                habit = practiceHabit,
-                progress = practiceProgress,
-                onReviewClick = onOpenPracticeReview,
-            )
-        }
-
-        item {
-            PracticeIdeasSection(
-                ideas = practiceIdeas.ifEmpty {
-                    buildLocalPracticeIdeas(topGainers + topLosers)
-                },
-                loading = practiceIdeasLoading && practiceIdeas.isEmpty(),
-                disclaimer = practiceIdeasDisclaimer.ifBlank {
-                    "Educational paper drills only — not investment advice."
-                },
-                onOpenSymbol = onTradeClick,
-                onPaperBuy = onPaperBuy,
-                onPracticeAlert = onPracticeAlert,
-                needsPracticeCredit = walletBalance <= 0.0,
-                onAddPracticeFunds = onAddPracticeFunds,
-            )
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
         if (onAiQuery != null) {
@@ -1331,6 +1296,8 @@ private fun DashboardHeroCard(
     onTogglePortfolioPin: () -> Unit,
     onResetLayout: () -> Unit,
     onOpenLead: () -> Unit,
+    onHeadlinesClick: (() -> Unit)? = null,
+    onBreadthClick: (() -> Unit)? = null,
     layoutResetHint: String? = null,
 ) {
     val theme = LocalAppTheme.current
@@ -1482,8 +1449,22 @@ private fun DashboardHeroCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                InfoChip(label = { Text("$headlineCount headlines") })
-                InfoChip(label = { Text("$positiveCount up / $negativeCount down") })
+                InfoChip(
+                    modifier = if (onHeadlinesClick != null) {
+                        Modifier.clickable(onClick = onHeadlinesClick)
+                    } else {
+                        Modifier
+                    },
+                    label = { Text("$headlineCount headlines") },
+                )
+                InfoChip(
+                    modifier = if (onBreadthClick != null) {
+                        Modifier.clickable(onClick = onBreadthClick)
+                    } else {
+                        Modifier
+                    },
+                    label = { Text("$positiveCount up / $negativeCount down") },
+                )
             }
 
             TextButton(onClick = onResetLayout) {
@@ -1530,6 +1511,7 @@ private fun SectionHeader(
 private fun MarketPulseHero(
     quotes: List<Quote>,
     marketStatus: MarketStatus?,
+    onIndexClick: ((String) -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
     val indices = remember(quotes) {
@@ -1634,6 +1616,13 @@ private fun MarketPulseHero(
                                 .heightIn(min = 78.dp)
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(theme.surface.copy(alpha = 0.55f))
+                                .then(
+                                    if (onIndexClick != null) {
+                                        Modifier.clickable { onIndexClick(quote.symbol) }
+                                    } else {
+                                        Modifier
+                                    }
+                                )
                                 .padding(horizontal = 8.dp, vertical = 10.dp),
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                         ) {
@@ -1723,6 +1712,8 @@ private fun TodaysPracticeStrip(
     habit: PracticeHabitStore.DayState,
     progress: PracticeHabitStore.Progress = PracticeHabitStore.Progress(),
     onReviewClick: (() -> Unit)?,
+    onIdeaClick: (() -> Unit)? = null,
+    onTradeClick: (() -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
     Column(
@@ -1790,7 +1781,11 @@ private fun TodaysPracticeStrip(
                 label = "Idea",
                 done = habit.ideaSeen,
                 icon = Icons.Filled.AutoAwesome,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .then(
+                        if (onIdeaClick != null) Modifier.clickable(onClick = onIdeaClick) else Modifier
+                    ),
             )
             PracticeStepChip(
                 label = if (habit.tradeDone) habit.tradedSymbol ?: "Trade" else "Trade",
@@ -1800,7 +1795,11 @@ private fun TodaysPracticeStrip(
                 } else {
                     Icons.Filled.ShoppingCart
                 },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .then(
+                        if (onTradeClick != null) Modifier.clickable(onClick = onTradeClick) else Modifier
+                    ),
             )
             PracticeStepChip(
                 label = "Review",
@@ -1851,7 +1850,7 @@ private fun TodaysPracticeStrip(
             )
         } else {
             Text(
-                text = "Pick a Practice Idea below, paper-buy or set Alert @ SL, then review.",
+                text = "Pick a name in Today’s practice, Practice BUY, then Review.",
                 fontSize = 10.sp,
                 color = theme.textSecondary,
             )
@@ -1878,6 +1877,60 @@ private fun PracticeProofStat(
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
             color = theme.text,
+        )
+    }
+}
+
+@Composable
+private fun InvestorTipCard(
+    tips: InvestorTipsResponse,
+    loading: Boolean,
+    onAsk: ((String) -> Unit)?,
+) {
+    val tip = tips.tips.firstOrNull() ?: return
+    val theme = LocalAppTheme.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+            .byselSectionSurface(RoundedCornerShape(14.dp))
+            .then(
+                if (onAsk != null) {
+                    Modifier.clickable { onAsk(tip.title.ifBlank { tip.body }) }
+                } else {
+                    Modifier
+                }
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = if (loading) "Investor habit" else (tips.topicLabel.ifBlank { "Investor habit" }),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = theme.primary,
+        )
+        Text(
+            text = tip.title.ifBlank { tip.body },
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            color = theme.text,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (tip.body.isNotBlank() && tip.title.isNotBlank()) {
+            Text(
+                text = tip.body,
+                fontSize = 11.sp,
+                color = theme.textSecondary,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Text(
+            text = "Paper habit — not a buy tip. Tap to ask AI.",
+            fontSize = 11.sp,
+            color = theme.textSecondary,
         )
     }
 }
@@ -2044,7 +2097,7 @@ private fun PaperWalletHomeStrip(
                 fontWeight = FontWeight.ExtraBold,
             )
             Text(
-                text = if (empty) "Add practice credit before Paper Buy." else "Simulation cash · not real money",
+                text = if (empty) "Add practice credit before Practice BUY." else "Simulation cash · not real money",
                 fontSize = 11.sp,
                 color = theme.textSecondary,
             )
@@ -2071,6 +2124,294 @@ private enum class DailyHorizon(val key: String, val label: String) {
     TODAY("oneDay", "Today"),
     MONTH("oneMonth", "1 month"),
     QUARTER("threeMonths", "3 months"),
+}
+
+internal data class PracticeDeckItem(
+    val symbol: String,
+    val name: String,
+    val why: String,
+    val kind: String,
+    val qty: Int,
+)
+
+internal fun buildTodaysPracticeDeck(
+    ideas: List<PracticeIdea>,
+    recs: List<StockRecommendation>,
+    tapeQuotes: List<Quote>,
+    limit: Int = 5,
+): List<PracticeDeckItem> {
+    val out = linkedMapOf<String, PracticeDeckItem>()
+    fun add(item: PracticeDeckItem) {
+        val key = WatchlistSymbols.normalize(item.symbol)
+        if (key.isBlank() || out.containsKey(key) || out.size >= limit) return
+        out[key] = item.copy(symbol = key)
+    }
+    ideas.forEach { idea ->
+        add(
+            PracticeDeckItem(
+                symbol = idea.symbol,
+                name = idea.name.ifBlank { idea.symbol },
+                why = whyForPracticeIdea(idea),
+                kind = "session",
+                qty = idea.suggestedQty.coerceAtLeast(1),
+            ),
+        )
+    }
+    recs.forEach { rec ->
+        add(
+            PracticeDeckItem(
+                symbol = rec.symbol,
+                name = rec.name.ifBlank { rec.symbol },
+                why = whyForRecommendation(rec),
+                kind = "quality",
+                qty = suggestedPaperQty(rec.price),
+            ),
+        )
+    }
+    tapeLeanRecommendations(tapeQuotes, limit).forEach { rec ->
+        add(
+            PracticeDeckItem(
+                symbol = rec.symbol,
+                name = rec.symbol,
+                why = "Moving on today’s cash tape. Practice a delivery plan — do not chase the print.",
+                kind = "session",
+                qty = suggestedPaperQty(rec.price),
+            ),
+        )
+    }
+    return out.values.toList()
+}
+
+internal fun whyForPracticeIdea(idea: PracticeIdea): String = when (idea.stance) {
+    "MOMENTUM_DRILL" ->
+        "Up on today’s cash tape. Practice whether this is a delivery add — not a chase."
+    "DIP_DRILL" ->
+        "Down on today’s cash tape. Practice a plan before you Practice SELL or average."
+    else ->
+        "Quiet tape. Write a delivery plan first, then Practice BUY if it still makes sense."
+}
+
+internal fun whyForRecommendation(rec: StockRecommendation): String {
+    val sector = rec.sector.trim().takeIf { it.isNotBlank() }
+    return if (sector != null) {
+        "On today’s quality screen in $sector. Rehearse a paper delivery plan — not a call."
+    } else {
+        "On today’s quality screen. Open the name, then Practice BUY only if you want a paper drill."
+    }
+}
+
+@Composable
+private fun TodaysPracticeDeck(
+    items: List<PracticeDeckItem>,
+    loading: Boolean,
+    quotes: List<Quote>,
+    watchlistSymbols: List<String>,
+    holdingSymbols: List<String>,
+    sessionHabit: String?,
+    onOpenSymbol: (String) -> Unit,
+    onPaperBuy: ((String, Int) -> Unit)?,
+    onSeeScanner: (() -> Unit)?,
+    needsPracticeCredit: Boolean,
+    onAddPracticeFunds: (() -> Unit)?,
+) {
+    val theme = LocalAppTheme.current
+    val watched = remember(watchlistSymbols) {
+        watchlistSymbols.map { WatchlistSymbols.normalize(it) }.toSet()
+    }
+    val held = remember(holdingSymbols) {
+        holdingSymbols.map { WatchlistSymbols.normalize(it) }.toSet()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Today’s practice",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = theme.text,
+                )
+                Text(
+                    text = "Cash / delivery drills for this session. Not SEBI advice. Not a forecast.",
+                    fontSize = 11.sp,
+                    color = theme.textSecondary,
+                )
+            }
+            if (onSeeScanner != null) {
+                TextButton(onClick = onSeeScanner, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                    Text("Scanner", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+
+        sessionHabit?.takeIf { it.isNotBlank() }?.let { habit ->
+            Text(
+                text = "Session habit: $habit",
+                fontSize = 11.sp,
+                color = theme.textSecondary,
+                lineHeight = 15.sp,
+            )
+        }
+
+        if (needsPracticeCredit && onAddPracticeFunds != null) {
+            Text(
+                text = "Paper wallet is empty — add practice credit before Practice BUY.",
+                fontSize = 11.sp,
+                color = theme.textSecondary,
+            )
+        }
+
+        when {
+            loading && items.isEmpty() -> {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(2.dp)),
+                    color = theme.primary,
+                )
+            }
+            items.isEmpty() -> {
+                Text(
+                    text = "Pull to refresh for today’s practice names.",
+                    fontSize = 12.sp,
+                    color = theme.textSecondary,
+                )
+            }
+            else -> {
+                items.forEach { row ->
+                    val norm = WatchlistSymbols.normalize(row.symbol)
+                    val live = quotes.firstOrNull { WatchlistSymbols.normalize(it.symbol) == norm }
+                    PracticeDeckRow(
+                        item = row,
+                        last = live?.last?.takeIf { it > 0 },
+                        dayPct = live?.pctChange,
+                        badge = when {
+                            norm in held -> "In book"
+                            norm in watched -> "On watchlist"
+                            else -> null
+                        },
+                        onOpen = { onOpenSymbol(row.symbol) },
+                        onPaperBuy = onPaperBuy?.let { buy -> { buy(row.symbol, row.qty) } },
+                    )
+                }
+                Text(
+                    text = "Educational paper practice only. Buttons say Practice BUY — no live order, no target.",
+                    fontSize = 10.sp,
+                    color = theme.textSecondary,
+                    lineHeight = 14.sp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PracticeDeckRow(
+    item: PracticeDeckItem,
+    last: Double?,
+    dayPct: Double?,
+    badge: String?,
+    onOpen: () -> Unit,
+    onPaperBuy: (() -> Unit)?,
+) {
+    val theme = LocalAppTheme.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .byselSectionSurface(RoundedCornerShape(14.dp))
+            .clickable(onClick = onOpen)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.symbol,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = theme.text,
+                )
+                Text(
+                    text = item.name.takeIf { !it.equals(item.symbol, ignoreCase = true) } ?: item.kind.replaceFirstChar { it.uppercase() },
+                    fontSize = 11.sp,
+                    color = theme.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = last?.let { formatInr(it) } ?: "—",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = theme.text,
+                )
+                if (dayPct != null) {
+                    Text(
+                        text = formatSignedPercent(dayPct),
+                        fontSize = 11.sp,
+                        color = if (dayPct >= 0) theme.positive else theme.negative,
+                    )
+                }
+            }
+        }
+        Text(
+            text = item.why,
+            fontSize = 12.sp,
+            color = theme.textSecondary,
+            lineHeight = 16.sp,
+        )
+        if (badge != null) {
+            Text(
+                text = badge,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = theme.primary,
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedButton(
+                onClick = onOpen,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(36.dp),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp),
+            ) {
+                Text("Open", fontSize = 12.sp)
+            }
+            if (onPaperBuy != null) {
+                Button(
+                    onClick = onPaperBuy,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(36.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = theme.positive),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                ) {
+                    Text("Practice BUY", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -2161,7 +2502,7 @@ private fun DailyRecommendationsSection(
 
         if (needsPracticeCredit && onAddPracticeFunds != null) {
             Text(
-                text = "Paper wallet is empty — add practice credit before Paper Buy.",
+                text = "Paper wallet is empty — add practice credit before Practice BUY.",
                 fontSize = 11.sp,
                 color = theme.textSecondary,
             )
@@ -2339,7 +2680,7 @@ private fun DailyRecommendationCard(
                     shape = RoundedCornerShape(8.dp),
                     contentPadding = PaddingValues(horizontal = 8.dp),
                 ) {
-                    Text("Paper Buy", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("Practice BUY", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -2469,7 +2810,7 @@ private fun PracticeIdeasSection(
                         color = theme.text,
                     )
                     Text(
-                        text = "Paper wallet is empty — fund simulation cash before Paper Buy.",
+                        text = "Paper wallet is empty — fund simulation cash before Practice BUY.",
                         fontSize = 11.sp,
                         color = theme.textSecondary,
                     )
@@ -2616,7 +2957,7 @@ private fun PracticeIdeaCard(
                     shape = RoundedCornerShape(8.dp),
                     contentPadding = PaddingValues(horizontal = 8.dp),
                 ) {
-                    Text("Paper Buy", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("Practice BUY", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
             if (onAlertAtStop != null) {
@@ -2705,8 +3046,8 @@ private fun IdeasRail(
         },
         onScanner?.let {
             IdeaChip(
-                title = "BYSEL Top Picks",
-                subtitle = "Scanner · score + paper swing cards",
+                title = "Scanner",
+                subtitle = "Quality and swing screens · more names",
                 icon = Icons.Filled.Explore,
                 onClick = it,
             )
@@ -2811,7 +3152,11 @@ private fun formatSignedPercent(value: Double): String = formatSignedPct(value)
 private fun formatCompactVolume(value: Long?): String = formatVolumeCompact(value)
 
 @Composable
-fun PortfolioSummaryCard(holdings: List<Holding>, quotes: List<Quote> = emptyList()) {
+fun PortfolioSummaryCard(
+    holdings: List<Holding>,
+    quotes: List<Quote> = emptyList(),
+    onClick: (() -> Unit)? = null,
+) {
     val totalValue = holdings.sumOf { it.qty * liveHoldingPrice(it, quotes) }
     val totalInvested = holdings.sumOf { it.qty * it.avgPrice }
     val totalPnL = totalValue - totalInvested
@@ -2821,6 +3166,7 @@ fun PortfolioSummaryCard(holdings: List<Holding>, quotes: List<Quote> = emptyLis
         modifier = Modifier
             .fillMaxWidth()
             .background(LocalAppTheme.current.card)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(bottom = 16.dp),
         colors = byselCardColors(),
         elevation = byselCardElevation(),
@@ -2886,7 +3232,11 @@ fun PortfolioSummaryCard(holdings: List<Holding>, quotes: List<Quote> = emptyLis
             )
 
             Text(
-                text = "Holdings: ${holdings.size} stocks",
+                text = if (onClick != null) {
+                    "Holdings: ${holdings.size} · tap to open paper book"
+                } else {
+                    "Holdings: ${holdings.size} stocks"
+                },
                 fontSize = 12.sp,
                 color = LocalAppTheme.current.textSecondary
             )
@@ -2989,7 +3339,7 @@ fun AiDailyBriefCard(
                 Icon(
                     imageVector = Icons.Filled.Star,
                     contentDescription = null,
-                    tint = Color(0xFFFFD600),
+                    tint = theme.caution,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))

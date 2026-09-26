@@ -563,6 +563,7 @@ open class TradingRepository(private val database: BYSELDatabase) {
         chatHistory: List<ConversationTurn>? = null,
         tier: String = "fast",
         watchlist: List<String>? = null,
+        screenContext: Map<String, String>? = null,
     ): Result<AiAssistantResponse> {
         var lastError: Exception? = null
         repeat(2) { attempt ->
@@ -573,6 +574,7 @@ open class TradingRepository(private val database: BYSELDatabase) {
                         conversationHistory = chatHistory,
                         tier = tier,
                         watchlist = watchlist,
+                        screenContext = screenContext,
                     )
                 )
                 return Result.Success(response)

@@ -87,6 +87,7 @@ import com.bysel.trader.ui.format.formatSignedPct
 
 @Composable
 fun WatchlistScreen(
+    onBack: (() -> Unit)? = null,
     quotes: List<Quote>,
     watchlistSymbols: List<String> = emptyList(),
     lists: List<NamedWatchlist> = emptyList(),
@@ -154,6 +155,9 @@ fun WatchlistScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                if (onBack != null) {
+                    com.bysel.trader.ui.theme.OverlayBackButton(onBack = onBack)
+                }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = displayTitle,
@@ -572,7 +576,8 @@ fun PortfolioScreen(
     onBuy: (String, Int) -> Unit,
     onSell: (String, Int) -> Unit,
     onErrorDismiss: () -> Unit,
-    onNavigateToTrade: () -> Unit
+    onNavigateToTrade: () -> Unit,
+    onOpenRiskLab: () -> Unit = {},
 ) {
     val hasImported = importedBook?.rows?.isNotEmpty() == true
     LaunchedEffect(holdings.isNotEmpty(), hasImported) {
@@ -894,7 +899,7 @@ fun PortfolioScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("Start Trading")
+                            Text("Practice BUY")
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedButton(
@@ -921,7 +926,10 @@ fun PortfolioScreen(
                             .padding(horizontal = 8.dp)
                     ) {
                     item {
-                        PortfolioRiskDashboardCard(risk = riskSnapshot)
+                        PortfolioRiskDashboardCard(
+                            risk = riskSnapshot,
+                            onOpenRiskLab = onOpenRiskLab,
+                        )
                     }
                     item {
                         ImportedBookCard(
@@ -1145,7 +1153,7 @@ private fun PortfolioHoldingRow(
         enabled = true,
         requireConfirmation = true,
         dismissIcon = Icons.Filled.Sell,
-        dismissLabel = "Sell holding",
+        dismissLabel = "Practice SELL holding",
     ) {
         UpgradedPortfolioHoldingItem(
             holding = displayHolding,
@@ -1215,8 +1223,8 @@ fun UpgradedPortfolioHoldingItem(
     val theme = LocalAppTheme.current
     val invested = holding.avgPrice * holding.qty
     val pnlPct = if (invested > 0) (holding.pnl / invested) * 100.0 else 0.0
-    val stance = remember(holding.symbol, pnlPct, dayPctChange) {
-        computeEducationalHoldingStance(pnlPct = pnlPct, dayPct = dayPctChange)
+    val stance = remember(holding.symbol, pnlPct, dayPctChange, theme.name) {
+        computeEducationalHoldingStance(pnlPct = pnlPct, dayPct = dayPctChange, theme = theme)
     }
 
     Card(
@@ -1366,27 +1374,27 @@ fun UpgradedPortfolioHoldingItem(
                 Button(
                     onClick = onBuy,
                     modifier = Modifier
-                        .defaultMinSize(minWidth = 64.dp, minHeight = 32.dp)
+                        .defaultMinSize(minWidth = 108.dp, minHeight = 32.dp)
                         .height(32.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = LocalAppTheme.current.positive,
                         contentColor = Color.White,
                     ),
                     shape = RoundedCornerShape(8.dp),
                 ) {
-                    Text("Buy", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Practice BUY", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 }
                 Button(
                     onClick = onSell,
                     modifier = Modifier
-                        .defaultMinSize(minWidth = 64.dp, minHeight = 32.dp)
+                        .defaultMinSize(minWidth = 108.dp, minHeight = 32.dp)
                         .height(32.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = theme.negative),
                     shape = RoundedCornerShape(8.dp),
                 ) {
-                    Text("Sell", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Practice SELL", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 }
             }
         }
@@ -1399,32 +1407,36 @@ private data class EducationalHoldingStance(
     val accent: Color,
 )
 
-private fun computeEducationalHoldingStance(pnlPct: Double, dayPct: Double): EducationalHoldingStance {
+private fun computeEducationalHoldingStance(
+    pnlPct: Double,
+    dayPct: Double,
+    theme: com.bysel.trader.ui.theme.AppTheme,
+): EducationalHoldingStance {
     return when {
         pnlPct >= 12.0 -> EducationalHoldingStance(
             label = "Practice Trim",
             reason = "Strong paper gain — rehearse booking a partial profit instead of hoping forever.",
-            accent = Color(0xFF2E7D32),
+            accent = theme.positive,
         )
         pnlPct <= -10.0 -> EducationalHoldingStance(
             label = "Review Risk",
             reason = "Deep paper drawdown — journal the thesis or practice cutting size.",
-            accent = Color(0xFFC62828),
+            accent = theme.negative,
         )
         dayPct <= -2.0 && pnlPct < 0.0 -> EducationalHoldingStance(
             label = "Tighten Stop",
             reason = "Weak day on a losing name — practice stop discipline before averaging down.",
-            accent = Color(0xFFE65100),
+            accent = theme.caution,
         )
         pnlPct >= 4.0 && dayPct >= 0.5 -> EducationalHoldingStance(
             label = "Hold Strong",
             reason = "Working in your favor — avoid overtrading a winner just for activity.",
-            accent = Color(0xFF1565C0),
+            accent = theme.primary,
         )
         else -> EducationalHoldingStance(
             label = "Hold & Journal",
             reason = "Neutral zone — note why you still own it in your practice journal.",
-            accent = Color(0xFF546E7A),
+            accent = theme.textSecondary,
         )
     }
 }

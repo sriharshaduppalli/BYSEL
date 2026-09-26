@@ -89,6 +89,7 @@ fun SearchScreen(
     onSymbolClick: (String) -> Unit,
     onRouteClick: (Int) -> Unit,
     onAddToWatchlist: ((String) -> Unit)? = null,
+    onBack: (() -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
     val context = LocalContext.current
@@ -177,6 +178,7 @@ fun SearchScreen(
                 ScreenHeader(
                     title = "Search Stocks",
                     subtitle = "Full NSE listed catalog (~2,400+). Tap a name for detail.",
+                    onBack = onBack,
                 )
             }
 

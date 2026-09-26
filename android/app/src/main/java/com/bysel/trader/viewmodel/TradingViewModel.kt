@@ -13,6 +13,7 @@ import com.bysel.trader.data.NamedWatchlists
 import com.bysel.trader.data.ScannerBoardShelf
 import com.bysel.trader.data.ScannerBoardStore
 import com.bysel.trader.data.ScannerBoards
+import com.bysel.trader.data.PracticeHabitStore
 import com.bysel.trader.data.WatchlistStore
 import com.bysel.trader.data.WatchlistSymbols
 import com.bysel.trader.data.CustomScannerFilters
@@ -35,6 +36,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.firstOrNull
 import com.bysel.trader.ui.components.HabitLiteracyCatalog
+import com.bysel.trader.utils.AiScreenContext
 import com.bysel.trader.utils.MarketSession
 import com.bysel.trader.utils.PromptBuilder
 import com.bysel.trader.utils.TradeCtaPolicy
@@ -228,6 +230,8 @@ class TradingViewModel(
     // Single-quote detail
     private val _selectedQuote = MutableStateFlow<Quote?>(null)
     val selectedQuote: StateFlow<Quote?> = _selectedQuote.asStateFlow()
+    private val _aiScreenContext = MutableStateFlow(AiScreenContext())
+    val aiScreenContext: StateFlow<AiScreenContext> = _aiScreenContext.asStateFlow()
     private val _detailLoading = MutableStateFlow(false)
     val detailLoading: StateFlow<Boolean> = _detailLoading.asStateFlow()
 
@@ -915,6 +919,15 @@ class TradingViewModel(
         _achievements.value = defaultAchievementsFromCode().map {
             if (unlocked.contains(it.id)) it.copy(unlocked = true) else it
         }
+        refreshPracticeAchievements()
+    }
+
+    private fun refreshPracticeAchievements() {
+        val progress = runCatching {
+            PracticeHabitStore.loadProgress(getApplication())
+        }.getOrNull() ?: return
+        if (progress.reviewsCompleted > 0) unlockAchievement("first_review")
+        if (progress.streakDays >= 7) unlockAchievement("streak_7")
     }
 
     /**
@@ -990,10 +1003,11 @@ class TradingViewModel(
     }
 
     private fun defaultAchievementsFromCode() = listOf(
-        Achievement("first_trade", "First Trade!", "Complete your first trade."),
-        Achievement("portfolio_10k", "Portfolio 10K", "Reach ₹10,000 portfolio value."),
-        Achievement("profit_1k", "Profit Maker", "Earn ₹1,000 in profit."),
-        Achievement("streak_5", "5-Day Streak", "Trade 5 days in a row.")
+        Achievement("first_trade", "First Practice BUY", "Complete your first paper fill."),
+        Achievement("first_review", "First review", "Journal a practice fill and close the loop."),
+        Achievement("streak_7", "7-day streak", "Close Idea → Practice BUY → Review seven days in a row."),
+        Achievement("portfolio_10k", "Portfolio 10K", "Reach ₹10,000 paper book value."),
+        Achievement("profit_1k", "Paper profit", "Earn ₹1,000 paper P&L — still simulation."),
     )
 
     // --- Demo account helper used by MainActivity ---
@@ -1025,9 +1039,10 @@ class TradingViewModel(
 
     private fun unlockAchievement(id: String) {
         val unlocked = achievementPrefs.getStringSet("unlocked", mutableSetOf())?.toMutableSet() ?: mutableSetOf()
-        if (unlocked.add(id)) {
-            achievementPrefs.edit().putStringSet("unlocked", unlocked).apply()
-            loadAchievements()
+        if (!unlocked.add(id)) return
+        achievementPrefs.edit().putStringSet("unlocked", unlocked).apply()
+        _achievements.value = defaultAchievementsFromCode().map {
+            if (unlocked.contains(it.id)) it.copy(unlocked = true) else it
         }
     }
 
@@ -1467,6 +1482,7 @@ class TradingViewModel(
         }
         val seed = seedQuoteForSymbol(normalizedSymbol)
         _selectedQuote.value = seed
+        _aiScreenContext.value = AiScreenContext(source = "stock_detail", symbol = normalizedSymbol)
 
         viewModelScope.launch {
             val quoteDeferred = async { repository.getQuote(normalizedSymbol) }
@@ -2982,6 +2998,15 @@ class TradingViewModel(
             )
         }
 
+    fun syncAssistantScreen(tab: Int) {
+        _aiScreenContext.value = AiScreenContext.forTab(
+            tab = tab,
+            selectedSymbol = _selectedQuote.value?.symbol,
+            previous = _aiScreenContext.value,
+            scannerMode = lastScannerMode,
+        )
+    }
+
     private fun normalizeGreetingQuery(query: String): String =
         query.lowercase()
             .replace(Regex("[^a-z\\s]"), " ")
@@ -2989,6 +3014,24 @@ class TradingViewModel(
             .trim()
 
     private fun localSmallTalkReply(query: String): String? {
+        val raw = query.trim()
+        if (raw.contains("\u0c28\u0c2e\u0c38\u0c4d\u0c24\u0c47") ||
+            raw.contains("\u0c28\u0c2e\u0c38\u0c4d\u0c15\u0c3e\u0c30\u0c02")
+        ) {
+            return "\u0c28\u0c2e\u0c38\u0c4d\u0c24\u0c47! BYSEL AI \u0c07\u0c15\u0c4d\u0c15\u0c21 \u0c09\u0c02\u0c26\u0c3f. " +
+                "\u0c27\u0c30, \u0c15\u0c4a\u0c28\u0c3e\u0c32\u0c3e/\u0c05\u0c2e\u0c4d\u0c2e\u0c3e\u0c32\u0c3e, " +
+                "\u0c2a\u0c4b\u0c32\u0c3f\u0c15, \u0c32\u0c47\u0c26\u0c3e valuation \u0c05\u0c21\u0c17\u0c02\u0c21\u0c3f."
+        }
+        val compact = raw.replace("!", "").replace(".", "").trim()
+        if (compact == "\u0c39\u0c3e\u0c2f\u0c4d" || compact == "\u0c39\u0c3e\u0c2f\u0c3f") {
+            return "\u0c39\u0c3e\u0c2f\u0c4d! \u0c38\u0c4d\u0c1f\u0c3e\u0c15\u0c4d \u0c27\u0c30, " +
+                "\u0c38\u0c3f\u0c17\u0c4d\u0c28\u0c32\u0c4d, \u0c32\u0c47\u0c26\u0c3e valuation \u0c05\u0c21\u0c17\u0c02\u0c21\u0c3f."
+        }
+        if (raw.contains("\u0c27\u0c28\u0c4d\u0c2f\u0c35\u0c3e\u0c26\u0c3e\u0c32\u0c41") ||
+            raw.contains("\u0c25\u0c3e\u0c02\u0c15\u0c4d\u0c38\u0c4d")
+        ) {
+            return "\u0c38\u0c4d\u0c35\u0c3e\u0c17\u0c24\u0c02. \u0c2e\u0c30\u0c4b \u0c38\u0c4d\u0c1f\u0c3e\u0c15\u0c4d \u0c2a\u0c4d\u0c30\u0c36\u0c4d\u0c28 \u0c05\u0c21\u0c17\u0c02\u0c21\u0c3f."
+        }
         val n = normalizeGreetingQuery(query)
         return when (n) {
             "hi", "hii", "hiii", "hello", "hey", "yo", "namaste", "namaskar",
@@ -3091,19 +3134,28 @@ class TradingViewModel(
             val sectorThemeAsk = isSectorThemeQuery(cleanedQuery)
             val habitLearnAsk = HabitLiteracyCatalog.isHabitLearnQuery(cleanedQuery)
             val generalTopicAsk = TradeCtaPolicy.isGeneralTopic(cleanedQuery)
-            val attachOpenQuote = !sectorThemeAsk && !habitLearnAsk && !generalTopicAsk &&
+            val screen = _aiScreenContext.value
+            val namedSymbol = TradeCtaPolicy.namedSymbol(cleanedQuery)
+            val inheritScreen = !sectorThemeAsk && !habitLearnAsk && !generalTopicAsk &&
                 TradeCtaPolicy.allowsAttachedSymbol(cleanedQuery)
-            val symbol = _selectedQuote.value?.symbol?.takeUnless { !attachOpenQuote }
+            val symbol = when {
+                !inheritScreen -> null
+                namedSymbol != null -> namedSymbol
+                screen.allowsStockInherit -> screen.symbol
+                else -> null
+            }
+            val quoteForPrompt = _selectedQuote.value?.takeIf { q ->
+                symbol != null && WatchlistSymbols.matches(q.symbol, symbol)
+            }
             symbol?.let { contextParts.add("symbol=$it") }
-            if (attachOpenQuote) {
-                _selectedQuote.value?.let { q ->
-                    contextParts.add("price=${q.last}")
-                    q.pctChange.let { contextParts.add("pctChange=${it}") }
-                }
+            if (quoteForPrompt != null) {
+                contextParts.add("price=${quoteForPrompt.last}")
+                quoteForPrompt.pctChange.let { contextParts.add("pctChange=${it}") }
             }
 
             // Prefer in-memory candles only — never block the chat send on a DB/network history read.
             val recentHistory = _quoteHistory.value.takeLast(10)
+            val attachOpenQuote = quoteForPrompt != null
 
             if (recentHistory.isNotEmpty() && attachOpenQuote) {
                 val closes = recentHistory.map { it.close }
@@ -3128,7 +3180,7 @@ class TradingViewModel(
                     holdingsSummary,
                     wallet,
                     portfolio?.overallScore,
-                    if (sectorThemeAsk || !attachOpenQuote) null else _selectedQuote.value,
+                    if (sectorThemeAsk || !attachOpenQuote) null else quoteForPrompt,
                     if (sectorThemeAsk || !attachOpenQuote) emptyList() else recentHistory
                 )
             }
@@ -3145,6 +3197,7 @@ class TradingViewModel(
                     .distinct()
                     .take(24)
                     .ifEmpty { null },
+                screenContext = screen.toRequestMap(),
             )) {
                 is Result.Success -> {
                     lastAiSuccessAtMs = System.currentTimeMillis()
@@ -4306,7 +4359,9 @@ class TradingViewModel(
                         "userNote" to note,
                     )
                 )
-                _productActionMessage.value = "Practice review saved — keep the Idea → Trade → Review habit."
+                unlockAchievement("first_review")
+                refreshPracticeAchievements()
+                _productActionMessage.value = "Practice review saved — keep the Idea → Practice BUY → Review habit."
             } catch (e: Exception) {
                 _productActionMessage.value = "Practice trade placed. Review note could not sync — try Trade Journal later."
             }

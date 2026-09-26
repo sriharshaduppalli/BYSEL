@@ -10,8 +10,8 @@
     <string name="quantity">Quantity</string>
     <string name="average_price">Avg Price</string>
     <string name="pnl">P&amp;L</string>
-    <string name="buy">Buy</string>
-    <string name="sell">Sell</string>
+    <string name="buy">Practice BUY</string>
+    <string name="sell">Practice SELL</string>
     <string name="set_alert">Set Alert</string>
     <string name="threshold">Threshold Price</string>
     <string name="alert_type">Alert Type</string>
@@ -25,8 +25,8 @@
     <!-- App Shortcuts -->
     <string name="shortcut_portfolio_short">Portfolio</string>
     <string name="shortcut_portfolio_long">View My Portfolio</string>
-    <string name="shortcut_buy_short">Buy Stock</string>
-    <string name="shortcut_buy_long">Buy Stocks</string>
+    <string name="shortcut_buy_short">Practice BUY</string>
+    <string name="shortcut_buy_long">Practice BUY stocks</string>
     <string name="shortcut_market_short">Market</string>
     <string name="shortcut_market_long">Market Status</string>
     <string name="shortcut_alerts_short">Alerts</string>

@@ -141,7 +141,7 @@ private fun RiskLabContent(
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = if (sampleNumbers) {
-                        Color(0xFFFF9800).copy(alpha = 0.18f)
+                        appTheme.caution.copy(alpha = 0.18f)
                     } else {
                         appTheme.primary.copy(alpha = 0.10f)
                     }
@@ -160,7 +160,7 @@ private fun RiskLabContent(
                         },
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (sampleNumbers) Color(0xFFE65100) else appTheme.primary,
+                        color = if (sampleNumbers) appTheme.caution else appTheme.primary,
                     )
                     Text(
                         text = if (sampleNumbers) {
@@ -295,7 +295,7 @@ private fun RiskLabContent(
 
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A237E).copy(alpha = 0.15f)),
+                colors = CardDefaults.cardColors(containerColor = appTheme.primaryContainer),
                 shape = RoundedCornerShape(12.dp),
             ) {
                 Text(
@@ -365,7 +365,7 @@ private fun MonteCarloBar(
             .fillMaxWidth()
             .height(32.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(Color(0xFFE53935).copy(alpha = 0.2f))
+            .background(LocalAppTheme.current.negative.copy(alpha = 0.2f))
     ) {
         val totalWidth = maxWidth
         val greenStart = toFraction(safeMedian)
@@ -375,23 +375,23 @@ private fun MonteCarloBar(
                 .offset(x = totalWidth * greenStart)
                 .width(totalWidth * (greenEnd - greenStart).coerceAtLeast(0f))
                 .fillMaxHeight()
-                .background(Color(0xFF4CAF50).copy(alpha = 0.3f))
+                .background(LocalAppTheme.current.positive.copy(alpha = 0.3f))
         )
         Box(
             modifier = Modifier
                 .offset(x = totalWidth * toFraction(safeMedian) - 1.dp)
                 .width(2.dp)
                 .fillMaxHeight()
-                .background(Color(0xFF4CAF50))
+                .background(LocalAppTheme.current.positive)
         )
         Row(
             modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("P5", fontSize = 10.sp, color = Color(0xFFE53935), fontWeight = FontWeight.Bold)
-            Text("Median", fontSize = 10.sp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
-            Text("P95", fontSize = 10.sp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
+            Text("P5", fontSize = 10.sp, color = LocalAppTheme.current.negative, fontWeight = FontWeight.Bold)
+            Text("Median", fontSize = 10.sp, color = LocalAppTheme.current.positive, fontWeight = FontWeight.Bold)
+            Text("P95", fontSize = 10.sp, color = LocalAppTheme.current.positive, fontWeight = FontWeight.Bold)
         }
     }
 }

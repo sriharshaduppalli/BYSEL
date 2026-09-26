@@ -69,6 +69,7 @@ def test_retail_asks_match_expected_profiles():
         "SIP vs lumpsum": "compare_concepts",
         "gold vs stocks": "compare_concepts",
         "Nifty outlook": "prediction",
+        "Nifty ela undi?": "prediction",
         "TCS ka kya haal": "stock_analysis",
         "INFY target next month": "prediction",
         "add RELIANCE on every dip": "trade_plan",
@@ -146,6 +147,7 @@ def test_or_compare_names_the_pair_even_without_second_tape():
     ) or ""
     low = answer.lower()
     assert "tcs" in low and "infy" in low
+    assert "| tcs |" in low and "| infy |" in low
     assert "wilder" not in low
     assert "pass a second ticker" not in low
 
@@ -175,6 +177,26 @@ def test_short_compare_chip_is_not_an_ambiguous_name():
         assert "ICICIBANK" in names, query
 
 
+def test_telugu_both_followup_compares_the_named_pair():
+    history = [
+        {"role": "user", "content": "Compare HDFCBANK with ICICIBANK"},
+        {"role": "assistant", "content": "Which symbol do you want?"},
+    ]
+    for ask in ("rendu", "donu", "రెండు"):
+        contract = resolve_query_contract(ask, conversation_history=history)
+        assert contract.profile == "compare", ask
+        assert contract.clarifier is None, ask
+        assert "HDFCBANK" in contract.resolved_query.upper(), ask
+        assert "ICICIBANK" in contract.resolved_query.upper(), ask
+
+
+def test_hinglish_missing_symbol_clarifier():
+    contract = resolve_query_contract("kya main kharidun?")
+    assert contract.language == "hi-en"
+    assert contract.clarifier
+    assert "symbol" in contract.clarifier.lower() or "NSE" in contract.clarifier
+
+
 def test_both_followup_compares_the_named_pair():
     history = [
         {"role": "user", "content": "Compare HDFCBANK with ICICIBANK"},
@@ -189,6 +211,24 @@ def test_both_followup_compares_the_named_pair():
     assert contract.clarifier is None
     assert "HDFCBANK" in contract.resolved_query.upper()
     assert "ICICIBANK" in contract.resolved_query.upper()
+
+
+def test_this_one_uses_screen_symbol_without_chat_history():
+    contract = resolve_query_contract(
+        "how is this one?",
+        screen_context={"symbol": "RELIANCE", "source": "stock_detail"},
+    )
+    assert contract.slots.follow_up is True
+    assert contract.slots.symbol == "RELIANCE"
+    assert "RELIANCE" in contract.resolved_query.upper()
+    assert contract.profile in {"stock_analysis", "quote"}
+
+    literacy = resolve_query_contract(
+        "What is RSI?",
+        screen_context={"symbol": "RELIANCE", "source": "stock_detail"},
+    )
+    assert literacy.profile == "literacy"
+    assert literacy.slots.symbol is None
 
 
 def test_followup_reuses_last_symbol_and_changes_shape():
@@ -452,8 +492,14 @@ def test_indic_trans_off_keeps_phrase_table(monkeypatch):
 def test_nifty_how_is_it_uses_index_not_clarifier():
     contract = resolve_query_contract("Nifty ela undi?")
     assert contract.clarifier is None
-    assert contract.slots.symbol in {"NIFTY50", "NIFTY"}
-    assert contract.profile == "quote"
+    assert contract.profile == "prediction"
+    assert contract.slots.symbol in {None, "NIFTY50", "NIFTY"}
+    inherited = resolve_query_contract(
+        "Nifty ela undi?",
+        screen_context={"symbol": "RELIANCE"},
+    )
+    assert inherited.profile == "prediction"
+    assert inherited.slots.symbol != "RELIANCE"
     pe = resolve_query_contract(
         "Nifty 50 PE ratio",
         screen_context={"symbol": "RELIANCE"},

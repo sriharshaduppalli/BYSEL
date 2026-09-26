@@ -1489,7 +1489,7 @@ private fun StockDetailActionBar(
                 colors = ButtonDefaults.buttonColors(containerColor = theme.positive),
                 shape = RoundedCornerShape(14.dp),
             ) {
-                Text("Buy")
+                Text("Practice BUY", maxLines = 1)
             }
             Button(
                 onClick = { pendingAction = "SELL"; showConfirmDialog = true },
@@ -1497,7 +1497,7 @@ private fun StockDetailActionBar(
                 colors = ButtonDefaults.buttonColors(containerColor = theme.negative),
                 shape = RoundedCornerShape(14.dp),
             ) {
-                Text("Sell")
+                Text("Practice SELL", maxLines = 1)
             }
         }
     }

@@ -72,6 +72,7 @@ fun SettingsScreen(
     onHeatmapIntervalChange: (Int) -> Unit = {},
     liveQuotesEnabled: Boolean = true,
     onLiveQuotesChange: (Boolean) -> Unit = {},
+    onBack: (() -> Unit)? = null,
 ) {
     val authRepository = remember { AuthRepository() }
     val scope = rememberCoroutineScope()
@@ -475,13 +476,22 @@ fun SettingsScreen(
             .padding(16.dp)
     ) {
         item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 24.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (onBack != null) {
+                    com.bysel.trader.ui.theme.OverlayBackButton(onBack = onBack)
+                }
             Text(
                 text = "Settings",
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
                 color = LocalAppTheme.current.text,
-                modifier = Modifier.padding(bottom = 24.dp)
             )
+            }
         }
         item {
             SettingsSection(title = "Display")
@@ -501,7 +511,8 @@ fun SettingsScreen(
                 onValueChange = { enabled ->
                     darkMode = enabled
                     if (!enabled) {
-                        if (!isLightThemeId(selectedTheme)) {
+                        // Save only a named dark skin. Dynamic follows the wallpaper and can be light.
+                        if (!liveTheme.isLight && !isDynamicThemeId(selectedTheme)) {
                             prefs.edit().putString("lastDarkTheme", selectedTheme).apply()
                         }
                         selectedTheme = "Light"
@@ -511,7 +522,7 @@ fun SettingsScreen(
                             prefs.getString("lastDarkTheme", DEFAULT_THEME_ID)
                         ).let {
                             when {
-                                isLightThemeId(it) -> DEFAULT_THEME_ID
+                                isLightThemeId(it) || isDynamicThemeId(it) -> DEFAULT_THEME_ID
                                 else -> it
                             }
                         }

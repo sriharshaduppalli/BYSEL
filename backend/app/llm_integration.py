@@ -365,6 +365,9 @@ def _compose_ism_fallback(
             conversation_history=(ctx or {}).get("conversation_history")
             if isinstance((ctx or {}).get("conversation_history"), list)
             else None,
+            screen_context=(ctx or {}).get("screen_context")
+            if isinstance((ctx or {}).get("screen_context"), dict)
+            else None,
         )
         packed = market_context if isinstance(market_context, dict) else dict(ctx or {})
         composed = compose_structured_answer(
@@ -396,9 +399,21 @@ def _apply_response_language(original_query: str, result: dict | None) -> dict |
     try:
         from .telugu_reply import polish_telugu_result
 
-        return polish_telugu_result(original_query, result)
+        result = polish_telugu_result(original_query, result)
     except Exception:
-        return result
+        pass
+    try:
+        from indian_stock_llm.query_language import polish_hinglish_answer
+
+        answer = str((result or {}).get("answer") or "")
+        polished = polish_hinglish_answer(original_query, answer)
+        if result and polished != answer:
+            out = dict(result)
+            out["answer"] = polished
+            return out
+    except Exception:
+        pass
+    return result
 
 
 def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:

@@ -110,7 +110,7 @@ fun EarningsCalendarScreen(
                             item {
                                 Card(
                                     colors = CardDefaults.cardColors(
-                                        containerColor = Color(0xFFFF9800).copy(alpha = 0.14f)
+                                        containerColor = appTheme.caution.copy(alpha = 0.14f)
                                     ),
                                     shape = RoundedCornerShape(12.dp),
                                 ) {

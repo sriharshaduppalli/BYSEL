@@ -80,6 +80,7 @@ private fun computeTradeQualityIndex(
     declines: Int,
     total: Int,
     mood: String,
+    theme: AppTheme,
 ): TradeQualityIndex {
     val safeTotal = total.coerceAtLeast(1)
     val raw = when {
@@ -101,31 +102,31 @@ private fun computeTradeQualityIndex(
             score = score,
             label = "Excellent",
             guidance = "Strong market breath — constructive for selective paper trades.",
-            color = Color(0xFF00C853),
+            color = theme.positive,
         )
         score >= 61 -> TradeQualityIndex(
             score = score,
             label = "Good",
             guidance = "Healthy breath — favor high-participation setups only.",
-            color = Color(0xFF43A047),
+            color = theme.primary,
         )
         score >= 41 -> TradeQualityIndex(
             score = score,
             label = "Moderate",
             guidance = "Mixed breath — keep size small and wait for clearer leadership.",
-            color = Color(0xFFFFB300),
+            color = theme.caution,
         )
         score >= 21 -> TradeQualityIndex(
             score = score,
             label = "Unhealthy",
             guidance = "Weak breath — defensive bias; avoid chasing breakouts.",
-            color = Color(0xFFFF7043),
+            color = theme.caution,
         )
         else -> TradeQualityIndex(
             score = score,
             label = "Hazardous",
             guidance = "Toxic breath — prioritize capital preservation over new risk.",
-            color = Color(0xFFE53935),
+            color = theme.negative,
         )
     }
 }
@@ -155,6 +156,7 @@ fun HeatmapScreen(
 
     // Append live breath samples as heatmap refreshes (for the distribution graph).
     // After hours TQI is a frozen close print — don't keep charting a moving tape.
+    val breathTheme = LocalAppTheme.current
     LaunchedEffect(heatmap?.lastUpdated, heatmap?.marketBreadth?.advances, heatmap?.marketBreadth?.declines, tapeLive) {
         if (!tapeLive) return@LaunchedEffect
         val breadth = heatmap?.marketBreadth ?: return@LaunchedEffect
@@ -168,6 +170,7 @@ fun HeatmapScreen(
             declines = breadth.declines,
             total = breadth.total,
             mood = heatmap.mood,
+            theme = breathTheme,
         ).score
         val sample = BreathSample(advanceShare, declineShare, unchangedShare, tqi)
         val last = breathHistory.lastOrNull()
@@ -301,14 +304,14 @@ private fun MarketStatusBanner(marketOpen: Boolean, staleReason: String? = null)
 
     val theme = LocalAppTheme.current
     val (bgColor, icon, message) = when {
-        marketOpen -> Triple(Color(0xFF1B5E20), Icons.Filled.TrendingUp, "Market open")
+        marketOpen -> Triple(theme.tintedSurface(theme.positive, 0.35f), Icons.Filled.TrendingUp, "Market open")
         isWeekend -> Triple(
             theme.card,
             Icons.Filled.Weekend,
             staleReason ?: "Weekend  •  Market closed  •  Showing last session data",
         )
         else -> Triple(
-            Color(0xFF4A1010),
+            theme.tintedSurface(theme.negative, 0.28f),
             Icons.Filled.Schedule,
             staleReason
                 ?: "Market Closed  •  NSE/BSE Mon–Fri from 9:15 IST  •  From 3 Aug 2026: CAS/F&O multi-close (to 3:40)  •  Showing last session data",
@@ -322,7 +325,7 @@ private fun MarketStatusBanner(marketOpen: Boolean, staleReason: String? = null)
             .padding(horizontal = 16.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val contentColor = if (bgColor.luminance() > 0.5f) theme.text else Color.White.copy(alpha = 0.9f)
+        val contentColor = theme.text
         Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(14.dp))
         Spacer(modifier = Modifier.width(6.dp))
         Text(message, color = contentColor, fontSize = 11.sp)
@@ -331,13 +334,12 @@ private fun MarketStatusBanner(marketOpen: Boolean, staleReason: String? = null)
 
 @Composable
 private fun HeatmapHeader(heatmap: MarketHeatmap?) {
+    val theme = LocalAppTheme.current
     val moodColors = when (heatmap?.mood) {
-        "EUPHORIC" -> listOf(Color(0xFF00C853), Color(0xFF1B5E20))
-        "BULLISH" -> listOf(Color(0xFF43A047), Color(0xFF1B5E20))
-        "NEUTRAL" -> listOf(Color(0xFFFFB300), Color(0xFF795548))
-        "BEARISH" -> listOf(Color(0xFFE53935), Color(0xFF880E4F))
-        "FEARFUL" -> listOf(Color(0xFFB71C1C), Color(0xFF4A148C))
-        else -> listOf(Color(0xFF1A237E), Color(0xFF7C4DFF))
+        "EUPHORIC", "BULLISH" -> listOf(theme.positive, theme.card)
+        "NEUTRAL" -> listOf(theme.caution, theme.card)
+        "BEARISH", "FEARFUL" -> listOf(theme.negative, theme.card)
+        else -> theme.headerGradientColors
     }
     val onMood = contentColorForFill(moodColors.last())
 
@@ -403,13 +405,15 @@ private fun MarketBreathCard(
     val advancePct = breadth.advances / total
     val declinePct = breadth.declines / total
     val unchangedPct = (1f - advancePct - declinePct).coerceAtLeast(0f)
-    val tqi = remember(breadth.advances, breadth.declines, breadth.total, breadth.advanceRatio, heatmap.mood) {
+    val theme = LocalAppTheme.current
+    val tqi = remember(breadth.advances, breadth.declines, breadth.total, breadth.advanceRatio, heatmap.mood, theme.name) {
         computeTradeQualityIndex(
             advanceRatio = breadth.advanceRatio,
             advances = breadth.advances,
             declines = breadth.declines,
             total = breadth.total,
             mood = heatmap.mood,
+            theme = theme,
         )
     }
     val animatedTqi by animateFloatAsState(
@@ -760,7 +764,7 @@ private fun heatmapIntensityFill(intensity: String, theme: AppTheme): Color = wh
     "strong_positive" -> theme.positive
     "positive" -> theme.positive.copy(alpha = 0.78f).compositeOver(theme.card)
     "slight_positive" -> theme.positive.copy(alpha = 0.40f).compositeOver(theme.card)
-    "neutral" -> Color(0xFFFFB300).copy(alpha = 0.55f).compositeOver(theme.card)
+    "neutral" -> theme.caution.copy(alpha = 0.55f).compositeOver(theme.card)
     "slight_negative" -> theme.negative.copy(alpha = 0.40f).compositeOver(theme.card)
     "negative" -> theme.negative.copy(alpha = 0.78f).compositeOver(theme.card)
     "strong_negative" -> theme.negative

@@ -60,8 +60,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -74,13 +72,10 @@ import com.bysel.trader.ui.theme.ScreenHeader
 import com.bysel.trader.ui.theme.byselCardBorder
 import com.bysel.trader.ui.theme.byselCardColors
 import com.bysel.trader.ui.theme.byselCardElevation
-import com.bysel.trader.ui.theme.contentColorForFill
-
 private data class MoreMenuEntry(
     val icon: ImageVector,
     val title: String,
     val subtitle: String,
-    val gradientColors: List<Color>,
     val onClick: () -> Unit,
     val badgeCount: Int = 0,
     val keywords: String = "",
@@ -132,7 +127,6 @@ fun MoreScreen(
             icon = Icons.Filled.Explore,
             title = "Scanner",
             subtitle = "Long-term, swing, quality, momentum, value",
-            gradientColors = listOf(Color(0xFF0D47A1), Color(0xFF42A5F5)),
             onClick = onScannerClick,
             keywords = "screener quality momentum value swing",
         ),
@@ -140,56 +134,48 @@ fun MoreScreen(
             icon = Icons.AutoMirrored.Filled.ShowChart,
             title = "Signal Lab",
             subtitle = "Breakouts, volume spikes, and yield setups",
-            gradientColors = listOf(Color(0xFF004D40), Color(0xFF26A69A)),
             onClick = onSignalLabClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Analytics,
             title = "Risk Lab",
             subtitle = "VaR, Monte Carlo & portfolio stress test",
-            gradientColors = listOf(Color(0xFFB71C1C), Color(0xFFEF5350)),
             onClick = onRiskLabClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.AutoStories,
             title = "Trade Journal",
             subtitle = "Practice reviews and behavioral insights",
-            gradientColors = listOf(Color(0xFF4A148C), Color(0xFF9C27B0)),
             onClick = onTradeJournalClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Receipt,
             title = "Order history",
             subtitle = "Paper fills — buy/sell time, qty, and price",
-            gradientColors = listOf(Color(0xFF37474F), Color(0xFF90A4AE)),
             onClick = onOrderHistoryClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Bookmarks,
             title = "My Watchlist",
             subtitle = "Sort and open every tracked symbol",
-            gradientColors = listOf(Color(0xFF00695C), Color(0xFF4DB6AC)),
             onClick = onWatchlistClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.People,
             title = "Smart Money",
             subtitle = "Legendary investor disclosed holdings",
-            gradientColors = listOf(Color(0xFF1B5E20), Color(0xFF43A047)),
             onClick = onInvestorPortfoliosClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Psychology,
             title = "Pre-Trade Checks",
             subtitle = "Rule-based order risk — not the AI chat tab",
-            gradientColors = listOf(Color(0xFF6A1B9A), Color(0xFFBA68C8)),
             onClick = onCopilotCenterClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.CalendarMonth,
             title = "Earnings Calendar",
             subtitle = "Upcoming results for your watchlist",
-            gradientColors = listOf(Color(0xFF004D40), Color(0xFF00BFA5)),
             onClick = onEarningsCalendarClick,
         ),
     )
@@ -199,7 +185,6 @@ fun MoreScreen(
             icon = Icons.Filled.Search,
             title = "Search Stocks",
             subtitle = "Full NSE listed catalog (~2,400+)",
-            gradientColors = listOf(Color(0xFF1A237E), Color(0xFF7C4DFF)),
             onClick = onSearchClick,
         ),
         MoreMenuEntry(
@@ -210,7 +195,6 @@ fun MoreScreen(
             } else {
                 "Checked about every 15 minutes in the background; faster while the app is open"
             },
-            gradientColors = listOf(Color(0xFFE65100), Color(0xFFFFB300)),
             onClick = onAlertsClick,
             badgeCount = activeAlertCount,
         ),
@@ -218,21 +202,18 @@ fun MoreScreen(
             icon = Icons.Filled.EventAvailable,
             title = "Market Holidays",
             subtitle = "NSE/BSE trading holidays and next session",
-            gradientColors = listOf(Color(0xFF4A148C), Color(0xFF9575CD)),
             onClick = onMarketCalendarClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.EmojiEvents,
             title = "Achievements",
             subtitle = "Your milestones and streaks",
-            gradientColors = listOf(Color(0xFF2E7D32), Color(0xFF81C784)),
             onClick = onAchievementsClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Settings,
             title = "Settings",
             subtitle = "Theme, privacy, and app preferences",
-            gradientColors = listOf(Color(0xFF424242), Color(0xFF757575)),
             onClick = onSettingsClick,
         ),
     )
@@ -242,7 +223,6 @@ fun MoreScreen(
             icon = Icons.Filled.AccountBalance,
             title = "Mutual Funds",
             subtitle = "Educational explorer (not live brokerage)",
-            gradientColors = listOf(Color(0xFF1565C0), Color(0xFF42A5F5)),
             onClick = onMutualFundsClick,
             keywords = "mf funds sip",
         ),
@@ -250,7 +230,6 @@ fun MoreScreen(
             icon = Icons.Filled.BusinessCenter,
             title = "IPO Listings",
             subtitle = "Paper practice apply — not live ASBA",
-            gradientColors = listOf(Color(0xFF6A1B9A), Color(0xFFAB47BC)),
             onClick = onIpoClick,
             keywords = "asba listing ipo",
         ),
@@ -258,28 +237,24 @@ fun MoreScreen(
             icon = Icons.AutoMirrored.Filled.ShowChart,
             title = "ETFs",
             subtitle = "Index and sector ETF baskets",
-            gradientColors = listOf(Color(0xFF00695C), Color(0xFF26A69A)),
             onClick = onEtfClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Savings,
             title = "Sovereign Gold Bonds",
             subtitle = "SGB education — not live RBI applications",
-            gradientColors = listOf(Color(0xFFF9A825), Color(0xFFFFD54F)),
             onClick = onSgbClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Payments,
             title = "My SIPs",
             subtitle = "Simulated SIP plans",
-            gradientColors = listOf(Color(0xFFEF6C00), Color(0xFFFFA726)),
             onClick = onSipClick,
         ),
         MoreMenuEntry(
             icon = Icons.AutoMirrored.Filled.Assignment,
             title = "My IPO Applications",
             subtitle = "Paper applications — not exchange allotment",
-            gradientColors = listOf(Color(0xFF455A64), Color(0xFF90A4AE)),
             onClick = onMyIpoApplicationsClick,
         ),
     )
@@ -289,14 +264,12 @@ fun MoreScreen(
             icon = Icons.Filled.Settings,
             title = "Advanced Orders",
             subtitle = "Triggers, baskets, and execution controls",
-            gradientColors = listOf(Color(0xFF283593), Color(0xFF5C6BC0)),
             onClick = onAdvancedOrdersClick,
         ),
         MoreMenuEntry(
             icon = Icons.AutoMirrored.Filled.ShowChart,
             title = "Derivatives Intelligence",
             subtitle = "Plain-English chain, recipes, and paper risk",
-            gradientColors = listOf(Color(0xFF00838F), Color(0xFF4DD0E1)),
             onClick = onDerivativesClick,
             keywords = "fno f&o futures options chain",
         ),
@@ -304,7 +277,6 @@ fun MoreScreen(
             icon = Icons.Filled.AccountBalance,
             title = "Wealth OS",
             subtitle = "Family goals and net-worth planning (sim)",
-            gradientColors = listOf(Color(0xFF2E7D32), Color(0xFF66BB6A)),
             onClick = onWealthOsClick,
         ),
     )
@@ -314,7 +286,6 @@ fun MoreScreen(
             icon = Icons.AutoMirrored.Filled.ShowChart,
             title = "Equity",
             subtitle = "Spot paper trading on the Trade tab",
-            gradientColors = listOf(Color(0xFF1A237E), Color(0xFF5C6BC0)),
             onClick = onEquityClick,
             keywords = "stocks spot trade cash",
         ),
@@ -322,7 +293,6 @@ fun MoreScreen(
             icon = Icons.Filled.Analytics,
             title = "F&O",
             subtitle = "Options and futures practice desks",
-            gradientColors = listOf(Color(0xFF006064), Color(0xFF26C6DA)),
             onClick = onFnoClick,
             keywords = "fno futures options derivatives",
         ),
@@ -396,6 +366,11 @@ fun MoreScreen(
         } else {
         item { SectionHeader("Practice & Labs") }
         items(labsEntries) { entry ->
+            MoreMenuItem(entry = entry)
+        }
+
+        item { SectionHeader("Paper desks") }
+        items(tradeEntries) { entry ->
             MoreMenuItem(entry = entry)
         }
 
@@ -505,19 +480,17 @@ private fun MoreMenuItem(entry: MoreMenuEntry) {
                     }
                 },
             ) {
+                val theme = LocalAppTheme.current
                 Box(
                     modifier = Modifier
                         .size(42.dp)
-                        .background(
-                            brush = Brush.linearGradient(entry.gradientColors),
-                            shape = CircleShape,
-                        ),
+                        .background(theme.primaryContainer, CircleShape),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         imageVector = entry.icon,
                         contentDescription = null,
-                        tint = contentColorForFill(entry.gradientColors.last()),
+                        tint = theme.onPrimaryContainer,
                         modifier = Modifier.size(22.dp),
                     )
                 }

@@ -29,6 +29,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -111,6 +113,7 @@ fun ScannerScreen(
     onOpenOptionsGym: () -> Unit = onOpenPaperGym,
     onOpenFuturesGym: () -> Unit = onOpenPaperGym,
     onAskAi: (String) -> Unit = {},
+    onPracticeBuy: ((ScannerRow) -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
     val scannerByMode by viewModel.scannerByMode.collectAsStateWithLifecycle()
@@ -471,6 +474,11 @@ fun ScannerScreen(
                                     viewModel.addToWatchlist(row.symbol)
                                 }
                             },
+                            onPracticeBuy = if (selected != ScannerModeChip.FNO) {
+                                onPracticeBuy?.let { buy -> { buy(row) } }
+                            } else {
+                                null
+                            },
                         )
                     }
                 }
@@ -612,6 +620,7 @@ private fun ScannerStockRow(
     watched: Boolean,
     onClick: () -> Unit,
     onWatchlist: () -> Unit,
+    onPracticeBuy: (() -> Unit)? = null,
 ) {
     val theme = LocalAppTheme.current
     val setup = row.setup
@@ -673,7 +682,7 @@ private fun ScannerStockRow(
                     Icon(
                         imageVector = if (watched) Icons.Filled.Star else Icons.Filled.StarBorder,
                         contentDescription = if (watched) "On watchlist" else "Add to watchlist",
-                        tint = if (watched) Color(0xFFFFD54F) else theme.textSecondary,
+                        tint = if (watched) theme.caution else theme.textSecondary,
                     )
                 }
             }
@@ -701,6 +710,17 @@ private fun ScannerStockRow(
                             )
                             .padding(horizontal = 8.dp, vertical = 3.dp),
                     )
+                }
+                if (onPracticeBuy != null) {
+                    Button(
+                        onClick = onPracticeBuy,
+                        modifier = Modifier.height(34.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = theme.positive),
+                        shape = RoundedCornerShape(8.dp),
+                    ) {
+                        Text("Practice BUY", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
                 }
                 row.tabFacts(mode).forEach { fact ->
                     Text(
@@ -1127,11 +1147,11 @@ fun AnomalyBadgeRow(anomalies: List<ScannerAnomaly>) {
                 listOf(anomaly.label, anomaly.detail).filter { it.isNotBlank() }.joinToString(" · "),
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFFFF7043).copy(alpha = 0.16f))
+                    .background(LocalAppTheme.current.caution.copy(alpha = 0.16f))
                     .padding(horizontal = 8.dp, vertical = 4.dp),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
-                color = Color(0xFFFF7043),
+                color = LocalAppTheme.current.caution,
             )
         }
     }
