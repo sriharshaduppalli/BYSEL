@@ -759,6 +759,14 @@ data class PaperOptionPracticeRequest(
     val lots: Int = 1,
 )
 
+data class PaperFuturePracticeRequest(
+    val underlying: String,
+    val expiry: String,
+    val side: String,
+    val price: Double,
+    val lots: Int = 1,
+)
+
 data class OptionContract(
     val strike: Double,
     val callLtp: Double,

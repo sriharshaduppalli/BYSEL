@@ -57,6 +57,7 @@ from ..models.schemas import (
     FuturesTicketPreviewResponse,
     StrategyPreviewRequest,
     PaperOptionPracticeRequest,
+    PaperFuturePracticeRequest,
     StrategyPreviewResponse,
     StrategyPayoffPoint,
     FamilyMemberRequest,
@@ -4454,6 +4455,28 @@ async def get_futures_contracts_endpoint(symbol: str = Query(...)):
 @router.post("/derivatives/futures/ticket/preview", response_model=FuturesTicketPreviewResponse)
 async def futures_ticket_preview_endpoint(payload: FuturesTicketPreviewRequest):
     return _preview_futures_ticket(payload)
+
+
+@router.post("/derivatives/futures/practice", response_model=OrderResponse)
+async def practice_future_endpoint(
+    payload: PaperFuturePracticeRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    from .trading import place_paper_future
+
+    spot, _ = _resolve_derivatives_spot(payload.underlying)
+    lot_size = _lot_size_for_symbol(payload.underlying, spot if spot > 0 else payload.price)
+    return place_paper_future(
+        db,
+        underlying=payload.underlying,
+        expiry=payload.expiry,
+        side=payload.side,
+        price=payload.price,
+        lots=payload.lots,
+        lot_size=lot_size,
+        user_id=int(user.id),
+    )
 
 
 # ==================== WEALTH OS ====================

@@ -1127,6 +1127,8 @@ private fun FuturesRadarScreen(
     val futuresContracts by viewModel.futuresContracts.collectAsStateWithLifecycle()
     val futuresTicketPreview by viewModel.futuresTicketPreview.collectAsStateWithLifecycle()
     val loading by viewModel.derivativesLoading.collectAsStateWithLifecycle()
+    val foCandles by viewModel.foCandles.collectAsStateWithLifecycle()
+    val foCandlesLoading by viewModel.foCandlesLoading.collectAsStateWithLifecycle()
     val derivativesError by viewModel.derivativesError.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { viewModel.loadInvestorTips("fno") }
 
@@ -1154,6 +1156,9 @@ private fun FuturesRadarScreen(
         if (futuresContracts == null) {
             viewModel.loadFuturesContracts("NIFTY")
         }
+    }
+    LaunchedEffect(futuresContracts?.symbol ?: underlyingInput) {
+        viewModel.loadFoCandles(futuresContracts?.symbol ?: underlyingInput)
     }
 
     LaunchedEffect(futuresContracts?.generatedAt) {
@@ -1296,6 +1301,17 @@ private fun FuturesRadarScreen(
         }
 
         item {
+            FoCandlePractice(
+                symbol = futuresContracts?.symbol ?: underlyingInput,
+                expiry = selectedExpiry ?: futuresContracts?.contracts?.firstOrNull()?.expiry.orEmpty(),
+                candles = foCandles,
+                loading = foCandlesLoading,
+                iv = 0.16,
+                onReload = { viewModel.loadFoCandles(futuresContracts?.symbol ?: underlyingInput) },
+            )
+        }
+
+        item {
             val sourceLabel = futuresContracts?.source?.uppercase() ?: "—"
             Text(
                 "Contract Radar · $sourceLabel",
@@ -1425,11 +1441,46 @@ private fun FuturesRadarScreen(
                             ) {
                                 Text("Preview Sell", maxLines = 1)
                             }
+                            val liveFutures = futuresContracts?.source.equals("nse", ignoreCase = true)
+                            Button(
+                                enabled = liveFutures && contract.last > 0.0 && !loading,
+                                onClick = {
+                                    viewModel.practiceFuture(
+                                        underlying = futuresContracts?.symbol ?: underlyingInput,
+                                        expiry = contract.expiry,
+                                        side = "BUY",
+                                        price = contract.last,
+                                    )
+                                },
+                            ) {
+                                Text("Practice buy future", maxLines = 1)
+                            }
+                            OutlinedButton(
+                                enabled = liveFutures && contract.last > 0.0 && !loading,
+                                onClick = {
+                                    viewModel.practiceFuture(
+                                        underlying = futuresContracts?.symbol ?: underlyingInput,
+                                        expiry = contract.expiry,
+                                        side = "SELL",
+                                        price = contract.last,
+                                    )
+                                },
+                            ) {
+                                Text("Practice sell future", maxLines = 1)
+                            }
                             if (linkedQuote != null) {
                                 OutlinedButton(onClick = { onOpenSpotTrade(linkedQuote) }) {
                                     Text("Open Spot", maxLines = 1)
                                 }
                             }
+                        }
+                        if (!futuresContracts?.source.equals("nse", ignoreCase = true)) {
+                            Text(
+                                "Teaching board — practice cash buttons stay off. Use candle practice above.",
+                                color = LocalAppTheme.current.textSecondary,
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp,
+                            )
                         }
                     }
                 }

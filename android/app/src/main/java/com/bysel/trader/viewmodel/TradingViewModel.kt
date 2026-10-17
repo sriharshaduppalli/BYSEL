@@ -413,6 +413,12 @@ class TradingViewModel(
     private val _futuresTicketPreview = MutableStateFlow<FuturesTicketPreviewResponse?>(null)
     val futuresTicketPreview: StateFlow<FuturesTicketPreviewResponse?> = _futuresTicketPreview.asStateFlow()
 
+    private val _foCandles = MutableStateFlow<List<HistoryCandle>>(emptyList())
+    val foCandles: StateFlow<List<HistoryCandle>> = _foCandles.asStateFlow()
+
+    private val _foCandlesLoading = MutableStateFlow(false)
+    val foCandlesLoading: StateFlow<Boolean> = _foCandlesLoading.asStateFlow()
+
     private val _familyDashboard = MutableStateFlow<FamilyDashboardResponse?>(null)
     val familyDashboard: StateFlow<FamilyDashboardResponse?> = _familyDashboard.asStateFlow()
 
@@ -2336,6 +2342,68 @@ class TradingViewModel(
                 is Result.Success -> {
                     if (response.data.status == "error") {
                         _derivativesError.value = response.data.message ?: "Paper option was not filled"
+                        _productActionMessage.value = null
+                    } else {
+                        _derivativesError.value = null
+                        _productActionMessage.value = response.data.message
+                        refreshHoldings()
+                        refreshWallet()
+                        unlockAchievement("first_trade")
+                    }
+                }
+                is Result.Error -> _derivativesError.value = response.message
+                else -> {}
+            }
+            _derivativesLoading.value = false
+        }
+    }
+
+    fun loadFoCandles(symbol: String) {
+        val normalized = symbol.trim().uppercase()
+        if (normalized.isBlank()) return
+        viewModelScope.launch {
+            _foCandlesLoading.value = true
+            _foCandles.value = emptyList()
+            when (val response = repository.getQuoteHistory(normalized, "5d", "15m")) {
+                is Result.Success -> {
+                    _foCandles.value = response.data.filter { candle ->
+                        candle.close > 0.0 && candle.high >= candle.low
+                    }
+                }
+                else -> _foCandles.value = emptyList()
+            }
+            _foCandlesLoading.value = false
+        }
+    }
+
+    fun practiceFuture(
+        underlying: String,
+        expiry: String,
+        side: String,
+        price: Double,
+    ) {
+        if (underlying.isBlank() || expiry.isBlank()) {
+            _derivativesError.value = "Load a futures contract before a paper fill"
+            return
+        }
+        if (price <= 0.0) {
+            _derivativesError.value = "This future has no price to practice"
+            return
+        }
+        viewModelScope.launch {
+            _derivativesLoading.value = true
+            when (val response = repository.practiceFuture(
+                PaperFuturePracticeRequest(
+                    underlying = underlying.trim().uppercase(),
+                    expiry = expiry.trim(),
+                    side = side,
+                    price = price,
+                    lots = 1,
+                )
+            )) {
+                is Result.Success -> {
+                    if (response.data.status == "error") {
+                        _derivativesError.value = response.data.message ?: "Paper future was not filled"
                         _productActionMessage.value = null
                     } else {
                         _derivativesError.value = null

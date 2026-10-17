@@ -1054,6 +1054,20 @@ open class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
+    suspend fun practiceFuture(request: PaperFuturePracticeRequest): Result<OrderResponse> {
+        return try {
+            val response = apiService.practiceFuture(request)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(
+                NetworkErrorMessages.forException(
+                    e,
+                    "Couldn't book this paper future. Check practice cash and retry.",
+                )
+            )
+        }
+    }
+
     suspend fun previewStrategy(request: StrategyPreviewRequest): Result<StrategyPreviewResponse> {
         return try {
             val response = apiService.previewStrategy(request)

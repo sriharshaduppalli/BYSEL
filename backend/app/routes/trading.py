@@ -957,6 +957,96 @@ def place_paper_option(
     return response
 
 
+def paper_future_symbol(underlying: str, expiry: str) -> str:
+    """Symbol the portfolio groups as F&O, for example NIFTY09OCTFUT."""
+    root = re.sub(r"[^A-Z0-9]", "", (underlying or "").strip().upper())
+    if not root:
+        raise ValueError("Underlying is required")
+    try:
+        parsed = datetime.strptime((expiry or "").strip()[:10], "%Y-%m-%d")
+    except ValueError as exc:
+        raise ValueError("Expiry must be YYYY-MM-DD") from exc
+    month = _OPTION_MONTHS[parsed.month - 1]
+    return f"{root}{parsed.day:02d}{month}FUT"
+
+
+def place_paper_future(
+    db: Session,
+    *,
+    underlying: str,
+    expiry: str,
+    side: str,
+    price: float,
+    lots: int,
+    lot_size: int,
+    user_id: int,
+) -> OrderResponse:
+    """Book one paper future at the contract last. Does not send an exchange order."""
+    try:
+        symbol = paper_future_symbol(underlying, expiry)
+        normalized_side = _normalize_side(side)
+    except ValueError as exc:
+        return OrderResponse(
+            status="error",
+            order=Order(symbol=(underlying or "").strip().upper() or "FUTURE", qty=1, side="BUY"),
+            message=str(exc),
+            errorCode="INVALID_FUTURE",
+        )
+    if price <= 0:
+        return OrderResponse(
+            status="error",
+            order=Order(symbol=symbol, qty=1, side=normalized_side),
+            message="Futures price must be above zero",
+            errorCode="INVALID_PRICE",
+        )
+    if lots < 1 or lots > 5:
+        return OrderResponse(
+            status="error",
+            order=Order(symbol=symbol, qty=1, side=normalized_side),
+            message="Practice lots must be from 1 to 5",
+            errorCode="INVALID_LOTS",
+        )
+    if lot_size < 1:
+        return OrderResponse(
+            status="error",
+            order=Order(symbol=symbol, qty=1, side=normalized_side),
+            message="Lot size is not available for this name",
+            errorCode="INVALID_LOT",
+        )
+    qty = lots * lot_size
+    order = Order(
+        symbol=symbol,
+        qty=qty,
+        side=normalized_side,
+        orderType="MARKET",
+        tag="paper-future",
+    )
+    try:
+        response, _ = _execute_order_at_price(
+            db=db,
+            order=order,
+            execution_price=float(price),
+            user_id=user_id,
+            fill_kind="paper_future",
+            session_phase="paper",
+        )
+    except ValueError as exc:
+        return OrderResponse(
+            status="error",
+            order=order,
+            message=str(exc),
+            errorCode="INVALID_FUTURE",
+        )
+    if response.status == "ok":
+        verb = "bought" if normalized_side == "BUY" else "sold"
+        response.message = (
+            f"Paper {verb} {lots} lot ({qty} units) of {symbol} "
+            f"at ₹{float(price):.2f}. "
+            f"Practice only — not a live order. It shows under Portfolio → F&O."
+        )
+    return response
+
+
 def place_order(
     db: Session,
     order: Order,

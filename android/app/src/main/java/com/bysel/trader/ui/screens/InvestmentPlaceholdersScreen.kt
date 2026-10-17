@@ -1901,6 +1901,8 @@ fun DerivativesIntelligenceScreen(
     val optionChain by viewModel.optionChain.collectAsStateWithLifecycle()
     val strategyPreview by viewModel.strategyPreview.collectAsStateWithLifecycle()
     val loading by viewModel.derivativesLoading.collectAsStateWithLifecycle()
+    val foCandles by viewModel.foCandles.collectAsStateWithLifecycle()
+    val foCandlesLoading by viewModel.foCandlesLoading.collectAsStateWithLifecycle()
     var symbol by remember { mutableStateOf("NIFTY") }
     // Default to ~3 weeks out so the educational chain always has a forward expiry.
     var expiry by remember {
@@ -1924,6 +1926,9 @@ fun DerivativesIntelligenceScreen(
         if (optionChain == null) {
             viewModel.loadOptionChain(symbol, expiry)
         }
+    }
+    LaunchedEffect(symbol) {
+        viewModel.loadFoCandles(symbol)
     }
 
     LaunchedEffect(optionChain?.spot) {
@@ -2007,6 +2012,17 @@ fun DerivativesIntelligenceScreen(
             }
         }
 
+        item {
+            FoCandlePractice(
+                symbol = symbol,
+                expiry = expiry,
+                candles = foCandles,
+                loading = foCandlesLoading,
+                iv = optionChain?.atmIv ?: 0.0,
+                onReload = { viewModel.loadFoCandles(symbol) },
+            )
+        }
+
         if (optionChain == null && !loading) {
             item {
                 Card(
@@ -2032,6 +2048,7 @@ fun DerivativesIntelligenceScreen(
         }
 
         optionChain?.let { chain ->
+            val liveChain = chain.source.equals("nse", ignoreCase = true)
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2063,6 +2080,14 @@ fun DerivativesIntelligenceScreen(
                                 fontSize = 11.sp,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        if (!liveChain) {
+                            Text(
+                                "Teaching chain — practice cash buttons stay off. Use candle practice above.",
+                                color = LocalAppTheme.current.textSecondary,
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp,
                             )
                         }
                         chainContracts.forEach { contract ->
@@ -2104,7 +2129,7 @@ fun DerivativesIntelligenceScreen(
                                     )
                                 }
                                 PaperOptionActions(
-                                    enabled = !loading,
+                                    enabled = !loading && liveChain,
                                     callPremium = contract.callLtp,
                                     putPremium = contract.putLtp,
                                     onCallBuy = {
@@ -2223,6 +2248,10 @@ fun DerivativesIntelligenceScreen(
                         if (preview.breakevenPoints.isNotEmpty()) {
                             Text("Breakeven: ${preview.breakevenPoints.joinToString { String.format("%.2f", it) }}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                         }
+                        PayoffCurveChart(
+                            points = preview.payoffCurve,
+                            spot = strategySpotInput.toDoubleOrNull() ?: optionChain?.spot ?: 0.0,
+                        )
                         preview.notes.take(4).forEach {
                             Text("• $it", color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
                         }

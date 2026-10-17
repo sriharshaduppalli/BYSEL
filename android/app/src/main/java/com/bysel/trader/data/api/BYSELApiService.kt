@@ -435,6 +435,9 @@ interface BYSELApiService {
     @POST("/derivatives/practice")
     suspend fun practiceOption(@Body request: PaperOptionPracticeRequest): OrderResponse
 
+    @POST("/derivatives/futures/practice")
+    suspend fun practiceFuture(@Body request: PaperFuturePracticeRequest): OrderResponse
+
     @POST("/derivatives/strategy/preview")
     suspend fun previewStrategy(@Body request: StrategyPreviewRequest): StrategyPreviewResponse
 

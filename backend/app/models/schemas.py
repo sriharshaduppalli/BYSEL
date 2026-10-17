@@ -479,6 +479,14 @@ class PaperOptionPracticeRequest(BaseModel):
     lots: int = 1
 
 
+class PaperFuturePracticeRequest(BaseModel):
+    underlying: str
+    expiry: str
+    side: str
+    price: float
+    lots: int = 1
+
+
 class StrategyPayoffPoint(BaseModel):
     spot: float
     payoff: float
