@@ -794,9 +794,9 @@ open class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
-    suspend fun getIpoListings(status: String? = null): Result<List<IPOListing>> {
+    suspend fun getIpoListings(status: String? = null, refresh: Boolean = false): Result<List<IPOListing>> {
         return try {
-            val listings = apiService.getIpoListings(status)
+            val listings = apiService.getIpoListings(status, if (refresh) true else null)
             Result.Success(listings)
         } catch (e: Exception) {
             Result.Error(e.message ?: "Unknown error")
@@ -1037,6 +1037,20 @@ open class TradingRepository(private val database: BYSELDatabase) {
                     )
                 )
             }
+        }
+    }
+
+    suspend fun practiceOption(request: PaperOptionPracticeRequest): Result<OrderResponse> {
+        return try {
+            val response = apiService.practiceOption(request)
+            Result.Success(response)
+        } catch (e: Exception) {
+            Result.Error(
+                NetworkErrorMessages.forException(
+                    e,
+                    "Couldn't book this paper option. Check practice cash and retry.",
+                )
+            )
         }
     }
 

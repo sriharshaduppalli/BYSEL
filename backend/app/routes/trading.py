@@ -7,6 +7,7 @@ Enforces market hours and wallet balance checks.
 from datetime import datetime, time
 from typing import Iterable
 import hashlib
+import re
 import pytz
 from uuid import uuid4
 from sqlalchemy.exc import IntegrityError
@@ -846,6 +847,114 @@ def evaluate_pending_triggers(
             )
 
     return results
+
+
+_OPTION_MONTHS = (
+    "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+    "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+)
+
+
+def paper_option_symbol(underlying: str, expiry: str, strike: float, right: str) -> str:
+    """Symbol the portfolio groups as F&O, for example NIFTY09OCTCE22500."""
+    root = re.sub(r"[^A-Z0-9]", "", (underlying or "").strip().upper())
+    if not root:
+        raise ValueError("Underlying is required")
+    try:
+        parsed = datetime.strptime((expiry or "").strip()[:10], "%Y-%m-%d")
+    except ValueError as exc:
+        raise ValueError("Expiry must be YYYY-MM-DD") from exc
+    kind = (right or "").strip().upper()
+    if kind in {"CALL", "CE", "C"}:
+        opt = "CE"
+    elif kind in {"PUT", "PE", "P"}:
+        opt = "PE"
+    else:
+        raise ValueError("Right must be CALL or PUT")
+    strike_i = int(round(float(strike)))
+    if strike_i <= 0:
+        raise ValueError("Strike must be positive")
+    month = _OPTION_MONTHS[parsed.month - 1]
+    return f"{root}{parsed.day:02d}{month}{opt}{strike_i}"
+
+
+def place_paper_option(
+    db: Session,
+    *,
+    underlying: str,
+    expiry: str,
+    strike: float,
+    right: str,
+    side: str,
+    premium: float,
+    lots: int,
+    lot_size: int,
+    user_id: int,
+) -> OrderResponse:
+    """Book one paper option at the chain premium. Does not send an exchange order."""
+    try:
+        symbol = paper_option_symbol(underlying, expiry, strike, right)
+        normalized_side = _normalize_side(side)
+    except ValueError as exc:
+        return OrderResponse(
+            status="error",
+            order=Order(symbol=(underlying or "").strip().upper() or "OPTION", qty=1, side="BUY"),
+            message=str(exc),
+            errorCode="INVALID_OPTION",
+        )
+    if premium <= 0:
+        return OrderResponse(
+            status="error",
+            order=Order(symbol=symbol, qty=1, side=normalized_side),
+            message="Premium must be above zero",
+            errorCode="INVALID_PREMIUM",
+        )
+    if lots < 1 or lots > 5:
+        return OrderResponse(
+            status="error",
+            order=Order(symbol=symbol, qty=1, side=normalized_side),
+            message="Practice lots must be from 1 to 5",
+            errorCode="INVALID_LOTS",
+        )
+    if lot_size < 1:
+        return OrderResponse(
+            status="error",
+            order=Order(symbol=symbol, qty=1, side=normalized_side),
+            message="Lot size is not available for this name",
+            errorCode="INVALID_LOT",
+        )
+    qty = lots * lot_size
+    order = Order(
+        symbol=symbol,
+        qty=qty,
+        side=normalized_side,
+        orderType="MARKET",
+        tag="paper-option",
+    )
+    try:
+        response, _ = _execute_order_at_price(
+            db=db,
+            order=order,
+            execution_price=float(premium),
+            user_id=user_id,
+            fill_kind="paper_option",
+            session_phase="paper",
+        )
+    except ValueError as exc:
+        return OrderResponse(
+            status="error",
+            order=order,
+            message=str(exc),
+            errorCode="INVALID_OPTION",
+        )
+    if response.status == "ok":
+        verb = "bought" if normalized_side == "BUY" else "sold"
+        response.message = (
+            f"Paper {verb} {lots} lot ({qty} units) of {symbol} "
+            f"at ₹{float(premium):.2f} = ₹{float(premium) * qty:.2f}. "
+            f"Practice only — not a live order. It shows under Portfolio → F&O."
+        )
+    return response
 
 
 def place_order(

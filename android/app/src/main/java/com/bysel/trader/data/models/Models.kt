@@ -749,6 +749,16 @@ data class BasketOrderResponse(
     val legResults: List<BasketLegExecution> = emptyList()
 )
 
+data class PaperOptionPracticeRequest(
+    val underlying: String,
+    val expiry: String,
+    val strike: Double,
+    val right: String,
+    val side: String,
+    val premium: Double,
+    val lots: Int = 1,
+)
+
 data class OptionContract(
     val strike: Double,
     val callLtp: Double,

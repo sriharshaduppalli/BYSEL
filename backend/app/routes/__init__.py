@@ -56,6 +56,7 @@ from ..models.schemas import (
     FuturesTicketPreviewRequest,
     FuturesTicketPreviewResponse,
     StrategyPreviewRequest,
+    PaperOptionPracticeRequest,
     StrategyPreviewResponse,
     StrategyPayoffPoint,
     FamilyMemberRequest,
@@ -132,6 +133,7 @@ from ..ai_engine import (
 from ..portfolio_scorer import calculate_portfolio_health
 from ..market_heatmap import SECTOR_STOCKS, get_market_heatmap, get_sector_detail
 from ..market_scanner import SCANNER_MODES, get_market_scanner, get_score_history, get_symbol_xray
+from ..ipo_calendar import is_practice_demo, refresh_ipo_calendar
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -3992,28 +3994,41 @@ async def resume_sip_plan_endpoint(sip_id: str, db: Session = Depends(get_db), u
 
 # ==================== PHASE 1: IPO ====================
 
+def _ipo_listing(item: IPOModel) -> IPOListing:
+    return IPOListing(
+        ipoId=item.ipo_id,
+        companyName=item.company_name,
+        symbol=item.symbol,
+        status=item.status,
+        issueOpenDate=item.issue_open_date,
+        issueCloseDate=item.issue_close_date,
+        listingDate=item.listing_date,
+        priceBandMin=item.price_band_min,
+        priceBandMax=item.price_band_max,
+        lotSize=item.lot_size,
+    )
+
+
 @router.get("/ipos", response_model=list[IPOListing])
-async def get_ipos_endpoint(status: str | None = Query(None), db: Session = Depends(get_db)):
+async def get_ipos_endpoint(
+    status: str | None = Query(None),
+    refresh: bool = Query(False),
+    db: Session = Depends(get_db),
+):
     _seed_phase1_master_data(db)
+    refreshed = refresh_ipo_calendar(db, force=refresh)
     query = db.query(IPOModel)
     if status:
         query = query.filter(IPOModel.status.ilike(status))
     listings = query.order_by(IPOModel.issue_open_date.asc()).all()
-    return [
-        IPOListing(
-            ipoId=item.ipo_id,
-            companyName=item.company_name,
-            symbol=item.symbol,
-            status=item.status,
-            issueOpenDate=item.issue_open_date,
-            issueCloseDate=item.issue_close_date,
-            listingDate=item.listing_date,
-            priceBandMin=item.price_band_min,
-            priceBandMax=item.price_band_max,
-            lotSize=item.lot_size,
-        )
-        for item in listings
-    ]
+    live = [item for item in listings if str(item.ipo_id).startswith("NSE-")]
+    if live or refreshed:
+        listings = [
+            item
+            for item in listings
+            if not is_practice_demo(item.ipo_id, item.company_name)
+        ]
+    return [_ipo_listing(item) for item in listings]
 
 
 @router.get("/ipos/my-applications", response_model=list[IPOApplication])
@@ -4049,18 +4064,7 @@ async def get_ipo_detail_endpoint(ipo_id: str, db: Session = Depends(get_db)):
     _seed_phase1_master_data(db)
     item = db.query(IPOModel).filter(IPOModel.ipo_id == ipo_id).first()
     if item:
-        return IPOListing(
-            ipoId=item.ipo_id,
-            companyName=item.company_name,
-            symbol=item.symbol,
-            status=item.status,
-            issueOpenDate=item.issue_open_date,
-            issueCloseDate=item.issue_close_date,
-            listingDate=item.listing_date,
-            priceBandMin=item.price_band_min,
-            priceBandMax=item.price_band_max,
-            lotSize=item.lot_size,
-        )
+        return _ipo_listing(item)
     raise HTTPException(status_code=404, detail=f"IPO '{ipo_id}' not found")
 
 
@@ -4417,6 +4421,29 @@ async def get_option_chain_endpoint(
 @router.post("/derivatives/strategy/preview", response_model=StrategyPreviewResponse)
 async def strategy_preview_endpoint(payload: StrategyPreviewRequest):
     return _preview_strategy(payload)
+
+
+@router.post("/derivatives/practice", response_model=OrderResponse)
+async def practice_option_endpoint(
+    payload: PaperOptionPracticeRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    from .trading import place_paper_option
+
+    lot_size = _lot_size_for_symbol(payload.underlying, payload.strike)
+    return place_paper_option(
+        db,
+        underlying=payload.underlying,
+        expiry=payload.expiry,
+        strike=payload.strike,
+        right=payload.right,
+        side=payload.side,
+        premium=payload.premium,
+        lots=payload.lots,
+        lot_size=lot_size,
+        user_id=int(user.id),
+    )
 
 
 @router.get("/derivatives/futures/contracts", response_model=FuturesContractsResponse)

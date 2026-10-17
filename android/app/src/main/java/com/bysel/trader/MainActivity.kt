@@ -169,7 +169,8 @@ class MainActivity : FragmentActivity() {
                     if (
                         event == Lifecycle.Event.ON_STOP &&
                         AuthSessionManager.hasSession() &&
-                        biometricAuthManager.isBiometricEnabled()
+                        biometricAuthManager.isBiometricEnabled() &&
+                        !biometricAuthManager.isPromptInFlight()
                     ) {
                         biometricUnlocked = false
                         isAuthenticated = false
@@ -341,18 +342,6 @@ class MainActivity : FragmentActivity() {
         super.onStart()
         // Single resume entry — avoid onStart+onResume double warmup stampede.
         tradingViewModel?.takeIf { AuthSessionManager.hasSession() }?.onAppForegroundResume()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // Re-check authentication when app returns from background
-        if (AuthSessionManager.hasSession() && biometricAuthManager.isBiometricEnabled() && !isAuthenticated) {
-            biometricAuthManager.authenticateForAppUnlock(
-                activity = this,
-                onSuccess = { isAuthenticated = true },
-                onCancel = { }
-            )
-        }
     }
 
     override fun onStop() {

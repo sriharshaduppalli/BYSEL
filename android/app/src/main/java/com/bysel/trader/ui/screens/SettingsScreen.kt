@@ -31,6 +31,7 @@ import com.bysel.trader.data.repository.Result
 import com.bysel.trader.security.BiometricAuthManager
 import com.bysel.trader.security.BiometricStatus
 import com.bysel.trader.security.getMessage
+import androidx.fragment.app.FragmentActivity
 import com.bysel.trader.ui.theme.DEFAULT_THEME_ID
 import com.bysel.trader.ui.theme.allThemes
 import com.bysel.trader.ui.theme.getTheme
@@ -573,20 +574,29 @@ fun SettingsScreen(
         // Biometric Authentication Toggle
         if (biometricAuthManager != null) {
             val biometricStatus = biometricAuthManager.isBiometricAvailable()
-            val biometricEnabled = biometricAuthManager.isBiometricEnabled()
-            
             item {
+                val activity = LocalContext.current as? FragmentActivity
+                var biometricEnabled by remember {
+                    mutableStateOf(biometricAuthManager.isBiometricEnabled())
+                }
                 SettingItem(
                     icon = Icons.Filled.Fingerprint,
                     title = "Biometric Lock",
                     subtitle = when (biometricStatus) {
-                        BiometricStatus.AVAILABLE -> if (biometricEnabled) "Enabled" else "Disabled"
+                        BiometricStatus.AVAILABLE -> if (biometricEnabled) {
+                            "On. BYSEL asks once when you open or return."
+                        } else {
+                            "Off"
+                        }
                         else -> biometricStatus.getMessage()
                     },
                     value = biometricEnabled,
                     onValueChange = { enabled ->
-                        if (biometricStatus == BiometricStatus.AVAILABLE) {
-                            biometricAuthManager.setBiometricEnabled(enabled)
+                        val host = activity
+                        if (host != null && biometricStatus == BiometricStatus.AVAILABLE) {
+                            biometricAuthManager.confirmBiometricEnabled(host, enabled) { nowEnabled ->
+                                biometricEnabled = nowEnabled
+                            }
                         }
                     },
                     enabled = biometricStatus == BiometricStatus.AVAILABLE
@@ -1204,7 +1214,6 @@ fun SettingItem(
                 checked = value,
                 onCheckedChange = if (enabled) onValueChange else { {} },
                 enabled = enabled,
-                modifier = Modifier.size(48.dp),
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = LocalAppTheme.current.onPrimary,
                     checkedTrackColor = LocalAppTheme.current.primary,

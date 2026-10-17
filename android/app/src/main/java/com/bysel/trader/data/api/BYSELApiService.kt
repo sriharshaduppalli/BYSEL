@@ -247,7 +247,10 @@ interface BYSELApiService {
 
     // ==================== IPO ====================
     @GET("/ipos")
-    suspend fun getIpoListings(@Query("status") status: String? = null): List<IPOListing>
+    suspend fun getIpoListings(
+        @Query("status") status: String? = null,
+        @Query("refresh") refresh: Boolean? = null,
+    ): List<IPOListing>
 
     @GET("/ipos/{ipoId}")
     suspend fun getIpoDetail(@Path("ipoId") ipoId: String): IPOListing
@@ -428,6 +431,9 @@ interface BYSELApiService {
         @Query("symbol") symbol: String,
         @Query("expiry") expiry: String
     ): OptionChainResponse
+
+    @POST("/derivatives/practice")
+    suspend fun practiceOption(@Body request: PaperOptionPracticeRequest): OrderResponse
 
     @POST("/derivatives/strategy/preview")
     suspend fun previewStrategy(@Body request: StrategyPreviewRequest): StrategyPreviewResponse

@@ -469,6 +469,16 @@ class StrategyPreviewRequest(BaseModel):
     legs: List[StrategyLeg]
 
 
+class PaperOptionPracticeRequest(BaseModel):
+    underlying: str
+    expiry: str
+    strike: float
+    right: str
+    side: str
+    premium: float
+    lots: int = 1
+
+
 class StrategyPayoffPoint(BaseModel):
     spot: float
     payoff: float

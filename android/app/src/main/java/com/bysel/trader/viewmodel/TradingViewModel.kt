@@ -2304,6 +2304,54 @@ class TradingViewModel(
         }
     }
 
+    fun practiceOption(
+        underlying: String,
+        expiry: String,
+        strike: Double,
+        right: String,
+        side: String,
+        premium: Double,
+    ) {
+        if (underlying.isBlank() || expiry.isBlank()) {
+            _derivativesError.value = "Load a chain before a paper option fill"
+            return
+        }
+        if (premium <= 0.0) {
+            _derivativesError.value = "This $right has no premium to practice"
+            return
+        }
+        viewModelScope.launch {
+            _derivativesLoading.value = true
+            when (val response = repository.practiceOption(
+                PaperOptionPracticeRequest(
+                    underlying = underlying.trim().uppercase(),
+                    expiry = expiry.trim(),
+                    strike = strike,
+                    right = right,
+                    side = side,
+                    premium = premium,
+                    lots = 1,
+                )
+            )) {
+                is Result.Success -> {
+                    if (response.data.status == "error") {
+                        _derivativesError.value = response.data.message ?: "Paper option was not filled"
+                        _productActionMessage.value = null
+                    } else {
+                        _derivativesError.value = null
+                        _productActionMessage.value = response.data.message
+                        refreshHoldings()
+                        refreshWallet()
+                        unlockAchievement("first_trade")
+                    }
+                }
+                is Result.Error -> _derivativesError.value = response.message
+                else -> {}
+            }
+            _derivativesLoading.value = false
+        }
+    }
+
     fun loadOptionChain(symbol: String, expiry: String) {
         if (symbol.isBlank() || expiry.isBlank()) {
             _derivativesError.value = "Symbol and expiry are required"
@@ -4018,12 +4066,21 @@ class TradingViewModel(
         _mutualFundRecommendations.value = null
     }
 
-    fun loadIpoListings(status: String? = null) {
+    fun loadIpoListings(status: String? = null, refresh: Boolean = false) {
         viewModelScope.launch {
             _productsLoading.value = true
-            when (val r = repository.getIpoListings(status = status)) {
-                is Result.Success -> _ipoListings.value = r.data
-                is Result.Error -> _error.value = r.message
+            when (val r = repository.getIpoListings(status = status, refresh = refresh)) {
+                is Result.Success -> {
+                    _ipoListings.value = r.data
+                    if (_productActionMessage.value?.startsWith("Couldn't refresh IPO") == true) {
+                        _productActionMessage.value = null
+                    }
+                }
+                is Result.Error -> _productActionMessage.value = if (_ipoListings.value.isEmpty()) {
+                    "Couldn't refresh IPO listings."
+                } else {
+                    "Couldn't refresh IPO listings. The last saved list is still on screen."
+                }
                 else -> {}
             }
             _productsLoading.value = false

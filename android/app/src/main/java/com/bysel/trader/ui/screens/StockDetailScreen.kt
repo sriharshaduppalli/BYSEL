@@ -38,7 +38,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -70,7 +72,9 @@ import com.bysel.trader.data.models.CopilotSignal
 import com.bysel.trader.data.models.HistoryCandle
 import com.bysel.trader.data.models.MarketNewsHeadline
 import com.bysel.trader.data.models.PreTradeEstimateResponse
+import com.bysel.trader.data.models.QualityScreenCheck
 import com.bysel.trader.data.models.Quote
+import com.bysel.trader.data.models.ScannerRow
 import com.bysel.trader.data.models.PricePrediction
 import com.bysel.trader.data.models.StockAnalysis
 import com.bysel.trader.data.models.StockPredictionResponse
@@ -97,6 +101,14 @@ private data class DetailMetric(
     val caption: String,
     val accent: Color,
 )
+
+private enum class StockDetailTab(val label: String) {
+    Overview("Overview"),
+    Chart("Chart"),
+    Fundamentals("Fundamentals"),
+    News("News"),
+    Practice("Practice"),
+}
 
 private enum class DetailHistoryWindow(
     val label: String,
@@ -176,9 +188,12 @@ fun StockDetailScreen(
     }
 
     var historyWindowName by rememberSaveable(quote.symbol) { mutableStateOf(DetailHistoryWindow.OneMonth.name) }
+    val showChartFirst = rememberSaveable(quote.symbol) { requestedChartFocus }
+    var detailTabName by rememberSaveable(quote.symbol) {
+        mutableStateOf(if (showChartFirst) StockDetailTab.Chart.name else StockDetailTab.Overview.name)
+    }
     var previewSide by rememberSaveable(quote.symbol) { mutableStateOf("BUY") }
     var quantityText by rememberSaveable(quote.symbol) { mutableStateOf("1") }
-    val showChartFirst = rememberSaveable(quote.symbol) { requestedChartFocus }
 
     DisposableEffect(Unit) {
         onDispose { viewModel.clearOpenDetailAtChart() }
@@ -425,20 +440,13 @@ fun StockDetailScreen(
                 }
             }
 
-            if (showChartFirst) {
-                stockDetailPriceChartSection(
-                    quote = quote,
-                    history = history,
-                    historyLoading = historyLoading,
-                    historyWindow = historyWindow,
-                    onHistoryWindowChange = { historyWindowName = it.name },
-                    intradayRangePct = intradayRangePct,
-                    patterns = chartPatterns,
-                    sentimentData = sentimentData,
-                    sentimentLoading = sentimentLoading,
-                    onAiQuery = onAiQuery,
-                )
-            }
+            val detailTab = StockDetailTab.valueOf(detailTabName)
+            val scannerXray = scannerXrayRow?.takeIf { it.symbol.equals(quote.symbol, ignoreCase = true) }
+                ?: symbolXray?.takeIf { it.symbol.equals(quote.symbol, ignoreCase = true) }
+            val companyLine = listOfNotNull(
+                scannerXray?.name?.trim()?.takeIf { it.isNotBlank() && !it.equals(quote.symbol, ignoreCase = true) },
+                scannerXray?.metrics?.sector?.trim()?.takeIf { it.isNotBlank() },
+            ).joinToString(" · ")
 
             item {
                 StockDetailHeroCard(
@@ -447,158 +455,156 @@ fun StockDetailScreen(
                     marketOpen = marketStatus?.isOpen,
                     targetGapPct = targetGapPct,
                     yearPositionPct = yearPositionPct,
+                    companyLine = companyLine,
                 )
             }
 
-            val scannerXray = scannerXrayRow?.takeIf { it.symbol.equals(quote.symbol, ignoreCase = true) }
-                ?: symbolXray?.takeIf { it.symbol.equals(quote.symbol, ignoreCase = true) }
-            if (scannerXray != null) {
-                item {
-                    ByselExplainabilityCard(
-                        row = scannerXray,
-                        history = scoreHistory,
-                    )
+            item {
+                ScrollableTabRow(
+                    selectedTabIndex = detailTab.ordinal,
+                    containerColor = theme.surface,
+                    contentColor = theme.text,
+                    edgePadding = 0.dp,
+                ) {
+                    StockDetailTab.entries.forEach { tab ->
+                        Tab(
+                            selected = detailTab == tab,
+                            onClick = { detailTabName = tab.name },
+                            text = {
+                                Text(
+                                    tab.label,
+                                    maxLines = 1,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (detailTab == tab) FontWeight.SemiBold else FontWeight.Normal,
+                                )
+                            },
+                        )
+                    }
                 }
             }
 
-            item {
-                StockResearchCard(
-                    symbol = quote.symbol,
-                    analysis = stockAnalysis?.takeIf { it.symbol.equals(quote.symbol, ignoreCase = true) },
-                    prediction = stockPrediction?.takeIf { it.symbol.equals(quote.symbol, ignoreCase = true) },
-                    loading = stockResearchLoading,
-                    error = stockResearchError,
-                    onAnalyze = { viewModel.analyzeStock(quote.symbol) },
-                    onPredict = { viewModel.predictStock(quote.symbol) },
-                )
-            }
-
-            if (!showChartFirst) {
-                stockDetailPriceChartSection(
-                    quote = quote,
-                    history = history,
-                    historyLoading = historyLoading,
-                    historyWindow = historyWindow,
-                    onHistoryWindowChange = { historyWindowName = it.name },
-                    intradayRangePct = intradayRangePct,
-                    patterns = chartPatterns,
-                    sentimentData = sentimentData,
-                    sentimentLoading = sentimentLoading,
-                    onAiQuery = onAiQuery,
-                )
-            }
-
-            item {
-                SectionHeader(
-                    title = "Decision Setup",
-                    subtitle = "Preview cost, conviction, and alert placement before you route the order.",
-                )
-            }
-
-            item {
-                TradeSetupCard(
-                    quote = quote,
-                    quantityText = quantityText,
-                    onQuantityChange = { nextValue ->
-                        quantityText = nextValue.filter { it.isDigit() }.take(4).ifBlank { "1" }
-                    },
-                    previewSide = previewSide,
-                    onPreviewSideChange = { previewSide = it },
-                    estimate = estimateForView,
-                    signal = signalForView,
-                    walletBalance = walletBalance,
-                    entryPrice = quote.last,
-                    onApplySizedQty = { nextQty ->
-                        quantityText = nextQty.toString()
-                    },
-                )
-            }
-
-            item {
-                SectionHeader(
-                    title = "Trust & Tools",
-                    subtitle = "Inline guidance, support traceability, and decision tools surfaced before you place the trade.",
-                )
-            }
-
-            // AI Quick Actions
-            if (onAiQuery != null) {
-                item {
-                    SectionHeader(
-                        title = "AI Intelligence",
-                        subtitle = "Analyze and ensemble preview on this name — educational, not a forecast.",
-                    )
+            when (detailTab) {
+                StockDetailTab.Overview -> {
+                    item { DetailMetricsRow(metrics = metrics) }
+                    item { StockSessionCard(quote = quote) }
+                    item { DetailSnapshotCard(quote = quote) }
                 }
-                item {
-                    AiQuickActionsRow(
-                        symbol = quote.symbol,
+                StockDetailTab.Chart -> {
+                    stockDetailPriceChartSection(
+                        quote = quote,
+                        history = history,
+                        historyLoading = historyLoading,
+                        historyWindow = historyWindow,
+                        onHistoryWindowChange = { historyWindowName = it.name },
+                        intradayRangePct = intradayRangePct,
+                        patterns = chartPatterns,
+                        sentimentData = sentimentData,
+                        sentimentLoading = sentimentLoading,
                         onAiQuery = onAiQuery,
-                        onAnalyze = { viewModel.analyzeStock(quote.symbol) },
-                        onPredict = { viewModel.predictStock(quote.symbol) },
                     )
                 }
-            }
-
-            item {
-                DetailTrustToolsCard(
-                    estimate = estimateForView,
-                    signal = signalForView,
-                    portfolioActions = copilotPortfolioActions,
-                    lastOrderTraceId = lastOrderTraceId,
-                    onRefreshGuidance = {
-                        viewModel.loadPortfolioCopilotActions()
-                        refreshDetailContext()
-                    },
-                    onOpenTrustCenter = onOpenTrustCenter,
-                )
-            }
-
-            item {
-                DetailMetricsRow(metrics = metrics)
-            }
-
-            item {
-                SectionHeader(
-                    title = "Alert Layer",
-                    subtitle = "Turn the current setup into triggers so you do not need to watch the screen continuously.",
-                )
-            }
-
-            item {
-                AlertsCard(
-                    quote = quote,
-                    alerts = symbolAlerts,
-                    onCreateAbove = {
-                        viewModel.createAlert(quote.symbol, quote.last * 1.02, "ABOVE")
-                        Toast.makeText(context, "Created alert at +2%", Toast.LENGTH_SHORT).show()
-                    },
-                    onCreateBelow = {
-                        viewModel.createAlert(quote.symbol, quote.last * 0.98, "BELOW")
-                        Toast.makeText(context, "Created alert at -2%", Toast.LENGTH_SHORT).show()
-                    },
-                    onDelete = { viewModel.deleteAlert(it.id) },
-                )
-            }
-
-            item {
-                SectionHeader(
-                    title = "Headline Context",
-                    subtitle = "Latest symbol-specific headlines to validate whether price action has a clear narrative behind it.",
-                )
-            }
-
-            item {
-                HeadlinesCard(
-                    symbol = quote.symbol,
-                    headlines = detailNews,
-                    isLoading = detailNewsLoading,
-                    error = detailNewsError,
-                    onRefresh = { viewModel.refreshDetailNews(quote.symbol) },
-                )
-            }
-
-            item {
-                DetailSnapshotCard(quote = quote)
+                StockDetailTab.Fundamentals -> {
+                    if (scannerXray != null) {
+                        item {
+                            ByselExplainabilityCard(
+                                row = scannerXray,
+                                history = scoreHistory,
+                            )
+                        }
+                    }
+                    item {
+                        StockFundamentalsCard(
+                            quote = quote,
+                            row = scannerXray,
+                        )
+                    }
+                }
+                StockDetailTab.News -> {
+                    item {
+                        HeadlinesCard(
+                            symbol = quote.symbol,
+                            headlines = detailNews,
+                            isLoading = detailNewsLoading,
+                            error = detailNewsError,
+                            onRefresh = { viewModel.refreshDetailNews(quote.symbol) },
+                        )
+                    }
+                }
+                StockDetailTab.Practice -> {
+                    item {
+                        StockResearchCard(
+                            symbol = quote.symbol,
+                            analysis = stockAnalysis?.takeIf { it.symbol.equals(quote.symbol, ignoreCase = true) },
+                            prediction = stockPrediction?.takeIf { it.symbol.equals(quote.symbol, ignoreCase = true) },
+                            loading = stockResearchLoading,
+                            error = stockResearchError,
+                            onAnalyze = { viewModel.analyzeStock(quote.symbol) },
+                            onPredict = { viewModel.predictStock(quote.symbol) },
+                        )
+                    }
+                    item {
+                        SectionHeader(
+                            title = "Decision Setup",
+                            subtitle = "Preview cost before a paper order. This is practice, not a recommendation.",
+                        )
+                    }
+                    item {
+                        TradeSetupCard(
+                            quote = quote,
+                            quantityText = quantityText,
+                            onQuantityChange = { nextValue ->
+                                quantityText = nextValue.filter { it.isDigit() }.take(4).ifBlank { "1" }
+                            },
+                            previewSide = previewSide,
+                            onPreviewSideChange = { previewSide = it },
+                            estimate = estimateForView,
+                            signal = signalForView,
+                            walletBalance = walletBalance,
+                            entryPrice = quote.last,
+                            onApplySizedQty = { nextQty ->
+                                quantityText = nextQty.toString()
+                            },
+                        )
+                    }
+                    if (onAiQuery != null) {
+                        item {
+                            AiQuickActionsRow(
+                                symbol = quote.symbol,
+                                onAiQuery = onAiQuery,
+                                onAnalyze = { viewModel.analyzeStock(quote.symbol) },
+                                onPredict = { viewModel.predictStock(quote.symbol) },
+                            )
+                        }
+                    }
+                    item {
+                        DetailTrustToolsCard(
+                            estimate = estimateForView,
+                            signal = signalForView,
+                            portfolioActions = copilotPortfolioActions,
+                            lastOrderTraceId = lastOrderTraceId,
+                            onRefreshGuidance = {
+                                viewModel.loadPortfolioCopilotActions()
+                                refreshDetailContext()
+                            },
+                            onOpenTrustCenter = onOpenTrustCenter,
+                        )
+                    }
+                    item {
+                        AlertsCard(
+                            quote = quote,
+                            alerts = symbolAlerts,
+                            onCreateAbove = {
+                                viewModel.createAlert(quote.symbol, quote.last * 1.02, "ABOVE")
+                                Toast.makeText(context, "Created alert at +2%", Toast.LENGTH_SHORT).show()
+                            },
+                            onCreateBelow = {
+                                viewModel.createAlert(quote.symbol, quote.last * 0.98, "BELOW")
+                                Toast.makeText(context, "Created alert at -2%", Toast.LENGTH_SHORT).show()
+                            },
+                            onDelete = { viewModel.deleteAlert(it.id) },
+                        )
+                    }
+                }
             }
         }
     }
@@ -612,6 +618,7 @@ private fun StockDetailHeroCard(
     marketOpen: Boolean?,
     targetGapPct: Double?,
     yearPositionPct: Double?,
+    companyLine: String = "",
 ) {
     val theme = LocalAppTheme.current
     val priceColor = if (quote.pctChange >= 0.0) theme.positive else theme.negative
@@ -661,12 +668,16 @@ private fun StockDetailHeroCard(
                         symbol = quote.symbol,
                         modifier = Modifier.padding(top = 2.dp),
                     )
-                    Text(
-                        text = if (quote.pctChange >= 0.0) "Leadership candidate" else "Pressure candidate",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = theme.textSecondary,
-                    )
+                    if (companyLine.isNotBlank()) {
+                        Text(
+                            text = companyLine,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = theme.textSecondary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 InfoChip(
                     label = {
@@ -1392,6 +1403,121 @@ private fun HeadlinesCard(
         }
     }
 }
+
+@Composable
+private fun StockSessionCard(quote: Quote) {
+    DetailFactCard(
+        title = "Session",
+        subtitle = "Today's print. A blank field was not in the last quote.",
+        rows = listOf(
+            "Open" to moneyOrDash(quote.open),
+            "Day high" to moneyOrDash(quote.dayHigh),
+            "Day low" to moneyOrDash(quote.dayLow),
+            "Previous close" to moneyOrDash(quote.prevClose),
+            "Volume" to volumeOrDash(quote.volume),
+            "Average volume" to volumeOrDash(quote.avgVolume),
+            "50-day average" to moneyOrDash(quote.fiftyDayAverage),
+            "200-day average" to moneyOrDash(quote.twoHundredDayAverage),
+        ),
+    )
+}
+
+@Composable
+private fun StockFundamentalsCard(quote: Quote, row: ScannerRow?) {
+    val metrics = row?.metrics
+    val rows = listOf(
+        "Company" to row?.name?.trim()?.takeIf { it.isNotBlank() && !it.equals(quote.symbol, true) }.orDash(),
+        "Sector" to metrics?.sector?.trim().orDash(),
+        "Market cap" to (quote.marketCap ?: metrics?.marketCap)?.let { formatCompactNumber(it.toDouble()) }.orDash(),
+        "P/E" to numberOrDash(quote.trailingPE ?: metrics?.pe, 2),
+        "Sector P/E" to numberOrDash(metrics?.sectorPe, 1),
+        "EPS" to numberOrDash(quote.eps, 2),
+        "PEG" to numberOrDash(metrics?.peg, 2),
+        "Price / sales" to numberOrDash(metrics?.priceToSales, 2),
+        "EV / EBITDA" to numberOrDash(metrics?.evEbitda, 1),
+        "ROE" to percentOrDash(metrics?.roe),
+        "ROCE" to percentOrDash(metrics?.roce),
+        "Debt / equity" to numberOrDash(metrics?.debtToEquity, 2),
+        "Margin" to percentOrDash(metrics?.marginPct),
+        "Revenue growth" to percentOrDash(metrics?.revenueGrowth),
+        "Earnings growth" to percentOrDash(metrics?.earningsGrowth),
+        "Dividend yield" to quote.dividendYield?.let { "${String.format("%.2f", it)}%" }.orDash(),
+        "Promoter pledge" to percentOrDash(metrics?.pledge),
+        "RSI" to numberOrDash(metrics?.rsi, 0),
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        DetailFactCard(
+            title = "Fundamentals",
+            subtitle = "Published quote and scanner figures. A dash means that field was not available. Not a recommendation.",
+            rows = rows,
+        )
+        val checks = row?.qualityScreen?.checks.orEmpty()
+        if (checks.isNotEmpty()) {
+            QualityChecksCard(checks)
+        }
+        val missing = row?.missing.orEmpty()
+        if (missing.isNotEmpty()) {
+            Text(
+                text = "Not on this snapshot: ${missing.joinToString(", ")}",
+                color = LocalAppTheme.current.textSecondary,
+                fontSize = 12.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun QualityChecksCard(checks: List<QualityScreenCheck>) {
+    val theme = LocalAppTheme.current
+    Card(
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Quality checks", color = theme.text, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            checks.forEach { check ->
+                DetailLineItem(
+                    label = check.label.ifBlank { check.id },
+                    value = check.note.ifBlank { check.status.replaceFirstChar { it.uppercase() } },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailFactCard(title: String, subtitle: String, rows: List<Pair<String, String>>) {
+    val theme = LocalAppTheme.current
+    Card(
+        colors = byselCardColors(),
+        elevation = byselCardElevation(),
+        border = byselCardBorder(),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, color = theme.text, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+            Text(subtitle, color = theme.textSecondary, fontSize = 12.sp, lineHeight = 16.sp)
+            rows.forEach { (label, value) ->
+                DetailLineItem(label = label, value = value)
+            }
+        }
+    }
+}
+
+private fun moneyOrDash(value: Double?): String = value?.let { formatCurrency(it) } ?: "—"
+
+private fun volumeOrDash(value: Long?): String = value?.takeIf { it > 0L }?.let { formatVolumeCompact(it) } ?: "—"
+
+private fun numberOrDash(value: Double?, decimals: Int): String {
+    if (value == null) return "—"
+    return String.format("%.${decimals}f", value)
+}
+
+private fun percentOrDash(value: Double?): String = value?.let { "${String.format("%.0f", it)}%" } ?: "—"
+
+private fun String?.orDash(): String = this?.takeIf { it.isNotBlank() } ?: "—"
 
 @Composable
 private fun DetailSnapshotCard(quote: Quote) {

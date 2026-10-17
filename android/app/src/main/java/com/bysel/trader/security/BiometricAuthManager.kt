@@ -19,6 +19,10 @@ class BiometricAuthManager(private val context: Context) {
     }
 
     private val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+    private var promptInFlight = false
+
+    /** True while a system biometric sheet is already on screen. */
+    fun isPromptInFlight(): Boolean = promptInFlight
 
     /**
      * Check if biometric authentication is available on this device
@@ -52,6 +56,37 @@ class BiometricAuthManager(private val context: Context) {
     }
 
     /**
+     * Turning the lock on must succeed a biometric check first.
+     * Turning it off is immediate so a failed sensor cannot trap the switch.
+     */
+    fun confirmBiometricEnabled(
+        activity: FragmentActivity,
+        enabled: Boolean,
+        onResult: (Boolean) -> Unit,
+    ) {
+        if (!enabled) {
+            setBiometricEnabled(false)
+            onResult(false)
+            return
+        }
+        if (isBiometricAvailable() != BiometricStatus.AVAILABLE) {
+            onResult(isBiometricEnabled())
+            return
+        }
+        authenticate(
+            activity = activity,
+            title = "Enable biometric lock",
+            subtitle = "Confirm fingerprint, face, or device PIN",
+            description = "BYSEL will ask again each time you return to the app",
+            onSuccess = {
+                setBiometricEnabled(true)
+                onResult(true)
+            },
+            onError = { _, _ -> onResult(false) },
+        )
+    }
+
+    /**
      * Show biometric authentication prompt
      * @param activity The activity to show the prompt in
      * @param title Title of the prompt dialog
@@ -68,17 +103,21 @@ class BiometricAuthManager(private val context: Context) {
         onSuccess: () -> Unit,
         onError: (errorCode: Int, errorMessage: String) -> Unit
     ) {
+        if (promptInFlight) return
+        promptInFlight = true
         val executor = ContextCompat.getMainExecutor(context)
-        
+
         val biometricPrompt = BiometricPrompt(activity, executor,
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                     super.onAuthenticationError(errorCode, errString)
+                    promptInFlight = false
                     onError(errorCode, errString.toString())
                 }
 
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     super.onAuthenticationSucceeded(result)
+                    promptInFlight = false
                     onSuccess()
                 }
 
@@ -96,7 +135,12 @@ class BiometricAuthManager(private val context: Context) {
             .setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
             .build()
 
-        biometricPrompt.authenticate(promptInfo)
+        try {
+            biometricPrompt.authenticate(promptInfo)
+        } catch (error: RuntimeException) {
+            promptInFlight = false
+            onError(-1, error.message ?: "Couldn't open biometric prompt")
+        }
     }
 
     /**

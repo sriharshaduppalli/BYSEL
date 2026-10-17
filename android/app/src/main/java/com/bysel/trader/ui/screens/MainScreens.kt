@@ -1293,7 +1293,7 @@ fun UpgradedPortfolioHoldingItem(
                     .fillMaxWidth()
                     .padding(top = 6.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(stance.accent.copy(alpha = 0.12f))
+                    .background(theme.mutedSurface)
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text(

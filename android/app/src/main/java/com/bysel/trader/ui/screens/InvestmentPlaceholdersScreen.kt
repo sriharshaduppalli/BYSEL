@@ -69,6 +69,9 @@ import com.bysel.trader.ui.theme.byselCardColors
 import com.bysel.trader.ui.theme.byselCardElevation
 import com.bysel.trader.viewmodel.TradingViewModel
 import com.bysel.trader.viewmodel.isDerivativesFormMessage
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Composable
 private fun LoadingOrEmpty(
@@ -77,6 +80,8 @@ private fun LoadingOrEmpty(
     loading: Boolean,
     body: String? = null,
     onBack: (() -> Unit)? = null,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
 ) {
     Box(
         modifier = Modifier.fillMaxSize().background(LocalAppTheme.current.surface).padding(24.dp),
@@ -93,6 +98,9 @@ private fun LoadingOrEmpty(
                 Text(subtitle, color = LocalAppTheme.current.textSecondary, fontSize = 14.sp)
                 if (!body.isNullOrBlank()) {
                     Text(body, color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                }
+                if (!actionLabel.isNullOrBlank() && onAction != null) {
+                    Button(onClick = onAction) { Text(actionLabel) }
                 }
             }
         }
@@ -941,6 +949,7 @@ fun IpoListingsScreen(
 ) {
     val ipos by viewModel.ipoListings.collectAsStateWithLifecycle()
     val loading by viewModel.productsLoading.collectAsStateWithLifecycle()
+    val actionMessage by viewModel.productActionMessage.collectAsStateWithLifecycle()
     var selected by remember { mutableStateOf<IPOListing?>(null) }
     var applyTarget by remember { mutableStateOf<IPOListing?>(null) }
     BackHandler(enabled = selected != null) { selected = null }
@@ -951,9 +960,14 @@ fun IpoListingsScreen(
         viewModel.loadInvestorTips("ipo")
     }
 
-    val openIpos = remember(ipos) { ipos.filter { classifyIpoTab(it) == IpoListingTab.OPEN } }
-    val closedIpos = remember(ipos) { ipos.filter { classifyIpoTab(it) == IpoListingTab.CLOSED } }
-    val upcomingIpos = remember(ipos) { ipos.filter { classifyIpoTab(it) == IpoListingTab.UPCOMING } }
+    val calendarIpos = remember(ipos) {
+        val live = ipos.filter { !isPracticeDemoIpo(it) }
+        if (live.isNotEmpty()) live else ipos
+    }
+    val showingLiveCalendar = calendarIpos.any { it.ipoId.startsWith("NSE-") }
+    val openIpos = remember(calendarIpos) { calendarIpos.filter { classifyIpoTab(it) == IpoListingTab.OPEN } }
+    val closedIpos = remember(calendarIpos) { calendarIpos.filter { classifyIpoTab(it) == IpoListingTab.CLOSED } }
+    val upcomingIpos = remember(calendarIpos) { calendarIpos.filter { classifyIpoTab(it) == IpoListingTab.UPCOMING } }
     val filteredIpos = when (selectedTab) {
         IpoListingTab.OPEN -> openIpos
         IpoListingTab.CLOSED -> closedIpos
@@ -966,13 +980,16 @@ fun IpoListingsScreen(
             onBack = { selected = null },
             onApply = { if (selected?.status.equals("OPEN", true)) applyTarget = selected }
         )
-    } else if (ipos.isEmpty()) {
+    } else if (calendarIpos.isEmpty()) {
         LoadingOrEmpty(
             title = "IPO Listings",
-            subtitle = "No practice IPOs in the calendar right now.",
+            subtitle = "No IPO issues in the calendar right now.",
             loading = loading,
-            body = "This is a paper IPO browser. Apply here is practice only — no real money, no ASBA block, and not an exchange application.",
+            body = actionMessage?.takeIf { it.startsWith("Couldn't refresh IPO") }
+                ?: "Refresh loads the current NSE issue list. Practice apply is not an ASBA or exchange application.",
             onBack = onBack,
+            actionLabel = if (loading) null else "Refresh IPOs",
+            onAction = { viewModel.loadIpoListings(refresh = true) },
         )
     } else {
         LazyColumn(
@@ -982,7 +999,11 @@ fun IpoListingsScreen(
             item { ExplorerTitle("IPO Listings", onBack) }
             item {
                 Text(
-                    "Paper IPO calendar for practice applies — not live NSE/BSE filings or ASBA.",
+                    if (showingLiveCalendar) {
+                        "Issue dates and price bands from the NSE calendar. Practice apply is not an ASBA or exchange application."
+                    } else {
+                        "Practice samples only. Refresh to load the current NSE issue list. Practice apply is not an exchange application."
+                    },
                     color = LocalAppTheme.current.textSecondary,
                     fontSize = 12.sp,
                 )
@@ -1004,7 +1025,7 @@ fun IpoListingsScreen(
             }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { viewModel.loadIpoListings() }) { Text("Refresh IPOs") }
+                    Button(onClick = { viewModel.loadIpoListings(refresh = true) }) { Text("Refresh IPOs") }
                 }
             }
 
@@ -1043,7 +1064,7 @@ fun IpoListingsScreen(
                                 fontWeight = FontWeight.SemiBold,
                             )
                             Text(
-                                "Open = practice window now · Upcoming = announced later · Closed = window ended. Dates are educational IST calendar, not live exchange bids.",
+                                "Open = issue window includes today · Upcoming = opens later · Closed = window already ended.",
                                 color = LocalAppTheme.current.textSecondary,
                                 fontSize = 12.sp,
                             )
@@ -1086,7 +1107,7 @@ fun IpoListingsScreen(
                                 fontSize = 12.sp
                             )
                         }
-                        Text("Price band: ₹${ipo.priceBandMin ?: 0.0} - ₹${ipo.priceBandMax ?: 0.0} • Lot: ${ipo.lotSize ?: 0}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        Text(ipoPriceLine(ipo), color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                     }
                 }
             }
@@ -1111,12 +1132,37 @@ private enum class IpoListingTab(val label: String) {
     UPCOMING("Upcoming")
 }
 
+private val ipoDateFormatter: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
+
+private fun isPracticeDemoIpo(ipo: IPOListing): Boolean {
+    return ipo.ipoId == "IPO-DEMO-OPEN" ||
+        ipo.ipoId == "IPO-DEMO-UPCOMING" ||
+        ipo.ipoId == "IPO-2026-001" ||
+        ipo.ipoId == "IPO-2026-002" ||
+        ipo.companyName.contains("(demo)", ignoreCase = true)
+}
+
+private fun ipoPriceLine(ipo: IPOListing): String {
+    val band = if (ipo.priceBandMin == null && ipo.priceBandMax == null) {
+        "Price band: not published"
+    } else {
+        "Price band: ₹${ipo.priceBandMin ?: "—"} - ₹${ipo.priceBandMax ?: "—"}"
+    }
+    val lot = ipo.lotSize?.takeIf { it > 0 }?.let { " • Lot: $it" }.orEmpty()
+    return band + lot
+}
+
 private fun classifyIpoTab(ipo: IPOListing): IpoListingTab {
+    val today = LocalDate.now(ZoneId.of("Asia/Kolkata"))
+    val open = runCatching { LocalDate.parse(ipo.issueOpenDate, ipoDateFormatter) }.getOrNull()
+    val close = runCatching { LocalDate.parse(ipo.issueCloseDate, ipoDateFormatter) }.getOrNull()
+    if (open != null && today.isBefore(open)) return IpoListingTab.UPCOMING
+    if (close != null && today.isAfter(close)) return IpoListingTab.CLOSED
+    if (open != null && close != null) return IpoListingTab.OPEN
     val status = ipo.status.trim().uppercase()
     return when {
         status.contains("CLOSE") || status.contains("LISTED") || status.contains("ALLOTT") || status.contains("COMPLETE") -> IpoListingTab.CLOSED
-        status.contains("UPCOMING") || status.contains("COMING") || status.contains("ANNOUNCED") || status.contains("YET") -> IpoListingTab.UPCOMING
-        status.contains("OPEN") || status.contains("LIVE") -> IpoListingTab.OPEN
+        status.contains("FORTHCOMING") || status.contains("UPCOMING") || status.contains("ANNOUNCED") || status.contains("YET") -> IpoListingTab.UPCOMING
         else -> IpoListingTab.OPEN
     }
 }
@@ -1904,7 +1950,7 @@ fun DerivativesIntelligenceScreen(
         item { ExplorerTitle("Options desk", onBack) }
         item {
             Text(
-                "Paper F&O gym: live NSE chain when reachable, else a teaching chain. Educational only — no guaranteed P&L.",
+                "Paper F&O only. Buy call or buy put books 1 lot into Portfolio → F&O. Sell closes that paper position. Not a live order.",
                 color = LocalAppTheme.current.textSecondary,
                 fontSize = 12.sp,
             )
@@ -2057,6 +2103,23 @@ fun DerivativesIntelligenceScreen(
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                 }
+                                PaperOptionActions(
+                                    enabled = !loading,
+                                    callPremium = contract.callLtp,
+                                    putPremium = contract.putLtp,
+                                    onCallBuy = {
+                                        viewModel.practiceOption(chain.symbol, chain.expiry, contract.strike, "CALL", "BUY", contract.callLtp)
+                                    },
+                                    onCallSell = {
+                                        viewModel.practiceOption(chain.symbol, chain.expiry, contract.strike, "CALL", "SELL", contract.callLtp)
+                                    },
+                                    onPutBuy = {
+                                        viewModel.practiceOption(chain.symbol, chain.expiry, contract.strike, "PUT", "BUY", contract.putLtp)
+                                    },
+                                    onPutSell = {
+                                        viewModel.practiceOption(chain.symbol, chain.expiry, contract.strike, "PUT", "SELL", contract.putLtp)
+                                    },
+                                )
                             }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2986,6 +3049,36 @@ private data class OptionStrategyRecipe(
     val spot: Double,
     val legsText: String,
 )
+
+@Composable
+private fun PaperOptionActions(
+    enabled: Boolean,
+    callPremium: Double,
+    putPremium: Double,
+    onCallBuy: () -> Unit,
+    onCallSell: () -> Unit,
+    onPutBuy: () -> Unit,
+    onPutSell: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            TextButton(onClick = onCallBuy, enabled = enabled && callPremium > 0.0) {
+                Text("Practice buy call", fontSize = 11.sp, maxLines = 1)
+            }
+            TextButton(onClick = onCallSell, enabled = enabled && callPremium > 0.0) {
+                Text("Practice sell call", fontSize = 11.sp, maxLines = 1)
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            TextButton(onClick = onPutBuy, enabled = enabled && putPremium > 0.0) {
+                Text("Practice buy put", fontSize = 11.sp, maxLines = 1)
+            }
+            TextButton(onClick = onPutSell, enabled = enabled && putPremium > 0.0) {
+                Text("Practice sell put", fontSize = 11.sp, maxLines = 1)
+            }
+        }
+    }
+}
 
 private fun nearestAtmContract(chain: OptionChainResponse): OptionContract? {
     return chain.contracts.minByOrNull { kotlin.math.abs(it.strike - chain.spot) }

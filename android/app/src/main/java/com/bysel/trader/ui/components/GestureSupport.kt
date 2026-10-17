@@ -363,7 +363,15 @@ fun <T> SwipeToDismissItem(
                 )
             }
         },
-        content = { Row(content = content) }
+        content = {
+            // Opaque page fill so the dismiss color stays hidden until the row actually moves.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(LocalAppTheme.current.surface),
+                content = content,
+            )
+        }
     )
 }
 
