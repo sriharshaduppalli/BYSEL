@@ -12,9 +12,11 @@ from app.ipo_calendar import (
     classify_issue_status,
     is_practice_demo,
     merge_nse_issues,
+    parse_issue_period,
     parse_nse_date,
     parse_price_band,
     refresh_ipo_calendar,
+    rows_from_public_board,
 )
 
 
@@ -96,6 +98,75 @@ def test_merge_prefers_current_issues_and_keeps_recent_past():
     assert not is_practice_demo("NSE-RUNWALENTR", "Runwal Enterprises Limited")
 
 
+def test_public_board_period_and_open_window():
+    assert parse_issue_period("21 Oct - 23 Oct", "2026-10-23T00:00:00.000Z") == (
+        "2026-10-21",
+        "2026-10-23",
+    )
+    rows = rows_from_public_board(
+        [
+            {
+                "id": 3152,
+                "ipo_news_title": "Jio Platforms IPO",
+                "urlrewrite_folder_name": "jio-platforms-ipo",
+                "issue_category": "Mainline",
+                "orderdate": "2026-10-23T00:00:00.000Z",
+                "ipo_period": "21 Oct - 23 Oct",
+            },
+            {
+                "id": 9,
+                "ipo_news_title": "Tonbo Imaging India IPO",
+                "urlrewrite_folder_name": "tonbo-imaging-india-ipo",
+                "issue_category": "Mainline",
+                "orderdate": "2026-10-19T00:00:00.000Z",
+                "ipo_period": "15 Oct - 19 Oct",
+            },
+        ],
+        date(2026, 10, 17),
+    )
+    by_id = {row["ipo_id"]: row for row in rows}
+    assert by_id["CAL-3152"]["status"] == "UPCOMING"
+    assert by_id["CAL-3152"]["company_name"] == "Jio Platforms"
+    assert by_id["CAL-9"]["status"] == "OPEN"
+    assert by_id["CAL-9"]["symbol"] == "TONBOIMAGINGINDIA"
+
+
+def test_refresh_uses_public_board_when_nse_is_blocked(monkeypatch):
+    engine = create_engine("sqlite:///:memory:")
+    IPOModel.__table__.create(engine)
+    db = sessionmaker(bind=engine)()
+
+    def _boom(today=None):
+        raise RuntimeError("nse 403")
+
+    def _public(today=None):
+        return rows_from_public_board(
+            [
+                {
+                    "id": 1,
+                    "ipo_news_title": "Acme Live IPO",
+                    "urlrewrite_folder_name": "acme-live-ipo",
+                    "issue_category": "Mainline",
+                    "orderdate": "2026-10-19T00:00:00.000Z",
+                    "ipo_period": "15 Oct - 19 Oct",
+                }
+            ],
+            today or date(2026, 10, 17),
+        )
+
+    monkeypatch.setattr("app.ipo_calendar.fetch_nse_issue_lists", _boom)
+    monkeypatch.setattr("app.ipo_calendar.fetch_public_issue_board", _public)
+    monkeypatch.setattr("app.ipo_calendar._cache_at", 0.0)
+    assert refresh_ipo_calendar(db, force=True, today=date(2026, 10, 17)) is True
+    saved = db.query(IPOModel).filter(IPOModel.ipo_id == "CAL-1").one()
+    assert saved.company_name == "Acme Live"
+    assert saved.status == "OPEN"
+    db.close()
+    import app.ipo_calendar as ipo_calendar
+
+    ipo_calendar._cache_at = 0.0
+
+
 def test_refresh_upserts_live_rows_and_keeps_last_list_when_fetch_fails(monkeypatch):
     engine = create_engine("sqlite:///:memory:")
     IPOModel.__table__.create(engine)
@@ -143,7 +214,11 @@ def test_refresh_upserts_live_rows_and_keeps_last_list_when_fetch_fails(monkeypa
     def _boom(today=None):
         raise RuntimeError("nse down")
 
+    def _public_down(today=None):
+        raise RuntimeError("public board down")
+
     monkeypatch.setattr("app.ipo_calendar.fetch_nse_issue_lists", _boom)
+    monkeypatch.setattr("app.ipo_calendar.fetch_public_issue_board", _public_down)
     assert refresh_ipo_calendar(db, force=True, today=TODAY) is False
     assert db.query(IPOModel).filter(IPOModel.ipo_id == "NSE-RUNWALENTR").count() == 1
     db.close()

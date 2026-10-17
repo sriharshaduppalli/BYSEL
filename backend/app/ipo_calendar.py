@@ -25,6 +25,7 @@ _HOME = "https://www.nseindia.com/"
 _CURRENT = "https://www.nseindia.com/api/ipo-current-issue"
 _UPCOMING = "https://www.nseindia.com/api/all-upcoming-issues?category=ipo"
 _PAST = "https://www.nseindia.com/api/public-past-issues"
+_PUBLIC_BOARD = "https://webnodejs.chittorgarh.com/cloud/ipo/list-read"
 
 _HEADERS = {
     "User-Agent": (
@@ -211,6 +212,90 @@ def merge_nse_issues(
     return list(by_symbol.values())
 
 
+def parse_issue_period(period: str | None, close_hint: str | None) -> tuple[str, str] | None:
+    """Turn '21 Oct - 23 Oct' plus a close-date hint into ISO open and close dates."""
+    match = re.fullmatch(
+        r"(\d{1,2})\s+([A-Za-z]{3})\s*-\s*(\d{1,2})\s+([A-Za-z]{3})",
+        (period or "").strip(),
+    )
+    if not match:
+        return None
+    hint = (close_hint or "").strip()
+    year = int(hint[:4]) if len(hint) >= 4 and hint[:4].isdigit() else ist_today().year
+    open_month = _MONTHS.get(match.group(2).lower())
+    close_month = _MONTHS.get(match.group(4).lower())
+    if open_month is None or close_month is None:
+        return None
+    open_year = year - 1 if open_month > close_month else year
+    try:
+        opened = date(open_year, open_month, int(match.group(1)))
+        closed = date(year, close_month, int(match.group(3)))
+    except ValueError:
+        return None
+    if closed < opened:
+        return None
+    return opened.isoformat(), closed.isoformat()
+
+
+def rows_from_public_board(items: list | None, today: date) -> list[dict]:
+    """Map a public issue board into IPO rows. No grey-market premium."""
+    cutoff = today - timedelta(days=_PAST_KEEP_DAYS)
+    rows: list[dict] = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        parsed = parse_issue_period(item.get("ipo_period"), str(item.get("orderdate") or ""))
+        if parsed is None:
+            continue
+        open_date, close_date = parsed
+        if date.fromisoformat(close_date) < cutoff:
+            continue
+        title = str(item.get("ipo_news_title") or "").strip()
+        if title.lower().endswith(" ipo"):
+            title = title[:-4].strip()
+        folder = str(item.get("urlrewrite_folder_name") or "")
+        if folder.lower().endswith("-ipo"):
+            folder = folder[:-4]
+        symbol = re.sub(r"[^A-Z0-9]", "", folder.upper())[:18]
+        raw_id = item.get("id")
+        if not title or not symbol or raw_id is None:
+            continue
+        status = classify_issue_status(open_date, close_date, today)
+        category = str(item.get("issue_category") or "").strip().upper()
+        if category == "SME" and status == "CLOSED":
+            continue
+        rows.append(
+            {
+                "ipo_id": f"CAL-{int(raw_id)}",
+                "company_name": title,
+                "symbol": symbol,
+                "status": status,
+                "issue_open_date": open_date,
+                "issue_close_date": close_date,
+                "listing_date": None,
+                "price_band_min": None,
+                "price_band_max": None,
+                "lot_size": None,
+            }
+        )
+    return rows
+
+
+def fetch_public_issue_board(today: date | None = None) -> list[dict]:
+    import requests
+
+    today = today or ist_today()
+    response = requests.get(
+        _PUBLIC_BOARD,
+        headers={"User-Agent": _HEADERS["User-Agent"], "Accept": "application/json"},
+        timeout=12,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    items = payload.get("ipoDropDownList") if isinstance(payload, dict) else None
+    return rows_from_public_board(items if isinstance(items, list) else [], today)
+
+
 def fetch_nse_issue_lists(today: date | None = None) -> tuple[list, list, list]:
     import requests
 
@@ -245,14 +330,20 @@ def refresh_ipo_calendar(db, *, force: bool = False, today: date | None = None) 
     with _LOCK:
         if not force and _cache_is_fresh():
             return True
+        rows: list[dict] = []
         try:
             current, upcoming, past = fetch_nse_issue_lists(today)
             rows = merge_nse_issues(current, upcoming, past, today)
         except Exception:
             logger.exception("NSE IPO calendar refresh failed")
-            return False
         if not rows:
-            logger.warning("NSE IPO calendar returned no issues")
+            try:
+                rows = fetch_public_issue_board(today)
+            except Exception:
+                logger.exception("Public IPO calendar refresh failed")
+                return False
+        if not rows:
+            logger.warning("IPO calendar returned no issues")
             return False
         _upsert_rows(db, rows, today)
         _cache_at = time.monotonic()
@@ -270,7 +361,9 @@ def _upsert_rows(db, rows: list[dict], today: date) -> None:
             continue
         for key, value in row.items():
             setattr(existing, key, value)
-    for existing in db.query(IPOModel).filter(IPOModel.ipo_id.like("NSE-%")).all():
+    for existing in db.query(IPOModel).all():
+        if is_practice_demo(existing.ipo_id, existing.company_name):
+            continue
         if existing.ipo_id in seen:
             continue
         close_date = parse_nse_date(existing.issue_close_date)

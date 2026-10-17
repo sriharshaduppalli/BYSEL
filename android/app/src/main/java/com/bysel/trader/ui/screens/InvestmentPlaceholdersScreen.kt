@@ -964,7 +964,7 @@ fun IpoListingsScreen(
         val live = ipos.filter { !isPracticeDemoIpo(it) }
         if (live.isNotEmpty()) live else ipos
     }
-    val showingLiveCalendar = calendarIpos.any { it.ipoId.startsWith("NSE-") }
+    val showingLiveCalendar = calendarIpos.any { !isPracticeDemoIpo(it) }
     val openIpos = remember(calendarIpos) { calendarIpos.filter { classifyIpoTab(it) == IpoListingTab.OPEN } }
     val closedIpos = remember(calendarIpos) { calendarIpos.filter { classifyIpoTab(it) == IpoListingTab.CLOSED } }
     val upcomingIpos = remember(calendarIpos) { calendarIpos.filter { classifyIpoTab(it) == IpoListingTab.UPCOMING } }
@@ -986,7 +986,7 @@ fun IpoListingsScreen(
             subtitle = "No IPO issues in the calendar right now.",
             loading = loading,
             body = actionMessage?.takeIf { it.startsWith("Couldn't refresh IPO") }
-                ?: "Refresh loads the current NSE issue list. Practice apply is not an ASBA or exchange application.",
+                ?: "Refresh loads the current issue list. Practice apply is not an ASBA or exchange application.",
             onBack = onBack,
             actionLabel = if (loading) null else "Refresh IPOs",
             onAction = { viewModel.loadIpoListings(refresh = true) },
@@ -1000,9 +1000,9 @@ fun IpoListingsScreen(
             item {
                 Text(
                     if (showingLiveCalendar) {
-                        "Issue dates and price bands from the NSE calendar. Practice apply is not an ASBA or exchange application."
+                        "Issue dates from the current calendar. A missing price band is left blank. Practice apply is not an ASBA or exchange application."
                     } else {
-                        "Practice samples only. Refresh to load the current NSE issue list. Practice apply is not an exchange application."
+                        "Practice samples only. Refresh to load the current issue list. Practice apply is not an exchange application."
                     },
                     color = LocalAppTheme.current.textSecondary,
                     fontSize = 12.sp,

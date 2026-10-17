@@ -4022,7 +4022,7 @@ async def get_ipos_endpoint(
     if status:
         query = query.filter(IPOModel.status.ilike(status))
     listings = query.order_by(IPOModel.issue_open_date.asc()).all()
-    live = [item for item in listings if str(item.ipo_id).startswith("NSE-")]
+    live = [item for item in listings if not is_practice_demo(item.ipo_id, item.company_name)]
     if live or refreshed:
         listings = [
             item
