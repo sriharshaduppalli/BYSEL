@@ -1176,7 +1176,7 @@ private fun PortfolioHoldingRow(
                         symbol = holding.symbol,
                         side = "SELL",
                         initialQty = 1,
-                        maxSellQty = holding.qty,
+                        maxSellQty = holding.qty.coerceAtLeast(0),
                         lastPrice = displayHolding.last,
                     )
                 )
@@ -1222,7 +1222,7 @@ fun UpgradedPortfolioHoldingItem(
     onSell: () -> Unit
 ) {
     val theme = LocalAppTheme.current
-    val invested = holding.avgPrice * holding.qty
+    val invested = holding.avgPrice * kotlin.math.abs(holding.qty)
     val pnlPct = if (invested > 0) (holding.pnl / invested) * 100.0 else 0.0
     val stance = remember(holding.symbol, pnlPct, dayPctChange, theme.name) {
         computeEducationalHoldingStance(pnlPct = pnlPct, dayPct = dayPctChange, theme = theme)
@@ -1342,7 +1342,7 @@ fun UpgradedPortfolioHoldingItem(
                         color = theme.textSecondary
                     )
                     Text(
-                        text = "${holding.qty}",
+                        text = if (holding.qty < 0) "Short ${-holding.qty}" else "${holding.qty}",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = theme.text
@@ -1368,7 +1368,7 @@ fun UpgradedPortfolioHoldingItem(
                         color = theme.textSecondary
                     )
                     Text(
-                        text = "₹${String.format("%.2f", holding.qty * holding.last)}",
+                        text = "₹${String.format("%.2f", kotlin.math.abs(holding.qty) * holding.last)}",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = theme.text

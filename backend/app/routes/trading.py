@@ -970,6 +970,42 @@ def paper_future_symbol(underlying: str, expiry: str) -> str:
     return f"{root}{parsed.day:02d}{month}FUT"
 
 
+def _write_paper_future_qty(
+    db: Session,
+    *,
+    user_id: int,
+    symbol: str,
+    quantity: int,
+    avg_price: float,
+    last_price: float,
+    existing: HoldingModel | None,
+) -> None:
+    """Persist a paper future, including a short stored as a negative quantity."""
+    pnl = round((last_price - avg_price) * quantity, 2)
+    if quantity == 0:
+        if existing is not None:
+            db.delete(existing)
+        db.commit()
+        return
+    if existing is None:
+        db.add(
+            HoldingModel(
+                user_id=user_id,
+                symbol=symbol,
+                quantity=quantity,
+                avg_price=avg_price,
+                last_price=last_price,
+                pnl=pnl,
+            )
+        )
+    else:
+        existing.quantity = quantity
+        existing.avg_price = avg_price
+        existing.last_price = last_price
+        existing.pnl = pnl
+    db.commit()
+
+
 def place_paper_future(
     db: Session,
     *,
@@ -1021,6 +1057,68 @@ def place_paper_future(
         orderType="MARKET",
         tag="paper-future",
     )
+    existing = (
+        db.query(HoldingModel)
+        .filter(HoldingModel.symbol == symbol, HoldingModel.user_id == user_id)
+        .first()
+    )
+    if normalized_side == "SELL" and (existing is None or existing.quantity <= 0):
+        held = abs(existing.quantity) if existing is not None and existing.quantity < 0 else 0
+        new_qty = held + qty
+        if held > 0 and existing is not None:
+            avg = ((existing.avg_price * held) + (float(price) * qty)) / new_qty
+        else:
+            avg = float(price)
+        _write_paper_future_qty(
+            db,
+            user_id=user_id,
+            symbol=symbol,
+            quantity=-new_qty,
+            avg_price=round(avg, 2),
+            last_price=float(price),
+            existing=existing,
+        )
+        return OrderResponse(
+            status="ok",
+            order=order,
+            message=(
+                f"Paper short {lots} lot ({qty} units) of {symbol} at ₹{float(price):.2f}. "
+                "Cash was not credited. A short can lose more than the move on this chart. "
+                "Practice only — not a live order. It shows under Portfolio → F&O."
+            ),
+            fillKind="paper_future",
+            sessionPhase="paper",
+        )
+    if normalized_side == "BUY" and existing is not None and existing.quantity < 0:
+        cover = min(qty, abs(existing.quantity))
+        left = abs(existing.quantity) - cover
+        _write_paper_future_qty(
+            db,
+            user_id=user_id,
+            symbol=symbol,
+            quantity=-left,
+            avg_price=existing.avg_price,
+            last_price=float(price),
+            existing=existing,
+        )
+        if qty == cover:
+            return OrderResponse(
+                status="ok",
+                order=order,
+                message=(
+                    f"Paper short closed, {lots} lot of {symbol} at ₹{float(price):.2f}. "
+                    "Practice only — not a live order."
+                ),
+                fillKind="paper_future",
+                sessionPhase="paper",
+            )
+        order = Order(
+            symbol=symbol,
+            qty=qty - cover,
+            side=normalized_side,
+            orderType="MARKET",
+            tag="paper-future",
+        )
     try:
         response, _ = _execute_order_at_price(
             db=db,

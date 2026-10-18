@@ -3,6 +3,7 @@ package com.bysel.trader.ui.screens
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -84,19 +88,23 @@ fun FoCandlePractice(
     saved: SavedPaperPractice? = null,
     onSession: (SavedPaperPractice?) -> Unit = {},
     onBook: (right: String, strike: Double, price: Double, lots: Int) -> Unit = { _, _, _, _ -> },
+    onFlatten: (right: String, strike: Double, price: Double, lots: Int) -> Unit = { _, _, _, _ -> },
+    onExtend: () -> Unit = {},
     optionsContent: @Composable () -> Unit = {},
 ) {
     val theme = LocalAppTheme.current
-    var cursor by remember(symbol, candles.size) { mutableIntStateOf(openingCursor(candles.size)) }
-    var playing by remember(symbol, candles.size) { mutableStateOf(false) }
+    var cursor by remember(symbol) { mutableIntStateOf(0) }
+    var playing by remember(symbol) { mutableStateOf(false) }
     var speed by remember(symbol) { mutableIntStateOf(2) }
-    var finished by remember(symbol, candles.size) { mutableStateOf(false) }
+    var finished by remember(symbol) { mutableStateOf(false) }
     var sim by remember(symbol) { mutableStateOf<CandleSim?>(null) }
     var closedSummary by remember(symbol) { mutableStateOf<String?>(null) }
     var fullscreen by remember(symbol) { mutableStateOf(false) }
     var showOptions by remember(symbol) { mutableStateOf(false) }
     var strikeOffset by remember(symbol) { mutableIntStateOf(0) }
     var lots by remember(symbol) { mutableIntStateOf((saved?.lots ?: 1).coerceIn(1, 5)) }
+    var booked by remember(symbol) { mutableStateOf(saved?.booked == true) }
+    var primed by remember(symbol) { mutableStateOf(false) }
     var restored by remember(symbol) { mutableStateOf(false) }
     BackHandler(enabled = fullscreen) {
         playing = false
@@ -109,10 +117,21 @@ fun FoCandlePractice(
             cursor = saved.cursor.coerceIn(0, candles.lastIndex)
             speed = saved.speed.coerceIn(1, 4)
             lots = saved.lots.coerceIn(1, 5)
+            booked = saved.booked
+            restored = true
+            primed = true
+            return@LaunchedEffect
         }
-        restored = true
+        if (!primed) {
+            cursor = openingCursor(candles.size)
+            primed = true
+            restored = true
+        } else if (finished && cursor < candles.lastIndex) {
+            finished = false
+            playing = true
+        }
     }
-    LaunchedEffect(restored, sim, cursor, lots, speed) {
+    LaunchedEffect(restored, sim, cursor, lots, speed, booked) {
         if (!restored) return@LaunchedEffect
         val open = sim
         onSession(
@@ -127,6 +146,8 @@ fun FoCandlePractice(
                     lots = lots.coerceIn(1, 5),
                     cursor = cursor,
                     speed = speed,
+                    booked = booked,
+                    iv = if (iv > 0.0) iv else 0.16,
                 )
             },
         )
@@ -146,6 +167,7 @@ fun FoCandlePractice(
             if (next > last) {
                 finished = true
                 playing = false
+                onExtend()
                 break
             }
             cursor = next
@@ -166,8 +188,12 @@ fun FoCandlePractice(
 
     if (asScreen) {
         var showChain by remember(symbol) { mutableStateOf(false) }
+        var screenStarted by remember(symbol) { mutableStateOf(false) }
         LaunchedEffect(symbol, candles.size) {
-            if (candles.size > 1) playing = true
+            if (!screenStarted && candles.size > 1 && !finished) {
+                screenStarted = true
+                playing = true
+            }
         }
         Column(
             modifier = modifier
@@ -215,93 +241,122 @@ fun FoCandlePractice(
                 PriceHistoryChart(
                     history = shown,
                     symbol = symbol,
-                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .heightIn(min = 180.dp),
                     isDarkTheme = !theme.isLight,
                     rangeLabel = "5D",
                     expandPlot = true,
                 )
-                Text(
-                    "Bar ${safeCursor + 1} of ${candles.size} · close ₹${String.format("%.2f", spot)}",
-                    color = theme.textSecondary,
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (candles.size > 1) {
-                    Slider(
-                        value = safeCursor.toFloat(),
-                        onValueChange = {
-                            playing = false
-                            finished = false
-                            cursor = it.toInt()
-                        },
-                        valueRange = 0f..(candles.size - 1).toFloat(),
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 240.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        "Bar ${safeCursor + 1} of ${candles.size} · close ₹${String.format("%.2f", spot)}",
+                        color = theme.textSecondary,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = {
-                        if (playing) {
-                            playing = false
-                        } else if (candles.size > 1) {
-                            finished = false
-                            if (safeCursor >= candles.lastIndex) cursor = openingCursor(candles.size)
-                            playing = true
-                        }
-                    }, enabled = candles.size > 1) {
-                        Text(if (playing) "Pause" else "Play", maxLines = 1)
+                    if (candles.size > 1) {
+                        Slider(
+                            value = safeCursor.toFloat(),
+                            onValueChange = {
+                                playing = false
+                                finished = false
+                                cursor = it.toInt()
+                            },
+                            valueRange = 0f..(candles.size - 1).toFloat(),
+                        )
                     }
-                    listOf(1, 2, 4).forEach { pace ->
-                        if (pace == speed) {
-                            Button(onClick = { speed = pace }) { Text("${pace}×", maxLines = 1) }
-                        } else {
-                            OutlinedButton(onClick = { speed = pace }) { Text("${pace}×", maxLines = 1) }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        OutlinedButton(onClick = {
+                            if (playing) {
+                                playing = false
+                            } else if (candles.size > 1 && safeCursor >= candles.lastIndex) {
+                                onExtend()
+                            } else if (candles.size > 1) {
+                                finished = false
+                                playing = true
+                            }
+                        }, enabled = candles.size > 1) {
+                            Text(if (playing) "Pause" else if (finished) "Check for bars" else "Play", maxLines = 1)
+                        }
+                        if (finished) {
+                            OutlinedButton(onClick = {
+                                cursor = openingCursor(candles.size)
+                                finished = false
+                                playing = candles.size > 1
+                            }) { Text("Replay", maxLines = 1) }
+                        }
+                        listOf(1, 2, 4).forEach { pace ->
+                            if (pace == speed) {
+                                Button(onClick = { speed = pace }) { Text("${pace}×", maxLines = 1) }
+                            } else {
+                                OutlinedButton(onClick = { speed = pace }) { Text("${pace}×", maxLines = 1) }
+                            }
                         }
                     }
+                    PracticeOrderControls(
+                        future = future,
+                        spot = spot,
+                        strike = strike,
+                        atmStrike = atmStrike,
+                        step = step,
+                        strikeOffset = strikeOffset,
+                        onStrikeOffset = { strikeOffset = it },
+                        callNow = callNow,
+                        putNow = putNow,
+                        lots = lots,
+                        simOpen = sim != null,
+                        onLots = { lots = it },
+                        onOpen = { right, premium ->
+                            closedSummary = null
+                            booked = false
+                            sim = CandleSim(right, if (future) 0.0 else strike, premium, spot)
+                        },
+                    )
+                    sim?.let { open ->
+                        PracticeResult(
+                            open = open,
+                            spot = spot,
+                            days = days,
+                            vol = vol,
+                            lot = lot,
+                            lots = lots,
+                            expiry = expiry,
+                            bookNote = bookNote,
+                            booked = booked,
+                            onClose = { summary, price ->
+                                if (booked) onFlatten(open.right, open.strike, price, lots)
+                                booked = false
+                                closedSummary = summary
+                                sim = null
+                            },
+                            onBook = { right, strike, price, bookedLots ->
+                                booked = true
+                                onBook(right, strike, price, bookedLots)
+                            },
+                        )
+                    }
+                    closedSummary?.let { summary ->
+                        Text(summary, color = theme.text, fontSize = 12.sp, lineHeight = 16.sp)
+                    }
                 }
-                PracticeOrderControls(
-                    future = future,
-                    spot = spot,
-                    strike = strike,
-                    atmStrike = atmStrike,
-                    step = step,
-                    strikeOffset = strikeOffset,
-                    onStrikeOffset = { strikeOffset = it },
-                    callNow = callNow,
-                    putNow = putNow,
-                    lots = lots,
-                    simOpen = sim != null,
-                    onLots = { lots = it },
-                    onOpen = { right, premium ->
-                        closedSummary = null
-                        sim = CandleSim(right, if (future) 0.0 else strike, premium, spot)
-                    },
-                )
             }
             if (showChain) {
                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     optionsContent()
-                }
-            }
-            if (shown.isNotEmpty() && !showChain) {
-                sim?.let { open ->
-                    PracticeResult(
-                        open = open,
-                        spot = spot,
-                        days = days,
-                        vol = vol,
-                        lot = lot,
-                        lots = lots,
-                        expiry = expiry,
-                        bookNote = bookNote,
-                        onClose = { summary ->
-                            closedSummary = summary
-                            sim = null
-                        },
-                        onBook = onBook,
-                    )
-                }
-                closedSummary?.let { summary ->
-                    Text(summary, color = theme.text, fontSize = 12.sp, lineHeight = 16.sp)
                 }
             }
         }
@@ -318,9 +373,9 @@ fun FoCandlePractice(
             )
             Text(
                 if (future) {
-                    "Long gains if the next bars rise. Short gains if they fall. P&L is the move times 1 lot. Book this fill saves a long future."
+                    "Long gains if the next bars rise. Short gains if they fall. P&L is the move times the lots you pick."
                 } else {
-                    "Buy a call if the next bars look higher. Buy a put if they look lower. Book this fill writes 1 lot into Portfolio → F&O."
+                    "Buy a call if the next bars look higher. Buy a put if they look lower. Book this fill writes the lots you pick into Portfolio → F&O."
                 },
                 color = theme.textSecondary,
                 fontSize = 11.sp,
@@ -362,13 +417,15 @@ fun FoCandlePractice(
                 usePlatformDefaultWidth = false,
                 dismissOnBackPress = true,
                 dismissOnClickOutside = false,
-                decorFitsSystemWindows = false,
+                decorFitsSystemWindows = true,
             ),
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(theme.surface)
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -413,95 +470,125 @@ fun FoCandlePractice(
                     PriceHistoryChart(
                         history = shown,
                         symbol = symbol,
-                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
                         isDarkTheme = !theme.isLight,
                         rangeLabel = "5D",
                         expandPlot = true,
                     )
-                    Text(
-                        "Bar ${safeCursor + 1} of ${candles.size} · close ₹${String.format("%.2f", spot)}",
-                        color = theme.textSecondary,
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (candles.size > 1) {
-                        Slider(
-                            value = safeCursor.toFloat(),
-                            onValueChange = {
-                                playing = false
-                                finished = false
-                                cursor = it.toInt()
-                            },
-                            valueRange = 0f..(candles.size - 1).toFloat(),
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 320.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            "Bar ${safeCursor + 1} of ${candles.size} · close ₹${String.format("%.2f", spot)}",
+                            color = theme.textSecondary,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
-                    }
-                    Text(
-                        when {
-                            playing -> "Graph moving · ${speed}×"
-                            finished -> "Graph reached the last saved bar."
-                            else -> "Graph paused."
-                        },
-                        color = theme.textSecondary,
-                        fontSize = 11.sp,
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = {
-                            if (playing) {
-                                playing = false
-                            } else if (candles.size > 1) {
-                                finished = false
-                                if (safeCursor >= candles.lastIndex) cursor = openingCursor(candles.size)
-                                playing = true
-                            }
-                        }, enabled = candles.size > 1) {
-                            Text(if (playing) "Pause" else "Play", maxLines = 1)
+                        if (candles.size > 1) {
+                            Slider(
+                                value = safeCursor.toFloat(),
+                                onValueChange = {
+                                    playing = false
+                                    finished = false
+                                    cursor = it.toInt()
+                                },
+                                valueRange = 0f..(candles.size - 1).toFloat(),
+                            )
                         }
-                        listOf(1, 2, 4).forEach { pace ->
-                            if (pace == speed) {
-                                Button(onClick = { speed = pace }) { Text("${pace}×", maxLines = 1) }
-                            } else {
-                                OutlinedButton(onClick = { speed = pace }) { Text("${pace}×", maxLines = 1) }
+                        Text(
+                            when {
+                                playing -> "Graph moving · ${speed}×"
+                                finished -> "Caught up to the last saved 15-minute bar."
+                                else -> "Graph paused."
+                            },
+                            color = theme.textSecondary,
+                            fontSize = 11.sp,
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            OutlinedButton(onClick = {
+                                if (playing) {
+                                    playing = false
+                                } else if (candles.size > 1 && safeCursor >= candles.lastIndex) {
+                                    onExtend()
+                                } else if (candles.size > 1) {
+                                    finished = false
+                                    playing = true
+                                }
+                            }, enabled = candles.size > 1) {
+                                Text(if (playing) "Pause" else if (finished) "Check for bars" else "Play", maxLines = 1)
+                            }
+                            if (finished) {
+                                OutlinedButton(onClick = {
+                                    cursor = openingCursor(candles.size)
+                                    finished = false
+                                    playing = candles.size > 1
+                                }) { Text("Replay", maxLines = 1) }
+                            }
+                            listOf(1, 2, 4).forEach { pace ->
+                                if (pace == speed) {
+                                    Button(onClick = { speed = pace }) { Text("${pace}×", maxLines = 1) }
+                                } else {
+                                    OutlinedButton(onClick = { speed = pace }) { Text("${pace}×", maxLines = 1) }
+                                }
                             }
                         }
-                    }
-                    PracticeOrderControls(
-                        future = future,
-                        spot = spot,
-                        strike = strike,
-                        atmStrike = atmStrike,
-                        step = step,
-                        strikeOffset = strikeOffset,
-                        onStrikeOffset = { strikeOffset = it },
-                        callNow = callNow,
-                        putNow = putNow,
-                        lots = lots,
-                        simOpen = sim != null,
-                        onLots = { lots = it },
-                        onOpen = { right, premium ->
-                            closedSummary = null
-                            sim = CandleSim(right, if (future) 0.0 else strike, premium, spot)
-                        },
-                    )
-                    sim?.let { open ->
-                        PracticeResult(
-                            open = open,
+                        PracticeOrderControls(
+                            future = future,
                             spot = spot,
-                            days = days,
-                            vol = vol,
-                            lot = lot,
+                            strike = strike,
+                            atmStrike = atmStrike,
+                            step = step,
+                            strikeOffset = strikeOffset,
+                            onStrikeOffset = { strikeOffset = it },
+                            callNow = callNow,
+                            putNow = putNow,
                             lots = lots,
-                            expiry = expiry,
-                            bookNote = bookNote,
-                            onClose = { summary ->
-                                closedSummary = summary
-                                sim = null
+                            simOpen = sim != null,
+                            onLots = { lots = it },
+                            onOpen = { right, premium ->
+                                closedSummary = null
+                                booked = false
+                                sim = CandleSim(right, if (future) 0.0 else strike, premium, spot)
                             },
-                            onBook = onBook,
                         )
-                    }
-                    closedSummary?.let { summary ->
-                        Text(summary, color = theme.text, fontSize = 12.sp, lineHeight = 16.sp)
+                        sim?.let { open ->
+                            PracticeResult(
+                                open = open,
+                                spot = spot,
+                                days = days,
+                                vol = vol,
+                                lot = lot,
+                                lots = lots,
+                                expiry = expiry,
+                                bookNote = bookNote,
+                                booked = booked,
+                                onClose = { summary, price ->
+                                    if (booked) onFlatten(open.right, open.strike, price, lots)
+                                    booked = false
+                                    closedSummary = summary
+                                    sim = null
+                                },
+                                onBook = { right, strike, price, bookedLots ->
+                                    booked = true
+                                    onBook(right, strike, price, bookedLots)
+                                },
+                            )
+                        }
+                        closedSummary?.let { summary ->
+                            Text(summary, color = theme.text, fontSize = 12.sp, lineHeight = 16.sp)
+                        }
                     }
                 }
             }
@@ -613,7 +700,8 @@ private fun PracticeResult(
     lots: Int,
     expiry: String,
     bookNote: String?,
-    onClose: (String) -> Unit,
+    booked: Boolean,
+    onClose: (String, Double) -> Unit,
     onBook: (right: String, strike: Double, price: Double, lots: Int) -> Unit,
 ) {
     val theme = LocalAppTheme.current
@@ -646,10 +734,16 @@ private fun PracticeResult(
             fontSize = 12.sp,
             lineHeight = 16.sp,
         )
-    }
-    if (open.right == "SHORT") {
         Text(
-            "A short is marked on this chart. Booking needs a paper future you already hold.",
+            "This premium is a model from the candle close. It is not a traded option price.",
+            color = theme.textSecondary,
+            fontSize = 11.sp,
+            lineHeight = 15.sp,
+        )
+    }
+    if (open.right == "SHORT" && !booked) {
+        Text(
+            "Booking a short opens it in Portfolio. Cash is not credited, and the loss is not capped.",
             color = theme.textSecondary,
             fontSize = 11.sp,
             lineHeight = 15.sp,
@@ -659,24 +753,24 @@ private fun PracticeResult(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (open.right != "SHORT") {
-            Button(
-                onClick = {
-                    val price = if (futureSide) open.entrySpot else open.entryPremium
-                    onBook(open.right, open.strike, price, lots)
-                },
-                enabled = expiry.isNotBlank() && (futureSide || open.entryPremium > 0.0),
-                modifier = Modifier.weight(1f),
-            ) { Text("Book this fill", maxLines = 1) }
-        }
+        Button(
+            onClick = {
+                val price = if (futureSide) open.entrySpot else open.entryPremium
+                onBook(open.right, open.strike, price, lots)
+            },
+            enabled = !booked && expiry.isNotBlank() && (futureSide || open.entryPremium > 0.0),
+            modifier = Modifier.weight(1f),
+        ) { Text(if (booked) "Booked" else "Book this fill", maxLines = 1) }
         OutlinedButton(
             onClick = {
+                val flattenPrice = if (futureSide) spot else mark
                 onClose(
                     "Closed the ${open.right.lowercase()} . $lotLabel result ₹${String.format("%.0f", pnl)}.",
+                    flattenPrice,
                 )
             },
             modifier = Modifier.weight(1f),
-        ) { Text("Close practice", maxLines = 1) }
+        ) { Text(if (booked) "Close booked fill" else "Close practice", maxLines = 1) }
     }
     if (!bookNote.isNullOrBlank()) {
         Text(bookNote, color = theme.text, fontSize = 12.sp, lineHeight = 16.sp)

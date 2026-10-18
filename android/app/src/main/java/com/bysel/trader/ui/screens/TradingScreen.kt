@@ -1122,8 +1122,8 @@ private fun FuturesRadarScreen(
 ) {
     val futuresContracts by viewModel.futuresContracts.collectAsStateWithLifecycle()
     val loading by viewModel.derivativesLoading.collectAsStateWithLifecycle()
-    val foCandles by viewModel.foCandles.collectAsStateWithLifecycle()
-    val foCandlesLoading by viewModel.foCandlesLoading.collectAsStateWithLifecycle()
+    val foCandles by viewModel.futureCandles.collectAsStateWithLifecycle()
+    val foCandlesLoading by viewModel.futureCandlesLoading.collectAsStateWithLifecycle()
     val derivativesError by viewModel.derivativesError.collectAsStateWithLifecycle()
     val savedFuturePractice by viewModel.savedFuturePractice.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { viewModel.loadInvestorTips("fno") }
@@ -1154,7 +1154,7 @@ private fun FuturesRadarScreen(
         }
     }
     LaunchedEffect(practiceSymbol) {
-        viewModel.loadFoCandles(practiceSymbol)
+        viewModel.loadFoCandles(practiceSymbol, "futures")
     }
 
     LaunchedEffect(futuresContracts?.generatedAt) {
@@ -1289,18 +1289,29 @@ private fun FuturesRadarScreen(
                 candles = foCandles,
                 loading = foCandlesLoading,
                 iv = 0.16,
-                onReload = { viewModel.loadFoCandles(practiceSymbol) },
+                onReload = { viewModel.loadFoCandles(practiceSymbol, "futures") },
+                onExtend = { viewModel.loadFoCandles(practiceSymbol, "futures") },
                 onSymbol = { practiceSymbol = it },
                 future = true,
                 bookNote = derivativesError,
                 saved = savedFuturePractice,
                 onSession = { viewModel.saveFuturePractice(it) },
-                onBook = { _, _, price, lots ->
+                onBook = { right, _, price, lots ->
                     val bookExpiry = selectedExpiry ?: futuresContracts?.contracts?.firstOrNull()?.expiry.orEmpty()
                     viewModel.practiceFuture(
                         underlying = practiceSymbol,
                         expiry = bookExpiry,
-                        side = "BUY",
+                        side = if (right == "SHORT") "SELL" else "BUY",
+                        price = price,
+                        lots = lots,
+                    )
+                },
+                onFlatten = { right, _, price, lots ->
+                    val bookExpiry = selectedExpiry ?: futuresContracts?.contracts?.firstOrNull()?.expiry.orEmpty()
+                    viewModel.practiceFuture(
+                        underlying = practiceSymbol,
+                        expiry = bookExpiry,
+                        side = if (right == "SHORT") "BUY" else "SELL",
                         price = price,
                         lots = lots,
                     )

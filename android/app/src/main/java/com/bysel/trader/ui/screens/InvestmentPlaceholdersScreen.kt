@@ -1904,19 +1904,11 @@ fun DerivativesIntelligenceScreen(
     val productActionMessage by viewModel.productActionMessage.collectAsStateWithLifecycle()
     val savedOptionPractice by viewModel.savedOptionPractice.collectAsStateWithLifecycle()
     val loading by viewModel.derivativesLoading.collectAsStateWithLifecycle()
-    val foCandles by viewModel.foCandles.collectAsStateWithLifecycle()
-    val foCandlesLoading by viewModel.foCandlesLoading.collectAsStateWithLifecycle()
+    val foCandles by viewModel.optionCandles.collectAsStateWithLifecycle()
+    val foCandlesLoading by viewModel.optionCandlesLoading.collectAsStateWithLifecycle()
     var symbol by remember { mutableStateOf("NIFTY") }
     var practiceSymbol by remember { mutableStateOf("NIFTY") }
-    // Default to ~3 weeks out so the educational chain always has a forward expiry.
-    var expiry by remember {
-        val cal = java.util.Calendar.getInstance()
-        cal.add(java.util.Calendar.DAY_OF_YEAR, 21)
-        val y = cal.get(java.util.Calendar.YEAR)
-        val m = cal.get(java.util.Calendar.MONTH) + 1
-        val d = cal.get(java.util.Calendar.DAY_OF_MONTH)
-        mutableStateOf(String.format("%04d-%02d-%02d", y, m, d))
-    }
+    var expiry by remember { mutableStateOf(nextWeeklyThursday()) }
     var showMoreStrikes by rememberSaveable { mutableStateOf(false) }
     var showGreeks by rememberSaveable { mutableStateOf(false) }
 
@@ -1928,7 +1920,11 @@ fun DerivativesIntelligenceScreen(
         }
     }
     LaunchedEffect(practiceSymbol) {
-        viewModel.loadFoCandles(practiceSymbol)
+        viewModel.loadFoCandles(practiceSymbol, "options")
+    }
+    LaunchedEffect(optionChain?.expiry) {
+        val loaded = optionChain?.expiry?.trim().orEmpty()
+        if (loaded.length >= 10 && loaded[4] == '-') expiry = loaded.take(10)
     }
 
     val bullCall = remember(optionChain) { bullCallLegs(optionChain) }
@@ -1960,7 +1956,8 @@ fun DerivativesIntelligenceScreen(
             candles = foCandles,
             loading = foCandlesLoading,
             iv = optionChain?.atmIv ?: 0.0,
-            onReload = { viewModel.loadFoCandles(practiceSymbol) },
+            onReload = { viewModel.loadFoCandles(practiceSymbol, "options") },
+            onExtend = { viewModel.loadFoCandles(practiceSymbol, "options") },
             onSymbol = { practiceSymbol = it },
             modifier = Modifier.weight(1f).fillMaxWidth(),
             asScreen = true,
@@ -1968,7 +1965,12 @@ fun DerivativesIntelligenceScreen(
             saved = savedOptionPractice,
             onSession = { viewModel.saveOptionPractice(it) },
             onBook = { right, strike, price, lots ->
-                viewModel.practiceOption(practiceSymbol, expiry, strike, right, "BUY", price, lots)
+                val bookedIv = optionChain?.atmIv?.takeIf { it > 0.0 } ?: 0.16
+                viewModel.practiceOption(practiceSymbol, expiry, strike, right, "BUY", price, lots, bookedIv)
+            },
+            onFlatten = { right, strike, price, lots ->
+                val bookedIv = optionChain?.atmIv?.takeIf { it > 0.0 } ?: savedOptionPractice?.iv ?: 0.16
+                viewModel.practiceOption(practiceSymbol, expiry, strike, right, "SELL", price, lots, bookedIv)
             },
             optionsContent = {
     LazyColumn(
@@ -2983,6 +2985,12 @@ private fun nearestAtmContract(chain: OptionChainResponse): OptionContract? {
 
 private fun nextHigherContract(chain: OptionChainResponse, strike: Double): OptionContract? {
     return chain.contracts.filter { it.strike > strike }.minByOrNull { it.strike }
+}
+
+private fun nextWeeklyThursday(): String {
+    val today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"))
+    val ahead = (java.time.DayOfWeek.THURSDAY.value - today.dayOfWeek.value + 7) % 7
+    return today.plusDays(ahead.toLong()).toString()
 }
 
 private fun bullCallLegs(chain: OptionChainResponse?): Pair<String, List<StrategyLeg>>? {

@@ -757,6 +757,8 @@ data class SavedPaperPractice(
     val lots: Int,
     val cursor: Int,
     val speed: Int,
+    val booked: Boolean = false,
+    val iv: Double = 0.16,
 )
 
 data class PaperOptionPracticeRequest(

@@ -78,7 +78,15 @@ private fun candleMillis(ts: Long): Long =
 private fun candleDate(ts: Long): LocalDate? {
     val ms = candleMillis(ts)
     if (ms <= 0L) return null
-    return Instant.ofEpochMilli(ms).atZone(IST).toLocalDate()
+    return runCatching { Instant.ofEpochMilli(ms).atZone(IST).toLocalDate() }.getOrNull()
+}
+
+/** Label placement must not throw when the plot is shorter than the text. */
+private fun Float.clampLabel(min: Float, max: Float): Float {
+    if (!isFinite()) return min
+    val end = if (max.isFinite()) max else min
+    if (end <= min) return min
+    return coerceIn(min, end)
 }
 
 private fun formatAxisPrice(price: Double): String = when {
@@ -286,12 +294,9 @@ fun CandlestickChart(
             modifier = if (expandPlot) Modifier.fillMaxWidth().weight(1f) else Modifier.fillMaxWidth(),
         ) {
             val widthPx = with(density) { maxWidth.toPx() }
-            if (!widthPx.isFinite() || widthPx <= 0f) {
-                return@BoxWithConstraints
-            }
-            val boundedWidthPx = widthPx.coerceAtLeast(1f)
+            val widthOk = widthPx.isFinite() && widthPx > 0f
             val yAxisPadPx = with(density) { 48.dp.toPx() }
-            val plotWidthPx = (widthPx - yAxisPadPx).coerceAtLeast(1f)
+            val plotWidthPx = if (widthOk) (widthPx - yAxisPadPx).coerceAtLeast(1f) else 1f
 
             val fittedBarWidth = remember(seriesKey, plotWidthPx, initialBarWidthDp) {
                 val targetVisible = when {
@@ -301,7 +306,7 @@ fun CandlestickChart(
                     else -> 64
                 }.coerceAtMost(history.size).coerceAtLeast(1)
                 val raw = plotWidthPx / targetVisible / density.density
-                raw.coerceIn(2.5f, 18f)
+                if (raw.isFinite()) raw.coerceIn(2.5f, 18f) else 8f
             }
 
             val barWidthState = remember(seriesKey) { mutableFloatStateOf(fittedBarWidth) }
@@ -325,7 +330,7 @@ fun CandlestickChart(
                 val newPx = (nextWidth * density.density).coerceAtLeast(1f)
                 val mid = startIndexState.floatValue + (plotWidthPx / 2f) / oldPx
                 val nextMax = (history.size - plotWidthPx / newPx).coerceAtLeast(0f)
-                val nextStart = (mid - (plotWidthPx / 2f) / newPx).coerceIn(0f, nextMax)
+                val nextStart = (mid - (plotWidthPx / 2f) / newPx).clampLabel(0f, nextMax)
                 barWidthState.floatValue = nextWidth
                 startIndexState.floatValue = nextStart
                 followLatest.value = nextStart >= nextMax - 0.6f
@@ -341,12 +346,12 @@ fun CandlestickChart(
                 startIndexState.floatValue = if (followLatest.value) {
                     maxStart
                 } else {
-                    startIndexState.floatValue.coerceIn(0f, maxStart)
+                    startIndexState.floatValue.clampLabel(0f, maxStart)
                 }
             }
 
-            val sliderValue = barWidth.coerceIn(2.5f, 48f)
-            if (!sliderValue.isFinite()) {
+            val sliderValue = if (barWidth.isFinite()) barWidth.coerceIn(2.5f, 48f) else 8f
+            if (!widthOk) {
                 return@BoxWithConstraints
             }
 
@@ -382,13 +387,13 @@ fun CandlestickChart(
                                         val mid = startIndexState.floatValue + (plotWidthPx / 2f) / oldPx
                                         val zoomedMax = (count - plotWidthPx / barPx).coerceAtLeast(0f)
                                         val zoomedStart = (mid - (plotWidthPx / 2f) / barPx - panX / barPx)
-                                            .coerceIn(0f, zoomedMax)
+                                            .clampLabel(0f, zoomedMax)
                                         barWidthState.floatValue = nextWidth
                                         startIndexState.floatValue = zoomedStart
                                         followLatest.value = zoomedStart >= zoomedMax - 0.6f
                                     } else {
                                         val nextMax = (count - plotWidthPx / barPx).coerceAtLeast(0f)
-                                        val nextStart = (startIndexState.floatValue - panX / barPx).coerceIn(0f, nextMax)
+                                        val nextStart = (startIndexState.floatValue - panX / barPx).clampLabel(0f, nextMax)
                                         startIndexState.floatValue = nextStart
                                         followLatest.value = nextStart >= nextMax - 0.6f
                                     }
@@ -402,6 +407,7 @@ fun CandlestickChart(
                             )
                         },
                 ) {
+                    if (size.width < 2f || size.height < 2f) return@Canvas
                     val leftPad = yAxisPadPx
                     val bottomPad = 26.dp.toPx()
                     val topPad = 6f
@@ -460,8 +466,10 @@ fun CandlestickChart(
                         val label = formatAxisPrice(price)
                         val layout = textMeasurer.measure(label, style = axisLabelStyle)
                         val tx = (leftPad - layout.size.width - 6f).coerceAtLeast(0f)
-                        val ty = (y - layout.size.height / 2f).coerceIn(0f, size.height - layout.size.height)
-                        drawText(layout, topLeft = Offset(tx, ty))
+                        val ty = (y - layout.size.height / 2f).clampLabel(0f, size.height - layout.size.height)
+                        if (layout.size.height < size.height) {
+                            drawText(layout, topLeft = Offset(tx, ty))
+                        }
                     }
 
                     // Candles + overlays
@@ -527,9 +535,10 @@ fun CandlestickChart(
                             strokeWidth = 1.2f,
                         )
                         val layout = textMeasurer.measure(tick.label, style = axisLabelStyle)
+                        if (layout.size.height >= size.height || layout.size.width >= size.width) return@forEach
                         val tx = (x - layout.size.width / 2f)
-                            .coerceIn(leftPad, (size.width - layout.size.width).coerceAtLeast(leftPad))
-                        val ty = (axisY + 6f).coerceAtMost(size.height - layout.size.height)
+                            .clampLabel(leftPad, size.width - layout.size.width)
+                        val ty = (axisY + 6f).clampLabel(0f, size.height - layout.size.height)
                         drawText(layout, topLeft = Offset(tx, ty))
                     }
                 }

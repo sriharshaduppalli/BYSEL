@@ -27,23 +27,41 @@ object PaperFoMark {
         "^([A-Z][A-Z0-9]*?)(\\d{2})(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)FUT$",
     )
 
+    fun optionSymbol(underlying: String, expiry: String, strike: Double, call: Boolean): String? {
+        val root = underlying.trim().uppercase().filter { it.isLetterOrDigit() }
+        if (root.isEmpty() || strike <= 0.0) return null
+        val date = runCatching { LocalDate.parse(expiry.trim().take(10)) }.getOrNull() ?: return null
+        val month = MONTHS.getOrNull(date.monthValue - 1) ?: return null
+        val kind = if (call) "CE" else "PE"
+        return "$root${date.dayOfMonth.toString().padStart(2, '0')}$month$kind${strike.toInt()}"
+    }
+
+    fun futureSymbol(underlying: String, expiry: String): String? {
+        val root = underlying.trim().uppercase().filter { it.isLetterOrDigit() }
+        if (root.isEmpty()) return null
+        val date = runCatching { LocalDate.parse(expiry.trim().take(10)) }.getOrNull() ?: return null
+        val month = MONTHS.getOrNull(date.monthValue - 1) ?: return null
+        return "$root${date.dayOfMonth.toString().padStart(2, '0')}${month}FUT"
+    }
+
     fun note(symbol: String): String? {
         val parsed = parse(symbol) ?: return null
         return if (parsed.call == null) {
             "Marked from the underlying price. Not the futures contract last."
         } else {
-            "Marked from the underlying price at 16% volatility. Not a traded option price."
+            "Marked from the underlying at the volatility booked with this fill. Not a traded option price."
         }
     }
 
-    fun apply(holding: Holding, quotes: List<Quote>): Holding {
+    fun apply(holding: Holding, quotes: List<Quote>, ivBySymbol: Map<String, Double> = emptyMap()): Holding {
         val parsed = parse(holding.symbol) ?: return holding
         val spot = underlyingLast(parsed.root, quotes)
         if (spot <= 0.0) return holding
+        val iv = ivBySymbol[holding.symbol.trim().uppercase()] ?: 0.16
         val last = if (parsed.call == null) {
             spot
         } else {
-            premium(spot, parsed.strike, daysUntil(parsed), 0.16, parsed.call)
+            premium(spot, parsed.strike, daysUntil(parsed), iv, parsed.call)
         }
         val pnl = (last - holding.avgPrice) * holding.qty
         if (holding.last == last && holding.pnl == pnl) return holding

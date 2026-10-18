@@ -413,11 +413,19 @@ class TradingViewModel(
     private val _futuresTicketPreview = MutableStateFlow<FuturesTicketPreviewResponse?>(null)
     val futuresTicketPreview: StateFlow<FuturesTicketPreviewResponse?> = _futuresTicketPreview.asStateFlow()
 
-    private val _foCandles = MutableStateFlow<List<HistoryCandle>>(emptyList())
-    val foCandles: StateFlow<List<HistoryCandle>> = _foCandles.asStateFlow()
+    private val _optionCandles = MutableStateFlow<List<HistoryCandle>>(emptyList())
+    val optionCandles: StateFlow<List<HistoryCandle>> = _optionCandles.asStateFlow()
+    private val _futureCandles = MutableStateFlow<List<HistoryCandle>>(emptyList())
+    val futureCandles: StateFlow<List<HistoryCandle>> = _futureCandles.asStateFlow()
 
-    private val _foCandlesLoading = MutableStateFlow(false)
-    val foCandlesLoading: StateFlow<Boolean> = _foCandlesLoading.asStateFlow()
+    private val _optionCandlesLoading = MutableStateFlow(false)
+    val optionCandlesLoading: StateFlow<Boolean> = _optionCandlesLoading.asStateFlow()
+    private val _futureCandlesLoading = MutableStateFlow(false)
+    val futureCandlesLoading: StateFlow<Boolean> = _futureCandlesLoading.asStateFlow()
+
+    private val practicePrefs = getApplication<Application>()
+        .getSharedPreferences("bysel_paper_practice", android.content.Context.MODE_PRIVATE)
+    private val paperIvBySymbol = mutableMapOf<String, Double>()
 
     private val _savedOptionPractice = MutableStateFlow<SavedPaperPractice?>(null)
     val savedOptionPractice: StateFlow<SavedPaperPractice?> = _savedOptionPractice.asStateFlow()
@@ -427,10 +435,12 @@ class TradingViewModel(
 
     fun saveOptionPractice(session: SavedPaperPractice?) {
         _savedOptionPractice.value = session
+        writePractice("option", session)
     }
 
     fun saveFuturePractice(session: SavedPaperPractice?) {
         _savedFuturePractice.value = session
+        writePractice("future", session)
     }
 
     private val _familyDashboard = MutableStateFlow<FamilyDashboardResponse?>(null)
@@ -559,7 +569,7 @@ class TradingViewModel(
                 holding.copy(last = quote.last, pnl = pnl)
             }
         }.map { holding ->
-            val marked = com.bysel.trader.portfolio.PaperFoMark.apply(holding, quotes)
+            val marked = com.bysel.trader.portfolio.PaperFoMark.apply(holding, quotes, paperIvBySymbol)
             if (marked != holding) changed = true
             marked
         }
@@ -800,6 +810,13 @@ class TradingViewModel(
     ).flow.cachedIn(viewModelScope)
 
     init {
+        _savedOptionPractice.value = readPractice("option")
+        _savedFuturePractice.value = readPractice("future")
+        practicePrefs.all.forEach { (key, value) ->
+            if (!key.startsWith("iv:")) return@forEach
+            val iv = value?.toString()?.toDoubleOrNull() ?: return@forEach
+            paperIvBySymbol[key.removePrefix("iv:")] = iv
+        }
         loadAchievements()
         // observe active alerts from DB
         viewModelScope.launch {
@@ -2336,6 +2353,7 @@ class TradingViewModel(
         side: String,
         premium: Double,
         lots: Int = 1,
+        iv: Double = 0.16,
     ) {
         if (underlying.isBlank() || expiry.isBlank()) {
             _derivativesError.value = "Load a chain before a paper option fill"
@@ -2365,6 +2383,7 @@ class TradingViewModel(
                     } else {
                         _derivativesError.value = null
                         _productActionMessage.value = response.data.message
+                        rememberOptionIv(underlying, expiry, strike, right, iv)
                         refreshHoldings()
                         refreshWallet()
                         unlockAchievement("first_trade")
@@ -2377,22 +2396,82 @@ class TradingViewModel(
         }
     }
 
-    fun loadFoCandles(symbol: String) {
+    fun loadFoCandles(symbol: String, desk: String = "options") {
         val normalized = symbol.trim().uppercase()
         if (normalized.isBlank()) return
+        val target = if (desk == "futures") _futureCandles else _optionCandles
+        val loading = if (desk == "futures") _futureCandlesLoading else _optionCandlesLoading
         viewModelScope.launch {
-            _foCandlesLoading.value = true
-            _foCandles.value = emptyList()
+            loading.value = true
             when (val response = repository.getQuoteHistory(normalized, "5d", "15m")) {
                 is Result.Success -> {
-                    _foCandles.value = response.data.filter { candle ->
+                    val fresh = response.data.filter { candle ->
                         candle.close > 0.0 && candle.high >= candle.low
                     }
+                    target.value = mergeCandles(target.value, fresh)
                 }
-                else -> _foCandles.value = emptyList()
+                else -> if (target.value.isEmpty()) target.value = emptyList()
             }
-            _foCandlesLoading.value = false
+            loading.value = false
         }
+    }
+
+    private fun mergeCandles(existing: List<HistoryCandle>, incoming: List<HistoryCandle>): List<HistoryCandle> {
+        if (incoming.isEmpty()) return existing
+        val byTime = linkedMapOf<Long, HistoryCandle>()
+        existing.forEach { byTime[it.timestamp] = it }
+        incoming.forEach { byTime[it.timestamp] = it }
+        return byTime.values.sortedBy { it.timestamp }
+    }
+
+    private fun rememberOptionIv(
+        underlying: String,
+        expiry: String,
+        strike: Double,
+        right: String,
+        iv: Double,
+    ) {
+        val call = right.equals("CALL", ignoreCase = true) || right.equals("CE", ignoreCase = true)
+        val symbol = com.bysel.trader.portfolio.PaperFoMark.optionSymbol(underlying, expiry, strike, call) ?: return
+        val kept = iv.coerceIn(0.08, 0.80)
+        paperIvBySymbol[symbol] = kept
+        practicePrefs.edit().putString("iv:$symbol", kept.toString()).apply()
+    }
+
+    private fun writePractice(key: String, session: SavedPaperPractice?) {
+        if (session == null) {
+            practicePrefs.edit().remove(key).apply()
+            return
+        }
+        val raw = listOf(
+            session.right,
+            session.strike.toString(),
+            session.entryPremium.toString(),
+            session.entrySpot.toString(),
+            session.lots.toString(),
+            session.cursor.toString(),
+            session.speed.toString(),
+            session.booked.toString(),
+            session.iv.toString(),
+        ).joinToString("|")
+        practicePrefs.edit().putString(key, raw).apply()
+    }
+
+    private fun readPractice(key: String): SavedPaperPractice? {
+        val raw = practicePrefs.getString(key, null) ?: return null
+        val parts = raw.split("|")
+        if (parts.size < 7) return null
+        return SavedPaperPractice(
+            right = parts[0],
+            strike = parts[1].toDoubleOrNull() ?: return null,
+            entryPremium = parts[2].toDoubleOrNull() ?: return null,
+            entrySpot = parts[3].toDoubleOrNull() ?: return null,
+            lots = parts[4].toIntOrNull() ?: return null,
+            cursor = parts[5].toIntOrNull() ?: return null,
+            speed = parts[6].toIntOrNull() ?: return null,
+            booked = parts.getOrNull(7)?.toBooleanStrictOrNull() ?: false,
+            iv = parts.getOrNull(8)?.toDoubleOrNull() ?: 0.16,
+        )
     }
 
     fun practiceFuture(
