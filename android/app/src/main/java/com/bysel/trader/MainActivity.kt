@@ -501,13 +501,19 @@ fun BYSELApp(
         return true
     }
 
+    fun isRootTab(tab: Int) = tab == 0 || tab == 1 || tab == 2 || tab == 3 || tab == 5
+
+    fun rootTabToPagerPage(tab: Int) = if (tab == 5) 4 else tab
+
+    fun pagerPageToRootTab(page: Int) = if (page >= 4) 5 else page
+
     fun navigatePushingCurrent(toTab: Int) {
-        if (selectedTab in 0..5 && toTab !in 0..5) {
+        if (isRootTab(selectedTab) && !isRootTab(toTab)) {
             // Home/AI/… pager may still be settling a sloppy tap. Do not
             // let that swipe overwrite Smart Money / Scanner / Signal Lab.
             suppressPagerTabSync = true
         }
-        if (selectedTab !in 0..5 && toTab in 0..5) {
+        if (!isRootTab(selectedTab) && isRootTab(toTab)) {
             suppressPagerTabSync = true
         }
         if (selectedTab != toTab) {
@@ -572,12 +578,16 @@ fun BYSELApp(
     }
     val density = LocalDensity.current
     val windowLayout = rememberWindowLayoutInfo()
-    val contentHorizontalPadding = if (windowLayout.isWide) 24.dp else 0.dp
+    val contentHorizontalPadding = if (windowLayout.isWide) {
+        ((windowLayout.widthDp - 840).coerceAtLeast(48) / 2).dp
+    } else {
+        0.dp
+    }
     val edgeThresholdPx = with(density) { 28.dp.toPx() }
     val swipeTriggerPx = with(density) { 110.dp.toPx() }
     val pagerState = rememberPagerState(
-        initialPage = selectedTab.coerceIn(0, 5),
-        pageCount = { 6 }
+        initialPage = rootTabToPagerPage(if (isRootTab(selectedTab)) selectedTab else 5).coerceIn(0, 4),
+        pageCount = { 5 }
     )
     
     val quotes by viewModel.quotes.collectAsStateWithLifecycle()
@@ -710,8 +720,9 @@ fun BYSELApp(
     }
 
     LaunchedEffect(selectedTab) {
-        if (selectedTab in 0..5 && pagerState.currentPage != selectedTab) {
-            pagerState.scrollToPage(selectedTab)
+        val pagerPage = rootTabToPagerPage(selectedTab)
+        if (isRootTab(selectedTab) && pagerState.currentPage != pagerPage) {
+            pagerState.scrollToPage(pagerPage)
         }
         // Soft resync when jumping Home ↔ Trade; skip if we just topped up (avoids stale overwrite).
         if (selectedTab == 0 || selectedTab == 2) {
@@ -720,7 +731,7 @@ fun BYSELApp(
         if (selectedTab == 20) {
             viewModel.loadSignalLabBuckets()
         }
-        if (selectedTab == 20) {
+        if (selectedTab == 4 || selectedTab == 20) {
             if (marketHeatmap == null) {
                 viewModel.loadMarketHeatmap()
             }
@@ -742,8 +753,9 @@ fun BYSELApp(
                     if (settledPage == selectedTab) suppressPagerTabSync = false
                     return@collect
                 }
-                if (selectedTab in 0..5 && selectedTab != settledPage) {
-                    selectedTab = settledPage
+                val settledTab = pagerPageToRootTab(settledPage)
+                if (isRootTab(selectedTab) && selectedTab != settledTab) {
+                    selectedTab = settledTab
                 }
             }
     }
@@ -752,7 +764,7 @@ fun BYSELApp(
         if (popTabBack()) return
         when {
             selectedTab == 9 -> selectedTab = previousTab
-            selectedTab !in 0..5 -> selectedTab = 5
+            !isRootTab(selectedTab) -> selectedTab = 5
             selectedTab != 0 -> selectedTab = 0
             else -> {
                 val now = System.currentTimeMillis()
@@ -839,10 +851,10 @@ fun BYSELApp(
                     bottomBar = {
                         // Stock detail (tab 9) is opened on top of another tab, so keep the
                         // originating tab highlighted instead of falling through to "More".
-                        val navHighlightTab = if (selectedTab == 9 && previousTab in 0..5) {
-                            previousTab
-                        } else {
-                            selectedTab
+                        val navHighlightTab = when {
+                            selectedTab == 9 && isRootTab(previousTab) -> previousTab
+                            isRootTab(selectedTab) -> selectedTab
+                            else -> 5
                         }
                         val navColors = NavigationBarItemDefaults.colors(
                             selectedIconColor = appTheme.primary,
@@ -873,7 +885,7 @@ fun BYSELApp(
                     )
                     // Tab 2: Trading
                     NavigationBarItem(
-                        icon = { Icon(Icons.Filled.AttachMoney, contentDescription = "Trade", modifier = Modifier.size(22.dp)) },
+                        icon = { Icon(Icons.Filled.CurrencyRupee, contentDescription = "Trade", modifier = Modifier.size(22.dp)) },
                         label = { Text("Trade", fontSize = 10.sp) },
                         selected = navHighlightTab == 2,
                         onClick = { selectRootTab(2) },
@@ -887,15 +899,7 @@ fun BYSELApp(
                         onClick = { selectRootTab(3) },
                         colors = navColors
                     )
-                    // Tab 4: Heatmap
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Filled.GridView, contentDescription = "Heatmap", modifier = Modifier.size(22.dp)) },
-                        label = { Text("Heatmap", fontSize = 10.sp) },
-                        selected = navHighlightTab == 4,
-                        onClick = { selectRootTab(4) },
-                        colors = navColors
-                    )
-                    // Tab 5: More (Search, Alerts, Settings) — badge when price alerts are armed
+                    // More — badge when price alerts are armed. Heatmap lives in this menu.
                     NavigationBarItem(
                         icon = {
                             BadgedBox(
@@ -925,14 +929,14 @@ fun BYSELApp(
                             }
                         },
                         label = { Text("More", fontSize = 10.sp) },
-                        selected = navHighlightTab in 5..27,
+                        selected = navHighlightTab == 5,
                         onClick = { selectRootTab(5) },
                         colors = navColors
                     )
                         }
                     }
                 ) { paddingValues ->
-                    val edgeGestureModifier = if (selectedTab !in 0..5) {
+                    val edgeGestureModifier = if (!isRootTab(selectedTab)) {
                         Modifier.pointerInput(selectedTab, previousTab, tabBackStack.size) {
                             var dragStartX = 0f
                             var totalDragX = 0f
@@ -959,6 +963,7 @@ fun BYSELApp(
 
                                     val canSwipeBack =
                                         tabBackStack.isNotEmpty() ||
+                                            selectedTab == 4 ||
                                             selectedTab == 9 ||
                                             selectedTab in 6..8 ||
                                             selectedTab in 10..29
@@ -1002,8 +1007,8 @@ fun BYSELApp(
                             .fillMaxSize()
                             .then(edgeGestureModifier)
                     ) {
-                        // Swipeable root tabs: Home, AI, Trade, Portfolio, Heatmap, More
-                        if (selectedTab in 0..5) {
+                        // Swipeable root tabs: Home, AI, Trade, Portfolio, More
+                        if (isRootTab(selectedTab)) {
                             HorizontalPager(
                                 state = pagerState,
                                 modifier = Modifier.fillMaxSize(),
@@ -1157,6 +1162,7 @@ fun BYSELApp(
                                         },
                                         onOpenSearch = { navigatePushingCurrent(6) },
                                         onOpenWatchlists = { navigatePushingCurrent(25) },
+                                        onOpenAdvancedOrders = { navigatePushingCurrent(16) },
                                         viewModel = viewModel
                                     )
                                     3 -> PortfolioScreen(
@@ -1204,23 +1210,7 @@ fun BYSELApp(
                                         onNavigateToTrade = { selectRootTab(2) },
                                         onOpenRiskLab = { navigatePushingCurrent(22) },
                                     )
-                                    4 -> HeatmapScreen(
-                                        heatmap = marketHeatmap,
-                                        isLoading = heatmapLoading,
-                                        heatmapInterval = heatmapInterval,
-                                        isActive = pagerState.currentPage == 4,
-                                        onRefresh = { viewModel.loadMarketHeatmap(force = false) },
-                                        onForceRefresh = { viewModel.loadMarketHeatmap(force = true) },
-                                        onStockClick = { symbol ->
-                                            viewModel.fetchAndSelectQuote(symbol)
-                                            openStockDetailTab()
-                                        },
-                                        onSectorClick = { sectorName, symbols ->
-                                            viewModel.setScannerSectorFocus(sectorName, symbols)
-                                            navigatePushingCurrent(28)
-                                        },
-                                    )
-                                    5 -> MoreScreen(
+                                    4 -> MoreScreen(
                                         activeAlertCount = activeAlertCount,
                                         onSearchClick = { navigatePushingCurrent(6) },
                                         onAlertsClick = { navigatePushingCurrent(7) },
@@ -1230,10 +1220,15 @@ fun BYSELApp(
                                             viewModel.requestTradeWorkspace(0)
                                             selectRootTab(2)
                                         },
-                                        onFnoClick = {
+                                        onFnoOptionsClick = {
+                                            viewModel.requestTradeWorkspace(1)
+                                            selectRootTab(2)
+                                        },
+                                        onFnoFuturesClick = {
                                             viewModel.requestTradeWorkspace(2)
                                             selectRootTab(2)
                                         },
+                                        onHeatmapClick = { navigatePushingCurrent(4) },
                                         onMutualFundsClick = { navigatePushingCurrent(11) },
                                         onIpoClick = { navigatePushingCurrent(12) },
                                         onEtfClick = { navigatePushingCurrent(13) },
@@ -1241,7 +1236,6 @@ fun BYSELApp(
                                         onSipClick = { navigatePushingCurrent(14) },
                                         onMyIpoApplicationsClick = { navigatePushingCurrent(15) },
                                         onAdvancedOrdersClick = { navigatePushingCurrent(16) },
-                                        onDerivativesClick = { navigatePushingCurrent(17) },
                                         onWealthOsClick = { navigatePushingCurrent(18) },
                                         onCopilotCenterClick = { navigatePushingCurrent(19) },
                                         onSignalLabClick = { navigatePushingCurrent(20) },
@@ -1259,6 +1253,23 @@ fun BYSELApp(
                         } else {
                             // Non-swipeable screens (Search, Alerts, Settings, Detail, Achievements)
                             when (selectedTab) {
+                                4 -> HeatmapScreen(
+                                    heatmap = marketHeatmap,
+                                    isLoading = heatmapLoading,
+                                    heatmapInterval = heatmapInterval,
+                                    isActive = true,
+                                    onRefresh = { viewModel.loadMarketHeatmap(force = false) },
+                                    onForceRefresh = { viewModel.loadMarketHeatmap(force = true) },
+                                    onStockClick = { symbol ->
+                                        viewModel.fetchAndSelectQuote(symbol)
+                                        openStockDetailTab()
+                                    },
+                                    onSectorClick = { sectorName, symbols ->
+                                        viewModel.setScannerSectorFocus(sectorName, symbols)
+                                        navigatePushingCurrent(28)
+                                    },
+                                    onBack = { handleSystemBack() },
+                                )
                                 10 -> com.bysel.trader.ui.screens.AchievementsScreen(
                                     viewModel,
                                     onBack = { handleSystemBack() },
@@ -1326,15 +1337,15 @@ fun BYSELApp(
                                         }
                                     },
                                     onOpenPaperGym = {
-                                        viewModel.requestTradeWorkspace(2)
+                                        viewModel.requestTradeWorkspace(1)
                                         selectRootTab(2)
                                     },
                                     onOpenOptionsGym = {
-                                        viewModel.requestTradeWorkspace(2)
+                                        viewModel.requestTradeWorkspace(1)
                                         selectRootTab(2)
                                     },
                                     onOpenFuturesGym = {
-                                        viewModel.requestTradeWorkspace(3)
+                                        viewModel.requestTradeWorkspace(2)
                                         selectRootTab(2)
                                     },
                                     onAskAi = { query ->
@@ -1511,7 +1522,7 @@ fun BYSELApp(
                         }
 
                         // Left-edge swipe returns through deep-link history even on AI (pager) tab.
-                        if (selectedTab !in 0..5 || tabBackStack.lastOrNull()?.let { it !in 0..5 } == true) {
+                        if (!isRootTab(selectedTab) || tabBackStack.lastOrNull()?.let { !isRootTab(it) } == true) {
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.CenterStart)
@@ -1547,7 +1558,7 @@ fun BYSELApp(
                             )
                         }
                         // Right-edge back on overlay screens (Android gesture nav uses both edges).
-                        if (selectedTab !in 0..5) {
+                        if (!isRootTab(selectedTab)) {
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.CenterEnd)
@@ -1583,7 +1594,7 @@ fun BYSELApp(
                             )
                         }
 
-                        // Right-edge only so the pager can still swipe More ↔ Heatmap.
+                        // Right-edge on More opens Search. The pager still swipes Portfolio ↔ More.
                         if (selectedTab == 5 && tabBackStack.isEmpty()) {
                             Box(
                                 modifier = Modifier

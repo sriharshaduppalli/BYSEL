@@ -749,6 +749,16 @@ data class BasketOrderResponse(
     val legResults: List<BasketLegExecution> = emptyList()
 )
 
+data class SavedPaperPractice(
+    val right: String,
+    val strike: Double,
+    val entryPremium: Double,
+    val entrySpot: Double,
+    val lots: Int,
+    val cursor: Int,
+    val speed: Int,
+)
+
 data class PaperOptionPracticeRequest(
     val underlying: String,
     val expiry: String,

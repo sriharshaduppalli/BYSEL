@@ -2,11 +2,15 @@ package com.bysel.trader.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -19,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -27,6 +32,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -42,7 +49,9 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.min
 
 private enum class Overlay(val label: String, val color: Color) {
     SMA20("SMA 20", Color(0xFFFFD600)),
@@ -167,7 +176,7 @@ private fun evenlySpacedDateTicks(
 
 /**
  * Canvas candlestick chart that fits 5D / 1M / 3M / 1Y ranges.
- * Latest bars stay pinned to the right; pinch/slider zoom; drag to pan.
+ * Pinch zooms the bars. Drag left or right moves the window. A double tap fits the latest bars again.
  * Draws Y-axis prices and range-aware X-axis dates.
  */
 @Composable
@@ -176,6 +185,7 @@ fun CandlestickChart(
     modifier: Modifier = Modifier,
     initialBarWidthDp: Float = 10f,
     rangeLabel: String = "1M",
+    expandPlot: Boolean = false,
 ) {
     if (history.isEmpty()) return
 
@@ -193,20 +203,8 @@ fun CandlestickChart(
     val bb = remember(closes) { TechnicalIndicators.bollingerBands(closes, 20) }
     val rsi = remember(closes) { TechnicalIndicators.rsi(closes, 14) }
 
-    val allPrices = remember(highs, lows, bb, activeOverlays) {
-        val prices = highs + lows
-        if (Overlay.BB in activeOverlays) {
-            prices + bb.upper.filterNotNull() + bb.lower.filterNotNull()
-        } else {
-            prices
-        }
-    }
-    val maxPrice = remember(allPrices) { allPrices.maxOrNull() ?: 0.0 }
-    val minPrice = remember(allPrices) { allPrices.minOrNull() ?: 0.0 }
-    val priceRange = remember(maxPrice, minPrice) { max(1e-6, maxPrice - minPrice) }
-
-    val historyKey = remember(history, rangeLabel) {
-        "${rangeLabel}:${history.size}:${history.firstOrNull()?.timestamp}:${history.lastOrNull()?.timestamp}"
+    val seriesKey = remember(history, rangeLabel) {
+        "$rangeLabel:${history.firstOrNull()?.timestamp}"
     }
 
     val theme = LocalAppTheme.current
@@ -216,7 +214,7 @@ fun CandlestickChart(
     val gridColor = theme.text.copy(alpha = 0.12f)
     val axisLineColor = theme.text.copy(alpha = 0.20f)
 
-    Column(modifier = modifier) {
+    Column(modifier = if (expandPlot) modifier.fillMaxSize() else modifier) {
         val lastCandle = history.last()
         Row(
             modifier = Modifier
@@ -230,59 +228,63 @@ fun CandlestickChart(
             Text(text = "C: ${String.format("%.2f", lastCandle.close)}", color = theme.textSecondary, fontSize = 11.sp)
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 2.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Overlay.entries.forEach { overlay ->
-                val selected = overlay in activeOverlays
-                FilterChip(
-                    selected = selected,
-                    onClick = {
-                        activeOverlays = if (selected) activeOverlays - overlay else activeOverlays + overlay
-                    },
-                    label = { Text(overlay.label, fontSize = 10.sp, maxLines = 1) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = overlay.color.copy(alpha = 0.2f),
-                        selectedLabelColor = overlay.color,
-                    ),
-                    modifier = Modifier.height(28.dp),
+        if (!expandPlot) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Overlay.entries.forEach { overlay ->
+                    val selected = overlay in activeOverlays
+                    FilterChip(
+                        selected = selected,
+                        onClick = {
+                            activeOverlays = if (selected) activeOverlays - overlay else activeOverlays + overlay
+                        },
+                        label = { Text(overlay.label, fontSize = 10.sp, maxLines = 1) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = overlay.color.copy(alpha = 0.2f),
+                            selectedLabelColor = overlay.color,
+                        ),
+                        modifier = Modifier.height(28.dp),
+                    )
+                }
+            }
+
+            val lastRsi = rsi.lastOrNull { it != null }
+            if (lastRsi != null) {
+                val rsiColor = when {
+                    lastRsi >= 70 -> Color(0xFFE53935)
+                    lastRsi <= 30 -> Color(0xFF00C853)
+                    else -> theme.textSecondary
+                }
+                val rsiLabel = when {
+                    lastRsi >= 70 -> "Overbought"
+                    lastRsi <= 30 -> "Oversold"
+                    else -> "Neutral"
+                }
+                Text(
+                    text = "RSI(14): ${String.format("%.1f", lastRsi)} — $rsiLabel",
+                    color = rsiColor,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                 )
             }
         }
 
-        val lastRsi = rsi.lastOrNull { it != null }
-        if (lastRsi != null) {
-            val rsiColor = when {
-                lastRsi >= 70 -> Color(0xFFE53935)
-                lastRsi <= 30 -> Color(0xFF00C853)
-                else -> theme.textSecondary
-            }
-            val rsiLabel = when {
-                lastRsi >= 70 -> "Overbought"
-                lastRsi <= 30 -> "Oversold"
-                else -> "Neutral"
-            }
-            Text(
-                text = "RSI(14): ${String.format("%.1f", lastRsi)} — $rsiLabel",
-                color = rsiColor,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-            )
-        }
-
         Text(
-            text = "$rangeLabel · ${history.size} candles · drag to pan · pinch / slider to zoom",
+            text = "Pinch to zoom · drag left or right · double-tap to fit",
             color = theme.textSecondary,
             fontSize = 10.sp,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
             maxLines = 1,
         )
 
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        BoxWithConstraints(
+            modifier = if (expandPlot) Modifier.fillMaxWidth().weight(1f) else Modifier.fillMaxWidth(),
+        ) {
             val widthPx = with(density) { maxWidth.toPx() }
             if (!widthPx.isFinite() || widthPx <= 0f) {
                 return@BoxWithConstraints
@@ -291,7 +293,7 @@ fun CandlestickChart(
             val yAxisPadPx = with(density) { 48.dp.toPx() }
             val plotWidthPx = (widthPx - yAxisPadPx).coerceAtLeast(1f)
 
-            val fittedBarWidth = remember(historyKey, plotWidthPx, initialBarWidthDp) {
+            val fittedBarWidth = remember(seriesKey, plotWidthPx, initialBarWidthDp) {
                 val targetVisible = when {
                     history.size <= 28 -> history.size.coerceAtLeast(8)
                     history.size <= 80 -> 48
@@ -299,11 +301,16 @@ fun CandlestickChart(
                     else -> 64
                 }.coerceAtMost(history.size).coerceAtLeast(1)
                 val raw = plotWidthPx / targetVisible / density.density
-                raw.coerceIn(3.5f, 18f)
+                raw.coerceIn(2.5f, 18f)
             }
 
-            val barWidthState = remember(historyKey) { mutableFloatStateOf(fittedBarWidth) }
-            val startIndexState = remember(historyKey) { mutableFloatStateOf(0f) }
+            val barWidthState = remember(seriesKey) { mutableFloatStateOf(fittedBarWidth) }
+            val startIndexState = remember(seriesKey) { mutableFloatStateOf(0f) }
+            val followLatest = remember(seriesKey) { mutableStateOf(true) }
+            val candleCount = remember(seriesKey) { mutableIntStateOf(history.size) }
+            val fittedState = remember(seriesKey) { mutableFloatStateOf(fittedBarWidth) }
+            candleCount.intValue = history.size
+            fittedState.floatValue = fittedBarWidth
             val barWidth = barWidthState.floatValue
             val startIndex = startIndexState.floatValue
 
@@ -313,24 +320,41 @@ fun CandlestickChart(
                 return (history.size - visible).coerceAtLeast(0f)
             }
 
-            LaunchedEffect(historyKey, fittedBarWidth) {
-                barWidthState.floatValue = fittedBarWidth
-                startIndexState.floatValue = maxStartFor(fittedBarWidth)
+            fun zoomAroundCenter(nextWidth: Float) {
+                val oldPx = (barWidthState.floatValue * density.density).coerceAtLeast(1f)
+                val newPx = (nextWidth * density.density).coerceAtLeast(1f)
+                val mid = startIndexState.floatValue + (plotWidthPx / 2f) / oldPx
+                val nextMax = (history.size - plotWidthPx / newPx).coerceAtLeast(0f)
+                val nextStart = (mid - (plotWidthPx / 2f) / newPx).coerceIn(0f, nextMax)
+                barWidthState.floatValue = nextWidth
+                startIndexState.floatValue = nextStart
+                followLatest.value = nextStart >= nextMax - 0.6f
             }
 
-            val sliderValue = barWidth.coerceIn(3.5f, 28f)
+            LaunchedEffect(seriesKey, fittedBarWidth) {
+                barWidthState.floatValue = fittedBarWidth
+                startIndexState.floatValue = maxStartFor(fittedBarWidth)
+                followLatest.value = true
+            }
+            LaunchedEffect(history.size, plotWidthPx) {
+                val maxStart = maxStartFor(barWidthState.floatValue)
+                startIndexState.floatValue = if (followLatest.value) {
+                    maxStart
+                } else {
+                    startIndexState.floatValue.coerceIn(0f, maxStart)
+                }
+            }
+
+            val sliderValue = barWidth.coerceIn(2.5f, 48f)
             if (!sliderValue.isFinite()) {
                 return@BoxWithConstraints
             }
 
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = if (expandPlot) Modifier.fillMaxSize() else Modifier.fillMaxWidth()) {
                 Slider(
                     value = sliderValue,
-                    onValueChange = {
-                        barWidthState.floatValue = it
-                        startIndexState.floatValue = startIndexState.floatValue.coerceIn(0f, maxStartFor(it))
-                    },
-                    valueRange = 3.5f..28f,
+                    onValueChange = { zoomAroundCenter(it) },
+                    valueRange = 2.5f..48f,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 8.dp),
@@ -339,18 +363,43 @@ fun CandlestickChart(
                 Canvas(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(320.dp)
+                        .then(if (expandPlot) Modifier.weight(1f) else Modifier.height(320.dp))
                         .background(Color(0x141A1A1A), RoundedCornerShape(12.dp))
                         .padding(start = 4.dp, end = 6.dp, top = 8.dp, bottom = 4.dp)
-                        .pointerInput(historyKey, plotWidthPx, history.size) {
-                            detectTransformGestures { _, pan, zoom, _ ->
-                                val nextWidth = (barWidthState.floatValue * zoom).coerceIn(3.5f, 36f)
-                                val barPx = nextWidth * density.density
-                                val nextMax = (history.size - (plotWidthPx / barPx)).coerceAtLeast(0f)
-                                barWidthState.floatValue = nextWidth
-                                startIndexState.floatValue =
-                                    (startIndexState.floatValue - pan.x / barPx).coerceIn(0f, nextMax)
+                        .pointerInput(seriesKey, plotWidthPx) {
+                            fun maxStart(barDp: Float, count: Int): Float {
+                                val px = (barDp * density.density).coerceAtLeast(1f)
+                                val visible = (plotWidthPx / px).coerceAtLeast(1f)
+                                return (count - visible).coerceAtLeast(0f)
                             }
+                            detectChartGestures(
+                                onPanZoom = { panX, zoom ->
+                                    val count = candleCount.intValue
+                                    val nextWidth = (barWidthState.floatValue * zoom).coerceIn(2.5f, 48f)
+                                    val barPx = (nextWidth * density.density).coerceAtLeast(1f)
+                                    if (zoom != 1f) {
+                                        val oldPx = (barWidthState.floatValue * density.density).coerceAtLeast(1f)
+                                        val mid = startIndexState.floatValue + (plotWidthPx / 2f) / oldPx
+                                        val zoomedMax = (count - plotWidthPx / barPx).coerceAtLeast(0f)
+                                        val zoomedStart = (mid - (plotWidthPx / 2f) / barPx - panX / barPx)
+                                            .coerceIn(0f, zoomedMax)
+                                        barWidthState.floatValue = nextWidth
+                                        startIndexState.floatValue = zoomedStart
+                                        followLatest.value = zoomedStart >= zoomedMax - 0.6f
+                                    } else {
+                                        val nextMax = (count - plotWidthPx / barPx).coerceAtLeast(0f)
+                                        val nextStart = (startIndexState.floatValue - panX / barPx).coerceIn(0f, nextMax)
+                                        startIndexState.floatValue = nextStart
+                                        followLatest.value = nextStart >= nextMax - 0.6f
+                                    }
+                                },
+                                onDoubleTap = {
+                                    val fit = fittedState.floatValue
+                                    barWidthState.floatValue = fit
+                                    startIndexState.floatValue = maxStart(fit, candleCount.intValue)
+                                    followLatest.value = true
+                                },
+                            )
                         },
                 ) {
                     val leftPad = yAxisPadPx
@@ -361,7 +410,17 @@ fun CandlestickChart(
                     val barPx = (barWidth.dp.toPx()).coerceAtLeast(2f)
                     val first = startIndex.toInt().coerceIn(0, history.lastIndex)
                     val visibleCount = (plotW / barPx).toInt().coerceAtLeast(1)
-                    val lastVisible = (first + visibleCount).coerceAtMost(history.lastIndex)
+                    val lastVisible = (first + visibleCount - 1).coerceIn(first, history.lastIndex)
+                    var visMin = history[first].low
+                    var visMax = history[first].high
+                    for (index in first..lastVisible) {
+                        val candle = history[index]
+                        visMin = min(visMin, candle.low)
+                        visMax = max(visMax, candle.high)
+                    }
+                    val pad = ((visMax - visMin) * 0.08).coerceAtLeast(visMax * 0.002).coerceAtLeast(0.05)
+                    val minPrice = visMin - pad
+                    val priceRange = max(1e-6, (visMax + pad) - minPrice)
 
                     fun yFor(price: Double): Float {
                         val norm = ((price - minPrice) / priceRange).toFloat().coerceIn(0f, 1f)
@@ -475,6 +534,51 @@ fun CandlestickChart(
                     }
                 }
             }
+        }
+    }
+}
+
+private suspend fun PointerInputScope.detectChartGestures(
+    onPanZoom: (panX: Float, zoom: Float) -> Unit,
+    onDoubleTap: () -> Unit,
+) {
+    val slop = viewConfiguration.touchSlop
+    var lastTapUptime = 0L
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        var totalX = 0f
+        var totalY = 0f
+        var chartOwns = false
+        var moved = false
+        var pointerDown = true
+        while (pointerDown) {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            if (!chartOwns && event.changes.any { it.isConsumed }) break
+            val zoom = event.calculateZoom()
+            val pan = event.calculatePan()
+            val pressed = event.changes.count { it.pressed }
+            totalX += pan.x
+            totalY += pan.y
+            if (!chartOwns && (pressed >= 2 || (abs(totalX) > slop && abs(totalX) >= abs(totalY)))) {
+                chartOwns = true
+            }
+            if (abs(totalX) > slop || abs(totalY) > slop || zoom != 1f) moved = true
+            if (chartOwns) {
+                event.changes.forEach { it.consume() }
+                if (zoom != 1f || pan.x != 0f) onPanZoom(pan.x, zoom)
+            }
+            pointerDown = event.changes.any { it.pressed }
+        }
+        if (!moved) {
+            val now = down.uptimeMillis
+            if (now - lastTapUptime < viewConfiguration.doubleTapTimeoutMillis) {
+                onDoubleTap()
+                lastTapUptime = 0L
+            } else {
+                lastTapUptime = now
+            }
+        } else {
+            lastTapUptime = 0L
         }
     }
 }

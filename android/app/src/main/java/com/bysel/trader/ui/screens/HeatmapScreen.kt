@@ -43,6 +43,7 @@ import com.bysel.trader.data.models.HeatmapSector
 import com.bysel.trader.data.models.HeatmapStock
 import com.bysel.trader.data.models.MarketHeatmap
 import com.bysel.trader.ui.components.PullToRefreshBox
+import com.bysel.trader.ui.theme.OverlayBackButton
 import com.bysel.trader.ui.theme.AppTheme
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.ui.theme.byselCardBorder
@@ -141,6 +142,7 @@ fun HeatmapScreen(
     onSectorClick: (String, List<String>) -> Unit = { _, _ -> },
     heatmapInterval: Int = 5_000,
     isActive: Boolean = true,
+    onBack: (() -> Unit)? = null,
 ) {
     val tapeLive = MarketSession.isOpen()
     var marketOpen by remember { mutableStateOf(tapeLive) }
@@ -215,7 +217,7 @@ fun HeatmapScreen(
             exit = shrinkVertically() + fadeOut(),
         ) {
             Column {
-                HeatmapHeader(heatmap)
+                HeatmapHeader(heatmap, onBack)
                 MarketStatusBanner(
                     marketOpen = marketOpen,
                     staleReason = heatmap?.staleReason ?: heatmap?.moodDescription?.takeIf { heatmap.isStale },
@@ -333,7 +335,7 @@ private fun MarketStatusBanner(marketOpen: Boolean, staleReason: String? = null)
 }
 
 @Composable
-private fun HeatmapHeader(heatmap: MarketHeatmap?) {
+private fun HeatmapHeader(heatmap: MarketHeatmap?, onBack: (() -> Unit)? = null) {
     val theme = LocalAppTheme.current
     val moodColors = when (heatmap?.mood) {
         "EUPHORIC", "BULLISH" -> listOf(theme.positive, theme.card)
@@ -358,6 +360,10 @@ private fun HeatmapHeader(heatmap: MarketHeatmap?) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (onBack != null) {
+                        OverlayBackButton(onBack = onBack)
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
                     Icon(
                         Icons.Filled.GridView,
                         contentDescription = null,

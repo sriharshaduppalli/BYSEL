@@ -376,12 +376,12 @@ class TradingViewModel(
 
     fun clearDerivativesError() { _derivativesError.value = null }
 
-    /** One-shot Trade workspace deep-link: 0 Spot, 1 Advanced, 2 Options, 3 Futures. */
+    /** One-shot Trade workspace deep-link: 0 Spot, 1 Options, 2 Futures. */
     private val _pendingTradeWorkspace = MutableStateFlow<Int?>(null)
     val pendingTradeWorkspace: StateFlow<Int?> = _pendingTradeWorkspace.asStateFlow()
 
     fun requestTradeWorkspace(index: Int) {
-        _pendingTradeWorkspace.value = index.coerceIn(0, 3)
+        _pendingTradeWorkspace.value = index.coerceIn(0, 2)
     }
 
     fun clearPendingTradeWorkspace() {
@@ -418,6 +418,20 @@ class TradingViewModel(
 
     private val _foCandlesLoading = MutableStateFlow(false)
     val foCandlesLoading: StateFlow<Boolean> = _foCandlesLoading.asStateFlow()
+
+    private val _savedOptionPractice = MutableStateFlow<SavedPaperPractice?>(null)
+    val savedOptionPractice: StateFlow<SavedPaperPractice?> = _savedOptionPractice.asStateFlow()
+
+    private val _savedFuturePractice = MutableStateFlow<SavedPaperPractice?>(null)
+    val savedFuturePractice: StateFlow<SavedPaperPractice?> = _savedFuturePractice.asStateFlow()
+
+    fun saveOptionPractice(session: SavedPaperPractice?) {
+        _savedOptionPractice.value = session
+    }
+
+    fun saveFuturePractice(session: SavedPaperPractice?) {
+        _savedFuturePractice.value = session
+    }
 
     private val _familyDashboard = MutableStateFlow<FamilyDashboardResponse?>(null)
     val familyDashboard: StateFlow<FamilyDashboardResponse?> = _familyDashboard.asStateFlow()
@@ -544,6 +558,10 @@ class TradingViewModel(
                 changed = true
                 holding.copy(last = quote.last, pnl = pnl)
             }
+        }.map { holding ->
+            val marked = com.bysel.trader.portfolio.PaperFoMark.apply(holding, quotes)
+            if (marked != holding) changed = true
+            marked
         }
         if (changed) _holdings.value = updated
     }
@@ -2317,6 +2335,7 @@ class TradingViewModel(
         right: String,
         side: String,
         premium: Double,
+        lots: Int = 1,
     ) {
         if (underlying.isBlank() || expiry.isBlank()) {
             _derivativesError.value = "Load a chain before a paper option fill"
@@ -2336,7 +2355,7 @@ class TradingViewModel(
                     right = right,
                     side = side,
                     premium = premium,
-                    lots = 1,
+                    lots = lots.coerceIn(1, 5),
                 )
             )) {
                 is Result.Success -> {
@@ -2381,6 +2400,7 @@ class TradingViewModel(
         expiry: String,
         side: String,
         price: Double,
+        lots: Int = 1,
     ) {
         if (underlying.isBlank() || expiry.isBlank()) {
             _derivativesError.value = "Load a futures contract before a paper fill"
@@ -2398,7 +2418,7 @@ class TradingViewModel(
                     expiry = expiry.trim(),
                     side = side,
                     price = price,
-                    lots = 1,
+                    lots = lots.coerceIn(1, 5),
                 )
             )) {
                 is Result.Success -> {

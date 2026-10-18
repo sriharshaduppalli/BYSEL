@@ -1900,10 +1900,14 @@ fun DerivativesIntelligenceScreen(
 ) {
     val optionChain by viewModel.optionChain.collectAsStateWithLifecycle()
     val strategyPreview by viewModel.strategyPreview.collectAsStateWithLifecycle()
+    val derivativesError by viewModel.derivativesError.collectAsStateWithLifecycle()
+    val productActionMessage by viewModel.productActionMessage.collectAsStateWithLifecycle()
+    val savedOptionPractice by viewModel.savedOptionPractice.collectAsStateWithLifecycle()
     val loading by viewModel.derivativesLoading.collectAsStateWithLifecycle()
     val foCandles by viewModel.foCandles.collectAsStateWithLifecycle()
     val foCandlesLoading by viewModel.foCandlesLoading.collectAsStateWithLifecycle()
     var symbol by remember { mutableStateOf("NIFTY") }
+    var practiceSymbol by remember { mutableStateOf("NIFTY") }
     // Default to ~3 weeks out so the educational chain always has a forward expiry.
     var expiry by remember {
         val cal = java.util.Calendar.getInstance()
@@ -1912,10 +1916,6 @@ fun DerivativesIntelligenceScreen(
         val m = cal.get(java.util.Calendar.MONTH) + 1
         val d = cal.get(java.util.Calendar.DAY_OF_MONTH)
         mutableStateOf(String.format("%04d-%02d-%02d", y, m, d))
-    }
-    var strategySpotInput by remember { mutableStateOf("") }
-    var strategyLegsInput by remember {
-        mutableStateOf("CALL:BUY:22500:120\nCALL:SELL:23000:80")
     }
     var showMoreStrikes by rememberSaveable { mutableStateOf(false) }
     var showGreeks by rememberSaveable { mutableStateOf(false) }
@@ -1927,15 +1927,15 @@ fun DerivativesIntelligenceScreen(
             viewModel.loadOptionChain(symbol, expiry)
         }
     }
-    LaunchedEffect(symbol) {
-        viewModel.loadFoCandles(symbol)
+    LaunchedEffect(practiceSymbol) {
+        viewModel.loadFoCandles(practiceSymbol)
     }
 
-    LaunchedEffect(optionChain?.spot) {
-        val spot = optionChain?.spot
-        if (spot != null && spot > 0.0 && strategySpotInput.isBlank()) {
-            strategySpotInput = String.format("%.2f", spot)
-        }
+    val bullCall = remember(optionChain) { bullCallLegs(optionChain) }
+    LaunchedEffect(bullCall, symbol) {
+        val legs = bullCall ?: return@LaunchedEffect
+        val spot = optionChain?.spot ?: return@LaunchedEffect
+        viewModel.previewStrategy(symbol, spot, legs.second)
     }
 
     val chainContracts = remember(optionChain, showMoreStrikes) {
@@ -1944,18 +1944,41 @@ fun DerivativesIntelligenceScreen(
         chain.contracts.sortedBy { kotlin.math.abs(it.strike - chain.spot) }.take(limit)
     }
 
-    LazyColumn(
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(LocalAppTheme.current.surface)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        contentPadding = PaddingValues(bottom = 24.dp),
+            .background(LocalAppTheme.current.surface),
     ) {
-        item { ExplorerTitle("Options desk", onBack) }
+        if (onBack != null) {
+            Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                ExplorerTitle("Options desk", onBack)
+            }
+        }
+        FoCandlePractice(
+            symbol = practiceSymbol,
+            expiry = expiry,
+            candles = foCandles,
+            loading = foCandlesLoading,
+            iv = optionChain?.atmIv ?: 0.0,
+            onReload = { viewModel.loadFoCandles(practiceSymbol) },
+            onSymbol = { practiceSymbol = it },
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            asScreen = true,
+            bookNote = derivativesError ?: productActionMessage,
+            saved = savedOptionPractice,
+            onSession = { viewModel.saveOptionPractice(it) },
+            onBook = { right, strike, price, lots ->
+                viewModel.practiceOption(practiceSymbol, expiry, strike, right, "BUY", price, lots)
+            },
+            optionsContent = {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+    ) {
         item {
             Text(
-                "Paper F&O only. Buy call or buy put books 1 lot into Portfolio → F&O. Sell closes that paper position. Not a live order.",
+                "Paper chain and payoff. Buy call or buy put on the chart does not spend practice cash.",
                 color = LocalAppTheme.current.textSecondary,
                 fontSize = 12.sp,
             )
@@ -2012,17 +2035,6 @@ fun DerivativesIntelligenceScreen(
             }
         }
 
-        item {
-            FoCandlePractice(
-                symbol = symbol,
-                expiry = expiry,
-                candles = foCandles,
-                loading = foCandlesLoading,
-                iv = optionChain?.atmIv ?: 0.0,
-                onReload = { viewModel.loadFoCandles(symbol) },
-            )
-        }
-
         if (optionChain == null && !loading) {
             item {
                 Card(
@@ -2048,7 +2060,6 @@ fun DerivativesIntelligenceScreen(
         }
 
         optionChain?.let { chain ->
-            val liveChain = chain.source.equals("nse", ignoreCase = true)
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2080,14 +2091,6 @@ fun DerivativesIntelligenceScreen(
                                 fontSize = 11.sp,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        if (!liveChain) {
-                            Text(
-                                "Teaching chain — practice cash buttons stay off. Use candle practice above.",
-                                color = LocalAppTheme.current.textSecondary,
-                                fontSize = 11.sp,
-                                lineHeight = 15.sp,
                             )
                         }
                         chainContracts.forEach { contract ->
@@ -2128,23 +2131,6 @@ fun DerivativesIntelligenceScreen(
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                 }
-                                PaperOptionActions(
-                                    enabled = !loading && liveChain,
-                                    callPremium = contract.callLtp,
-                                    putPremium = contract.putLtp,
-                                    onCallBuy = {
-                                        viewModel.practiceOption(chain.symbol, chain.expiry, contract.strike, "CALL", "BUY", contract.callLtp)
-                                    },
-                                    onCallSell = {
-                                        viewModel.practiceOption(chain.symbol, chain.expiry, contract.strike, "CALL", "SELL", contract.callLtp)
-                                    },
-                                    onPutBuy = {
-                                        viewModel.practiceOption(chain.symbol, chain.expiry, contract.strike, "PUT", "BUY", contract.putLtp)
-                                    },
-                                    onPutSell = {
-                                        viewModel.practiceOption(chain.symbol, chain.expiry, contract.strike, "PUT", "SELL", contract.putLtp)
-                                    },
-                                )
                             }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2166,110 +2152,29 @@ fun DerivativesIntelligenceScreen(
             }
         }
 
-        item {
-            Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Strategy Builder (paper)", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Tap a recipe to fill the legs, then Preview Risk. Illustrative only — not a live order.",
-                        color = LocalAppTheme.current.textSecondary,
-                        fontSize = 11.sp,
-                    )
-                    val recipes = remember(optionChain, symbol) {
-                        optionStrategyRecipes(optionChain)
-                    }
-                    if (recipes.isNotEmpty()) {
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            recipes.forEach { recipe ->
-                                FilterChip(
-                                    selected = strategyLegsInput == recipe.legsText,
-                                    onClick = {
-                                        strategySpotInput = String.format("%.2f", recipe.spot)
-                                        strategyLegsInput = recipe.legsText
-                                    },
-                                    label = { Text(recipe.title, maxLines = 1) },
-                                )
-                            }
-                        }
-                        recipes.firstOrNull { it.legsText == strategyLegsInput }?.let { selected ->
-                            Text(
-                                selected.meaning,
-                                color = LocalAppTheme.current.textSecondary,
-                                fontSize = 11.sp,
-                                lineHeight = 15.sp,
-                            )
-                        }
-                    }
-                    OutlinedTextField(
-                        value = strategySpotInput,
-                        onValueChange = { strategySpotInput = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Spot") },
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = strategyLegsInput,
-                        onValueChange = { strategyLegsInput = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Legs (CALL/PUT:SIDE:STRIKE:PREMIUM)") },
-                    )
-                    Button(
-                        onClick = {
-                            val spot = strategySpotInput.toDoubleOrNull() ?: optionChain?.spot ?: 0.0
-                            val legs = parseStrategyLegs(strategyLegsInput)
-                            viewModel.previewStrategy(symbol = symbol, spot = spot, legs = legs)
-                        }
-                    ) {
-                        Text("Preview Risk")
-                    }
-                }
-            }
-        }
-
-        strategyPreview?.let { preview ->
+        bullCall?.let { (meaning, _) ->
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Strategy Risk Preview (paper)", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
-                        Text("Max Profit: ₹${String.format("%.2f", preview.maxProfit)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        Text("Max Loss: ₹${String.format("%.2f", preview.maxLoss)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        Text("Margin Estimate: ₹${String.format("%.2f", preview.marginEstimate)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        Text("Risk/Reward: ${String.format("%.2f", preview.riskRewardRatio)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        Text(
-                            "Max profit is the best case if the recipe works. Max loss is what you can lose if it does not. Margin is an estimate of cash typically blocked — not a broker SPAN quote.",
-                            color = LocalAppTheme.current.textSecondary,
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp,
-                        )
-                        if (preview.breakevenPoints.isNotEmpty()) {
-                            Text("Breakeven: ${preview.breakevenPoints.joinToString { String.format("%.2f", it) }}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        Text("Bull call spread", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                        Text(meaning, color = LocalAppTheme.current.textSecondary, fontSize = 12.sp, lineHeight = 16.sp)
+                        strategyPreview?.let { preview ->
+                            Text("Max profit ₹${String.format("%.0f", preview.maxProfit)} · max loss ₹${String.format("%.0f", preview.maxLoss)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                            if (preview.breakevenPoints.isNotEmpty()) {
+                                Text("Breakeven ${preview.breakevenPoints.joinToString { String.format("%.0f", it) }}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                            }
+                            PayoffCurveChart(
+                                points = preview.payoffCurve,
+                                spot = optionChain?.spot ?: 0.0,
+                            )
                         }
-                        PayoffCurveChart(
-                            points = preview.payoffCurve,
-                            spot = strategySpotInput.toDoubleOrNull() ?: optionChain?.spot ?: 0.0,
-                        )
-                        preview.notes.take(4).forEach {
-                            Text("• $it", color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
-                        }
-                        Button(
-                            onClick = { viewModel.logOptionsRecipeDrill(preview, strategyLegsInput) },
-                            modifier = Modifier.padding(top = 6.dp),
-                        ) {
-                            Text("Save paper recipe", maxLines = 1)
-                        }
-                        Text(
-                            "Writes a journal drill only — no option fill and no cash shares.",
-                            color = LocalAppTheme.current.textSecondary,
-                            fontSize = 10.sp,
-                        )
                     }
                 }
             }
         }
+    }
+            },
+        )
     }
 }
 
@@ -3072,43 +2977,6 @@ private fun parseBasketLegs(rawInput: String): List<BasketOrderLegRequest> {
         }
 }
 
-private data class OptionStrategyRecipe(
-    val title: String,
-    val meaning: String,
-    val spot: Double,
-    val legsText: String,
-)
-
-@Composable
-private fun PaperOptionActions(
-    enabled: Boolean,
-    callPremium: Double,
-    putPremium: Double,
-    onCallBuy: () -> Unit,
-    onCallSell: () -> Unit,
-    onPutBuy: () -> Unit,
-    onPutSell: () -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            TextButton(onClick = onCallBuy, enabled = enabled && callPremium > 0.0) {
-                Text("Practice buy call", fontSize = 11.sp, maxLines = 1)
-            }
-            TextButton(onClick = onCallSell, enabled = enabled && callPremium > 0.0) {
-                Text("Practice sell call", fontSize = 11.sp, maxLines = 1)
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            TextButton(onClick = onPutBuy, enabled = enabled && putPremium > 0.0) {
-                Text("Practice buy put", fontSize = 11.sp, maxLines = 1)
-            }
-            TextButton(onClick = onPutSell, enabled = enabled && putPremium > 0.0) {
-                Text("Practice sell put", fontSize = 11.sp, maxLines = 1)
-            }
-        }
-    }
-}
-
 private fun nearestAtmContract(chain: OptionChainResponse): OptionContract? {
     return chain.contracts.minByOrNull { kotlin.math.abs(it.strike - chain.spot) }
 }
@@ -3117,78 +2985,15 @@ private fun nextHigherContract(chain: OptionChainResponse, strike: Double): Opti
     return chain.contracts.filter { it.strike > strike }.minByOrNull { it.strike }
 }
 
-private fun formatStrategyLegLine(
-    optionType: String,
-    side: String,
-    strike: Double,
-    premium: Double,
-): String {
-    return "$optionType:$side:${String.format("%.0f", strike)}:${String.format("%.1f", premium)}"
-}
-
-private fun optionStrategyRecipes(chain: OptionChainResponse?): List<OptionStrategyRecipe> {
-    val loaded = chain ?: return emptyList()
-    val atm = nearestAtmContract(loaded) ?: return emptyList()
-    val higher = nextHigherContract(loaded, atm.strike)
-    val recipes = mutableListOf(
-        OptionStrategyRecipe(
-            title = "Long call",
-            meaning = "Buy the ATM call. Helps if ${loaded.symbol} rises. Max loss is the premium you pay.",
-            spot = loaded.spot,
-            legsText = formatStrategyLegLine("CALL", "BUY", atm.strike, atm.callLtp),
-        ),
-        OptionStrategyRecipe(
-            title = "Long put",
-            meaning = "Buy the ATM put. Helps if ${loaded.symbol} falls, or as a hedge on shares you hold.",
-            spot = loaded.spot,
-            legsText = formatStrategyLegLine("PUT", "BUY", atm.strike, atm.putLtp),
-        ),
+private fun bullCallLegs(chain: OptionChainResponse?): Pair<String, List<StrategyLeg>>? {
+    val loaded = chain ?: return null
+    val atm = nearestAtmContract(loaded) ?: return null
+    val higher = nextHigherContract(loaded, atm.strike) ?: return null
+    if (atm.callLtp <= 0.0 || higher.callLtp < 0.0) return null
+    val meaning = "Buy the ₹${String.format("%.0f", atm.strike)} call and sell the ₹${String.format("%.0f", higher.strike)} call. Profit is capped at the higher strike."
+    val legs = listOf(
+        StrategyLeg(optionType = "CALL", side = "BUY", strike = atm.strike, premium = atm.callLtp),
+        StrategyLeg(optionType = "CALL", side = "SELL", strike = higher.strike, premium = higher.callLtp),
     )
-    if (higher != null) {
-        recipes.add(
-            OptionStrategyRecipe(
-                title = "Bull call spread",
-                meaning = "Buy ATM call and sell a higher call. Cheaper than a naked call; profit is capped at the short strike.",
-                spot = loaded.spot,
-                legsText = listOf(
-                    formatStrategyLegLine("CALL", "BUY", atm.strike, atm.callLtp),
-                    formatStrategyLegLine("CALL", "SELL", higher.strike, higher.callLtp),
-                ).joinToString("\n"),
-            ),
-        )
-    }
-    return recipes
-}
-
-private fun parseStrategyLegs(rawInput: String): List<StrategyLeg> {
-    return rawInput
-        .lines()
-        .mapNotNull { line ->
-            val tokens = line.split(":").map { it.trim() }
-            if (tokens.size < 4) return@mapNotNull null
-
-            val optionType = when (tokens[0].uppercase()) {
-                "C", "CE", "CALL" -> "CALL"
-                "P", "PE", "PUT" -> "PUT"
-                else -> return@mapNotNull null
-            }
-            val side = tokens[1].uppercase()
-            val strike = tokens[2].toDoubleOrNull() ?: return@mapNotNull null
-            val premium = tokens[3].toDoubleOrNull() ?: return@mapNotNull null
-            val quantity = tokens.getOrNull(4)?.toIntOrNull() ?: 1
-            val lotSize = tokens.getOrNull(5)?.toIntOrNull() ?: 1
-
-            if ((side != "BUY" && side != "SELL") || strike <= 0.0 || premium < 0.0 || quantity <= 0 || lotSize <= 0) {
-                return@mapNotNull null
-            }
-
-            StrategyLeg(
-                optionType = optionType,
-                side = side,
-                strike = strike,
-                premium = premium,
-                quantity = quantity,
-                lotSize = lotSize,
-            )
-        }
+    return meaning to legs
 }

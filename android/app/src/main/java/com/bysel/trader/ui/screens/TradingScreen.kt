@@ -147,8 +147,7 @@ private data class TradeWorkspaceTab(
 
 private val TRADE_WORKSPACE_TABS = listOf(
     TradeWorkspaceTab("Spot", "Equities"),
-    TradeWorkspaceTab("Advanced", "Triggers & baskets"),
-    TradeWorkspaceTab("Options", "Learn the chain"),
+    TradeWorkspaceTab("Options", "Chart practice"),
     TradeWorkspaceTab("Futures", "Lots & margin"),
 )
 
@@ -223,6 +222,7 @@ fun TradingScreen(
     onAskAi: (String) -> Unit = { viewModel.askAi(it) },
     onOpenSearch: (() -> Unit)? = null,
     onOpenWatchlists: (() -> Unit)? = null,
+    onOpenAdvancedOrders: () -> Unit = {},
 ) {
     // Only warm the full quote universe while Trade is the active pager page
     // (adjacent pages stay composed via beyondBoundsPageCount).
@@ -449,26 +449,22 @@ fun TradingScreen(
                         onTraceSupportLookup = onTraceSupportLookup,
                         onSelectQuote = { openTradeSheet(it) },
                         onOpenSymbol = { symbol -> openTradeSheet(symbol) },
-                        onOpenAdvancedWorkspace = { selectedWorkspaceIndex = 1 },
-                        onOpenDerivativesWorkspace = { selectedWorkspaceIndex = 2 },
+                        onOpenAdvancedWorkspace = onOpenAdvancedOrders,
+                        onOpenDerivativesWorkspace = { selectedWorkspaceIndex = 1 },
                         onOpenSearch = onOpenSearch,
                         onOpenWatchlists = onOpenWatchlists,
                         hideOnScroll = hideOnScroll,
                         viewModel = viewModel,
                     )
-                    1 -> AdvancedOrdersScreen(
-                        viewModel = viewModel,
-                        preferredSymbol = selectedQuote?.symbol ?: tradeSheetQuote?.symbol,
-                    )
-                    2 -> DerivativesIntelligenceScreen(viewModel, onAskAi = onAskAi)
+                    1 -> DerivativesIntelligenceScreen(viewModel, onAskAi = onAskAi)
                     else -> FuturesRadarScreen(
                         viewModel = viewModel,
                         quotes = liveQuotes,
                         marketStatus = marketStatus,
                         watchlistSymbols = watchlistSymbols,
                         onOpenSpotTrade = { openTradeSheet(it) },
-                        onOpenOptions = { selectedWorkspaceIndex = 2 },
-                        onOpenAdvanced = { selectedWorkspaceIndex = 1 },
+                        onOpenOptions = { selectedWorkspaceIndex = 1 },
+                        onOpenAdvanced = onOpenAdvancedOrders,
                         onAskAi = onAskAi,
                     )
                 }
@@ -1125,11 +1121,11 @@ private fun FuturesRadarScreen(
     onAskAi: (String) -> Unit,
 ) {
     val futuresContracts by viewModel.futuresContracts.collectAsStateWithLifecycle()
-    val futuresTicketPreview by viewModel.futuresTicketPreview.collectAsStateWithLifecycle()
     val loading by viewModel.derivativesLoading.collectAsStateWithLifecycle()
     val foCandles by viewModel.foCandles.collectAsStateWithLifecycle()
     val foCandlesLoading by viewModel.foCandlesLoading.collectAsStateWithLifecycle()
     val derivativesError by viewModel.derivativesError.collectAsStateWithLifecycle()
+    val savedFuturePractice by viewModel.savedFuturePractice.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { viewModel.loadInvestorTips("fno") }
 
     val candidateSymbols = remember(quotes, watchlistSymbols) {
@@ -1149,7 +1145,7 @@ private fun FuturesRadarScreen(
     }
 
     var underlyingInput by remember { mutableStateOf("NIFTY") }
-    var lotsInput by remember { mutableStateOf("1") }
+    var practiceSymbol by remember { mutableStateOf("NIFTY") }
     var selectedExpiry by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
@@ -1157,8 +1153,8 @@ private fun FuturesRadarScreen(
             viewModel.loadFuturesContracts("NIFTY")
         }
     }
-    LaunchedEffect(futuresContracts?.symbol ?: underlyingInput) {
-        viewModel.loadFoCandles(futuresContracts?.symbol ?: underlyingInput)
+    LaunchedEffect(practiceSymbol) {
+        viewModel.loadFoCandles(practiceSymbol)
     }
 
     LaunchedEffect(futuresContracts?.generatedAt) {
@@ -1253,33 +1249,19 @@ private fun FuturesRadarScreen(
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Futures Contract Loader", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Try NIFTY, BANKNIFTY, RELIANCE, or TCS. Load contracts, pick an expiry, then Preview Buy/Sell.",
+                        "Load a contract to read lot, margin, and basis. Long and short are marked on the candle chart.",
                         color = LocalAppTheme.current.textSecondary,
                         fontSize = 11.sp,
                     )
-                    Row(
+                    OutlinedTextField(
+                        value = underlyingInput,
+                        onValueChange = { underlyingInput = it.uppercase() },
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        OutlinedTextField(
-                            value = underlyingInput,
-                            onValueChange = { underlyingInput = it.uppercase() },
-                            modifier = Modifier.weight(1f),
-                            label = { Text("Underlying") },
-                            placeholder = { Text("INFY") },
-                            colors = appOutlinedTextFieldColors(containerColor = LocalAppTheme.current.surface),
-                            singleLine = true,
-                        )
-                        OutlinedTextField(
-                            value = lotsInput,
-                            onValueChange = { lotsInput = it.filter { ch -> ch.isDigit() }.take(4) },
-                            modifier = Modifier.width(96.dp),
-                            label = { Text("Lots") },
-                            colors = appOutlinedTextFieldColors(containerColor = LocalAppTheme.current.surface),
-                            singleLine = true,
-                        )
-                    }
+                        label = { Text("Underlying") },
+                        placeholder = { Text("NIFTY") },
+                        colors = appOutlinedTextFieldColors(containerColor = LocalAppTheme.current.surface),
+                        singleLine = true,
+                    )
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1302,12 +1284,27 @@ private fun FuturesRadarScreen(
 
         item {
             FoCandlePractice(
-                symbol = futuresContracts?.symbol ?: underlyingInput,
+                symbol = practiceSymbol,
                 expiry = selectedExpiry ?: futuresContracts?.contracts?.firstOrNull()?.expiry.orEmpty(),
                 candles = foCandles,
                 loading = foCandlesLoading,
                 iv = 0.16,
-                onReload = { viewModel.loadFoCandles(futuresContracts?.symbol ?: underlyingInput) },
+                onReload = { viewModel.loadFoCandles(practiceSymbol) },
+                onSymbol = { practiceSymbol = it },
+                future = true,
+                bookNote = derivativesError,
+                saved = savedFuturePractice,
+                onSession = { viewModel.saveFuturePractice(it) },
+                onBook = { _, _, price, lots ->
+                    val bookExpiry = selectedExpiry ?: futuresContracts?.contracts?.firstOrNull()?.expiry.orEmpty()
+                    viewModel.practiceFuture(
+                        underlying = practiceSymbol,
+                        expiry = bookExpiry,
+                        side = "BUY",
+                        price = price,
+                        lots = lots,
+                    )
+                },
             )
         }
 
@@ -1341,7 +1338,6 @@ private fun FuturesRadarScreen(
                 val linkedQuote = candidateSymbols.firstOrNull { quote ->
                     quote.symbol.uppercase() == futuresContracts?.symbol?.uppercase()
                 }
-                val parsedLots = lotsInput.toIntOrNull()?.coerceAtLeast(1) ?: 1
                 val selected = selectedExpiry == contract.expiry
                 Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1408,129 +1404,16 @@ private fun FuturesRadarScreen(
                             fontSize = 11.sp,
                             lineHeight = 15.sp,
                         )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                            .exclusiveHorizontalScroll(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Button(
-                                onClick = {
-                                    selectedExpiry = contract.expiry
-                                    viewModel.previewFuturesTicket(
-                                        symbol = futuresContracts?.symbol ?: underlyingInput,
-                                        expiry = contract.expiry,
-                                        side = "BUY",
-                                        lots = parsedLots,
-                                    )
-                                }
-                            ) {
-                                Text("Preview Buy", maxLines = 1)
+                        if (linkedQuote != null) {
+                            OutlinedButton(onClick = { onOpenSpotTrade(linkedQuote) }) {
+                                Text("Open Spot", maxLines = 1)
                             }
-                            OutlinedButton(
-                                onClick = {
-                                    selectedExpiry = contract.expiry
-                                    viewModel.previewFuturesTicket(
-                                        symbol = futuresContracts?.symbol ?: underlyingInput,
-                                        expiry = contract.expiry,
-                                        side = "SELL",
-                                        lots = parsedLots,
-                                    )
-                                }
-                            ) {
-                                Text("Preview Sell", maxLines = 1)
-                            }
-                            val liveFutures = futuresContracts?.source.equals("nse", ignoreCase = true)
-                            Button(
-                                enabled = liveFutures && contract.last > 0.0 && !loading,
-                                onClick = {
-                                    viewModel.practiceFuture(
-                                        underlying = futuresContracts?.symbol ?: underlyingInput,
-                                        expiry = contract.expiry,
-                                        side = "BUY",
-                                        price = contract.last,
-                                    )
-                                },
-                            ) {
-                                Text("Practice buy future", maxLines = 1)
-                            }
-                            OutlinedButton(
-                                enabled = liveFutures && contract.last > 0.0 && !loading,
-                                onClick = {
-                                    viewModel.practiceFuture(
-                                        underlying = futuresContracts?.symbol ?: underlyingInput,
-                                        expiry = contract.expiry,
-                                        side = "SELL",
-                                        price = contract.last,
-                                    )
-                                },
-                            ) {
-                                Text("Practice sell future", maxLines = 1)
-                            }
-                            if (linkedQuote != null) {
-                                OutlinedButton(onClick = { onOpenSpotTrade(linkedQuote) }) {
-                                    Text("Open Spot", maxLines = 1)
-                                }
-                            }
-                        }
-                        if (!futuresContracts?.source.equals("nse", ignoreCase = true)) {
-                            Text(
-                                "Teaching board — practice cash buttons stay off. Use candle practice above.",
-                                color = LocalAppTheme.current.textSecondary,
-                                fontSize = 11.sp,
-                                lineHeight = 15.sp,
-                            )
                         }
                     }
                 }
             }
         }
 
-        futuresTicketPreview?.let { preview ->
-            item {
-                Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Futures Ticket Preview", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            preview.contractSymbol,
-                            color = LocalAppTheme.current.text,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            "${preview.side} ${preview.lots} lot(s) = ${preview.quantity} qty @ ${formatCurrency(preview.referencePrice)}",
-                            color = LocalAppTheme.current.textSecondary,
-                            fontSize = 12.sp,
-                        )
-                        Text("Notional: ${formatCurrency(preview.notionalValue)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        Text("Estimated Margin: ${formatCurrency(preview.estimatedMargin)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        Text("Estimated Charges: ${formatCurrency(preview.estimatedCharges)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        Text("Max Loss Buffer: ${formatCurrency(preview.maxLossBuffer)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        Text(
-                            "Notional is the value 1 lot controls. Margin is typical cash blocked on a live broker — BYSEL does not block it or book ${preview.quantity} cash shares. A 1% move is about ${formatCurrency(preview.notionalValue * 0.01)}.",
-                            color = LocalAppTheme.current.textSecondary,
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp,
-                        )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                            .exclusiveHorizontalScroll(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Button(onClick = { viewModel.placeFuturesTicketFromPreview() }) {
-                                Text("Save paper drill", maxLines = 1)
-                            }
-                            OutlinedButton(onClick = onOpenAdvanced) { Text("Advanced", maxLines = 1) }
-                            OutlinedButton(onClick = onOpenOptions) { Text("Open Options", maxLines = 1) }
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 

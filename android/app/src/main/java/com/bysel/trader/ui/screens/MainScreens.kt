@@ -49,6 +49,7 @@ import com.bysel.trader.data.models.PaperPortfolioRisk
 import com.bysel.trader.data.models.PortfolioHealthScore
 import com.bysel.trader.data.models.SipPlan
 import com.bysel.trader.portfolio.HoldingAssetClass
+import com.bysel.trader.portfolio.PaperFoMark
 import com.bysel.trader.portfolio.HoldingsClassifier
 import com.bysel.trader.portfolio.PaperPortfolioRiskMath
 import com.bysel.trader.ui.components.PaperTradeQtyDialog
@@ -1267,6 +1268,15 @@ fun UpgradedPortfolioHoldingItem(
                         color = theme.textSecondary,
                         modifier = Modifier.padding(top = 1.dp)
                     )
+                    PaperFoMark.note(holding.symbol)?.let { note ->
+                        Text(
+                            text = note,
+                            fontSize = 10.sp,
+                            color = theme.textSecondary,
+                            lineHeight = 13.sp,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
                 }
 
                 Column(horizontalAlignment = Alignment.End) {

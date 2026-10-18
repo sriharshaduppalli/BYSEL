@@ -25,6 +25,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.PieChart
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.BusinessCenter
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -43,10 +47,12 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Savings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -97,7 +103,9 @@ fun MoreScreen(
     onSettingsClick: () -> Unit,
     onAchievementsClick: () -> Unit,
     onEquityClick: () -> Unit = {},
-    onFnoClick: () -> Unit = {},
+    onFnoOptionsClick: () -> Unit = {},
+    onFnoFuturesClick: () -> Unit = {},
+    onHeatmapClick: () -> Unit = {},
     onMutualFundsClick: () -> Unit,
     onIpoClick: () -> Unit,
     onEtfClick: () -> Unit,
@@ -105,7 +113,6 @@ fun MoreScreen(
     onSipClick: () -> Unit,
     onMyIpoApplicationsClick: () -> Unit,
     onAdvancedOrdersClick: () -> Unit,
-    onDerivativesClick: () -> Unit,
     onWealthOsClick: () -> Unit,
     onCopilotCenterClick: () -> Unit,
     onSignalLabClick: () -> Unit,
@@ -119,6 +126,7 @@ fun MoreScreen(
     onMarketCalendarClick: () -> Unit,
 ) {
     var investExpanded by rememberSaveable { mutableStateOf(false) }
+    var showFnoChoice by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     val focusManager = LocalFocusManager.current
 
@@ -131,10 +139,17 @@ fun MoreScreen(
             keywords = "screener quality momentum value swing",
         ),
         MoreMenuEntry(
-            icon = Icons.AutoMirrored.Filled.ShowChart,
+            icon = Icons.Filled.Bolt,
             title = "Signal Lab",
             subtitle = "Breakouts, volume spikes, and yield setups",
             onClick = onSignalLabClick,
+        ),
+        MoreMenuEntry(
+            icon = Icons.Filled.GridView,
+            title = "Heatmap",
+            subtitle = "Sector breadth and movers",
+            onClick = onHeatmapClick,
+            keywords = "heatmap sector breadth movers",
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Analytics,
@@ -234,10 +249,11 @@ fun MoreScreen(
             keywords = "asba listing ipo",
         ),
         MoreMenuEntry(
-            icon = Icons.AutoMirrored.Filled.ShowChart,
+            icon = Icons.Filled.PieChart,
             title = "ETFs",
             subtitle = "Index and sector ETF baskets",
             onClick = onEtfClick,
+            keywords = "etf basket index",
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Savings,
@@ -261,17 +277,11 @@ fun MoreScreen(
 
     val advancedEntries = listOf(
         MoreMenuEntry(
-            icon = Icons.Filled.Settings,
+            icon = Icons.Filled.Tune,
             title = "Advanced Orders",
             subtitle = "Triggers, baskets, and execution controls",
             onClick = onAdvancedOrdersClick,
-        ),
-        MoreMenuEntry(
-            icon = Icons.AutoMirrored.Filled.ShowChart,
-            title = "Derivatives Intelligence",
-            subtitle = "Plain-English chain, recipes, and paper risk",
-            onClick = onDerivativesClick,
-            keywords = "fno f&o futures options chain",
+            keywords = "trigger basket gtt",
         ),
         MoreMenuEntry(
             icon = Icons.Filled.AccountBalance,
@@ -292,13 +302,33 @@ fun MoreScreen(
         MoreMenuEntry(
             icon = Icons.Filled.Analytics,
             title = "F&O",
-            subtitle = "Options and futures practice desks",
-            onClick = onFnoClick,
-            keywords = "fno futures options derivatives",
+            subtitle = "Choose options or futures practice",
+            onClick = { showFnoChoice = true },
+            keywords = "fno futures options derivatives chain",
         ),
     )
     val catalog = labsEntries + utilityEntries + investingEntries + advancedEntries + tradeEntries
     val filtered = if (query.isBlank()) emptyList() else catalog.filter { it.matches(query) }
+
+    if (showFnoChoice) {
+        AlertDialog(
+            onDismissRequest = { showFnoChoice = false },
+            title = { Text("F&O practice") },
+            text = { Text("Options opens the candle chart. Futures opens lots and margin.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showFnoChoice = false
+                    onFnoOptionsClick()
+                }) { Text("Options") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showFnoChoice = false
+                    onFnoFuturesClick()
+                }) { Text("Futures") }
+            },
+        )
+    }
 
     LazyColumn(
         modifier = Modifier
