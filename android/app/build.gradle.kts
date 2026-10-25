@@ -7,7 +7,6 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
     id("com.google.gms.google-services")
-    id("com.google.firebase.crashlytics")
 }
 
 fun bumpPatchVersion(versionName: String): String {
@@ -338,9 +337,9 @@ dependencies {
     // Firebase BoM — single version for all Firebase libs
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-analytics")
-    // Crash reporting. Collection is switched on in ByselApplication only for
-    // release builds and only while the user has not opted out in Settings.
-    implementation("com.google.firebase:firebase-crashlytics")
+    // Crashlytics is out of this release. Its Sessions registrar is the only
+    // manifest difference from the last bundle Play accepted (4.0.33 / 286),
+    // and Play rejects every bundle that contains it during upload.
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-messaging")
     // SMS Retriever / User Consent API (no SMS permission required)

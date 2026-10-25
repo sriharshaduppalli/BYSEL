@@ -752,7 +752,7 @@ fun SettingsScreen(
                 icon = Icons.Filled.BugReport,
                 title = "Share crash reports",
                 subtitle = if (crashReports) {
-                    "Sends a stack trace and the screen name when the app crashes. No name, number, or P&L."
+                    "Saved for later. This release does not send crash reports."
                 } else {
                     "Off — crashes stay on this device"
                 },

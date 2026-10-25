@@ -1,15 +1,11 @@
 package com.bysel.trader.utils
 
 import android.content.Context
-import com.bysel.trader.BuildConfig
-import com.google.firebase.crashlytics.FirebaseCrashlytics
 
 /**
- * Crash reporting with a user switch.
- *
- * Only release builds send reports, and only while the user has not turned the
- * switch off in Settings. Reports carry stack traces and the screen tag; they
- * never carry the user's name, mobile number, or paper P&L.
+ * Preference stub. Crashlytics is not in this release because Play rejects the
+ * bundle while Firebase Sessions is merged in. The switch is still stored so
+ * the choice survives once reporting is wired back.
  */
 object CrashReporting {
     private const val PREFS = "bysel_settings"
@@ -21,28 +17,11 @@ object CrashReporting {
     fun setEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_ENABLED, enabled).apply()
-        apply(context)
     }
 
-    /** Called from Application.onCreate and again whenever the switch changes. */
-    fun apply(context: Context) {
-        val on = !BuildConfig.DEBUG && isEnabled(context)
-        runCatching {
-            FirebaseCrashlytics.getInstance().isCrashlyticsCollectionEnabled = on
-        }
-    }
+    fun apply(context: Context) = Unit
 
-    /** Tag the last screen so a crash report says where the user was. */
-    fun screen(name: String) {
-        runCatching { FirebaseCrashlytics.getInstance().setCustomKey("screen", name) }
-    }
+    fun screen(name: String) = Unit
 
-    /** Record a caught, non-fatal problem without crashing. */
-    fun record(error: Throwable, note: String? = null) {
-        runCatching {
-            val c = FirebaseCrashlytics.getInstance()
-            if (!note.isNullOrBlank()) c.log(note)
-            c.recordException(error)
-        }
-    }
+    fun record(error: Throwable, note: String? = null) = Unit
 }
