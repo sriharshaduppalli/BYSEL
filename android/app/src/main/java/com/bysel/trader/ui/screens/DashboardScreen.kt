@@ -32,7 +32,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.TrendingDown
@@ -125,30 +127,30 @@ private data class HomeGuideStep(
 
 private val HomeGuideSteps = listOf(
     HomeGuideStep(
-        title = "Session tape",
+        title = "Markets",
         body = "Nifty, Sensex, and Bank Nifty, and whether NSE is open. The line under them is your loaded tape, not the full market. Pull down to sync.",
-        lookHint = "The session card is at the top.",
+        lookHint = "The Markets card is at the top, with Search and Scanner right under it.",
         actionLabel = "Next",
         icon = Icons.Filled.Schedule,
     ),
     HomeGuideStep(
-        title = "Today’s practice",
-        body = "Pick one name and tap Practice BUY. That uses paper cash. It is not a live order.",
-        lookHint = "Practice names sit under the session.",
-        actionLabel = "Show names",
+        title = "Practice picks",
+        body = "Swipe the cards, pick one name and tap Practice BUY. That uses paper cash. It is not a live order.",
+        lookHint = "Practice picks sit under the quick actions.",
+        actionLabel = "Show picks",
         icon = Icons.Filled.AutoAwesome,
     ),
     HomeGuideStep(
-        title = "Review",
+        title = "Daily loop",
         body = "After a paper buy, tap Review and note whether you kept a stop. That closes today’s loop.",
-        lookHint = "Idea, Trade, and Review sit under the names.",
+        lookHint = "Idea, Trade, and Review sit under the picks.",
         actionLabel = "Show review",
         icon = Icons.Filled.EditNote,
     ),
     HomeGuideStep(
         title = "You’re set",
-        body = "Guide, Customize, News, and Ask AI live in the session menu. Customize rearranges news and the watchlist. It does not change the session.",
-        lookHint = "Open the session menu anytime.",
+        body = "Guide, Customize, News, and Ask AI live in the Markets menu. Customize reorders Market Watch, Portfolio and News. It does not change the market data.",
+        lookHint = "Open the Markets menu anytime.",
         actionLabel = "Done",
         icon = Icons.Filled.CheckCircle,
     ),
@@ -782,7 +784,6 @@ fun DashboardContent(
     val newsRefreshSymbols = remember(watchlistSymbols, holdings) {
         buildPersonalNewsSymbols(watchlistSymbols, holdings.map { it.symbol })
     }
-    val signalBuckets = remember(quotes) { buildSignalLabBuckets(quotes).take(3) }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -805,7 +806,10 @@ fun DashboardContent(
             modifier = Modifier
                 .fillMaxSize()
                 .background(LocalAppTheme.current.surface)
-                .padding(16.dp)
+                .padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(top = 12.dp, bottom = 100.dp),
+            // One rhythm for every section instead of ad-hoc spacers.
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
         item {
             Box(
@@ -830,6 +834,17 @@ fun DashboardContent(
                     layoutResetHint = layoutResetHint,
                 )
             }
+        }
+
+        // Discovery sits right under the markets, not at the end of a long scroll.
+        item {
+            QuickActionsRow(
+                onSearch = onSearchClick,
+                onScanner = onScannerClick,
+                onSignalLab = onSignalLabClick,
+                onSmartMoney = onSmartMoneyClick,
+                onAskAi = onAiClick,
+            )
         }
 
         item {
@@ -899,9 +914,7 @@ fun DashboardContent(
                 TraceAwareErrorSnackbar(
                     error = error,
                     onDismiss = onErrorDismiss,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp),
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
@@ -909,47 +922,44 @@ fun DashboardContent(
         item {
             SectionHeader(
                 title = "Your Space",
-                subtitle = "News and Market Watch. Rearrange them from the session menu.",
+                subtitle = "Market Watch, Portfolio and News — yours to reorder from the ⋮ menu.",
                 modifier = Modifier.bringIntoViewRequester(yourSpaceRequester),
             )
         }
 
         widgetOrder.forEachIndexed { idx, widget ->
-                when (widget) {
-                    "portfolio" -> if (portfolioPinned) {
-                        item {
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-                    .bringIntoViewRequester(portfolioWidgetRequester),
-                colors = byselCardColors(),
-                elevation = byselCardElevation(),
-                                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(2.dp, LocalAppTheme.current.primary)
-                            ) {
-                                Column(modifier = Modifier.padding(8.dp)) {
-                                    PortfolioSummaryCard(
-                                        holdings = holdings,
-                                        quotes = quotes,
-                                        onClick = onPortfolioClick,
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(20.dp))
-                        }
-                    }
-                "news" -> if (newsPinned) {
-                    item {
+            when (widget) {
+                "portfolio" -> if (portfolioPinned) {
+                    item(key = "widget_portfolio") {
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 4.dp)
+                                .bringIntoViewRequester(portfolioWidgetRequester),
+                            colors = byselCardColors(),
+                            elevation = byselCardElevation(),
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(2.dp, LocalAppTheme.current.primary),
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                PortfolioSummaryCard(
+                                    holdings = holdings,
+                                    quotes = quotes,
+                                    onClick = onPortfolioClick,
+                                )
+                            }
+                        }
+                    }
+                }
+                "news" -> if (newsPinned) {
+                    item(key = "widget_news") {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
                                 .bringIntoViewRequester(newsRequester),
                             colors = byselCardColors(),
                             elevation = byselCardElevation(),
                             shape = RoundedCornerShape(16.dp),
-                            border = if (idx == 0) BorderStroke(2.dp, LocalAppTheme.current.primary) else byselCardBorder()
+                            border = if (idx == 0) BorderStroke(2.dp, LocalAppTheme.current.primary) else byselCardBorder(),
                         ) {
                             NewsWidget(
                                 isPinned = true,
@@ -962,19 +972,16 @@ fun DashboardContent(
                                 onHeadlineClick = { onTradeClick(it) },
                             )
                         }
-                        Spacer(modifier = Modifier.height(20.dp))
                     }
                 }
                 "watchlist" -> if (watchlistPinned) {
-                    item {
+                    item(key = "widget_watchlist") {
                         Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
+                            modifier = Modifier.fillMaxWidth(),
                             colors = byselCardColors(),
                             elevation = byselCardElevation(),
                             shape = RoundedCornerShape(16.dp),
-                            border = if (idx == 0) BorderStroke(2.dp, LocalAppTheme.current.primary) else byselCardBorder()
+                            border = if (idx == 0) BorderStroke(2.dp, LocalAppTheme.current.primary) else byselCardBorder(),
                         ) {
                             WatchlistWidget(
                                 isPinned = true,
@@ -986,32 +993,13 @@ fun DashboardContent(
                                 onTradeClick = onQuickTradeClick?.let { handler -> { handler(it.symbol) } },
                             )
                         }
-                        Spacer(modifier = Modifier.height(20.dp))
                     }
                 }
             }
         }
 
-        if (!newsPinned) {
-            item {
-                Box(modifier = Modifier.bringIntoViewRequester(newsRequester)) {
-                NewsWidget(
-                    isPinned = false,
-                    headlines = marketNews,
-                    trackedSymbols = newsSymbols,
-                    isLoading = newsLoading,
-                    error = newsError,
-                    onPinClick = { dashboardViewModel.toggleNewsPin() },
-                        onRefresh = { dashboardViewModel.refreshMarketNews(newsRefreshSymbols) },
-                    onHeadlineClick = { onTradeClick(it) },
-                )
-                }
-                Spacer(modifier = Modifier.height(20.dp))
-            }
-        }
-
         if (!watchlistPinned) {
-            item {
+            item(key = "loose_watchlist") {
                 WatchlistWidget(
                     isPinned = false,
                     quotes = watchlistQuotes,
@@ -1021,7 +1009,23 @@ fun DashboardContent(
                     onQuoteClick = { onTradeClick(it.symbol) },
                     onTradeClick = onQuickTradeClick?.let { handler -> { handler(it.symbol) } },
                 )
-                Spacer(modifier = Modifier.height(20.dp))
+            }
+        }
+
+        if (!newsPinned) {
+            item(key = "loose_news") {
+                Box(modifier = Modifier.bringIntoViewRequester(newsRequester)) {
+                    NewsWidget(
+                        isPinned = false,
+                        headlines = marketNews,
+                        trackedSymbols = newsSymbols,
+                        isLoading = newsLoading,
+                        error = newsError,
+                        onPinClick = { dashboardViewModel.toggleNewsPin() },
+                        onRefresh = { dashboardViewModel.refreshMarketNews(newsRefreshSymbols) },
+                        onHeadlineClick = { onTradeClick(it) },
+                    )
+                }
             }
         }
 
@@ -1043,28 +1047,10 @@ fun DashboardContent(
             }
         }
 
-        item {
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        item {
-            IdeasRail(
-                signalTitle = signalBuckets.firstOrNull()?.title,
-                onSignalLab = onSignalLabClick,
-                onScanner = onScannerClick,
-                onSmartMoney = onSmartMoneyClick,
-                onSearch = onSearchClick,
-            )
-        }
-
         if (onAiQuery != null) {
             item {
                 HomeLearnSection(onLearnQuery = onAiQuery)
             }
-        }
-        
-        item {
-            Spacer(modifier = Modifier.height(100.dp))
         }
     }
     }
@@ -1221,7 +1207,7 @@ private fun MarketPulseHero(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Session tape",
+                        text = "Markets",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = theme.text,
@@ -1509,7 +1495,7 @@ private fun TodaysPracticeStrip(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Today's Practice",
+                    text = "Daily loop",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = theme.text,
@@ -1628,7 +1614,7 @@ private fun TodaysPracticeStrip(
             )
         } else {
             Text(
-                text = "Pick a name in Today’s practice, Practice BUY, then Review.",
+                text = "Pick a name in Practice picks, Practice BUY, then Review.",
                 fontSize = 10.sp,
                 color = theme.textSecondary,
             )
@@ -1893,7 +1879,7 @@ private fun TodaysPracticeDeck(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 10.dp),
+            .blockParentHorizontalPager(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(
@@ -1903,20 +1889,20 @@ private fun TodaysPracticeDeck(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Today’s practice",
-                    fontSize = 16.sp,
+                    text = "Practice picks",
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = theme.text,
                 )
                 Text(
-                    text = "Cash and delivery drills for this session.",
+                    text = "Swipe through today’s paper drills. Cash and delivery only.",
                     fontSize = 11.sp,
                     color = theme.textSecondary,
                 )
             }
             if (onSeeScanner != null) {
                 TextButton(onClick = onSeeScanner, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                    Text("Scanner", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text("More", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -1963,21 +1949,29 @@ private fun TodaysPracticeDeck(
                 )
             }
             else -> {
-                items.forEach { row ->
-                    val norm = WatchlistSymbols.normalize(row.symbol)
-                    val live = quotes.firstOrNull { WatchlistSymbols.normalize(it.symbol) == norm }
-                    PracticeDeckRow(
-                        item = row,
-                        last = live?.last?.takeIf { it > 0 },
-                        dayPct = live?.pctChange,
-                        badge = when {
-                            norm in held -> "In book"
-                            norm in watched -> "On watchlist"
-                            else -> null
-                        },
-                        onOpen = { onOpenSymbol(row.symbol) },
-                        onPaperBuy = onPaperBuy?.let { buy -> { buy(row.symbol, row.qty) } },
-                    )
+                // A carousel keeps five drills to one card-height instead of a wall of BUY buttons.
+                LazyRow(
+                    modifier = Modifier.exclusiveHorizontalScroll(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(end = 4.dp),
+                ) {
+                    items(items, key = { it.symbol }) { row ->
+                        val norm = WatchlistSymbols.normalize(row.symbol)
+                        val live = quotes.firstOrNull { WatchlistSymbols.normalize(it.symbol) == norm }
+                        PracticeDeckRow(
+                            item = row,
+                            last = live?.last?.takeIf { it > 0 },
+                            dayPct = live?.pctChange,
+                            badge = when {
+                                norm in held -> "In book"
+                                norm in watched -> "On watchlist"
+                                else -> null
+                            },
+                            onOpen = { onOpenSymbol(row.symbol) },
+                            onPaperBuy = onPaperBuy?.let { buy -> { buy(row.symbol, row.qty) } },
+                            modifier = Modifier.width(248.dp),
+                        )
+                    }
                 }
                 Text(
                     text = "Educational paper practice only. Buttons say Practice BUY — no live order, no target.",
@@ -1998,11 +1992,12 @@ private fun PracticeDeckRow(
     badge: String?,
     onOpen: () -> Unit,
     onPaperBuy: (() -> Unit)?,
+    modifier: Modifier = Modifier,
 ) {
     val theme = LocalAppTheme.current
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = modifier
+            .height(196.dp)
             .byselSectionSurface(RoundedCornerShape(14.dp))
             .clickable(onClick = onOpen)
             .padding(14.dp),
@@ -2049,6 +2044,8 @@ private fun PracticeDeckRow(
             fontSize = 12.sp,
             color = theme.textSecondary,
             lineHeight = 16.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
         if (badge != null) {
             Text(
@@ -2058,6 +2055,7 @@ private fun PracticeDeckRow(
                 color = theme.primary,
             )
         }
+        Spacer(modifier = Modifier.weight(1f))
         if (onPaperBuy != null) {
             Button(
                 onClick = onPaperBuy,
@@ -2126,7 +2124,7 @@ private fun DailyRecommendationsSection(
                 )
                 Text(
                     text = if (usingTapeLean) {
-                        "Session tape while the model list loads"
+                        "Your loaded tape while the model list loads"
                     } else {
                         "Model-ranked paper names for this session"
                     },
@@ -2790,108 +2788,66 @@ private fun HomeCustomizeSheet(
 }
 
 @Composable
-private fun IdeasRail(
-    signalTitle: String?,
-    onSignalLab: (() -> Unit)?,
-    onScanner: (() -> Unit)?,
-    onSmartMoney: (() -> Unit)?,
+private fun QuickActionsRow(
     onSearch: (() -> Unit)?,
+    onScanner: (() -> Unit)?,
+    onSignalLab: (() -> Unit)?,
+    onSmartMoney: (() -> Unit)?,
+    onAskAi: (() -> Unit)?,
 ) {
     val theme = LocalAppTheme.current
-    val ideas = listOfNotNull(
-        onSearch?.let {
-            IdeaChip(
-                title = "Search Stocks",
-                subtitle = "Full NSE catalog · add to My list",
-                icon = Icons.Filled.Search,
-                onClick = it,
-            )
-        },
-        onScanner?.let {
-            IdeaChip(
-                title = "Scanner",
-                subtitle = "Quality and swing screens · more names",
-                icon = Icons.Filled.Explore,
-                onClick = it,
-            )
-        },
-        onSignalLab?.let {
-            IdeaChip(
-                title = "Signal Lab",
-                subtitle = signalTitle ?: "Phase setups",
-                icon = Icons.Filled.AutoAwesome,
-                onClick = it,
-            )
-        },
-        onSmartMoney?.let {
-            IdeaChip(
-                title = "Smart Money",
-                subtitle = "Investor portfolios",
-                icon = Icons.AutoMirrored.Filled.TrendingUp,
-                onClick = it,
-            )
-        },
+    val actions = listOfNotNull(
+        onSearch?.let { QuickAction("Search", Icons.Filled.Search, it) },
+        onScanner?.let { QuickAction("Scanner", Icons.Filled.Explore, it) },
+        onSignalLab?.let { QuickAction("Signals", Icons.Filled.AutoAwesome, it) },
+        onSmartMoney?.let { QuickAction("Investors", Icons.AutoMirrored.Filled.TrendingUp, it) },
+        onAskAi?.let { QuickAction("Ask AI", Icons.Filled.Psychology, it) },
     )
-    if (ideas.isEmpty()) return
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 4.dp)
-            .blockParentHorizontalPager(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+    if (actions.isEmpty()) return
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(
-            text = "Shortcuts",
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = theme.text,
-        )
-        LazyRow(
-            modifier = Modifier.exclusiveHorizontalScroll(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(ideas, key = { it.title }) { idea ->
-                Column(
+        actions.forEach { action ->
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(theme.card)
+                    .clickable(onClick = action.onClick)
+                    .padding(vertical = 10.dp, horizontal = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Box(
                     modifier = Modifier
-                        .width(168.dp)
-                        .heightIn(min = 72.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(theme.card)
-                        .clickable(onClick = idea.onClick)
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(theme.primaryContainer),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        idea.icon,
-                        contentDescription = null,
-                        tint = theme.primary,
+                        action.icon,
+                        contentDescription = action.label,
+                        tint = theme.onPrimaryContainer,
                         modifier = Modifier.size(18.dp),
                     )
-                    Text(
-                        text = idea.title,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = theme.text,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = idea.subtitle,
-                        fontSize = 11.sp,
-                        color = theme.textSecondary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
                 }
+                Text(
+                    text = action.label,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = theme.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
 }
 
-private data class IdeaChip(
-    val title: String,
-    val subtitle: String,
+private data class QuickAction(
+    val label: String,
     val icon: ImageVector,
     val onClick: () -> Unit,
 )
