@@ -69,6 +69,13 @@
         <meta-data
             android:name="google_analytics_adid_collection_enabled"
             android:value="false" />
+
+        <!-- Crashlytics pulls in Firebase Sessions. That service starts in the
+             foreground without a type, and Play rejects the bundle while
+             "optimizing" it. Crash reports do not need this service. -->
+        <service
+            android:name="com.google.firebase.sessions.SessionLifecycleService"
+            tools:node="remove" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
