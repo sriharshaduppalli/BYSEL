@@ -58,6 +58,27 @@ def _safe_rate(numerator: int, denominator: int) -> float:
     return round((float(numerator) / float(denominator)) * 100.0, 2)
 
 
+def _ism_slo_snapshot() -> dict:
+    """File-level ISM health — does not cold-start the assistant on scrape."""
+    try:
+        from .llm_integration import ism_runtime_snapshot
+
+        snap = ism_runtime_snapshot(load=False)
+        return {
+            "available": bool(snap.get("available")),
+            "feedbackLearning": bool(snap.get("feedback_learning")),
+            "nightlyRefresh": bool(snap.get("nightly_refresh")),
+            "kbItems": int(snap.get("kb_items") or 0),
+            "learnedItems": int(snap.get("learned_items") or 0),
+            "instrumentRows": int(snap.get("instrument_rows") or 0),
+            "feedbackSamples": int(snap.get("feedback_samples") or 0),
+            "thumbsUp": int(snap.get("thumbs_up") or 0),
+            "thumbsDown": int(snap.get("thumbs_down") or 0),
+        }
+    except Exception:
+        return {"available": False}
+
+
 def _percentile(samples: list[float], percentile: float) -> float | None:
     if not samples:
         return None
@@ -357,6 +378,7 @@ async def slo_metrics_endpoint() -> dict:
                 "quoteLatencyP95MaxMs": 300,
             },
         },
+        "ism": _ism_slo_snapshot(),
     }
 
 
@@ -376,19 +398,19 @@ async def enricher_test(symbol: str):
 @app.get("/ai/llm-status")
 def llm_status():
     import traceback
-    from .llm_integration import _LLM_DATA
+    from .llm_integration import _LLM_DATA, ism_runtime_snapshot
     error = None
-    available = False
+    snap: dict = {}
     try:
-        from .llm_integration import llm_available
-        available = llm_available()
-    except Exception as e:
+        snap = ism_runtime_snapshot(load=True)
+    except Exception:
         error = traceback.format_exc()
     return {
         "llm_data_path": str(_LLM_DATA),
         "llm_data_exists": _LLM_DATA.exists(),
-        "llm_available": available,
+        "llm_available": bool(snap.get("available")),
         "error": error,
+        "ism": snap,
     }
 
 @app.get("/ai/groq-status")

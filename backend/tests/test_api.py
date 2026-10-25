@@ -214,6 +214,9 @@ def test_slo_metrics_endpoint_returns_latency_error_and_success_rates(monkeypatc
     assert float(slo["orderOutcomes"]["successRatePct"]) >= 0.0
     assert float(slo["orderOutcomes"]["successRatePct"]) <= 100.0
     assert int(slo["http"]["totalRequests"]) >= 1
+    ism = payload.get("ism") or {}
+    assert "learnedItems" in ism
+    assert int(ism.get("learnedItems") or 0) >= 0
 
 
 def test_get_quotes():
@@ -1833,6 +1836,20 @@ def test_classify_intent_keeps_stock_followup_chips_distinct():
     assert classify_intent("Should I buy RELIANCE?")["intent"] == "BUY_SELL"
     assert classify_intent("Predict RELIANCE price")["intent"] == "PREDICT"
     assert classify_intent("Is RELIANCE overvalued?")["intent"] == "FUNDAMENTAL"
+
+
+def test_classify_intent_scenario_and_sip_calculator_do_not_steal_compare():
+    from app.groq_llm import classify_intent
+    from app.llm_integration import rewrite_query_for_ism
+
+    assert classify_intent("Bull case vs bear case for HDFCBANK")["intent"] == "PREDICT"
+    assert classify_intent("Buy or sell case for RELIANCE")["intent"] == "BUY_SELL"
+    assert classify_intent("SIP of 5000 per month for 10 years at 12%")["intent"] == "CALCULATION"
+    assert classify_intent("Compare INFY and TCS")["intent"] == "COMPARE"
+    rewritten = rewrite_query_for_ism("Bull case vs bear case for HDFCBANK")
+    assert "bull case and bear case" in rewritten.lower()
+    assert " vs " not in rewritten.lower()
+    assert classify_intent(rewritten)["intent"] == "PREDICT"
 
 
 def test_expand_acronyms_supports_extended_market_terms():

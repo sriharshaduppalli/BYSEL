@@ -665,6 +665,22 @@ def normalize_market_terms_in_query(query: str) -> str:
 # ---------------------------------------------------------------------------
 # Intent classifier — pure Python, ~0ms, no extra LLM call
 # ---------------------------------------------------------------------------
+# One-name scenario asks ("bull case vs bear case for X", "bull vs bear on X").
+SCENARIO_QUERY_RE = re.compile(
+    r"\bbull(?:ish)?\b(?:\s*case)?\s*(?:vs\.?|versus|and|or|/|&)\s*bear(?:ish)?\b(?:\s*case)?",
+    re.IGNORECASE,
+)
+
+# Personal-finance calculator asks: a SIP / corpus / goal word plus a number
+# and a tenure or rate token. These need arithmetic, not a stock symbol.
+PERSONAL_FINANCE_CALC_RE = re.compile(
+    r"(?=.*\b(?:sip|retirement|corpus|emergency fund|goal|lumpsum|lump sum)\b)"
+    r"(?=.*\d)"
+    r"(?=.*(?:\byears?\b|\byrs?\b|\bmonths?\b|per month|monthly|%|percent|\bp\.?a\.?\b))",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
 def classify_intent(query: str, conversation_history=None) -> dict:
     """
     Classify user query into one of 8 intents using the shared query contract
@@ -740,12 +756,19 @@ def classify_intent(query: str, conversation_history=None) -> dict:
     if re.search(r'\b(price\s+)?target\b', q):
         scores["PREDICT"] += 2
 
+    # "Bull case vs bear case for X" is a scenario ask on one name, not a two-stock
+    # compare; score it as PREDICT before the generic "vs" heuristic runs.
+    scenario_ask = bool(SCENARIO_QUERY_RE.search(q))
+    if scenario_ask:
+        scores["PREDICT"] += 6
+
     # COMPARE
-    for kw in ["vs ", "versus", "compare", "better than", "which is better",
-               "difference between", "or between"]:
-        if kw in q: scores["COMPARE"] += 2
-    if re.search(r'\b\w+\s+(vs|versus)\s+\w+\b', q):
-        scores["COMPARE"] += 4
+    if not scenario_ask:
+        for kw in ["vs ", "versus", "compare", "better than", "which is better",
+                   "difference between", "or between"]:
+            if kw in q: scores["COMPARE"] += 2
+        if re.search(r'\b\w+\s+(vs|versus)\s+\w+\b', q):
+            scores["COMPARE"] += 4
 
     # BUY_SELL
     for kw in ["should i buy", "should i sell", "buy or sell", "good time to buy",
@@ -818,6 +841,10 @@ def classify_intent(query: str, conversation_history=None) -> dict:
     for kw in ["portfolio", "my holdings", "sip", "diversify", "allocation",
                "rebalance", "asset allocation", "my stocks", "long term investment"]:
         if kw in q: scores["PORTFOLIO"] += 3
+    # "SIP of 5000 for 10 years at 12%" is a calculator ask, not a holdings review.
+    if PERSONAL_FINANCE_CALC_RE.search(q):
+        scores["CALCULATION"] += 6
+        scores["PORTFOLIO"] = 0
 
     # EDUCATIONAL — definitions, meanings, equations (boost strongly so
     # "what is RSI" does not fall into TECHNICAL clarifier asking for a symbol).
@@ -932,6 +959,8 @@ def classify_intent(query: str, conversation_history=None) -> dict:
         contract
         and contract.groq_intent not in {"GENERAL", ""}
         and int(contract.confidence or 0) >= 70
+        and not scenario_ask
+        and not PERSONAL_FINANCE_CALC_RE.search(q)
     ):
         result["intent"] = contract.groq_intent
         result["confidence"] = max(int(result.get("confidence") or 0), int(contract.confidence))

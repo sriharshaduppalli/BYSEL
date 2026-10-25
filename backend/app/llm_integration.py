@@ -165,6 +165,80 @@ def llm_available() -> bool:
     return _load_assistant() is not None
 
 
+def _json_list_count(path: Path) -> int:
+    if not path.exists():
+        return 0
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return 0
+    return len(data) if isinstance(data, list) else 0
+
+
+def ism_runtime_snapshot(*, load: bool = False) -> dict[str, Any]:
+    """Ops snapshot of the Indian Stock LLM — no vendor names, no secrets."""
+    if load and _assistant is None:
+        _load_assistant()
+    assistant = _assistant
+    cfg = getattr(assistant, "config", None) if assistant is not None else None
+    kb = getattr(assistant, "knowledge_base", None)
+    lm = getattr(assistant, "learning_manager", None)
+    signals = getattr(lm, "signals", None)
+    feedback = {}
+    if lm is not None and hasattr(lm, "feedback_metrics"):
+        try:
+            feedback = dict(lm.feedback_metrics() or {})
+        except Exception:
+            feedback = {}
+    if not feedback:
+        log_path = _LLM_DATA / "daily_feedback.log"
+        samples = 0
+        if log_path.exists():
+            try:
+                samples = sum(1 for line in log_path.open("r", encoding="utf-8") if line.strip())
+            except Exception:
+                samples = 0
+        feedback = {"feedback_samples": samples}
+    emb = os.getenv("ISM_EMBEDDING_LOCAL_MODEL")
+    if assistant is not None and not emb:
+        emb = getattr(cfg, "embedding_local_model", None) if cfg is not None else None
+    learned_path = _LLM_DATA / "learned_knowledge.json"
+    instrument_path = _ENTERPRISE / "instrument_master.json"
+    enterprise = {}
+    for name in (
+        "corporate_actions.json",
+        "filings.json",
+        "regulatory_updates.json",
+        "market_events.json",
+        "instrument_master.json",
+    ):
+        path = _ENTERPRISE / name
+        enterprise[name.replace(".json", "")] = {
+            "bytes": path.stat().st_size if path.exists() else 0,
+            "rows": _json_list_count(path),
+        }
+    return {
+        "available": assistant is not None,
+        "loaded": assistant is not None,
+        "feedback_learning": bool(getattr(cfg, "feedback_learning_enabled", False)),
+        "nightly_refresh": bool(getattr(cfg, "nightly_refresh_enabled", False)),
+        "language_graph": bool(getattr(cfg, "language_graph_enabled", False)),
+        "kb_items": len(getattr(kb, "items", []) or []) if kb is not None else 0,
+        "learned_items": _json_list_count(learned_path),
+        "instrument_rows": _json_list_count(instrument_path),
+        "embedding": (
+            f"local:{emb}"
+            if emb
+            else ("loaded" if assistant is not None else "unloaded")
+        ),
+        "feedback_samples": int(feedback.get("feedback_samples") or 0),
+        "thumbs_up": int(sum(getattr(signals, "up", {}).values())) if signals else 0,
+        "thumbs_down": int(sum(getattr(signals, "down", {}).values())) if signals else 0,
+        "enterprise": enterprise,
+        "data_dir_exists": _LLM_DATA.exists(),
+    }
+
+
 def _is_definitional_query(query: str) -> bool:
     q = (query or "").lower()
     return bool(
@@ -416,11 +490,24 @@ def _apply_response_language(original_query: str, result: dict | None) -> dict |
     return result
 
 
+def rewrite_query_for_ism(query: str) -> str:
+    """Keep one-name scenario chips on the prediction path, not a two-stock compare."""
+    text = query or ""
+    try:
+        from .groq_llm import SCENARIO_QUERY_RE
+
+        if SCENARIO_QUERY_RE.search(text):
+            return SCENARIO_QUERY_RE.sub("bull case and bear case", text, count=1)
+    except Exception:
+        pass
+    return text
+
+
 def ask_llm(query: str, context: dict[str, Any] | None = None) -> dict | None:
     """Answer using education pack first, then grounded Indian-market RAG."""
     ctx = dict(context or {})
     original_query = str(ctx.get("original_query") or query or "").strip()
-    result = _ask_llm_core(query, context)
+    result = _ask_llm_core(rewrite_query_for_ism(query), context)
     return _apply_response_language(original_query, result)
 
 
@@ -725,6 +812,15 @@ def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | N
                 q_low,
             )
         )
+        if not pf_ask:
+            try:
+                from .groq_llm import PERSONAL_FINANCE_CALC_RE
+
+                # "SIP of 5000 per month for 10 years at 12%" carries the numbers
+                # but no "calculate" verb; it is still a calculator ask.
+                pf_ask = bool(PERSONAL_FINANCE_CALC_RE.search(q_low))
+            except Exception:
+                pf_ask = False
         if pf_ask or (
             re.search(r"\b(sip|retirement|corpus|emergency fund)\b", q_low)
             and re.search(r"\b(calculate|calculator|how much|fv|future value|required)\b", q_low)

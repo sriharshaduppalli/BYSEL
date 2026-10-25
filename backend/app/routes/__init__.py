@@ -2660,6 +2660,17 @@ async def ai_ask_endpoint(
     user_text = _extract_user_query(body.query)
     expanded_query = expand_acronyms_in_query(user_text)
     normalized_query = normalize_hinglish(expanded_query)
+    from ..groq_llm import PERSONAL_FINANCE_CALC_RE, SCENARIO_QUERY_RE
+
+    scenario_ask = bool(SCENARIO_QUERY_RE.search(normalized_query))
+    pf_calc_ask = bool(PERSONAL_FINANCE_CALC_RE.search(normalized_query))
+    if scenario_ask:
+        # "Bull case vs bear case for X" is a one-name scenario ask. Both the
+        # contract and ISM read "vs" as a two-stock compare and would answer
+        # with a one-leg scorecard, so phrase it as the forecast it is.
+        normalized_query = SCENARIO_QUERY_RE.sub(
+            "bull case and bear case", normalized_query, count=1
+        )
     if re.search(
         r"^(both|both of (them|those)|compare both|those two|"
         r"rendu|donu|dono|idddarini|"
@@ -2703,7 +2714,7 @@ async def ai_ask_endpoint(
     except Exception:
         query_contract = None
     intent_result = classify_intent(normalized_query, conversation_history=body.conversation_history)
-    if query_contract and int(query_contract.confidence or 0) >= 70:
+    if query_contract and int(query_contract.confidence or 0) >= 70 and not pf_calc_ask:
         intent_result["intent"] = query_contract.groq_intent
         intent_result["confidence"] = max(
             int(intent_result.get("confidence") or 0),
@@ -2711,6 +2722,17 @@ async def ai_ask_endpoint(
         )
         intent_result["profile"] = query_contract.profile
         intent_result["format_instructions"] = query_contract.format_instructions
+    if query_contract and pf_calc_ask:
+        # The contract reads "sip" as a holdings review and would send a symbol
+        # clarifier back; the numbers make it a calculator ask ISM can answer.
+        import dataclasses as _dc
+
+        query_contract = _dc.replace(
+            query_contract, profile="calculation", ism_intent="calculation",
+            groq_intent="CALCULATION", clarifier=None, needs_symbol=False,
+        )
+        intent_result["intent"] = "CALCULATION"
+        intent_result["confidence"] = max(int(intent_result.get("confidence") or 0), 85)
         intent_result["resolved_query"] = query_contract.resolved_query
     response_style = infer_response_style(normalized_query, body.conversation_history)
 
