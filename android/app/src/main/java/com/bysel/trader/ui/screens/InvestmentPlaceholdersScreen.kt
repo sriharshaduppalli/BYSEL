@@ -178,7 +178,11 @@ private fun ActionBanner(
             }
         }
         if (foError.isNullOrBlank()) {
-            LaunchedEffect(msg) { viewModel.clearProductActionMessage() }
+            // Hold the card long enough to read; clearing on the same frame made it a one-frame flash.
+            LaunchedEffect(msg) {
+                kotlinx.coroutines.delay(4_000)
+                viewModel.clearProductActionMessage()
+            }
         }
     }
 }
@@ -394,6 +398,9 @@ private fun OutlinedTextField(
     textStyle: TextStyle = TextStyle(color = LocalAppTheme.current.text),
     colors: TextFieldColors = investmentTextFieldColors(),
     singleLine: Boolean = false,
+    keyboardOptions: androidx.compose.foundation.text.KeyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default,
+    isError: Boolean = false,
+    supportingText: @Composable (() -> Unit)? = null,
 ) {
     M3OutlinedTextField(
         value = value,
@@ -404,8 +411,16 @@ private fun OutlinedTextField(
         textStyle = textStyle,
         colors = colors,
         singleLine = singleLine,
+        keyboardOptions = keyboardOptions,
+        isError = isError,
+        supportingText = supportingText,
     )
 }
+
+/** Numeric practice inputs (lots, amounts, prices) open the number pad instead of the full keyboard. */
+private val DecimalKeyboard = androidx.compose.foundation.text.KeyboardOptions(
+    keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
+)
 
 private fun formatInvestmentCurrency(value: Double): String {
     return "₹${String.format("%,.2f", value)}"
@@ -667,7 +682,7 @@ fun MutualFundsScreen(
                             value = recommendationHorizonInput,
                             onValueChange = { recommendationHorizonInput = it.filter { ch -> ch.isDigit() }.take(2) },
                             modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Horizon (years)") },
+                            label = { Text("Horizon (years)") }, keyboardOptions = DecimalKeyboard,
                             singleLine = true,
                         )
                         Button(
@@ -954,7 +969,7 @@ fun IpoListingsScreen(
     var selected by remember { mutableStateOf<IPOListing?>(null) }
     var applyTarget by remember { mutableStateOf<IPOListing?>(null) }
     BackHandler(enabled = selected != null) { selected = null }
-    var selectedTab by remember { mutableStateOf(IpoListingTab.OPEN) }
+    var selectedTab by rememberSaveable { mutableStateOf(IpoListingTab.OPEN) }
 
     LaunchedEffect(Unit) {
         viewModel.loadIpoListings()
@@ -1120,7 +1135,7 @@ fun IpoListingsScreen(
             ipo = ipo,
             onDismiss = { applyTarget = null },
             onApply = { lots, upi, bid ->
-                viewModel.applyForIpo(ipo.copy(priceBandMax = bid), lots = lots, upiId = upi)
+                viewModel.applyForIpo(ipo, lots = lots, upiId = upi, bidPrice = bid)
                 applyTarget = null
             }
         )
@@ -1335,7 +1350,7 @@ fun SipPlansScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = null) {
 fun MyIpoApplicationsScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = null) {
     val applications by viewModel.myIpoApplications.collectAsStateWithLifecycle()
     val loading by viewModel.productsLoading.collectAsStateWithLifecycle()
-    var statusFilter by remember { mutableStateOf("ALL") }
+    var statusFilter by rememberSaveable { mutableStateOf("ALL") }
 
     LaunchedEffect(Unit) { viewModel.loadMyIpoApplications() }
 
@@ -1373,8 +1388,21 @@ fun MyIpoApplicationsScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? =
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("ALL", "PENDING", "ALLOTTED", "REJECTED").forEach { status ->
-                    Button(onClick = { statusFilter = status }) { Text(status) }
+                    FilterChip(
+                        selected = statusFilter == status,
+                        onClick = { statusFilter = status },
+                        label = { Text(status, fontSize = 11.sp) },
+                    )
                 }
+            }
+        }
+        if (filtered.isEmpty()) {
+            item {
+                Text(
+                    "No $statusFilter paper applications. Allotment here is a simulated outcome, not an exchange result.",
+                    color = LocalAppTheme.current.textSecondary,
+                    fontSize = 12.sp,
+                )
             }
         }
         items(filtered, key = { it.applicationId }) { app ->
@@ -1417,9 +1445,9 @@ private fun EditSipDialog(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                OutlinedTextField(value = amountText, onValueChange = { amountText = it }, label = { Text("Amount") })
+                OutlinedTextField(value = amountText, onValueChange = { amountText = it }, label = { Text("Amount") }, keyboardOptions = DecimalKeyboard)
                 OutlinedTextField(value = frequencyText, onValueChange = { frequencyText = it.uppercase() }, label = { Text("Frequency") })
-                OutlinedTextField(value = dayText, onValueChange = { dayText = it }, label = { Text("Installment Day") })
+                OutlinedTextField(value = dayText, onValueChange = { dayText = it }, label = { Text("Installment Day") }, keyboardOptions = DecimalKeyboard)
             }
         },
         confirmButton = {
@@ -1456,9 +1484,9 @@ private fun SipCreateDialog(
                     fontSize = 12.sp,
                     color = LocalAppTheme.current.textSecondary,
                 )
-                OutlinedTextField(value = amountText, onValueChange = { amountText = it }, label = { Text("Amount") })
+                OutlinedTextField(value = amountText, onValueChange = { amountText = it }, label = { Text("Amount") }, keyboardOptions = DecimalKeyboard)
                 OutlinedTextField(value = frequency, onValueChange = { frequency = it.uppercase() }, label = { Text("Frequency (MONTHLY/QUARTERLY)") })
-                OutlinedTextField(value = dayText, onValueChange = { dayText = it }, label = { Text("Installment Day") })
+                OutlinedTextField(value = dayText, onValueChange = { dayText = it }, label = { Text("Installment Day") }, keyboardOptions = DecimalKeyboard)
             }
         },
         confirmButton = {
@@ -1493,8 +1521,8 @@ private fun IpoApplyDialog(
                     fontSize = 12.sp,
                     color = LocalAppTheme.current.textSecondary,
                 )
-                OutlinedTextField(value = lotsText, onValueChange = { lotsText = it }, label = { Text("Lots") })
-                OutlinedTextField(value = bidText, onValueChange = { bidText = it }, label = { Text("Bid Price") })
+                OutlinedTextField(value = lotsText, onValueChange = { lotsText = it }, label = { Text("Lots") }, keyboardOptions = DecimalKeyboard)
+                OutlinedTextField(value = bidText, onValueChange = { bidText = it }, label = { Text("Bid Price") }, keyboardOptions = DecimalKeyboard)
                 OutlinedTextField(
                     value = upiText,
                     onValueChange = { upiText = it },
@@ -1658,7 +1686,7 @@ fun AdvancedOrdersScreen(
                         value = quantityInput,
                         onValueChange = { quantityInput = it.filter { ch -> ch.isDigit() }.take(6) },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Quantity") },
+                        label = { Text("Quantity") }, keyboardOptions = DecimalKeyboard,
                         singleLine = true,
                     )
 
@@ -1697,14 +1725,14 @@ fun AdvancedOrdersScreen(
                         value = limitPriceInput,
                         onValueChange = { limitPriceInput = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Limit Price (optional)") },
+                        label = { Text("Limit Price (optional)") }, keyboardOptions = DecimalKeyboard,
                         singleLine = true,
                     )
                     OutlinedTextField(
                         value = triggerPriceInput,
                         onValueChange = { triggerPriceInput = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Trigger Price (optional)") },
+                        label = { Text("Trigger Price (optional)") }, keyboardOptions = DecimalKeyboard,
                         singleLine = true,
                     )
                     OutlinedTextField(
@@ -2401,10 +2429,10 @@ fun WealthOsScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = null) {
                             }
                         }
                     }
-                    OutlinedTextField(value = memberEquityInput, onValueChange = { memberEquityInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Equity Value") }, singleLine = true)
-                    OutlinedTextField(value = memberMfInput, onValueChange = { memberMfInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Mutual Fund Value") }, singleLine = true)
-                    OutlinedTextField(value = memberCashInput, onValueChange = { memberCashInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Cash Value") }, singleLine = true)
-                    OutlinedTextField(value = memberLiabilityInput, onValueChange = { memberLiabilityInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Liabilities") }, singleLine = true)
+                    OutlinedTextField(value = memberEquityInput, onValueChange = { memberEquityInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Equity Value") }, keyboardOptions = DecimalKeyboard, singleLine = true)
+                    OutlinedTextField(value = memberMfInput, onValueChange = { memberMfInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Mutual Fund Value") }, keyboardOptions = DecimalKeyboard, singleLine = true)
+                    OutlinedTextField(value = memberCashInput, onValueChange = { memberCashInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Cash Value") }, keyboardOptions = DecimalKeyboard, singleLine = true)
+                    OutlinedTextField(value = memberLiabilityInput, onValueChange = { memberLiabilityInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Liabilities") }, keyboardOptions = DecimalKeyboard, singleLine = true)
                     Button(
                         onClick = {
                             viewModel.addFamilyMember(
@@ -2479,9 +2507,9 @@ fun WealthOsScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = null) {
             Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(value = goalName, onValueChange = { goalName = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Goal Name") }, singleLine = true)
-                    OutlinedTextField(value = targetAmountInput, onValueChange = { targetAmountInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Target Amount") }, singleLine = true)
+                    OutlinedTextField(value = targetAmountInput, onValueChange = { targetAmountInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Target Amount") }, keyboardOptions = DecimalKeyboard, singleLine = true)
                     OutlinedTextField(value = targetDate, onValueChange = { targetDate = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Target Date (YYYY-MM-DD)") }, singleLine = true)
-                    OutlinedTextField(value = monthlyContributionInput, onValueChange = { monthlyContributionInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Monthly Contribution") }, singleLine = true)
+                    OutlinedTextField(value = monthlyContributionInput, onValueChange = { monthlyContributionInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Monthly Contribution") }, keyboardOptions = DecimalKeyboard, singleLine = true)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
                         listOf("LOW", "MODERATE", "HIGH").forEach { option ->
                             TextButton(onClick = { riskProfile = option }) {
@@ -2529,8 +2557,13 @@ fun WealthOsScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = null) {
                         value = incrementAmountInput,
                         onValueChange = { incrementAmountInput = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Increment Amount") },
+                        label = { Text("Increment Amount") }, keyboardOptions = DecimalKeyboard,
                         singleLine = true,
+                    )
+                    Text(
+                        "Then tap “Link Instruments” on a goal in the timeline below to attach these.",
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 11.sp,
                     )
                 }
             }
@@ -2702,7 +2735,7 @@ fun CopilotCenterScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = nul
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Pre-Trade Check", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(value = symbol, onValueChange = { symbol = it.uppercase() }, modifier = Modifier.fillMaxWidth(), label = { Text("Symbol") }, singleLine = true)
-                    OutlinedTextField(value = quantityInput, onValueChange = { quantityInput = it.filter { ch -> ch.isDigit() }.take(6) }, modifier = Modifier.fillMaxWidth(), label = { Text("Quantity") }, singleLine = true)
+                    OutlinedTextField(value = quantityInput, onValueChange = { quantityInput = it.filter { ch -> ch.isDigit() }.take(6) }, modifier = Modifier.fillMaxWidth(), label = { Text("Quantity") }, keyboardOptions = DecimalKeyboard, singleLine = true)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("BUY", "SELL").forEach { option ->
                             TextButton(onClick = { side = option }) {
@@ -2725,8 +2758,8 @@ fun CopilotCenterScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = nul
                             }
                         }
                     }
-                    OutlinedTextField(value = limitInput, onValueChange = { limitInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Limit Price (optional)") }, singleLine = true)
-                    OutlinedTextField(value = triggerInput, onValueChange = { triggerInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Trigger Price (optional)") }, singleLine = true)
+                    OutlinedTextField(value = limitInput, onValueChange = { limitInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Limit Price (optional)") }, keyboardOptions = DecimalKeyboard, singleLine = true)
+                    OutlinedTextField(value = triggerInput, onValueChange = { triggerInput = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Trigger Price (optional)") }, keyboardOptions = DecimalKeyboard, singleLine = true)
                     Button(
                         onClick = {
                             viewModel.fetchPreTradeEstimate(

@@ -139,7 +139,7 @@ fun putMoneyness(spot: Double, strike: Double): String {
 private fun termsFor(mode: FnoLiteracyMode): List<FnoTerm> {
     val shared = listOf(
         FnoTerm("Paper only", "BYSEL F&O is a practice gym. No live brokerage, no guaranteed P&L, no SPAN from your broker."),
-        FnoTerm("Lot", "You cannot buy 1 share of NIFTY futures. You buy 1 lot (NIFTY 65, BANKNIFTY 30 as of Oct 2025 — lots get revised). Size risk from the lot, not the LTP."),
+        FnoTerm("Lot", "You cannot buy 1 share of NIFTY futures. You buy 1 lot (NIFTY 65, BANKNIFTY 30 as of Oct 2026 — lots get revised). Size risk from the lot, not the LTP."),
         FnoTerm("Notional vs margin", "Notional = lot × price (value you control). Margin is cash typically blocked. A move can lose more than margin."),
     )
     val options = listOf(
@@ -154,7 +154,7 @@ private fun termsFor(mode: FnoLiteracyMode): List<FnoTerm> {
         FnoTerm("Futures", "A contract to buy or sell later at today’s futures price. Profit/loss tracks the underlying, with leverage."),
         FnoTerm("Basis", "Futures price minus spot. Premium = futures above cash. Discount = futures below cash."),
         FnoTerm("Mark-to-market", "P&L is settled daily. A gap against you can eat margin even if you plan to hold to expiry."),
-        FnoTerm("Session clock", "Cash shares 9:15–3:30 IST. From 3 Aug 2026, F&O cash ~3:15, CAS ~3:35, derivatives ~3:40. Brokers may square MIS earlier."),
+        FnoTerm("Session clock", "Cash shares 9:15–3:30 IST. From 3 Aug 2026, F&O cash ~3:15, CAS ~3:35, derivatives ~3:40. Intraday positions may be closed earlier than the bell."),
     )
     return when (mode) {
         FnoLiteracyMode.OPTIONS -> shared + options

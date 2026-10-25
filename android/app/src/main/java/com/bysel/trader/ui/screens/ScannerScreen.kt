@@ -273,6 +273,18 @@ fun ScannerScreen(
                     )
                 }
             }
+            if (!canSaveBoard) {
+                Text(
+                    text = if (selected == ScannerModeChip.FNO) {
+                        "Boards save equity scans; the F&O hub has its own practice picks."
+                    } else {
+                        "Board limit reached (${ScannerBoards.MAX_BOARDS}). Delete one to save another."
+                    },
+                    fontSize = 11.sp,
+                    color = theme.textSecondary,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                )
+            }
             if (activeBoard != null && selected != ScannerModeChip.FNO) {
                 Row(
                     modifier = Modifier

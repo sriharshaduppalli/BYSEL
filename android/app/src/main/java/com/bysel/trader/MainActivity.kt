@@ -1167,7 +1167,6 @@ fun BYSELApp(
                                             viewModel.refreshWallet()
                                             viewModel.refreshMarketStatus()
                                         },
-                                        onAddFunds = { amount, _ -> viewModel.addFunds(amount) },
                                         onAddPracticeCredit = { amount -> viewModel.addFunds(amount) },
                                         onErrorDismiss = {
                                             viewModel.clearTradeError()

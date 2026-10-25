@@ -182,11 +182,23 @@ fun CreateAlertDialog(
                     colors = appFilledTextFieldColors(containerColor = LocalAppTheme.current.surface),
                 )
 
+                val parsedPrice = price.replace(",", "").toDoubleOrNull()
+                val priceInvalid = price.isNotEmpty() && (parsedPrice == null || parsedPrice <= 0.0)
                 TextField(
                     value = price,
                     onValueChange = { price = it },
                     label = { Text("Threshold Price") },
                     modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+                    ),
+                    isError = priceInvalid,
+                    supportingText = if (priceInvalid) {
+                        { Text("Enter a price above 0, e.g. 2450.50") }
+                    } else {
+                        null
+                    },
                     colors = appFilledTextFieldColors(containerColor = LocalAppTheme.current.surface),
                 )
 
@@ -218,11 +230,12 @@ fun CreateAlertDialog(
             }
         },
         confirmButton = {
+            val parsed = price.replace(",", "").toDoubleOrNull()
             Button(
+                enabled = symbol.isNotBlank() && parsed != null && parsed > 0.0,
                 onClick = {
-                    if (symbol.isNotEmpty() && price.isNotEmpty()) {
-                        onConfirm(symbol, price.toDoubleOrNull() ?: 0.0, alertType)
-                    }
+                    val value = parsed ?: return@Button
+                    onConfirm(symbol.trim(), value, alertType)
                 }
             ) {
                 Text("Create")

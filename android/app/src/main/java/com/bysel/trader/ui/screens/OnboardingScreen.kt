@@ -152,7 +152,7 @@ fun OnboardingScreen(onFinish: (FirstSessionResult) -> Unit) {
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "Pick ${FirstSession.PICK_COUNT} NSE delivery names for My list. You can change them later.",
+                        text = "Pick ${FirstSession.PICK_COUNT} NSE stocks for your watchlist. You can change them later.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = theme.text,
                         fontSize = 16.sp,

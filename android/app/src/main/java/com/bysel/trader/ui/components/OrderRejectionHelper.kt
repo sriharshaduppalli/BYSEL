@@ -90,18 +90,19 @@ private val REJECTION_RULES: List<Pair<Regex, RejectionResolution>> = listOf(
     ),
     // RMS / Risk block
     Regex("rms.*(reject|block|limit|exposure)|risk.*(reject|block|exceeded|limit)|exposure.*(limit|exceeded)|var.limit|margin.shortfall", RegexOption.IGNORE_CASE) to RejectionResolution(
-        title = "Risk Check Failed",
-        explanation = "Your broker's risk management system has blocked this order. This may be due to exposure limits or margin shortfall.",
-        primaryCta = "Contact Support",
+        title = "Practice Risk Check Blocked This",
+        explanation = "BYSEL's paper risk check stopped this order — usually the position would be too large for your practice wallet or concentration limit. Try a smaller size.",
+        primaryCta = "Dismiss",
+        secondaryCta = "Reduce Quantity",
         category = RejectionCategory.RISK,
         icon = Icons.Filled.Shield,
         tone = RejectionTone.BLOCKING,
     ),
-    // KYC / compliance
-    Regex("kyc|not.verified|verification.pending|account.not.activated|demat.not.activated|dpid", RegexOption.IGNORE_CASE) to RejectionResolution(
-        title = "Account Verification Needed",
-        explanation = "Your account is pending KYC or Demat activation. Complete verification to start trading.",
-        primaryCta = "Verify Account",
+    // Sign-in / account state (paper app: there is no KYC or demat step)
+    Regex("kyc|not.verified|verification.pending|account.not.activated|demat.not.activated|dpid|unauthori[sz]ed|session.expired|401", RegexOption.IGNORE_CASE) to RejectionResolution(
+        title = "Sign-in Needed",
+        explanation = "Your BYSEL sign-in has expired, so the paper order was not recorded. Sign in again and retry — no KYC or demat is involved.",
+        primaryCta = "Dismiss",
         category = RejectionCategory.KYC,
         icon = Icons.Filled.VerifiedUser,
         tone = RejectionTone.BLOCKING,
@@ -153,9 +154,9 @@ fun OrderRejectionBanner(
     onSecondaryCta: ((RejectionResolution) -> Unit)? = null,
 ) {
     val resolution = resolveRejection(rawMessage) ?: RejectionResolution(
-        title = "Order Rejected",
+        title = "Paper Order Not Recorded",
         explanation = rawMessage.take(160),
-        primaryCta = "Contact Support",
+        primaryCta = "Dismiss",
         category = RejectionCategory.UNKNOWN,
         icon = Icons.Filled.ErrorOutline,
         tone = RejectionTone.BLOCKING,

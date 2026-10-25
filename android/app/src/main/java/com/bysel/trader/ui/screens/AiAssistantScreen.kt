@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -242,10 +243,11 @@ fun AiAssistantScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(vertical = 12.dp)
             ) {
-                items(
+                itemsIndexed(
                     items = chatHistory,
-                    key = { "${it.timestamp}_${it.isUser}" }
-                ) { message ->
+                    // Index breaks ties for same-millisecond messages; duplicate keys crash LazyColumn.
+                    key = { index, it -> "${it.timestamp}_${it.isUser}_$index" }
+                ) { _, message ->
                     ChatBubble(
                         message = message,
                         onSuggestionClick = onSuggestionClick,
@@ -803,7 +805,7 @@ private fun WelcomeContent(
             if (!focusedSymbol.isNullOrBlank()) {
                 "You're looking at $focusedSymbol. Ask about this stock or any NSE name."
             } else {
-                "Ask me anything about Indian stocks.\nI can analyze, predict, and compare stocks for you."
+                "Ask me anything about Indian stocks.\nI can explain, compare, and walk through paper-practice levels with you."
             },
             color = theme.textSecondary,
             fontSize = 14.sp,
@@ -1418,13 +1420,13 @@ private fun ChatBubble(
 private fun TypingIndicator(likelyColdStart: Boolean = false) {
     var statusText by remember {
         mutableStateOf(
-            if (likelyColdStart) "Waking the market server…" else "AI is thinking…"
+            if (likelyColdStart) "Connecting to BYSEL AI…" else "AI is thinking…"
         )
     }
     LaunchedEffect(likelyColdStart) {
         if (likelyColdStart) {
             kotlinx.coroutines.delay(6_000L)
-            statusText = "Still waking — first reply can take longer…"
+            statusText = "Still connecting — the first reply can take longer…"
             kotlinx.coroutines.delay(20_000L)
             statusText = "Finishing analysis…"
         } else {

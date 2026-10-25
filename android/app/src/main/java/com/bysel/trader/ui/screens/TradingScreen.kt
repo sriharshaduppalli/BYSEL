@@ -214,7 +214,6 @@ fun TradingScreen(
     onBuy: (String, Int) -> Unit,
     onSell: (String, Int) -> Unit,
     onRefresh: () -> Unit,
-    onAddFunds: (Double, String) -> Unit,
     onAddPracticeCredit: (Double) -> Unit = {},
     onErrorDismiss: () -> Unit,
     onTraceSupportLookup: ((String) -> Unit)? = null,
@@ -268,7 +267,7 @@ fun TradingScreen(
             onOpenAddFundsConsumed()
         }
     }
-    var selectedWorkspaceIndex by remember { mutableIntStateOf(0) }
+    var selectedWorkspaceIndex by rememberSaveable { mutableIntStateOf(0) }
     val pendingTradeWorkspace by viewModel.pendingTradeWorkspace.collectAsStateWithLifecycle()
     LaunchedEffect(pendingTradeWorkspace) {
         val index = pendingTradeWorkspace ?: return@LaunchedEffect
@@ -319,6 +318,8 @@ fun TradingScreen(
                 onBuy = { qty -> onBuy(ticketQuote.symbol, qty) },
                 onSell = { qty -> onSell(ticketQuote.symbol, qty) },
                 onTraceSupportLookup = onTraceSupportLookup,
+                onAddFunds = { showAddFundsDialog = true },
+                onOpenSearch = onOpenSearch,
                 viewModel = viewModel,
             )
         }
@@ -329,10 +330,6 @@ fun TradingScreen(
             onDismiss = { showAddFundsDialog = false },
             onAddPracticeCredit = { amount ->
                 onAddPracticeCredit(amount)
-                showAddFundsDialog = false
-            },
-            onAddViaUpi = { amount, upiProvider ->
-                onAddFunds(amount, upiProvider)
                 showAddFundsDialog = false
             },
         )
@@ -961,9 +958,9 @@ private fun SpotTradingWorkspace(
                                             modifier = Modifier.padding(end = 20.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Icon(Icons.Filled.Delete, contentDescription = "Remove", tint = Color.White, modifier = Modifier.size(20.dp))
+                                            Icon(Icons.Filled.Delete, contentDescription = "Remove", tint = LocalAppTheme.current.onNegative, modifier = Modifier.size(20.dp))
                                             Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Remove", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                            Text("Remove", color = LocalAppTheme.current.onNegative, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                         }
                                     }
                                 },
@@ -1090,9 +1087,9 @@ private fun SpotTradingWorkspace(
                                             modifier = Modifier.padding(end = 20.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Icon(Icons.Filled.Delete, contentDescription = "Remove", tint = Color.White, modifier = Modifier.size(20.dp))
+                                            Icon(Icons.Filled.Delete, contentDescription = "Remove", tint = LocalAppTheme.current.onNegative, modifier = Modifier.size(20.dp))
                                             Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Remove", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                            Text("Remove", color = LocalAppTheme.current.onNegative, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                         }
                                     }
                                 },
@@ -1950,6 +1947,8 @@ fun TradeBottomSheet(
     onBuy: (Int) -> Unit,
     onSell: (Int) -> Unit,
     onTraceSupportLookup: ((String) -> Unit)? = null,
+    onAddFunds: (() -> Unit)? = null,
+    onOpenSearch: (() -> Unit)? = null,
     viewModel: TradingViewModel,
 ) {
     val haptic = LocalHapticFeedback.current
@@ -1998,6 +1997,8 @@ fun TradeBottomSheet(
                             walletBalance = walletBalance,
                             marketStatus = marketStatus,
                             onDismiss = onDismiss,
+                            onAddFunds = onAddFunds,
+                            onOpenSearch = onOpenSearch,
                             onBuy = { qty ->
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 onBuy(qty)
@@ -2025,12 +2026,15 @@ private fun TradeBottomSheetContent(
     onBuy: (Int) -> Unit,
     onSell: (Int) -> Unit,
     onTraceSupportLookup: ((String) -> Unit)? = null,
+    onAddFunds: (() -> Unit)? = null,
+    onOpenSearch: (() -> Unit)? = null,
     viewModel: TradingViewModel,
 ) {
-    var quantity by remember { mutableStateOf("") }
-    var tradeType by remember { mutableStateOf("BUY") }
-    var orderType by remember { mutableStateOf("MARKET") }
-    var limitPriceInput by remember { mutableStateOf(String.format("%.2f", quote.last)) }
+    // Saveable so a rotation mid-ticket keeps the half-filled order.
+    var quantity by rememberSaveable(quote.symbol) { mutableStateOf("") }
+    var tradeType by rememberSaveable(quote.symbol) { mutableStateOf("BUY") }
+    var orderType by rememberSaveable(quote.symbol) { mutableStateOf("MARKET") }
+    var limitPriceInput by rememberSaveable(quote.symbol) { mutableStateOf(String.format("%.2f", quote.last)) }
     var showConfirmDialog by remember { mutableStateOf(false) }
     val holdings by viewModel.holdings.collectAsStateWithLifecycle()
     val preTradeSignal by viewModel.copilotPreTradeSignal.collectAsStateWithLifecycle()
@@ -2506,7 +2510,23 @@ private fun TradeBottomSheetContent(
             rejectionBannerError?.let { errMsg ->
                 OrderRejectionBanner(
                     rawMessage = errMsg,
-                    onPrimaryCta = { viewModel.clearError() },
+                    onPrimaryCta = { resolution ->
+                        // Each CTA label promises an action; do that action, then clear.
+                        when (resolution.category) {
+                            RejectionCategory.FUNDS -> onAddFunds?.invoke()
+                            RejectionCategory.QUANTITY -> quantity = ((qty / 2).coerceAtLeast(1)).toString()
+                            RejectionCategory.PRICE -> limitPriceInput = String.format("%.2f", quote.last)
+                            RejectionCategory.INSTRUMENT -> {
+                                onOpenSearch?.invoke()
+                                onDismiss()
+                            }
+                            RejectionCategory.TECHNICAL -> {
+                                if (qty > 0) showConfirmDialog = true
+                            }
+                            else -> Unit
+                        }
+                        viewModel.clearError()
+                    },
                     modifier = Modifier.padding(bottom = 10.dp),
                     onSecondaryCta = { resolution ->
                         when (resolution.category) {
@@ -2531,6 +2551,12 @@ private fun TradeBottomSheetContent(
             if (estimateWarnings.isEmpty() && tradeType == "BUY" && !canAfford) {
                 Text(
                     "⚠ Insufficient funds. Need ${formatCurrency((netAmount - walletBalance).coerceAtLeast(0.0))} more.",
+                    fontSize = 12.sp, color = LocalAppTheme.current.negative, modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+            if (tradeType == "SELL" && qty > (currentHolding?.qty ?: 0)) {
+                Text(
+                    "⚠ You hold ${currentHolding?.qty ?: 0} ${quote.symbol} in the paper book — short selling is not part of practice.",
                     fontSize = 12.sp, color = LocalAppTheme.current.negative, modifier = Modifier.padding(top = 4.dp)
                 )
             }
@@ -2663,7 +2689,7 @@ private fun TradeBottomSheetContent(
                         color = LocalAppTheme.current.primary
                     )
                     Text(
-                        text = "Submitting order and refreshing execution context...",
+                        text = "Recording the paper fill and refreshing your book...",
                         fontSize = 11.sp,
                         color = LocalAppTheme.current.textSecondary
                     )
@@ -2682,7 +2708,8 @@ private fun TradeBottomSheetContent(
                         }
                     },
                     isBuy = tradeType == "BUY",
-                    enabled = qty > 0 && !limitInvalid && !limitDeviationHardBlock && !copilotBlocksTrade && !orderExecutionLoading && (tradeType == "SELL" || canAfford),
+                    enabled = qty > 0 && !limitInvalid && !limitDeviationHardBlock && !copilotBlocksTrade && !orderExecutionLoading &&
+                        (if (tradeType == "SELL") qty <= (currentHolding?.qty ?: 0) else canAfford),
                     modifier = Modifier.weight(2f),
                     height = 48.dp,
                 ) {
@@ -2690,7 +2717,7 @@ private fun TradeBottomSheetContent(
                         CircularProgressIndicator(
                             modifier = Modifier.size(18.dp),
                             strokeWidth = 2.dp,
-                            color = Color.White
+                            color = LocalContentColor.current
                         )
                     } else {
                         Text(
@@ -2710,7 +2737,7 @@ private fun TradeBottomSheetContent(
             onDismissRequest = { showConfirmDialog = false },
             title = {
                 Text(
-                    "Confirm $tradeType Order",
+                    "Confirm practice $tradeType",
                     fontWeight = FontWeight.Bold,
                     color = if (tradeType == "BUY") LocalAppTheme.current.positive else LocalAppTheme.current.negative
                 )
@@ -2898,7 +2925,6 @@ private fun StreamHealthPill(health: TradingViewModel.StreamHealth) {
 fun AddFundsDialog(
     onDismiss: () -> Unit,
     onAddPracticeCredit: (Double) -> Unit,
-    onAddViaUpi: (Double, String) -> Unit = { _, _ -> },
 ) {
     var amount by remember { mutableStateOf("") }
     val presetAmounts = listOf(10000.0, 25000.0, 50000.0, 100000.0)

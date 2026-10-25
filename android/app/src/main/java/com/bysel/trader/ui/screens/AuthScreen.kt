@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -384,7 +385,7 @@ fun AuthScreen(
                 )
 
                 Text(
-                    text = "Enter the 6-digit code sent to your phone by Firebase.",
+                    text = "Enter the 6-digit code sent to your phone.",
                     color = appTheme.textSecondary,
                     fontSize = 12.sp,
                     modifier = Modifier.padding(top = 4.dp)
@@ -492,7 +493,7 @@ fun AuthScreen(
                 enabled = !sendingOtp && !verifyingOtp
             ) {
                 if (sendingOtp) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.height(20.dp))
+                    CircularProgressIndicator(color = LocalContentColor.current, modifier = Modifier.height(20.dp))
                 } else {
                     Text(if (otpSent) "Resend OTP" else "Send OTP")
                 }
@@ -579,7 +580,7 @@ fun AuthScreen(
                     enabled = !sendingOtp && !verifyingOtp
                 ) {
                     if (verifyingOtp) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.height(20.dp))
+                        CircularProgressIndicator(color = LocalContentColor.current, modifier = Modifier.height(20.dp))
                     } else {
                         Text("Verify OTP")
                     }
@@ -721,7 +722,7 @@ fun AuthScreen(
             ) {
                 if (loading) {
                     CircularProgressIndicator(
-                        color = Color.White,
+                        color = LocalContentColor.current,
                         modifier = Modifier.height(20.dp)
                     )
                 } else {
@@ -1118,7 +1119,7 @@ private fun ForgotPasswordDialog(
             ) {
                 if (loading) {
                     CircularProgressIndicator(
-                        color = Color.White,
+                        color = LocalContentColor.current,
                         modifier = Modifier.height(18.dp),
                         strokeWidth = 2.dp,
                     )

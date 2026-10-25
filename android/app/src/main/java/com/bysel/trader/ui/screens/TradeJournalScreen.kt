@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,14 +42,21 @@ fun TradeJournalScreen(
     var entries by remember { mutableStateOf<List<Map<String, Any>>>(emptyList()) }
     var insights by remember { mutableStateOf<Map<String, Any>?>(null) }
     var isLoading by remember { mutableStateOf(false) }
-    var selectedTab by remember { mutableIntStateOf(0) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
 
     fun load() {
         scope.launch {
             isLoading = true
-            entries = viewModel.fetchJournalEntries()
-            insights = viewModel.fetchJournalInsights()
-            isLoading = false
+            loadError = null
+            try {
+                entries = viewModel.fetchJournalEntries()
+                insights = viewModel.fetchJournalInsights()
+            } catch (ex: Exception) {
+                loadError = "Couldn't reach the journal. Check your connection and retry."
+            } finally {
+                isLoading = false
+            }
         }
     }
 
@@ -112,6 +120,14 @@ fun TradeJournalScreen(
         if (isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = appTheme.primary)
+            }
+        } else if (loadError != null && entries.isEmpty() && insights == null) {
+            Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(loadError.orEmpty(), color = appTheme.text, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(onClick = { load() }) { Text("Retry") }
+                }
             }
         } else {
             when (selectedTab) {

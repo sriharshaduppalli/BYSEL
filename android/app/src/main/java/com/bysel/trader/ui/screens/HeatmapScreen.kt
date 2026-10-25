@@ -102,31 +102,31 @@ private fun computeTradeQualityIndex(
         score >= 81 -> TradeQualityIndex(
             score = score,
             label = "Excellent",
-            guidance = "Strong market breath — constructive for selective paper trades.",
+            guidance = "Strong market breadth — constructive for selective paper trades.",
             color = theme.positive,
         )
         score >= 61 -> TradeQualityIndex(
             score = score,
             label = "Good",
-            guidance = "Healthy breath — favor high-participation setups only.",
+            guidance = "Healthy breadth — favor high-participation setups only.",
             color = theme.primary,
         )
         score >= 41 -> TradeQualityIndex(
             score = score,
             label = "Moderate",
-            guidance = "Mixed breath — keep size small and wait for clearer leadership.",
+            guidance = "Mixed breadth — keep size small and wait for clearer leadership.",
             color = theme.caution,
         )
         score >= 21 -> TradeQualityIndex(
             score = score,
             label = "Unhealthy",
-            guidance = "Weak breath — defensive bias; avoid chasing breakouts.",
+            guidance = "Weak breadth — defensive bias; avoid chasing breakouts.",
             color = theme.caution,
         )
         else -> TradeQualityIndex(
             score = score,
             label = "Hazardous",
-            guidance = "Toxic breath — prioritize capital preservation over new risk.",
+            guidance = "Very weak breadth — prioritize capital preservation over new risk.",
             color = theme.negative,
         )
     }
@@ -279,7 +279,7 @@ fun HeatmapScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    if (isLoading || heatmap?.isStale == true) {
+                    if (isLoading) {
                         CircularProgressIndicator(color = LocalAppTheme.current.primary)
                         Spacer(modifier = Modifier.height(16.dp))
                     }
@@ -316,7 +316,7 @@ private fun MarketStatusBanner(marketOpen: Boolean, staleReason: String? = null)
             theme.tintedSurface(theme.negative, 0.28f),
             Icons.Filled.Schedule,
             staleReason
-                ?: "Market Closed  •  NSE/BSE Mon–Fri from 9:15 IST  •  From 3 Aug 2026: CAS/F&O multi-close (to 3:40)  •  Showing last session data",
+                ?: "Market Closed  •  NSE/BSE Mon–Fri from 9:15 IST  •  Showing last session data",
         )
     }
 
@@ -437,7 +437,7 @@ private fun MarketBreathCard(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                "Market Breath",
+                "Market Breadth",
                 color = LocalAppTheme.current.text,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp
@@ -446,7 +446,7 @@ private fun MarketBreathCard(
                 heatmap.marketOpen == false && heatmap.quotedCount > 0 ->
                     "Last session close — TQI frozen until the next open (${heatmap.quotedCount} quoted names)."
                 heatmap.universeSize > 0 && heatmap.quotedCount > 0 ->
-                    "Breath across ${heatmap.quotedCount} quoted of ${heatmap.universeSize} active NSE listings" +
+                    "Breadth across ${heatmap.quotedCount} quoted of ${heatmap.universeSize} active NSE listings" +
                         if (heatmap.pendingQuotes > 0) " (${heatmap.pendingQuotes} still warming)." else "."
                 heatmap.universeSize > 0 ->
                     "Covering ${heatmap.universeSize} active NSE listings (quotes filling in)."
@@ -492,7 +492,7 @@ private fun MarketBreathCard(
                         fontSize = 12.sp
                     )
                     Text(
-                        "Like AQI for trading: higher % = healthier breath to take risk.",
+                        "Like AQI for trading: higher % = healthier breadth to take risk.",
                         color = LocalAppTheme.current.textSecondary,
                         fontSize = 10.sp,
                         modifier = Modifier.padding(top = 4.dp)
@@ -503,7 +503,7 @@ private fun MarketBreathCard(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                "Live breath distribution",
+                "Live breadth distribution",
                 color = LocalAppTheme.current.text,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 13.sp
@@ -557,7 +557,7 @@ private fun MarketBreathCard(
             Spacer(modifier = Modifier.height(14.dp))
 
             Text(
-                if (breathHistory.size >= 2) "Breath trend (live)" else "Breath trend builds as the heatmap refreshes",
+                if (breathHistory.size >= 2) "Breadth trend (live)" else "Breadth trend builds as the heatmap refreshes",
                 color = LocalAppTheme.current.textSecondary,
                 fontSize = 11.sp
             )
@@ -671,6 +671,8 @@ private fun BreathDistributionGraph(
     val declineColor = theme.negative
     val unchangedColor = theme.textSecondary.copy(alpha = 0.55f)
     val gridColor = theme.textSecondary.copy(alpha = 0.2f)
+    // Theme text keeps the quality line visible on both light and dark fills.
+    val lineColor = theme.text.copy(alpha = 0.9f)
 
     Canvas(modifier = modifier) {
         if (samples.isEmpty()) return@Canvas
@@ -737,7 +739,7 @@ private fun BreathDistributionGraph(
         }
         drawPath(
             tqiPath,
-            color = Color.White.copy(alpha = 0.9f),
+            color = lineColor,
             style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round),
         )
     }

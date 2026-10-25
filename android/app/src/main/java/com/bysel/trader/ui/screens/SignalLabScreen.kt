@@ -205,7 +205,7 @@ fun SignalLabScreen(
                             color = theme.text,
                         )
                         Text(
-                            text = "Educational lists from the session tape. Paper practice only — not brokerage signals.",
+                            text = "Educational lists from your loaded tape. Paper practice only — not brokerage signals.",
                             fontSize = 11.sp,
                             color = theme.textSecondary,
                             lineHeight = 16.sp,
@@ -638,7 +638,7 @@ private fun publicBucketTitle(title: String): String =
 
 private fun publicBucketThesis(thesis: String): String =
     if (looksInternal(thesis)) {
-        "Names from the session tape for paper practice — not investment advice."
+        "Names from your loaded tape for paper practice — not investment advice."
     } else {
         thesis
     }

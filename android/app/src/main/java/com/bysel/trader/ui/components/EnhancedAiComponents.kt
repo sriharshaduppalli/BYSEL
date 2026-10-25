@@ -377,7 +377,7 @@ fun ProfitSignalCard(
                             onClick = onBuy,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = LocalAppTheme.current.positive,
-                                contentColor = Color.White,
+                                contentColor = LocalAppTheme.current.onPositive,
                             ),
                             modifier = Modifier.weight(1f).height(34.dp),
                             contentPadding = PaddingValues(0.dp)

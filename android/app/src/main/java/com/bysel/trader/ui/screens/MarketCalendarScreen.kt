@@ -70,7 +70,7 @@ fun MarketCalendarScreen(onBack: () -> Unit) {
             Spacer(modifier = Modifier.width(8.dp))
             Column {
                 Text(
-                    text = "Market Calendar 2026",
+                    text = "Market Calendar ${today.year}",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     color = LocalAppTheme.current.onPrimary
@@ -197,7 +197,18 @@ fun MarketCalendarScreen(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             val holidaysToShow = if (showAllHolidays) allHolidays else upcomingHolidays
-            
+
+            if (holidaysToShow.isEmpty()) {
+                item {
+                    Text(
+                        text = "No upcoming NSE holidays in the loaded list. NSE publishes next year's calendar in December; the list refreshes with the next app update.",
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(vertical = 12.dp),
+                    )
+                }
+            }
+
             items(holidaysToShow) { holiday ->
                 HolidayCard(holiday = holiday, isToday = holiday.date == today)
             }

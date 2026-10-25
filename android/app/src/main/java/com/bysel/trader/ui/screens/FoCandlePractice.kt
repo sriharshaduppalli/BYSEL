@@ -251,7 +251,7 @@ fun FoCandlePractice(
             }
             if (shown.isEmpty() && !loading && !showChain) {
                 Text(
-                    "No 15-minute candles for ${symbol.uppercase()} yet. Gold Mini is not listed until a 15-minute series exists.",
+                    "No 15-minute candles for ${symbol.uppercase()} yet. Try another symbol or reload after the session opens.",
                     color = theme.textSecondary,
                     fontSize = 12.sp,
                 )
@@ -848,7 +848,7 @@ private fun PracticeResult(
             onClick = {
                 val flattenPrice = if (futureSide) spot else mark
                 onClose(
-                    "Closed the ${open.right.lowercase()} . $lotLabel result ₹${String.format("%.0f", pnl)}.",
+                    "Closed the ${open.right.lowercase()}. $lotLabel result ₹${String.format("%.0f", pnl)}.",
                     flattenPrice,
                 )
             },

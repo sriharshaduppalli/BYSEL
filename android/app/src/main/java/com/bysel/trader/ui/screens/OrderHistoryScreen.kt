@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -102,7 +103,16 @@ fun OrderHistoryScreen(
             }
             error != null && rows.isEmpty() -> {
                 Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                    Text(error ?: "Unavailable", color = theme.text)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Couldn't load your paper order history.", color = theme.text, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Check your connection and retry — nothing has been lost.",
+                            color = theme.textSecondary,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+                        )
+                        Button(onClick = { reload() }) { Text("Retry") }
+                    }
                 }
             }
             rows.isEmpty() -> {

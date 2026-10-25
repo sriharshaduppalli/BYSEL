@@ -179,7 +179,10 @@ fun WatchlistScreen(
                 Button(
                     onClick = onRefresh,
                     modifier = Modifier.height(40.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = LocalAppTheme.current.primary,
+                        contentColor = LocalAppTheme.current.onPrimary,
+                    ),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text("Refresh", fontSize = 12.sp)
@@ -1389,7 +1392,7 @@ fun UpgradedPortfolioHoldingItem(
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = LocalAppTheme.current.positive,
-                        contentColor = Color.White,
+                        contentColor = LocalAppTheme.current.onPositive,
                     ),
                     shape = RoundedCornerShape(8.dp),
                 ) {
@@ -1401,7 +1404,7 @@ fun UpgradedPortfolioHoldingItem(
                         .defaultMinSize(minWidth = 108.dp, minHeight = 32.dp)
                         .height(32.dp),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = theme.negative),
+                    colors = ButtonDefaults.buttonColors(containerColor = theme.negative, contentColor = theme.onNegative),
                     shape = RoundedCornerShape(8.dp),
                 ) {
                     Text("Practice SELL", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)

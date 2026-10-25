@@ -155,7 +155,7 @@ fun InvestorPortfoliosScreen(
                     item {
                         SmartMoneySectionHeader(
                             title = "Explainable Idea Feed",
-                            subtitle = "Why a symbol is surfacing now, which investors back it, and what to watch before acting.",
+                            subtitle = "Why a symbol is surfacing now, which investors back it, and what to watch before practising.",
                         )
                     }
                     items(ideas, key = { it.ideaId }) { idea ->
@@ -230,7 +230,7 @@ private fun SmartMoneyHeroCard(
             )
             }
             Text(
-                text = "Curated legendary-investor holdings for discovery — not a live bulk-deal or SEBI filings feed. Quarter-over-quarter changes may be illustrative until filing diffs are wired.",
+                text = "Curated legendary-investor holdings for discovery — not a live bulk-deal or SEBI filings feed. Quarter-over-quarter changes are illustrative samples for study.",
                 fontSize = 12.sp,
                 color = theme.textSecondary,
                 lineHeight = 18.sp,
@@ -494,7 +494,7 @@ private fun InvestorPortfolioDetailView(
                 shape = RoundedCornerShape(12.dp),
             ) {
                 Text(
-                    text = "Holdings data from latest publicly available SEBI/BSE regulatory disclosures. This is not financial advice.",
+                    text = "Curated from public shareholding disclosures and refreshed periodically — not a live filings feed and not financial advice.",
                     fontSize = 11.sp,
                     color = theme.textSecondary,
                     modifier = Modifier.padding(12.dp),

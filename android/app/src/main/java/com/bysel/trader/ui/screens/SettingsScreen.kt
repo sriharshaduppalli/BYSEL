@@ -633,13 +633,16 @@ fun SettingsScreen(
             }
         }
         
-        item {
-            SettingClickItem(
-                icon = Icons.Filled.Lock,
-                title = "Security",
-                subtitle = "Change account password",
-                onClick = { showSecurityDialog = true }
-            )
+        // OTP-only accounts have no password to change, so the row would dead-end.
+        if (!otpOnlyAccount) {
+            item {
+                SettingClickItem(
+                    icon = Icons.Filled.Lock,
+                    title = "Security",
+                    subtitle = "Change account password",
+                    onClick = { showSecurityDialog = true }
+                )
+            }
         }
         item {
             SettingClickItem(
@@ -767,7 +770,10 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.negative),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = LocalAppTheme.current.negative,
+                    contentColor = LocalAppTheme.current.onNegative,
+                ),
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Text("Logout", fontWeight = FontWeight.Bold, fontSize = 14.sp)

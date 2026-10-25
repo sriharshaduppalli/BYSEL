@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -131,7 +132,7 @@ fun EarningsCalendarScreen(
                                 modifier = Modifier.padding(bottom = 4.dp)
                             )
                         }
-                        items(entries, key = { it.symbol }) { entry ->
+                        itemsIndexed(entries, key = { index, entry -> "${entry.symbol}-$index" }) { _, entry ->
                             EarningsCard(entry = entry, appTheme = appTheme)
                         }
                         item { Spacer(modifier = Modifier.height(24.dp)) }
@@ -212,9 +213,7 @@ private fun EarningsCard(
                 )
                 EarningsMetric(
                     label = "Rev growth",
-                    value = entry.revenueGrowth?.let { String.format("%.1f%%", it) }
-                        ?: forwardPe?.let { String.format("%.1f", it) }
-                        ?: "N/A",
+                    value = entry.revenueGrowth?.let { String.format("%.1f%%", it) } ?: "N/A",
                     color = appTheme.textSecondary,
                     modifier = Modifier.weight(1f)
                 )

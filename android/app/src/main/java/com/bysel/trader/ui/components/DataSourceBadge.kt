@@ -54,7 +54,7 @@ fun foDataLabel(source: String?, generatedAt: String?, notes: List<String>): FoD
         else -> FoDataLabel(
             FoDataKind.DELAYED,
             "NSE board · delayed" + (age?.let { " · $it" } ?: ""),
-            "Public exchange board, not a streaming feed. Expect a lag against your broker.",
+            "Public exchange board, not a streaming feed. Expect a lag against a live terminal.",
         )
     }
 }

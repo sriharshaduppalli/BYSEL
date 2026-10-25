@@ -147,6 +147,7 @@ fun PaperTradeQtyDialog(
                 enabled = canConfirm,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (buy) theme.positive else theme.negative,
+                    contentColor = if (buy) theme.onPositive else theme.onNegative,
                 ),
             ) {
                 Text(if (buy) "Practice BUY $qty" else "Practice SELL $qty")

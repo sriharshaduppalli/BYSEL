@@ -553,7 +553,7 @@ fun StockDetailScreen(
                             quote = quote,
                             quantityText = quantityText,
                             onQuantityChange = { nextValue ->
-                                quantityText = nextValue.filter { it.isDigit() }.take(4).ifBlank { "1" }
+                                quantityText = nextValue.filter { it.isDigit() }.take(4)
                             },
                             previewSide = previewSide,
                             onPreviewSideChange = { previewSide = it },
@@ -805,6 +805,11 @@ private fun TradeSetupCard(
                 onValueChange = onQuantityChange,
                 label = { Text("Quantity") },
                 singleLine = true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+                ),
+                isError = quantityText.isNotEmpty() && (quantityText.toIntOrNull() ?: 0) <= 0,
                 modifier = Modifier.fillMaxWidth(),
                 colors = appOutlinedTextFieldColors(containerColor = theme.surface),
             )
@@ -939,7 +944,7 @@ private fun DetailTrustToolsCard(
                     color = theme.text,
                 )
                 InfoChip(
-                    label = { Text(if (estimate != null) "Charge engine live" else "Quote context live") },
+                    label = { Text(if (estimate != null) "Charges estimated" else "Estimating charges") },
                 )
             }
 
@@ -1604,7 +1609,7 @@ private fun StockDetailActionBar(
                     color = theme.text,
                 )
                 Text(
-                    text = "Route $tradeQuantity share${if (tradeQuantity == 1) "" else "s"} from this screen",
+                    text = "Paper-trade $tradeQuantity share${if (tradeQuantity == 1) "" else "s"} from this screen",
                     fontSize = 12.sp,
                     color = theme.textSecondary,
                 )
@@ -1612,7 +1617,7 @@ private fun StockDetailActionBar(
             Button(
                 onClick = { pendingAction = "BUY"; showConfirmDialog = true },
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = theme.positive),
+                colors = ButtonDefaults.buttonColors(containerColor = theme.positive, contentColor = theme.onPositive),
                 shape = RoundedCornerShape(14.dp),
             ) {
                 Text("Practice BUY", maxLines = 1)
@@ -1620,7 +1625,7 @@ private fun StockDetailActionBar(
             Button(
                 onClick = { pendingAction = "SELL"; showConfirmDialog = true },
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = theme.negative),
+                colors = ButtonDefaults.buttonColors(containerColor = theme.negative, contentColor = theme.onNegative),
                 shape = RoundedCornerShape(14.dp),
             ) {
                 Text("Practice SELL", maxLines = 1)

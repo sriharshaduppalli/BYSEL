@@ -4366,10 +4366,11 @@ class TradingViewModel(
         }
     }
 
-    fun applyForIpo(ipo: IPOListing, lots: Int = 1, upiId: String = "paper@bysel") {
+    fun applyForIpo(ipo: IPOListing, lots: Int = 1, upiId: String = "paper@bysel", bidPrice: Double? = null) {
         viewModelScope.launch {
             _productsLoading.value = true
-            val bid = ipo.priceBandMax ?: ipo.priceBandMin ?: 0.0
+            // The bid travels on its own so the listing's price band is never rewritten.
+            val bid = bidPrice?.takeIf { it > 0 } ?: ipo.priceBandMax ?: ipo.priceBandMin ?: 0.0
             when (val r = repository.applyIpo(
                 IPOApplicationRequest(
                     ipoId = ipo.ipoId,
@@ -4545,23 +4546,17 @@ class TradingViewModel(
         )
     }
 
-    suspend fun fetchTradeHistory(): List<com.bysel.trader.data.api.TradeHistory> {
-        return try {
-            com.bysel.trader.data.api.RetrofitClient.apiService.getTradeHistory()
-        } catch (_: Exception) {
-            emptyList()
-        }
-    }
+    // These rethrow so the screens can tell "offline" apart from "nothing recorded yet".
+    suspend fun fetchTradeHistory(): List<com.bysel.trader.data.api.TradeHistory> =
+        com.bysel.trader.data.api.RetrofitClient.apiService.getTradeHistory()
 
     suspend fun fetchJournalEntries(): List<Map<String, Any>> {
-        return try {
-            @Suppress("UNCHECKED_CAST")
-            (com.bysel.trader.data.api.RetrofitClient.apiService.getJournalEntries()["entries"] as? List<Map<String, Any>>) ?: emptyList()
-        } catch (_: Exception) { emptyList() }
+        @Suppress("UNCHECKED_CAST")
+        return (com.bysel.trader.data.api.RetrofitClient.apiService.getJournalEntries()["entries"] as? List<Map<String, Any>>) ?: emptyList()
     }
 
     suspend fun fetchJournalInsights(): Map<String, Any>? =
-        try { com.bysel.trader.data.api.RetrofitClient.apiService.getJournalInsights() } catch (_: Exception) { null }
+        com.bysel.trader.data.api.RetrofitClient.apiService.getJournalInsights()
 
     /** Log a practice-ideas review into the trade journal (educational habit loop). */
     fun logPracticeReview(
