@@ -80,6 +80,9 @@ import com.bysel.trader.ui.theme.isDynamicThemeId
 import com.bysel.trader.ui.theme.isLightThemeId
 import com.bysel.trader.ui.theme.normalizeThemeId
 import com.bysel.trader.ui.theme.toAppTheme
+import com.bysel.trader.ui.theme.toMaterialColorScheme
+import com.bysel.trader.ui.theme.overlayScreenTransition
+import androidx.compose.animation.AnimatedContent
 import com.bysel.trader.util.rememberWindowLayoutInfo
 import com.google.android.play.core.appupdate.AppUpdateManager
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
@@ -462,12 +465,19 @@ fun BYSELApp(
     }
     // Recompute when system light/dark flips so Material You Dynamic stays in sync.
     val configuration = LocalConfiguration.current
-    val materialScheme = remember(currentThemeName, configuration.uiMode) {
+    val systemScheme = remember(currentThemeName, configuration.uiMode) {
         getMaterialColorScheme(currentThemeName, context)
     }
-    val appTheme = remember(currentThemeName, materialScheme) {
-        if (isDynamicThemeId(currentThemeName)) materialScheme.toAppTheme("Dynamic")
+    val targetTheme = remember(currentThemeName, systemScheme) {
+        if (isDynamicThemeId(currentThemeName)) systemScheme.toAppTheme("Dynamic")
         else getTheme(currentThemeName)
+    }
+    // Palette glides between skins; Material tokens follow the same in-flight colors.
+    val appTheme = com.bysel.trader.ui.theme.rememberAnimatedAppTheme(targetTheme)
+    val materialScheme = if (isDynamicThemeId(currentThemeName) && appTheme === targetTheme) {
+        systemScheme
+    } else {
+        appTheme.toMaterialColorScheme()
     }
 
     // Light themes need dark status-bar icons; dark themes need light icons.
@@ -1013,8 +1023,15 @@ fun BYSELApp(
                             .fillMaxSize()
                             .then(edgeGestureModifier)
                     ) {
+                        // Root tabs live in one pager (key -1); overlays push over it with motion.
+                        val screenKey = if (isRootTab(selectedTab)) -1 else selectedTab
+                        AnimatedContent(
+                            targetState = screenKey,
+                            transitionSpec = { overlayScreenTransition(push = targetState != -1) },
+                            label = "screenStack",
+                        ) { shownKey ->
                         // Swipeable root tabs: Home, AI, Trade, Portfolio, More
-                        if (isRootTab(selectedTab)) {
+                        if (shownKey == -1) {
                             HorizontalPager(
                                 state = pagerState,
                                 modifier = Modifier.fillMaxSize(),
@@ -1258,7 +1275,7 @@ fun BYSELApp(
                             }
                         } else {
                             // Non-swipeable screens (Search, Alerts, Settings, Detail, Achievements)
-                            when (selectedTab) {
+                            when (shownKey) {
                                 4 -> HeatmapScreen(
                                     heatmap = marketHeatmap,
                                     isLoading = heatmapLoading,
@@ -1525,6 +1542,7 @@ fun BYSELApp(
                                     }
                                 }
                             }
+                        }
                         }
 
                         // Left-edge swipe returns through deep-link history even on AI (pager) tab.

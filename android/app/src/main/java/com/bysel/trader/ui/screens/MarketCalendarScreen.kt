@@ -64,7 +64,7 @@ fun MarketCalendarScreen(onBack: () -> Unit) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
-                    tint = Color.White
+                    tint = LocalAppTheme.current.onPrimary
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
@@ -73,12 +73,12 @@ fun MarketCalendarScreen(onBack: () -> Unit) {
                     text = "Market Calendar 2026",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = LocalAppTheme.current.onPrimary
                 )
                 Text(
                     text = "${allHolidays.size} holidays | NSE & BSE",
                     fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.8f)
+                    color = LocalAppTheme.current.onPrimary.copy(alpha = 0.8f)
                 )
             }
         }
@@ -135,7 +135,7 @@ fun MarketCalendarScreen(onBack: () -> Unit) {
                         Icon(
                             imageVector = if (isTradingDay) Icons.Default.CheckCircle else Icons.Default.Cancel,
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = if (isTradingDay) LocalAppTheme.current.onPositive else LocalAppTheme.current.onNegative,
                             modifier = Modifier.size(32.dp)
                         )
                     }
@@ -266,12 +266,12 @@ fun HolidayCard(holiday: MarketHoliday, isToday: Boolean) {
                         text = holiday.date.dayOfMonth.toString(),
                         fontSize = 28.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = LocalAppTheme.current.onPrimary
                     )
                     Text(
                         text = holiday.date.month.getDisplayName(TextStyle.SHORT, Locale.getDefault()),
                         fontSize = 12.sp,
-                        color = Color.White.copy(alpha = 0.9f)
+                        color = LocalAppTheme.current.onPrimary.copy(alpha = 0.9f)
                     )
                 }
             }

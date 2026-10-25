@@ -2282,7 +2282,7 @@ private fun TradeBottomSheetContent(
                 modifier = Modifier.weight(1f).height(42.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (tradeType == "BUY") LocalAppTheme.current.positive else LocalAppTheme.current.mutedSurface,
-                    contentColor = if (tradeType == "BUY") Color.White else LocalAppTheme.current.text
+                    contentColor = if (tradeType == "BUY") LocalAppTheme.current.onPositive else LocalAppTheme.current.text
                 ),
                 shape = RoundedCornerShape(10.dp)
             ) { Text("Practice BUY", fontWeight = FontWeight.Bold, maxLines = 1) }
@@ -2291,7 +2291,7 @@ private fun TradeBottomSheetContent(
                 modifier = Modifier.weight(1f).height(42.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (tradeType == "SELL") LocalAppTheme.current.negative else LocalAppTheme.current.mutedSurface,
-                    contentColor = if (tradeType == "SELL") Color.White else LocalAppTheme.current.text
+                    contentColor = if (tradeType == "SELL") LocalAppTheme.current.onNegative else LocalAppTheme.current.text
                 ),
                 shape = RoundedCornerShape(10.dp)
             ) { Text("Practice SELL", fontWeight = FontWeight.Bold, maxLines = 1) }

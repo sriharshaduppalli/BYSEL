@@ -34,6 +34,9 @@ enum class RejectionCategory {
     UNKNOWN
 }
 
+/** Blocking rejections use the skin's negative hue; advisory ones its caution hue. */
+enum class RejectionTone { BLOCKING, ADVISORY }
+
 data class RejectionResolution(
     val title: String,
     val explanation: String,
@@ -41,7 +44,7 @@ data class RejectionResolution(
     val secondaryCta: String? = null,
     val category: RejectionCategory,
     val icon: ImageVector,
-    val accentColor: Color = Color(0xFFE53935),
+    val tone: RejectionTone = RejectionTone.BLOCKING,
 )
 
 private val REJECTION_RULES: List<Pair<Regex, RejectionResolution>> = listOf(
@@ -53,7 +56,7 @@ private val REJECTION_RULES: List<Pair<Regex, RejectionResolution>> = listOf(
         secondaryCta = "Reduce Quantity",
         category = RejectionCategory.FUNDS,
         icon = Icons.Filled.AccountBalanceWallet,
-        accentColor = Color(0xFFE53935),
+        tone = RejectionTone.BLOCKING,
     ),
     // Market closed (legacy copy — paper fills are allowed after hours)
     Regex("market.*(closed?|not.open|holiday|halted)|outside.*(trading.hours|market.hours)|pre.market|post.market|cannot trade", RegexOption.IGNORE_CASE) to RejectionResolution(
@@ -63,7 +66,7 @@ private val REJECTION_RULES: List<Pair<Regex, RejectionResolution>> = listOf(
         secondaryCta = "Add Funds",
         category = RejectionCategory.MARKET_CLOSED,
         icon = Icons.Filled.Schedule,
-        accentColor = Color(0xFFFF8F00),
+        tone = RejectionTone.ADVISORY,
     ),
     // Quantity limits
     Regex("(quantity|qty).*(exceed|limit|max|too.high|too.large)|max.*(quantity|qty)|lot.size", RegexOption.IGNORE_CASE) to RejectionResolution(
@@ -73,7 +76,7 @@ private val REJECTION_RULES: List<Pair<Regex, RejectionResolution>> = listOf(
         secondaryCta = "Split Order",
         category = RejectionCategory.QUANTITY,
         icon = Icons.Filled.FormatListNumbered,
-        accentColor = Color(0xFFFF8F00),
+        tone = RejectionTone.ADVISORY,
     ),
     // Price / limit rejection
     Regex("price.*(circuit|freeze|limit|band|range|invalid|outside)|circuit.*(limit|breaker)|upper.circuit|lower.circuit|price.deviation", RegexOption.IGNORE_CASE) to RejectionResolution(
@@ -83,7 +86,7 @@ private val REJECTION_RULES: List<Pair<Regex, RejectionResolution>> = listOf(
         secondaryCta = "Use Market Order",
         category = RejectionCategory.PRICE,
         icon = Icons.Filled.PriceChange,
-        accentColor = Color(0xFFFF8F00),
+        tone = RejectionTone.ADVISORY,
     ),
     // RMS / Risk block
     Regex("rms.*(reject|block|limit|exposure)|risk.*(reject|block|exceeded|limit)|exposure.*(limit|exceeded)|var.limit|margin.shortfall", RegexOption.IGNORE_CASE) to RejectionResolution(
@@ -92,7 +95,7 @@ private val REJECTION_RULES: List<Pair<Regex, RejectionResolution>> = listOf(
         primaryCta = "Contact Support",
         category = RejectionCategory.RISK,
         icon = Icons.Filled.Shield,
-        accentColor = Color(0xFFE53935),
+        tone = RejectionTone.BLOCKING,
     ),
     // KYC / compliance
     Regex("kyc|not.verified|verification.pending|account.not.activated|demat.not.activated|dpid", RegexOption.IGNORE_CASE) to RejectionResolution(
@@ -101,7 +104,7 @@ private val REJECTION_RULES: List<Pair<Regex, RejectionResolution>> = listOf(
         primaryCta = "Verify Account",
         category = RejectionCategory.KYC,
         icon = Icons.Filled.VerifiedUser,
-        accentColor = Color(0xFFE53935),
+        tone = RejectionTone.BLOCKING,
     ),
     // Instrument not available
     Regex("symbol.*(not.found|invalid|unavailable|suspended|delisted)|instrument.*(not.tradable|suspended|halted)|trading.suspended", RegexOption.IGNORE_CASE) to RejectionResolution(
@@ -110,7 +113,7 @@ private val REJECTION_RULES: List<Pair<Regex, RejectionResolution>> = listOf(
         primaryCta = "Search Another Stock",
         category = RejectionCategory.INSTRUMENT,
         icon = Icons.Filled.DoNotDisturb,
-        accentColor = Color(0xFFE53935),
+        tone = RejectionTone.BLOCKING,
     ),
     // Rate limit
     Regex("rate.limit|too.many.requests|throttle|slow.down", RegexOption.IGNORE_CASE) to RejectionResolution(
@@ -119,7 +122,7 @@ private val REJECTION_RULES: List<Pair<Regex, RejectionResolution>> = listOf(
         primaryCta = "Retry in 10s",
         category = RejectionCategory.RATE_LIMIT,
         icon = Icons.Filled.HourglassEmpty,
-        accentColor = Color(0xFFFF8F00),
+        tone = RejectionTone.ADVISORY,
     ),
     // Technical / network errors
     Regex("timeout|connection|network.error|server.error|503|502|500|internal.error", RegexOption.IGNORE_CASE) to RejectionResolution(
@@ -128,7 +131,7 @@ private val REJECTION_RULES: List<Pair<Regex, RejectionResolution>> = listOf(
         primaryCta = "Retry Order",
         category = RejectionCategory.TECHNICAL,
         icon = Icons.Filled.WifiOff,
-        accentColor = Color(0xFFFF8F00),
+        tone = RejectionTone.ADVISORY,
     ),
 )
 
@@ -155,13 +158,15 @@ fun OrderRejectionBanner(
         primaryCta = "Contact Support",
         category = RejectionCategory.UNKNOWN,
         icon = Icons.Filled.ErrorOutline,
-        accentColor = Color(0xFFE53935),
+        tone = RejectionTone.BLOCKING,
     )
 
+    val theme = LocalAppTheme.current
+    val accentColor = if (resolution.tone == RejectionTone.BLOCKING) theme.negative else theme.caution
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = resolution.accentColor.copy(alpha = 0.12f)
+            containerColor = accentColor.copy(alpha = 0.12f)
         ),
         shape = RoundedCornerShape(10.dp),
     ) {
@@ -170,7 +175,7 @@ fun OrderRejectionBanner(
                 Icon(
                     imageVector = resolution.icon,
                     contentDescription = null,
-                    tint = resolution.accentColor,
+                    tint = accentColor,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -178,14 +183,14 @@ fun OrderRejectionBanner(
                     text = resolution.title,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
-                    color = resolution.accentColor
+                    color = accentColor
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = resolution.explanation,
                 fontSize = 12.sp,
-                color = LocalAppTheme.current.textSecondary,
+                color = theme.textSecondary,
                 lineHeight = 16.sp,
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -193,7 +198,8 @@ fun OrderRejectionBanner(
                 Button(
                     onClick = { onPrimaryCta(resolution) },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = resolution.accentColor
+                        containerColor = accentColor,
+                        contentColor = com.bysel.trader.ui.theme.contentColorForFill(accentColor),
                     ),
                     modifier = Modifier.height(32.dp),
                     contentPadding = PaddingValues(horizontal = 14.dp)
@@ -207,7 +213,7 @@ fun OrderRejectionBanner(
                         onClick = { onSecondaryCta(resolution) },
                         modifier = Modifier.height(32.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = resolution.accentColor),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor),
                         border = ButtonDefaults.outlinedButtonBorder.copy(
                             width = 1.dp
                         )

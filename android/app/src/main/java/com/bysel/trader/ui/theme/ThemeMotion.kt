@@ -1,6 +1,12 @@
 package com.bysel.trader.ui.theme
 
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -141,6 +147,57 @@ fun animatedChangeColor(change: Double): Color {
         label = "changeColor",
     )
     return animated
+}
+
+/**
+ * Cross-fades every palette color when the user picks a new theme, so the skin
+ * glides instead of snapping. Returns the target theme unchanged once settled.
+ */
+@Composable
+fun rememberAnimatedAppTheme(target: AppTheme): AppTheme {
+    val spec = tween<Color>(durationMillis = 420, easing = FastOutSlowInEasing)
+    val primary by animateColorAsState(target.primary, spec, label = "themePrimary")
+    val surface by animateColorAsState(target.surface, spec, label = "themeSurface")
+    val card by animateColorAsState(target.card, spec, label = "themeCard")
+    val positive by animateColorAsState(target.positive, spec, label = "themePositive")
+    val negative by animateColorAsState(target.negative, spec, label = "themeNegative")
+    val text by animateColorAsState(target.text, spec, label = "themeText")
+    val textSecondary by animateColorAsState(target.textSecondary, spec, label = "themeTextSecondary")
+    val caution by animateColorAsState(target.caution, spec, label = "themeCaution")
+    val settled = primary == target.primary && surface == target.surface && card == target.card &&
+        positive == target.positive && negative == target.negative && text == target.text &&
+        textSecondary == target.textSecondary && caution == target.caution
+    if (settled) return target
+    return AppTheme(
+        primary = primary,
+        surface = surface,
+        card = card,
+        positive = positive,
+        negative = negative,
+        text = text,
+        textSecondary = textSecondary,
+        name = target.name,
+        caution = caution,
+    )
+}
+
+/**
+ * Push / pop motion for full-screen overlays (Search, Settings, Stock detail…).
+ * Pushing slides the new screen in from the right over a fading root; popping
+ * slides it back out. Short enough to never delay a tap.
+ */
+fun overlayScreenTransition(push: Boolean): ContentTransform {
+    val transform = if (push) {
+        (slideInHorizontally(animationSpec = tween(260, easing = FastOutSlowInEasing)) { it / 6 } +
+            fadeIn(animationSpec = tween(220))) togetherWith
+            fadeOut(animationSpec = tween(160))
+    } else {
+        fadeIn(animationSpec = tween(200)) togetherWith
+            (slideOutHorizontally(animationSpec = tween(240, easing = FastOutSlowInEasing)) { it / 6 } +
+                fadeOut(animationSpec = tween(180)))
+    }
+    transform.targetContentZIndex = if (push) 1f else 0f
+    return transform
 }
 
 /** Three bouncing dots for AI / loading affordances. */

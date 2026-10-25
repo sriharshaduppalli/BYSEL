@@ -62,9 +62,9 @@ fun AiChatStyledText(
     val primary = if (isUser) theme.onPrimary else theme.primary
     val positive = theme.positive
     val negative = theme.negative
-    val caution = Color(0xFFFFB74D)
+    val caution = theme.caution
 
-    val annotated = remember(text, isUser, bodyColor, mutedColor, primary, positive, negative) {
+    val annotated = remember(text, isUser, bodyColor, mutedColor, primary, positive, negative, caution) {
         if (isUser) {
             AnnotatedString(text)
         } else {

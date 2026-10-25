@@ -97,7 +97,7 @@ fun TradingViewChart(
     val lastCandle = history.last()
     val priceChange = lastCandle.close - lastCandle.open
     val priceChangePct = if (lastCandle.open != 0.0) (priceChange / lastCandle.open) * 100 else 0.0
-    val priceColor = if (priceChange >= 0) Color(0xFF00C853) else Color(0xFFE53935)
+    val priceColor = if (priceChange >= 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
 
     Column(modifier = modifier) {
         // OHLCV header

@@ -16,6 +16,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.data.api.SentimentScoreResponse
+import com.bysel.trader.ui.theme.LocalAppTheme
+import com.bysel.trader.ui.theme.blendToward
 
 @Composable
 fun SentimentBar(
@@ -30,12 +32,14 @@ fun SentimentBar(
         label = "sentiment_bar"
     )
 
+    val theme = LocalAppTheme.current
+    // Bearish -> neutral -> bullish follows the active skin's PnL palette.
     val barColor = when {
-        targetFraction >= 0.65f -> Color(0xFF00C853)
-        targetFraction >= 0.55f -> Color(0xFF64DD17)
-        targetFraction >= 0.45f -> Color(0xFFFFD600)
-        targetFraction >= 0.35f -> Color(0xFFFF6D00)
-        else -> Color(0xFFE53935)
+        targetFraction >= 0.65f -> theme.positive
+        targetFraction >= 0.55f -> theme.positive.blendToward(theme.caution, 0.4f)
+        targetFraction >= 0.45f -> theme.caution
+        targetFraction >= 0.35f -> theme.negative.blendToward(theme.caution, 0.4f)
+        else -> theme.negative
     }
 
     val levelLabel = sentiment?.level ?: "Neutral"
@@ -53,7 +57,7 @@ fun SentimentBar(
                 text = "News Sentiment",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
-                color = Color(0xFF9E9E9E),
+                color = theme.textSecondary,
             )
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
@@ -66,7 +70,7 @@ fun SentimentBar(
                     Text(
                         text = "· $strengthLabel",
                         fontSize = 11.sp,
-                        color = Color(0xFF757575),
+                        color = theme.textSecondary.copy(alpha = 0.8f),
                     )
                 }
             }
@@ -78,7 +82,7 @@ fun SentimentBar(
                 .fillMaxWidth()
                 .height(6.dp)
                 .clip(RoundedCornerShape(3.dp))
-                .background(Color(0xFF2A2A2A))
+                .background(theme.mutedSurface)
         ) {
             Box(
                 modifier = Modifier
@@ -87,7 +91,7 @@ fun SentimentBar(
                     .clip(RoundedCornerShape(3.dp))
                     .background(
                         Brush.horizontalGradient(
-                            colors = listOf(Color(0xFFE53935), Color(0xFFFFD600), Color(0xFF00C853))
+                            colors = listOf(theme.negative, theme.caution, theme.positive)
                         )
                     )
             )
@@ -98,7 +102,7 @@ fun SentimentBar(
                     .padding(start = (animatedFraction * 100).coerceIn(0f, 96f).dp)
                     .size(10.dp)
                     .clip(RoundedCornerShape(5.dp))
-                    .background(Color.White)
+                    .background(theme.text)
             )
         }
 
@@ -106,13 +110,13 @@ fun SentimentBar(
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text("Bearish", fontSize = 9.sp, color = Color(0xFF757575))
+            Text("Bearish", fontSize = 9.sp, color = theme.textSecondary.copy(alpha = 0.8f))
             Text(
                 text = "$levelLabel · $headlineCount headlines",
                 fontSize = 10.sp,
-                color = Color(0xFF9E9E9E),
+                color = theme.textSecondary,
             )
-            Text("Bullish", fontSize = 9.sp, color = Color(0xFF757575))
+            Text("Bullish", fontSize = 9.sp, color = theme.textSecondary.copy(alpha = 0.8f))
         }
 
         // Summary line
@@ -120,7 +124,7 @@ fun SentimentBar(
             Text(
                 text = sentiment!!.summary,
                 fontSize = 10.sp,
-                color = Color(0xFF616161),
+                color = theme.textSecondary.copy(alpha = 0.7f),
                 modifier = Modifier.padding(top = 3.dp),
                 maxLines = 2,
             )

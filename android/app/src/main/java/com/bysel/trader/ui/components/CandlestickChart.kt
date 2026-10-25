@@ -312,7 +312,7 @@ fun CandlestickChart(
                     Text(
                         text = "MACD(12,26,9): ${String.format("%.2f", lastMacd)} · signal ${String.format("%.2f", lastSignal)} — " +
                             if (above) "MACD above signal (momentum up)" else "MACD below signal (momentum down)",
-                        color = if (above) Color(0xFF00C853) else Color(0xFFE53935),
+                        color = if (above) theme.positive else theme.negative,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
@@ -323,8 +323,8 @@ fun CandlestickChart(
             val lastRsi = rsi.lastOrNull { it != null }
             if (lastRsi != null) {
                 val rsiColor = when {
-                    lastRsi >= 70 -> Color(0xFFE53935)
-                    lastRsi <= 30 -> Color(0xFF00C853)
+                    lastRsi >= 70 -> theme.negative
+                    lastRsi <= 30 -> theme.positive
                     else -> theme.textSecondary
                 }
                 val rsiLabel = when {
@@ -429,7 +429,7 @@ fun CandlestickChart(
                     modifier = Modifier
                         .fillMaxWidth()
                         .then(if (expandPlot) Modifier.weight(1f) else Modifier.height(320.dp))
-                        .background(Color(0x141A1A1A), RoundedCornerShape(12.dp))
+                        .background(theme.mutedSurface, RoundedCornerShape(12.dp))
                         .padding(start = 4.dp, end = 6.dp, top = 8.dp, bottom = 4.dp)
                         .pointerInput(seriesKey, plotWidthPx) {
                             fun maxStart(barDp: Float, count: Int): Float {
@@ -544,7 +544,7 @@ fun CandlestickChart(
                         if (xCenter >= leftPad - barPx) {
                             val candle = bars[i]
                             val isUp = candle.close >= candle.open
-                            val color = if (isUp) Color(0xFF00C853) else Color(0xFFE53935)
+                            val color = if (isUp) theme.positive else theme.negative
                             val highY = yFor(candle.high)
                             val lowY = yFor(candle.low)
                             val openY = yFor(candle.open)
@@ -624,7 +624,7 @@ fun CandlestickChart(
                                     val y = yMacd(h)
                                     val top = min(y, zeroY)
                                     drawRect(
-                                        color = (if (h >= 0) Color(0xFF00C853) else Color(0xFFE53935)).copy(alpha = 0.55f),
+                                        color = (if (h >= 0) theme.positive else theme.negative).copy(alpha = 0.55f),
                                         topLeft = Offset(x - histW / 2f, top),
                                         size = Size(histW, (abs(y - zeroY)).coerceAtLeast(1f)),
                                     )
