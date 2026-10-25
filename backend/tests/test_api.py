@@ -696,10 +696,15 @@ def test_paper_credit_and_buy_debit_same_authenticated_user(monkeypatch):
     assert buy.status_code == 200
     buy_data = buy.json()
     assert buy_data["status"] == "ok"
+    # ₹1,000 of stock plus the delivery charges a real fill would carry.
+    charges = buy_data["charges"]
+    assert 1.0 < charges < 3.0, charges
+    assert buy_data["netAmount"] == round(1_000.0 + charges, 2)
+    assert "STT" in buy_data["chargesNote"]
 
     wallet_after = client.get("/wallet", headers=auth)
     assert wallet_after.status_code == 200
-    assert wallet_after.json()["balance"] == 49_000.0
+    assert wallet_after.json()["balance"] == round(50_000.0 - 1_000.0 - charges, 2)
 
     holdings = client.get("/holdings", headers=auth)
     assert holdings.status_code == 200

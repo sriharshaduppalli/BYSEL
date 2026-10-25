@@ -99,6 +99,10 @@ class OrderResponse(BaseModel):
     errorCode: Optional[str] = None
     fillKind: Optional[str] = None
     sessionPhase: Optional[str] = None
+    # Estimated delivery charges taken from the paper wallet on this fill.
+    charges: Optional[float] = None
+    netAmount: Optional[float] = None
+    chargesNote: Optional[str] = None
 
 class AlertResponse(BaseModel):
     status: str
@@ -113,6 +117,7 @@ class TradeHistory(BaseModel):
     price: float
     total: float
     timestamp: int
+    charges: float = 0.0
 
 
 class HistoryCandle(BaseModel):

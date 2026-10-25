@@ -926,6 +926,8 @@ _LITERACY_SKIP_TOKENS = frozenset({
     "HABIT", "HABITS", "PAPER", "PRACTICE", "COVER", "INDIAN",
     "MUTUAL", "FUNDS", "INVESTING", "INVESTOR", "INVESTORS",
     "FOMO", "CAS", "DRHP", "SGB", "TER", "NAV", "SIP",
+    # Settlement words one letter away from a listed name (delivery → DELHIVERY).
+    "DELIVERY", "DELIVERIES", "VERSUS", "DIFFERENCE", "BETWEEN",
 })
 
 

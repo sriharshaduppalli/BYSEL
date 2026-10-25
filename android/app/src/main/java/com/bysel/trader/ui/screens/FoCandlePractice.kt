@@ -1,5 +1,8 @@
 package com.bysel.trader.ui.screens
 
+import com.bysel.trader.R
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -211,12 +214,12 @@ fun FoCandlePractice(
                     FilterChip(
                         selected = !showChain,
                         onClick = { showChain = false },
-                        label = { Text("Chart", maxLines = 1) },
+                        label = { Text(stringResource(R.string.practice_chart), maxLines = 1) },
                     )
                     FilterChip(
                         selected = showChain,
                         onClick = { showChain = true },
-                        label = { Text("Options", maxLines = 1) },
+                        label = { Text(stringResource(R.string.practice_options), maxLines = 1) },
                     )
                 }
                 Text(
@@ -225,6 +228,9 @@ fun FoCandlePractice(
                     fontSize = 12.sp,
                     maxLines = 1,
                 )
+            }
+            if (!showChain) {
+                com.bysel.trader.ui.components.DataSourceBadge(label = com.bysel.trader.ui.components.replayDataLabel)
             }
             if (loading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = theme.primary)
@@ -235,7 +241,7 @@ fun FoCandlePractice(
                     color = theme.textSecondary,
                     fontSize = 12.sp,
                 )
-                OutlinedButton(onClick = onReload) { Text("Load candles") }
+                OutlinedButton(onClick = onReload) { Text(stringResource(R.string.practice_load_candles)) }
             }
             if (shown.isNotEmpty() && !showChain) {
                 PriceHistoryChart(
@@ -290,14 +296,14 @@ fun FoCandlePractice(
                                 playing = true
                             }
                         }, enabled = candles.size > 1) {
-                            Text(if (playing) "Pause" else if (finished) "Check for bars" else "Play", maxLines = 1)
+                            Text(stringResource(if (playing) R.string.practice_pause else if (finished) R.string.practice_check_bars else R.string.practice_play), maxLines = 1)
                         }
                         if (finished) {
                             OutlinedButton(onClick = {
                                 cursor = openingCursor(candles.size)
                                 finished = false
                                 playing = candles.size > 1
-                            }) { Text("Replay", maxLines = 1) }
+                            }) { Text(stringResource(R.string.practice_replay), maxLines = 1) }
                         }
                         listOf(1, 2, 4).forEach { pace ->
                             if (pace == speed) {
@@ -390,7 +396,7 @@ fun FoCandlePractice(
                     color = theme.textSecondary,
                     fontSize = 12.sp,
                 )
-                OutlinedButton(onClick = onReload) { Text("Load candles") }
+                OutlinedButton(onClick = onReload) { Text(stringResource(R.string.practice_load_candles)) }
             }
             Button(
                 onClick = {
@@ -404,7 +410,7 @@ fun FoCandlePractice(
                 },
                 enabled = shown.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Full screen", maxLines = 1) }
+            ) { Text(stringResource(R.string.practice_full_screen), maxLines = 1) }
         }
     }
     if (fullscreen) {
@@ -437,18 +443,18 @@ fun FoCandlePractice(
                     OutlinedButton(onClick = {
                         playing = false
                         fullscreen = false
-                    }) { Text("Close", maxLines = 1) }
+                    }) { Text(stringResource(R.string.practice_exit_full_screen), maxLines = 1) }
                     if (!future) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilterChip(
                                 selected = !showOptions,
                                 onClick = { showOptions = false },
-                                label = { Text("Chart", maxLines = 1) },
+                                label = { Text(stringResource(R.string.practice_chart), maxLines = 1) },
                             )
                             FilterChip(
                                 selected = showOptions,
                                 onClick = { showOptions = true },
-                                label = { Text("Options", maxLines = 1) },
+                                label = { Text(stringResource(R.string.practice_options), maxLines = 1) },
                             )
                         }
                     } else {
@@ -464,7 +470,7 @@ fun FoCandlePractice(
                         color = theme.textSecondary,
                         fontSize = 12.sp,
                     )
-                    OutlinedButton(onClick = onReload) { Text("Load candles") }
+                    OutlinedButton(onClick = onReload) { Text(stringResource(R.string.practice_load_candles)) }
                 }
                 if (shown.isNotEmpty() && !showOptions) {
                     PriceHistoryChart(
@@ -527,14 +533,14 @@ fun FoCandlePractice(
                                     playing = true
                                 }
                             }, enabled = candles.size > 1) {
-                                Text(if (playing) "Pause" else if (finished) "Check for bars" else "Play", maxLines = 1)
+                                Text(stringResource(if (playing) R.string.practice_pause else if (finished) R.string.practice_check_bars else R.string.practice_play), maxLines = 1)
                             }
                             if (finished) {
                                 OutlinedButton(onClick = {
                                     cursor = openingCursor(candles.size)
                                     finished = false
                                     playing = candles.size > 1
-                                }) { Text("Replay", maxLines = 1) }
+                                }) { Text(stringResource(R.string.practice_replay), maxLines = 1) }
                             }
                             listOf(1, 2, 4).forEach { pace ->
                                 if (pace == speed) {
@@ -760,7 +766,7 @@ private fun PracticeResult(
             },
             enabled = !booked && expiry.isNotBlank() && (futureSide || open.entryPremium > 0.0),
             modifier = Modifier.weight(1f),
-        ) { Text(if (booked) "Booked" else "Book this fill", maxLines = 1) }
+        ) { Text(stringResource(if (booked) R.string.practice_booked else R.string.practice_book), maxLines = 1) }
         OutlinedButton(
             onClick = {
                 val flattenPrice = if (futureSide) spot else mark
@@ -770,7 +776,7 @@ private fun PracticeResult(
                 )
             },
             modifier = Modifier.weight(1f),
-        ) { Text(if (booked) "Close booked fill" else "Close practice", maxLines = 1) }
+        ) { Text(stringResource(if (booked) R.string.practice_close_booked else R.string.practice_close), maxLines = 1) }
     }
     if (!bookNote.isNullOrBlank()) {
         Text(bookNote, color = theme.text, fontSize = 12.sp, lineHeight = 16.sp)

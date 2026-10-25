@@ -128,6 +128,7 @@ class OrderModel(Base):
     tag = Column(String, nullable=True)
     price = Column(Float, default=0.0)
     total = Column(Float, default=0.0)
+    charges = Column(Float, default=0.0)
     status = Column(String, default="COMPLETED")
     idempotency_key = Column(String, nullable=True, index=True)
     request_fingerprint = Column(String, nullable=True, index=True)
@@ -436,6 +437,7 @@ def _ensure_order_columns() -> None:
     _ensure_column("orders", "idempotency_key", "idempotency_key VARCHAR NULL")
     _ensure_column("orders", "request_fingerprint", "request_fingerprint VARCHAR NULL")
     _ensure_column("orders", "trace_id", "trace_id VARCHAR NULL")
+    _ensure_column("orders", "charges", "charges FLOAT NOT NULL DEFAULT 0.0")
 
 
 def _ensure_order_indexes() -> None:

@@ -158,6 +158,14 @@ private fun OrderHistoryRow(row: TradeHistory) {
                 color = theme.textSecondary,
                 fontSize = 13.sp,
             )
+            if (row.charges > 0.0) {
+                val net = if (buy) row.total + row.charges else row.total - row.charges
+                Text(
+                    "Charges ${formatInr(row.charges)} · ${if (buy) "Paid" else "Received"} ${formatInr(net)}",
+                    color = theme.textSecondary,
+                    fontSize = 12.sp,
+                )
+            }
             Text(formatOrderTime(row.timestamp), color = theme.textSecondary, fontSize = 11.sp)
         }
     }

@@ -498,7 +498,8 @@ data class TradeHistory(
     val quantity: Int,
     val price: Double,
     val total: Double,
-    val timestamp: Long
+    val timestamp: Long,
+    val charges: Double = 0.0,
 )
 
 data class PortfolioSummary(

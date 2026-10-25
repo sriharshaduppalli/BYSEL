@@ -2072,8 +2072,12 @@ fun DerivativesIntelligenceScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        com.bysel.trader.ui.components.DataSourceBadge(
+                            label = com.bysel.trader.ui.components.foDataLabel(chain.source, chain.generatedAt, chain.notes),
+                            showDetail = true,
+                        )
                         Text(
-                            "Source: ${chain.source.uppercase()} • Expiry: ${chain.expiry} • Showing ${chainContracts.size} of ${chain.contracts.size} nearest strikes",
+                            "Expiry: ${chain.expiry} • Showing ${chainContracts.size} of ${chain.contracts.size} nearest strikes",
                             color = LocalAppTheme.current.textSecondary,
                             fontSize = 12.sp,
                             maxLines = 2,

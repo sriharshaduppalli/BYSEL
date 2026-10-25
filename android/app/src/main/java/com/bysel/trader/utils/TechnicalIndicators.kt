@@ -119,6 +119,30 @@ object TechnicalIndicators {
         return BollingerBands(upper, middle, lower)
     }
 
+    /**
+     * Heikin-Ashi bars from ordinary candles.
+     *
+     * Each bar averages the move so a trend reads as a run of one colour. Timestamps and
+     * volume are kept so the same x-axis and indicators still line up; indicators should
+     * still be computed on the real closes, not on these.
+     */
+    fun heikinAshi(candles: List<HistoryCandle>): List<HistoryCandle> {
+        if (candles.isEmpty()) return emptyList()
+        val out = ArrayList<HistoryCandle>(candles.size)
+        var prevOpen = (candles[0].open + candles[0].close) / 2.0
+        var prevClose = (candles[0].open + candles[0].high + candles[0].low + candles[0].close) / 4.0
+        candles.forEachIndexed { index, c ->
+            val haClose = (c.open + c.high + c.low + c.close) / 4.0
+            val haOpen = if (index == 0) (c.open + c.close) / 2.0 else (prevOpen + prevClose) / 2.0
+            val haHigh = maxOf(c.high, haOpen, haClose)
+            val haLow = minOf(c.low, haOpen, haClose)
+            out.add(c.copy(open = haOpen, high = haHigh, low = haLow, close = haClose))
+            prevOpen = haOpen
+            prevClose = haClose
+        }
+        return out
+    }
+
     /** VWAP (Volume Weighted Average Price) — intraday only, resets each day. */
     fun vwap(candles: List<HistoryCandle>): List<Double?> {
         if (candles.isEmpty()) return emptyList()

@@ -1852,7 +1852,8 @@ async def get_trade_history_endpoint(db: Session = Depends(get_db), user=Depends
         quantity=o.quantity,
         price=o.price or 0,
         total=o.total or 0,
-        timestamp=int(o.created_at.timestamp() * 1000) if o.created_at else 0
+        timestamp=int(o.created_at.timestamp() * 1000) if o.created_at else 0,
+        charges=round(float(getattr(o, 'charges', 0.0) or 0.0), 2),
     ) for o in orders]
 
 
@@ -1874,7 +1875,8 @@ async def get_trade_history_for_symbol(
         quantity=o.quantity,
         price=o.price or 0,
         total=o.total or 0,
-        timestamp=int(o.created_at.timestamp() * 1000) if o.created_at else 0
+        timestamp=int(o.created_at.timestamp() * 1000) if o.created_at else 0,
+        charges=round(float(getattr(o, 'charges', 0.0) or 0.0), 2),
     ) for o in orders]
 
 

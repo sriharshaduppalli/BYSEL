@@ -1,5 +1,8 @@
 package com.bysel.trader.ui.screens
 
+import com.bysel.trader.R
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -133,64 +136,64 @@ fun MoreScreen(
     val labsEntries = listOf(
         MoreMenuEntry(
             icon = Icons.Filled.Explore,
-            title = "Scanner",
-            subtitle = "Long-term, swing, quality, momentum, value",
+            title = stringResource(R.string.more_scanner),
+            subtitle = stringResource(R.string.more_scanner_sub),
             onClick = onScannerClick,
             keywords = "screener quality momentum value swing",
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Bolt,
-            title = "Signal Lab",
-            subtitle = "Breakouts, volume spikes, and yield setups",
+            title = stringResource(R.string.more_signal_lab),
+            subtitle = stringResource(R.string.more_signal_lab_sub),
             onClick = onSignalLabClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.GridView,
-            title = "Heatmap",
-            subtitle = "Sector breadth and movers",
+            title = stringResource(R.string.more_heatmap),
+            subtitle = stringResource(R.string.more_heatmap_sub),
             onClick = onHeatmapClick,
             keywords = "heatmap sector breadth movers",
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Analytics,
-            title = "Risk Lab",
-            subtitle = "VaR, Monte Carlo & portfolio stress test",
+            title = stringResource(R.string.more_risk_lab),
+            subtitle = stringResource(R.string.more_risk_lab_sub),
             onClick = onRiskLabClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.AutoStories,
-            title = "Trade Journal",
-            subtitle = "Practice reviews and behavioral insights",
+            title = stringResource(R.string.more_journal),
+            subtitle = stringResource(R.string.more_journal_sub),
             onClick = onTradeJournalClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Receipt,
-            title = "Order history",
-            subtitle = "Paper fills — buy/sell time, qty, and price",
+            title = stringResource(R.string.more_order_history),
+            subtitle = stringResource(R.string.more_order_history_sub),
             onClick = onOrderHistoryClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Bookmarks,
-            title = "My Watchlist",
-            subtitle = "Sort and open every tracked symbol",
+            title = stringResource(R.string.more_watchlist),
+            subtitle = stringResource(R.string.more_watchlist_sub),
             onClick = onWatchlistClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.People,
-            title = "Smart Money",
-            subtitle = "Legendary investor disclosed holdings",
+            title = stringResource(R.string.more_smart_money),
+            subtitle = stringResource(R.string.more_smart_money_sub),
             onClick = onInvestorPortfoliosClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Psychology,
-            title = "Pre-Trade Checks",
-            subtitle = "Rule-based order risk — not the AI chat tab",
+            title = stringResource(R.string.more_pretrade),
+            subtitle = stringResource(R.string.more_pretrade_sub),
             onClick = onCopilotCenterClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.CalendarMonth,
-            title = "Earnings Calendar",
-            subtitle = "Upcoming results for your watchlist",
+            title = stringResource(R.string.more_earnings),
+            subtitle = stringResource(R.string.more_earnings_sub),
             onClick = onEarningsCalendarClick,
         ),
     )
@@ -198,37 +201,37 @@ fun MoreScreen(
     val utilityEntries = listOf(
         MoreMenuEntry(
             icon = Icons.Filled.Search,
-            title = "Search Stocks",
-            subtitle = "Full NSE listed catalog (~2,400+)",
+            title = stringResource(R.string.more_search),
+            subtitle = stringResource(R.string.more_search_sub),
             onClick = onSearchClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Notifications,
-            title = "Price Alerts",
+            title = stringResource(R.string.more_alerts),
             subtitle = if (activeAlertCount > 0) {
-                "$activeAlertCount active · checked about every 15 minutes in the background; faster while the app is open"
+                stringResource(R.string.more_alerts_sub_active, activeAlertCount)
             } else {
-                "Checked about every 15 minutes in the background; faster while the app is open"
+                stringResource(R.string.more_alerts_sub)
             },
             onClick = onAlertsClick,
             badgeCount = activeAlertCount,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.EventAvailable,
-            title = "Market Holidays",
-            subtitle = "NSE/BSE trading holidays and next session",
+            title = stringResource(R.string.more_holidays),
+            subtitle = stringResource(R.string.more_holidays_sub),
             onClick = onMarketCalendarClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.EmojiEvents,
-            title = "Achievements",
-            subtitle = "Your milestones and streaks",
+            title = stringResource(R.string.more_achievements),
+            subtitle = stringResource(R.string.more_achievements_sub),
             onClick = onAchievementsClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Settings,
-            title = "Settings",
-            subtitle = "Theme, privacy, and app preferences",
+            title = stringResource(R.string.more_settings),
+            subtitle = stringResource(R.string.more_settings_sub),
             onClick = onSettingsClick,
         ),
     )
@@ -236,41 +239,41 @@ fun MoreScreen(
     val investingEntries = listOf(
         MoreMenuEntry(
             icon = Icons.Filled.AccountBalance,
-            title = "Mutual Funds",
-            subtitle = "Educational explorer (not live brokerage)",
+            title = stringResource(R.string.more_mf),
+            subtitle = stringResource(R.string.more_mf_sub),
             onClick = onMutualFundsClick,
             keywords = "mf funds sip",
         ),
         MoreMenuEntry(
             icon = Icons.Filled.BusinessCenter,
-            title = "IPO Listings",
-            subtitle = "Paper practice apply — not live ASBA",
+            title = stringResource(R.string.more_ipo),
+            subtitle = stringResource(R.string.more_ipo_sub),
             onClick = onIpoClick,
             keywords = "asba listing ipo",
         ),
         MoreMenuEntry(
             icon = Icons.Filled.PieChart,
-            title = "ETFs",
-            subtitle = "Index and sector ETF baskets",
+            title = stringResource(R.string.more_etf),
+            subtitle = stringResource(R.string.more_etf_sub),
             onClick = onEtfClick,
             keywords = "etf basket index",
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Savings,
-            title = "Sovereign Gold Bonds",
-            subtitle = "SGB education — not live RBI applications",
+            title = stringResource(R.string.more_sgb),
+            subtitle = stringResource(R.string.more_sgb_sub),
             onClick = onSgbClick,
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Payments,
-            title = "My SIPs",
-            subtitle = "Simulated SIP plans",
+            title = stringResource(R.string.more_sip),
+            subtitle = stringResource(R.string.more_sip_sub),
             onClick = onSipClick,
         ),
         MoreMenuEntry(
             icon = Icons.AutoMirrored.Filled.Assignment,
-            title = "My IPO Applications",
-            subtitle = "Paper applications — not exchange allotment",
+            title = stringResource(R.string.more_my_ipo),
+            subtitle = stringResource(R.string.more_my_ipo_sub),
             onClick = onMyIpoApplicationsClick,
         ),
     )
@@ -278,15 +281,15 @@ fun MoreScreen(
     val advancedEntries = listOf(
         MoreMenuEntry(
             icon = Icons.Filled.Tune,
-            title = "Advanced Orders",
-            subtitle = "Triggers, baskets, and execution controls",
+            title = stringResource(R.string.more_adv_orders),
+            subtitle = stringResource(R.string.more_adv_orders_sub),
             onClick = onAdvancedOrdersClick,
             keywords = "trigger basket gtt",
         ),
         MoreMenuEntry(
             icon = Icons.Filled.AccountBalance,
-            title = "Wealth OS",
-            subtitle = "Family goals and net-worth planning (sim)",
+            title = stringResource(R.string.more_wealth),
+            subtitle = stringResource(R.string.more_wealth_sub),
             onClick = onWealthOsClick,
         ),
     )
@@ -294,15 +297,15 @@ fun MoreScreen(
     val tradeEntries = listOf(
         MoreMenuEntry(
             icon = Icons.AutoMirrored.Filled.ShowChart,
-            title = "Equity",
-            subtitle = "Spot paper trading on the Trade tab",
+            title = stringResource(R.string.more_equity),
+            subtitle = stringResource(R.string.more_equity_sub),
             onClick = onEquityClick,
             keywords = "stocks spot trade cash",
         ),
         MoreMenuEntry(
             icon = Icons.Filled.Analytics,
-            title = "F&O",
-            subtitle = "Choose options or futures practice",
+            title = stringResource(R.string.more_fno),
+            subtitle = stringResource(R.string.more_fno_sub),
             onClick = { showFnoChoice = true },
             keywords = "fno futures options derivatives chain",
         ),
@@ -313,19 +316,19 @@ fun MoreScreen(
     if (showFnoChoice) {
         AlertDialog(
             onDismissRequest = { showFnoChoice = false },
-            title = { Text("F&O practice") },
-            text = { Text("Options opens the candle chart. Futures opens lots and margin.") },
+            title = { Text(stringResource(R.string.more_fno_title)) },
+            text = { Text(stringResource(R.string.more_fno_text)) },
             confirmButton = {
                 TextButton(onClick = {
                     showFnoChoice = false
                     onFnoOptionsClick()
-                }) { Text("Options") }
+                }) { Text(stringResource(R.string.trade_tab_options)) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     showFnoChoice = false
                     onFnoFuturesClick()
-                }) { Text("Futures") }
+                }) { Text(stringResource(R.string.trade_tab_futures)) }
             },
         )
     }
@@ -339,8 +342,8 @@ fun MoreScreen(
     ) {
         item {
             ScreenHeader(
-                title = "More",
-                subtitle = "Search any tool — explorers are educational, not live brokerage.",
+                title = stringResource(R.string.more_title),
+                subtitle = stringResource(R.string.more_subtitle),
             )
         }
 
@@ -351,7 +354,7 @@ fun MoreScreen(
                 onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                placeholder = { Text("Search Scanner, IPO, Journal…") },
+                placeholder = { Text(stringResource(R.string.more_search_hint)) },
                 leadingIcon = {
                     Icon(Icons.Filled.Search, contentDescription = null, tint = theme.textSecondary)
                 },
@@ -381,30 +384,30 @@ fun MoreScreen(
             if (filtered.isEmpty()) {
                 item {
                     Text(
-                        text = "No matching tools. Try Scanner, IPO, or Journal.",
+                        text = stringResource(R.string.more_no_match),
                         color = LocalAppTheme.current.textSecondary,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(vertical = 12.dp),
                     )
                 }
             } else {
-                item { SectionHeader("Results") }
+                item { SectionHeader(stringResource(R.string.more_results)) }
                 items(filtered, key = { "hit-${it.title}" }) { entry ->
                     MoreMenuItem(entry = entry)
                 }
             }
         } else {
-        item { SectionHeader("Practice & Labs") }
+        item { SectionHeader(stringResource(R.string.more_section_labs)) }
         items(labsEntries) { entry ->
             MoreMenuItem(entry = entry)
         }
 
-        item { SectionHeader("Paper desks") }
+        item { SectionHeader(stringResource(R.string.more_section_desks)) }
         items(tradeEntries) { entry ->
             MoreMenuItem(entry = entry)
         }
 
-        item { SectionHeader("Utility") }
+        item { SectionHeader(stringResource(R.string.more_section_utility)) }
         items(utilityEntries) { entry ->
             MoreMenuItem(entry = entry)
         }
@@ -420,16 +423,16 @@ fun MoreScreen(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Invest explorers",
+                        text = stringResource(R.string.more_section_invest),
                         style = MaterialTheme.typography.titleSmall,
                         color = LocalAppTheme.current.primary,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
                         text = if (investExpanded) {
-                            "Educational MF / IPO / ETF / SGB / SIP"
+                            stringResource(R.string.more_invest_expanded)
                         } else {
-                            "Collapsed · search above or expand"
+                            stringResource(R.string.more_invest_collapsed)
                         },
                         fontSize = 11.sp,
                         color = LocalAppTheme.current.textSecondary,
@@ -448,7 +451,7 @@ fun MoreScreen(
             }
         }
 
-        item { SectionHeader("Advanced tools") }
+        item { SectionHeader(stringResource(R.string.more_section_advanced)) }
         items(advancedEntries) { entry ->
             MoreMenuItem(entry = entry)
         }

@@ -1,5 +1,8 @@
 package com.bysel.trader.ui.screens
 
+import com.bysel.trader.R
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -88,6 +91,7 @@ fun SettingsScreen(
         mutableStateOf(!liveTheme.isLight)
     }
     var showThemeDialog by remember { mutableStateOf(false) }
+    var showLanguageDialog by remember { mutableStateOf(false) }
     var showNotificationsDialog by remember { mutableStateOf(false) }
     var notificationStatusTick by remember { mutableIntStateOf(0) }
     var showAboutDialog by remember { mutableStateOf(false) }
@@ -135,6 +139,19 @@ fun SettingsScreen(
                 showIntervalDialog = false
             },
             onDismiss = { showIntervalDialog = false }
+        )
+    }
+    if (showLanguageDialog) {
+        LanguageSelectionDialog(
+            selectedCode = com.bysel.trader.utils.AppLanguage.current(context),
+            onSelected = { code ->
+                showLanguageDialog = false
+                if (code != com.bysel.trader.utils.AppLanguage.current(context)) {
+                    com.bysel.trader.utils.AppLanguage.set(context, code)
+                    (context as? android.app.Activity)?.recreate()
+                }
+            },
+            onDismiss = { showLanguageDialog = false },
         )
     }
     if (showThemeDialog) {
@@ -534,6 +551,18 @@ fun SettingsScreen(
             )
         }
         item {
+            val languageCode = com.bysel.trader.utils.AppLanguage.current(context)
+            val languageLabel = com.bysel.trader.utils.AppLanguage.choices
+                .firstOrNull { it.first == languageCode }?.second?.takeIf { it.isNotBlank() }
+                ?: stringResource(R.string.settings_language_system)
+            SettingClickItem(
+                icon = Icons.Filled.Translate,
+                title = stringResource(R.string.settings_language),
+                subtitle = "$languageLabel · ${stringResource(R.string.settings_language_sub)}",
+                onClick = { showLanguageDialog = true }
+            )
+        }
+        item {
             SettingClickItem(
                 icon = Icons.Filled.Palette,
                 title = "App Theme",
@@ -712,6 +741,23 @@ fun SettingsScreen(
                 },
                 value = liveQuotesEnabled,
                 onValueChange = onLiveQuotesChange,
+            )
+        }
+        item {
+            var crashReports by remember { mutableStateOf(com.bysel.trader.utils.CrashReporting.isEnabled(context)) }
+            SettingItem(
+                icon = Icons.Filled.BugReport,
+                title = "Share crash reports",
+                subtitle = if (crashReports) {
+                    "Sends a stack trace and the screen name when the app crashes. No name, number, or P&L."
+                } else {
+                    "Off — crashes stay on this device"
+                },
+                value = crashReports,
+                onValueChange = { on ->
+                    crashReports = on
+                    com.bysel.trader.utils.CrashReporting.setEnabled(context, on)
+                },
             )
         }
         item {
@@ -1020,6 +1066,66 @@ private fun NotificationsSettingsDialog(
         confirmButton = {
             TextButton(onClick = onDismiss) {
                 Text("Close", color = theme.primary)
+            }
+        },
+    )
+}
+
+@Composable
+fun LanguageSelectionDialog(
+    selectedCode: String,
+    onSelected: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = LocalAppTheme.current.card,
+        title = {
+            Text(
+                text = stringResource(R.string.settings_language),
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = LocalAppTheme.current.text
+            )
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                Text(
+                    text = stringResource(R.string.settings_language_sub),
+                    fontSize = 12.sp,
+                    color = LocalAppTheme.current.textSecondary,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                com.bysel.trader.utils.AppLanguage.choices.forEach { (code, label) ->
+                    val shown = label.ifBlank { stringResource(R.string.settings_language_system) }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelected(code) }
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = shown,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = LocalAppTheme.current.text,
+                        )
+                        if (code == selectedCode) {
+                            Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = LocalAppTheme.current.primary,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = LocalAppTheme.current.textSecondary)
             }
         },
     )

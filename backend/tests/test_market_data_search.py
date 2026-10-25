@@ -30,6 +30,15 @@ def test_search_stocks_handles_stock_suffix_for_known_symbol():
 
 
 def test_search_stocks_tries_cleaned_candidate_on_yahoo_fallback(monkeypatch):
+    # The catalog grows over time; keep the symbol unknown locally so the test
+    # still exercises the Yahoo fallback rather than an exact hit.
+    catalog = {
+        sym: row
+        for sym, row in market_data.get_stock_catalog().items()
+        if sym != "APIS" and "apis" not in str(row[1]).lower()
+    }
+    monkeypatch.setattr(market_data, "get_stock_catalog", lambda: catalog)
+    monkeypatch.setattr(market_data, "_yahoo_search_query", lambda phrase, limit=5: [])
     monkeypatch.setattr(market_data.yf, "Ticker", lambda symbol: _FakeTicker(has_data=symbol == "APIS.NS"))
 
     results = market_data.search_stocks("apis stock", limit=5)

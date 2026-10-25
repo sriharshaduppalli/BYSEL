@@ -78,6 +78,10 @@
 -keep class com.google.firebase.** { *; }
 -dontwarn com.google.firebase.**
 
+# Crashlytics: keep file names and line numbers so a crash points at a line.
+-keepattributes SourceFile,LineNumberTable
+-keep public class * extends java.lang.Exception
+
 # AutoValue annotation processor classes (compile-time only, not needed at runtime)
 -dontwarn javax.lang.model.SourceVersion
 -dontwarn javax.lang.model.element.Element

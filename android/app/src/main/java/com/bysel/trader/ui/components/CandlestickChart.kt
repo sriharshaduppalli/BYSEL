@@ -31,7 +31,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
@@ -59,6 +61,9 @@ private enum class Overlay(val label: String, val color: Color) {
     EMA20("EMA 20", Color(0xFFFF6D00)),
     BB("Bollinger", Color(0xFFAB47BC)),
 }
+
+private val MACD_LINE = Color(0xFF29B6F6)
+private val MACD_SIGNAL = Color(0xFFFFA726)
 
 private val IST: ZoneId = ZoneId.of("Asia/Kolkata")
 private val DAY_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM")
@@ -198,18 +203,25 @@ fun CandlestickChart(
     if (history.isEmpty()) return
 
     var activeOverlays by remember { mutableStateOf(setOf<Overlay>()) }
+    var heikinAshi by remember { mutableStateOf(false) }
+    var showMacd by remember { mutableStateOf(false) }
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer()
 
     val closes = remember(history) { history.map { it.close } }
     val highs = remember(history) { history.map { it.high } }
     val lows = remember(history) { history.map { it.low } }
+    // Bars drawn on screen. Indicators stay on the real closes either way.
+    val bars = remember(history, heikinAshi) {
+        if (heikinAshi) TechnicalIndicators.heikinAshi(history) else history
+    }
 
     val sma20 = remember(closes) { TechnicalIndicators.sma(closes, 20) }
     val sma50 = remember(closes) { TechnicalIndicators.sma(closes, 50) }
     val ema20 = remember(closes) { TechnicalIndicators.ema(closes, 20) }
     val bb = remember(closes) { TechnicalIndicators.bollingerBands(closes, 20) }
     val rsi = remember(closes) { TechnicalIndicators.rsi(closes, 14) }
+    val macd = remember(closes) { TechnicalIndicators.macd(closes) }
 
     val seriesKey = remember(history, rangeLabel) {
         "$rangeLabel:${history.firstOrNull()?.timestamp}"
@@ -256,6 +268,54 @@ fun CandlestickChart(
                             selectedLabelColor = overlay.color,
                         ),
                         modifier = Modifier.height(28.dp),
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                FilterChip(
+                    selected = heikinAshi,
+                    onClick = { heikinAshi = !heikinAshi },
+                    label = { Text("Heikin-Ashi", fontSize = 10.sp, maxLines = 1) },
+                    modifier = Modifier.height(28.dp),
+                )
+                FilterChip(
+                    selected = showMacd,
+                    onClick = { showMacd = !showMacd },
+                    label = { Text("MACD", fontSize = 10.sp, maxLines = 1) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MACD_LINE.copy(alpha = 0.2f),
+                        selectedLabelColor = MACD_LINE,
+                    ),
+                    modifier = Modifier.height(28.dp),
+                )
+            }
+            if (heikinAshi) {
+                Text(
+                    text = "Heikin-Ashi smooths each bar from the one before it. Read the colour run, not the exact open or close.",
+                    color = theme.textSecondary,
+                    fontSize = 10.sp,
+                    lineHeight = 13.sp,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
+                )
+            }
+            if (showMacd) {
+                val lastMacd = macd.macdLine.lastOrNull { it != null }
+                val lastSignal = macd.signalLine.lastOrNull { it != null }
+                val lastHist = macd.histogram.lastOrNull { it != null }
+                if (lastMacd != null && lastSignal != null && lastHist != null) {
+                    val above = lastMacd >= lastSignal
+                    Text(
+                        text = "MACD(12,26,9): ${String.format("%.2f", lastMacd)} · signal ${String.format("%.2f", lastSignal)} — " +
+                            if (above) "MACD above signal (momentum up)" else "MACD below signal (momentum down)",
+                        color = if (above) Color(0xFF00C853) else Color(0xFFE53935),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                     )
                 }
             }
@@ -412,15 +472,19 @@ fun CandlestickChart(
                     val bottomPad = 26.dp.toPx()
                     val topPad = 6f
                     val plotW = (size.width - leftPad).coerceAtLeast(1f)
-                    val plotH = (size.height - topPad - bottomPad).coerceAtLeast(1f)
+                    val fullH = (size.height - topPad - bottomPad).coerceAtLeast(1f)
+                    // MACD takes the bottom quarter of the price area so both share one x-axis.
+                    val macdGap = if (showMacd && fullH > 120f) 10f else 0f
+                    val macdH = if (showMacd && fullH > 120f) fullH * 0.26f else 0f
+                    val plotH = (fullH - macdH - macdGap).coerceAtLeast(1f)
                     val barPx = (barWidth.dp.toPx()).coerceAtLeast(2f)
                     val first = startIndex.toInt().coerceIn(0, history.lastIndex)
                     val visibleCount = (plotW / barPx).toInt().coerceAtLeast(1)
                     val lastVisible = (first + visibleCount - 1).coerceIn(first, history.lastIndex)
-                    var visMin = history[first].low
-                    var visMax = history[first].high
+                    var visMin = bars[first].low
+                    var visMax = bars[first].high
                     for (index in first..lastVisible) {
-                        val candle = history[index]
+                        val candle = bars[index]
                         visMin = min(visMin, candle.low)
                         visMax = max(visMax, candle.high)
                     }
@@ -478,7 +542,7 @@ fun CandlestickChart(
                         val xCenter = xFor(i)
                         if (xCenter > size.width + barPx) break
                         if (xCenter >= leftPad - barPx) {
-                            val candle = history[i]
+                            val candle = bars[i]
                             val isUp = candle.close >= candle.open
                             val color = if (isUp) Color(0xFF00C853) else Color(0xFFE53935)
                             val highY = yFor(candle.high)
@@ -522,9 +586,71 @@ fun CandlestickChart(
                         i++
                     }
 
+                    // MACD pane: histogram bars, MACD line, signal line, zero line.
+                    if (macdH > 0f) {
+                        val paneTop = topPad + plotH + macdGap
+                        val paneH = macdH
+                        var absMax = 1e-9
+                        for (index in first..lastVisible) {
+                            macd.macdLine.getOrNull(index)?.let { absMax = max(absMax, abs(it)) }
+                            macd.signalLine.getOrNull(index)?.let { absMax = max(absMax, abs(it)) }
+                            macd.histogram.getOrNull(index)?.let { absMax = max(absMax, abs(it)) }
+                        }
+                        val zeroY = paneTop + paneH / 2f
+                        fun yMacd(v: Double): Float =
+                            (zeroY - (v / absMax).toFloat().coerceIn(-1f, 1f) * (paneH / 2f - 2f))
+                        drawLine(
+                            color = axisLineColor,
+                            start = Offset(leftPad, paneTop),
+                            end = Offset(size.width, paneTop),
+                            strokeWidth = 1f,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f),
+                        )
+                        drawLine(
+                            color = gridColor,
+                            start = Offset(leftPad, zeroY),
+                            end = Offset(size.width, zeroY),
+                            strokeWidth = 1f,
+                        )
+                        val histW = (barPx * 0.5f).coerceAtLeast(1.5f)
+                        var macdPath: Path? = null
+                        var signalPath: Path? = null
+                        var j = first
+                        while (j < history.size) {
+                            val x = xFor(j)
+                            if (x > size.width + barPx) break
+                            if (x >= leftPad - barPx) {
+                                macd.histogram.getOrNull(j)?.let { h ->
+                                    val y = yMacd(h)
+                                    val top = min(y, zeroY)
+                                    drawRect(
+                                        color = (if (h >= 0) Color(0xFF00C853) else Color(0xFFE53935)).copy(alpha = 0.55f),
+                                        topLeft = Offset(x - histW / 2f, top),
+                                        size = Size(histW, (abs(y - zeroY)).coerceAtLeast(1f)),
+                                    )
+                                }
+                                macd.macdLine.getOrNull(j)?.let { v ->
+                                    val y = yMacd(v)
+                                    macdPath = (macdPath ?: Path().apply { moveTo(x, y) }).also { it.lineTo(x, y) }
+                                }
+                                macd.signalLine.getOrNull(j)?.let { v ->
+                                    val y = yMacd(v)
+                                    signalPath = (signalPath ?: Path().apply { moveTo(x, y) }).also { it.lineTo(x, y) }
+                                }
+                            }
+                            j++
+                        }
+                        macdPath?.let { drawPath(it, color = MACD_LINE, style = Stroke(width = 2f)) }
+                        signalPath?.let { drawPath(it, color = MACD_SIGNAL, style = Stroke(width = 2f)) }
+                        val tag = textMeasurer.measure("MACD", style = axisLabelStyle)
+                        if (tag.size.height < paneH && tag.size.width < plotW) {
+                            drawText(tag, topLeft = Offset(leftPad + 4f, paneTop + 2f))
+                        }
+                    }
+
                     // X-axis date ticks for this range
                     val xTicks = buildXAxisTicks(history, rangeLabel, first, lastVisible)
-                    val axisY = topPad + plotH
+                    val axisY = topPad + plotH + macdGap + macdH
                     xTicks.forEach { tick ->
                         val x = xFor(tick.index)
                         if (x < leftPad - 4f || x > size.width + 4f) return@forEach

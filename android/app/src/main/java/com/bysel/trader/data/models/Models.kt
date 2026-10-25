@@ -130,6 +130,10 @@ data class OrderResponse(
     val errorCode: String? = null,
     val fillKind: String? = null,
     val sessionPhase: String? = null,
+    /** Estimated delivery charges the paper wallet paid on this fill. */
+    val charges: Double? = null,
+    val netAmount: Double? = null,
+    val chargesNote: String? = null,
 )
 
 // ==================== WALLET & MARKET STATUS ====================

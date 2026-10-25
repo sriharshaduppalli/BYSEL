@@ -15,6 +15,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.WindowCompat
+import androidx.compose.ui.res.stringResource
 import androidx.fragment.app.FragmentActivity
 import com.bysel.trader.BuildConfig
 import androidx.compose.foundation.background
@@ -100,6 +101,10 @@ class MainActivity : FragmentActivity() {
 
     /** Launcher shortcut / notification deep-link; updated from [onNewIntent] when already running. */
     private val pendingShortcutAction = mutableStateOf<String?>(null)
+
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.bysel.trader.utils.AppLanguage.wrap(newBase))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Install modern splash screen (Material You)
@@ -571,6 +576,7 @@ fun BYSELApp(
     }
     LaunchedEffect(selectedTab) {
         viewModel.syncAssistantScreen(selectedTab)
+        com.bysel.trader.utils.CrashReporting.screen("tab:$selectedTab")
         if (selectedTab == 3) {
             viewModel.loadEtfs()
             viewModel.loadSipPlans()
@@ -869,32 +875,32 @@ fun BYSELApp(
                         ) {
                     // Tab 0: Dashboard
                     NavigationBarItem(
-                        icon = { Icon(Icons.Filled.Home, contentDescription = "Dashboard", modifier = Modifier.size(22.dp)) },
-                        label = { Text("Home", fontSize = 10.sp) },
+                        icon = { Icon(Icons.Filled.Home, contentDescription = stringResource(R.string.nav_home), modifier = Modifier.size(22.dp)) },
+                        label = { Text(stringResource(R.string.nav_home), fontSize = 10.sp) },
                         selected = navHighlightTab == 0,
                         onClick = { selectRootTab(0) },
                         colors = navColors
                     )
                     // Tab 1: AI Assistant
                     NavigationBarItem(
-                        icon = { Icon(Icons.Filled.Psychology, contentDescription = "AI", modifier = Modifier.size(22.dp)) },
-                        label = { Text("AI", fontSize = 10.sp) },
+                        icon = { Icon(Icons.Filled.Psychology, contentDescription = stringResource(R.string.nav_ai), modifier = Modifier.size(22.dp)) },
+                        label = { Text(stringResource(R.string.nav_ai), fontSize = 10.sp) },
                         selected = navHighlightTab == 1,
                         onClick = { selectRootTab(1) },
                         colors = navColors
                     )
                     // Tab 2: Trading
                     NavigationBarItem(
-                        icon = { Icon(Icons.Filled.CurrencyRupee, contentDescription = "Trade", modifier = Modifier.size(22.dp)) },
-                        label = { Text("Trade", fontSize = 10.sp) },
+                        icon = { Icon(Icons.Filled.CurrencyRupee, contentDescription = stringResource(R.string.nav_trade), modifier = Modifier.size(22.dp)) },
+                        label = { Text(stringResource(R.string.nav_trade), fontSize = 10.sp) },
                         selected = navHighlightTab == 2,
                         onClick = { selectRootTab(2) },
                         colors = navColors
                     )
                     // Tab 3: Portfolio
                     NavigationBarItem(
-                        icon = { Icon(Icons.AutoMirrored.Filled.ShowChart, contentDescription = "Portfolio", modifier = Modifier.size(22.dp)) },
-                        label = { Text("Portfolio", fontSize = 10.sp) },
+                        icon = { Icon(Icons.AutoMirrored.Filled.ShowChart, contentDescription = stringResource(R.string.nav_portfolio), modifier = Modifier.size(22.dp)) },
+                        label = { Text(stringResource(R.string.nav_portfolio), fontSize = 10.sp) },
                         selected = navHighlightTab == 3,
                         onClick = { selectRootTab(3) },
                         colors = navColors
@@ -920,15 +926,15 @@ fun BYSELApp(
                                 Icon(
                                     Icons.Filled.MoreHoriz,
                                     contentDescription = if (activeAlertCount > 0) {
-                                        "More, $activeAlertCount active alerts"
+                                        "${stringResource(R.string.nav_more)}, $activeAlertCount active alerts"
                                     } else {
-                                        "More"
+                                        stringResource(R.string.nav_more)
                                     },
                                     modifier = Modifier.size(22.dp),
                                 )
                             }
                         },
-                        label = { Text("More", fontSize = 10.sp) },
+                        label = { Text(stringResource(R.string.nav_more), fontSize = 10.sp) },
                         selected = navHighlightTab == 5,
                         onClick = { selectRootTab(5) },
                         colors = navColors

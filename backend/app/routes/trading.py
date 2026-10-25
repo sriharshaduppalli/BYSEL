@@ -374,6 +374,43 @@ def build_pretrade_signal(
     }
 
 
+def estimate_paper_charges(side: str, trade_value: float) -> dict:
+    """Teaching estimate of what a cash-equity delivery fill costs in India.
+
+    Rates are typical published discount-broker numbers, not any one broker's
+    tariff: brokerage 0.03% capped at ₹20, STT 0.1% on delivery both sides,
+    exchange transaction fee, SEBI fee, 18% GST on the service parts, and
+    0.015% stamp duty on the buy side. Paper fills charge these so the P&L a
+    learner sees is the P&L a real delivery trade would show.
+    """
+    side = _normalize_side(side)
+    value = max(0.0, float(trade_value))
+    brokerage = min(value * 0.0003, 20.0)
+    stt = value * 0.001
+    exchange_fee = value * 0.0000297
+    sebi_fee = value * 0.000001
+    gst = (brokerage + exchange_fee + sebi_fee) * 0.18
+    stamp_duty = value * 0.00015 if side == "BUY" else 0.0
+    total = brokerage + stt + exchange_fee + sebi_fee + gst + stamp_duty
+    return {
+        "brokerage": round(brokerage, 2),
+        "stt": round(stt, 2),
+        "exchangeFee": round(exchange_fee, 2),
+        "sebiFee": round(sebi_fee, 2),
+        "gst": round(gst, 2),
+        "stampDuty": round(stamp_duty, 2),
+        "totalCharges": round(total, 2),
+    }
+
+
+def charges_note(charges: dict) -> str:
+    parts = [f"brokerage ₹{charges['brokerage']:.2f}", f"STT ₹{charges['stt']:.2f}"]
+    if charges.get("stampDuty", 0.0) > 0:
+        parts.append(f"stamp ₹{charges['stampDuty']:.2f}")
+    parts.append(f"GST+fees ₹{charges['gst'] + charges['exchangeFee'] + charges['sebiFee']:.2f}")
+    return f"Charges ₹{charges['totalCharges']:.2f} ({', '.join(parts)})"
+
+
 def build_pretrade_estimate(
     order: Order,
     live_price: float,
@@ -388,11 +425,12 @@ def build_pretrade_estimate(
     qty = int(order.qty)
 
     trade_value = float(qty) * execution_price
-    brokerage = trade_value * 0.0003
-    exchange_fee = trade_value * 0.00034
-    gst = (brokerage + exchange_fee) * 0.18
-    stamp_duty = trade_value * 0.00015 if side == "BUY" else 0.0
-    total_charges = brokerage + exchange_fee + gst + stamp_duty
+    charges = estimate_paper_charges(side, trade_value)
+    brokerage = charges["brokerage"]
+    exchange_fee = charges["exchangeFee"]
+    gst = charges["gst"]
+    stamp_duty = charges["stampDuty"]
+    total_charges = charges["totalCharges"]
     net_amount = trade_value + total_charges if side == "BUY" else trade_value - total_charges
 
     wallet_utilization_pct = (
@@ -442,7 +480,9 @@ def build_pretrade_estimate(
         "tradeValue": round(trade_value, 2),
         "charges": {
             "brokerage": round(brokerage, 2),
+            "stt": charges["stt"],
             "exchangeFee": round(exchange_fee, 2),
+            "sebiFee": charges["sebiFee"],
             "gst": round(gst, 2),
             "stampDuty": round(stamp_duty, 2),
             "totalCharges": round(total_charges, 2),
@@ -605,13 +645,20 @@ def _execute_order_at_price(
         HoldingModel.user_id == user_id,
     ).first()
 
+    trade_value = execution_price * normalized_order.qty
+    charges = estimate_paper_charges(side, trade_value)
+    total_charges = float(charges["totalCharges"])
+
     if side == "BUY":
-        order_cost = execution_price * normalized_order.qty
+        order_cost = trade_value + total_charges
         if wallet.balance < order_cost:
             response = OrderResponse(
                 status="error",
                 order=normalized_order,
-                message=f"Insufficient funds. Need ₹{order_cost:.2f} but wallet has ₹{wallet.balance:.2f}",
+                message=(
+                    f"Insufficient funds. Need ₹{order_cost:.2f} including "
+                    f"₹{total_charges:.2f} charges but wallet has ₹{wallet.balance:.2f}"
+                ),
                 traceId=resolved_trace_id,
                 idempotencyKey=normalized_order.idempotencyKey,
                 errorCode="INSUFFICIENT_FUNDS",
@@ -690,7 +737,7 @@ def _execute_order_at_price(
             db.refresh(failed_order)
             return response, failed_order
 
-        sale_proceeds = execution_price * normalized_order.qty
+        sale_proceeds = trade_value - total_charges
         wallet.balance += sale_proceeds
         existing.quantity -= normalized_order.qty
         existing.last_price = execution_price
@@ -711,7 +758,8 @@ def _execute_order_at_price(
         basket_id=basket_id,
         tag=getattr(normalized_order, "tag", None),
         price=execution_price,
-        total=round(execution_price * normalized_order.qty, 2),
+        total=round(trade_value, 2),
+        charges=round(total_charges, 2),
         status="PENDING",
         idempotency_key=normalized_order.idempotencyKey,
         request_fingerprint=_build_request_fingerprint(normalized_order),
@@ -743,12 +791,16 @@ def _execute_order_at_price(
             order=normalized_order,
             message=(
                 f"{side} {normalized_order.qty} shares of {normalized_order.symbol} "
-                f"@ ₹{execution_price:.2f} = ₹{execution_price * normalized_order.qty:.2f} "
+                f"@ ₹{execution_price:.2f} = ₹{trade_value:.2f} "
+                f"| {charges_note(charges)} "
                 f"| Balance: ₹{wallet.balance:.2f}{fill_note}"
             ),
             orderId=order_db.id,
             executedPrice=round(order_db.price or 0.0, 2),
             total=round(order_db.total or 0.0, 2),
+            charges=round(total_charges, 2),
+            netAmount=round(trade_value + total_charges if side == "BUY" else trade_value - total_charges, 2),
+            chargesNote=charges_note(charges),
             orderStatus=order_db.status,
             traceId=resolved_trace_id,
             idempotencyKey=normalized_order.idempotencyKey,

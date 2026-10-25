@@ -1,5 +1,8 @@
 package com.bysel.trader.ui.screens
 
+import com.bysel.trader.R
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
@@ -141,14 +144,14 @@ private fun tapeFlagsForQuote(quote: Quote): List<String> {
 }
 
 private data class TradeWorkspaceTab(
-    val title: String,
-    val caption: String,
+    @androidx.annotation.StringRes val title: Int,
+    @androidx.annotation.StringRes val caption: Int,
 )
 
 private val TRADE_WORKSPACE_TABS = listOf(
-    TradeWorkspaceTab("Spot", "Equities"),
-    TradeWorkspaceTab("Options", "Chart practice"),
-    TradeWorkspaceTab("Futures", "Lots & margin"),
+    TradeWorkspaceTab(R.string.trade_tab_spot, R.string.trade_tab_spot_caption),
+    TradeWorkspaceTab(R.string.trade_tab_options, R.string.trade_tab_options_caption),
+    TradeWorkspaceTab(R.string.trade_tab_futures, R.string.trade_tab_futures_caption),
 )
 
 @Composable
@@ -395,7 +398,7 @@ fun TradingScreen(
                         text = {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    tab.title,
+                                    androidx.compose.ui.res.stringResource(tab.title),
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = if (hideOnScroll.expanded) 14.sp else 12.sp,
                                     maxLines = 1,
@@ -403,7 +406,7 @@ fun TradingScreen(
                                 )
                                 if (hideOnScroll.expanded) {
                                     Text(
-                                        tab.caption,
+                                        androidx.compose.ui.res.stringResource(tab.caption),
                                         fontSize = 10.sp,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
@@ -1320,14 +1323,21 @@ private fun FuturesRadarScreen(
         }
 
         item {
-            val sourceLabel = futuresContracts?.source?.uppercase() ?: "—"
-            Text(
-                "Contract Radar · $sourceLabel",
-                color = LocalAppTheme.current.text,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    "Contract Radar",
+                    color = LocalAppTheme.current.text,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                futuresContracts?.let { board ->
+                    com.bysel.trader.ui.components.DataSourceBadge(
+                        label = com.bysel.trader.ui.components.foDataLabel(board.source, board.generatedAt, board.notes),
+                        showDetail = true,
+                    )
+                }
+            }
         }
 
         val activeContracts = futuresContracts?.contracts ?: emptyList()
@@ -2552,6 +2562,21 @@ private fun TradeBottomSheetContent(
                     }
                     executed.total?.let { total ->
                         TradeSummaryLine(label = "Notional", value = formatCurrency(total))
+                    }
+                    executed.charges?.takeIf { it > 0.0 }?.let { charges ->
+                        TradeSummaryLine(label = "Charges", value = formatCurrency(charges))
+                        executed.netAmount?.let { net ->
+                            TradeSummaryLine(
+                                label = if (executed.order.side.equals("BUY", ignoreCase = true)) "Paid" else "Received",
+                                value = formatCurrency(net)
+                            )
+                        }
+                        Text(
+                            text = "Brokerage, STT, GST and stamp duty at typical delivery rates. Real brokers differ.",
+                            fontSize = 10.sp,
+                            color = LocalAppTheme.current.textSecondary,
+                            modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)
+                        )
                     }
                     lastOrderTraceId?.takeIf { it.isNotBlank() }?.let { traceId ->
                         TradeSummaryLine(label = "Trace", value = traceId)

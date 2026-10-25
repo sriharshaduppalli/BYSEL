@@ -7,6 +7,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.bysel.trader.ai.OnDeviceLlmManager
 import com.bysel.trader.data.auth.AuthSessionManager
+import com.bysel.trader.utils.CrashReporting
 
 /**
  * Process-wide hooks for Play memory vitals and session restore.
@@ -15,6 +16,7 @@ import com.bysel.trader.data.auth.AuthSessionManager
 class ByselApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        CrashReporting.apply(this)
         AuthSessionManager.init(this)
         ProcessLifecycleOwner.get().lifecycle.addObserver(
             LifecycleEventObserver { _, event ->

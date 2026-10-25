@@ -31,4 +31,109 @@
     <string name="shortcut_market_long">Market Status</string>
     <string name="shortcut_alerts_short">Alerts</string>
     <string name="shortcut_alerts_long">Price Alerts</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_ai">AI</string>
+    <string name="nav_trade">Trade</string>
+    <string name="nav_portfolio">Portfolio</string>
+    <string name="nav_more">More</string>
+
+    <!-- Trade workspaces -->
+    <string name="trade_tab_spot">Spot</string>
+    <string name="trade_tab_spot_caption">Equities</string>
+    <string name="trade_tab_options">Options</string>
+    <string name="trade_tab_options_caption">Chart practice</string>
+    <string name="trade_tab_futures">Futures</string>
+    <string name="trade_tab_futures_caption">Lots &amp; margin</string>
+
+    <!-- More menu -->
+    <string name="more_title">More</string>
+    <string name="more_subtitle">Search any tool — explorers are educational, not live brokerage.</string>
+    <string name="more_search_hint">Search Scanner, IPO, Journal…</string>
+    <string name="more_no_match">No matching tools. Try Scanner, IPO, or Journal.</string>
+    <string name="more_results">Results</string>
+    <string name="more_section_labs">Practice &amp; Labs</string>
+    <string name="more_section_desks">Paper desks</string>
+    <string name="more_section_utility">Utility</string>
+    <string name="more_section_invest">Invest explorers</string>
+    <string name="more_invest_expanded">Educational MF / IPO / ETF / SGB / SIP</string>
+    <string name="more_invest_collapsed">Collapsed · search above or expand</string>
+    <string name="more_section_advanced">Advanced tools</string>
+    <string name="more_fno_title">F&amp;O practice</string>
+    <string name="more_fno_text">Options opens the candle chart. Futures opens lots and margin.</string>
+    <string name="more_scanner">Scanner</string>
+    <string name="more_scanner_sub">Long-term, swing, quality, momentum, value</string>
+    <string name="more_signal_lab">Signal Lab</string>
+    <string name="more_signal_lab_sub">Breakouts, volume spikes, and yield setups</string>
+    <string name="more_heatmap">Heatmap</string>
+    <string name="more_heatmap_sub">Sector breadth and movers</string>
+    <string name="more_risk_lab">Risk Lab</string>
+    <string name="more_risk_lab_sub">VaR, Monte Carlo &amp; portfolio stress test</string>
+    <string name="more_journal">Trade Journal</string>
+    <string name="more_journal_sub">Practice reviews and behavioral insights</string>
+    <string name="more_order_history">Order history</string>
+    <string name="more_order_history_sub">Paper fills — buy/sell time, qty, and price</string>
+    <string name="more_watchlist">My Watchlist</string>
+    <string name="more_watchlist_sub">Sort and open every tracked symbol</string>
+    <string name="more_smart_money">Smart Money</string>
+    <string name="more_smart_money_sub">Legendary investor disclosed holdings</string>
+    <string name="more_pretrade">Pre-Trade Checks</string>
+    <string name="more_pretrade_sub">Rule-based order risk — not the AI chat tab</string>
+    <string name="more_earnings">Earnings Calendar</string>
+    <string name="more_earnings_sub">Upcoming results for your watchlist</string>
+    <string name="more_search">Search Stocks</string>
+    <string name="more_search_sub">Full NSE listed catalog (~2,400+)</string>
+    <string name="more_alerts">Price Alerts</string>
+    <string name="more_alerts_sub">Checked about every 15 minutes in the background; faster while the app is open</string>
+    <string name="more_alerts_sub_active">%1$d active · checked about every 15 minutes in the background; faster while the app is open</string>
+    <string name="more_holidays">Market Holidays</string>
+    <string name="more_holidays_sub">NSE/BSE trading holidays and next session</string>
+    <string name="more_achievements">Achievements</string>
+    <string name="more_achievements_sub">Your milestones and streaks</string>
+    <string name="more_settings">Settings</string>
+    <string name="more_settings_sub">Theme, language, privacy, and app preferences</string>
+    <string name="more_mf">Mutual Funds</string>
+    <string name="more_mf_sub">Educational explorer (not live brokerage)</string>
+    <string name="more_ipo">IPO Listings</string>
+    <string name="more_ipo_sub">Paper practice apply — not live ASBA</string>
+    <string name="more_etf">ETFs</string>
+    <string name="more_etf_sub">Index and sector ETF baskets</string>
+    <string name="more_sgb">Sovereign Gold Bonds</string>
+    <string name="more_sgb_sub">SGB education — not live RBI applications</string>
+    <string name="more_sip">My SIPs</string>
+    <string name="more_sip_sub">Simulated SIP plans</string>
+    <string name="more_my_ipo">My IPO Applications</string>
+    <string name="more_my_ipo_sub">Paper applications — not exchange allotment</string>
+    <string name="more_adv_orders">Advanced Orders</string>
+    <string name="more_adv_orders_sub">Triggers, baskets, and execution controls</string>
+    <string name="more_wealth">Wealth OS</string>
+    <string name="more_wealth_sub">Family goals and net-worth planning (sim)</string>
+    <string name="more_equity">Equity</string>
+    <string name="more_equity_sub">Spot paper trading on the Trade tab</string>
+    <string name="more_fno">F&amp;O</string>
+    <string name="more_fno_sub">Choose options or futures practice</string>
+
+    <!-- F&O candle practice -->
+    <string name="practice_chart">Chart</string>
+    <string name="practice_options">Options</string>
+    <string name="practice_play">Play</string>
+    <string name="practice_pause">Pause</string>
+    <string name="practice_replay">Replay</string>
+    <string name="practice_check_bars">Check for bars</string>
+    <string name="practice_load_candles">Load candles</string>
+    <string name="practice_book">Book this fill</string>
+    <string name="practice_booked">Booked</string>
+    <string name="practice_close">Close practice</string>
+    <string name="practice_close_booked">Close booked fill</string>
+    <string name="practice_full_screen">Full screen</string>
+    <string name="practice_exit_full_screen">Exit full screen</string>
+
+    <!-- Settings: language -->
+    <string name="settings_language">App language</string>
+    <string name="settings_language_sub">Menus and practice screens. Charts and AI answers follow your question.</string>
+    <string name="settings_language_system">Follow phone setting</string>
+    <string name="language_en">English</string>
+    <string name="language_hi">हिन्दी</string>
+    <string name="language_te">తెలుగు</string>
 </resources>
