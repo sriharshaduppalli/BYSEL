@@ -30,6 +30,7 @@ from ..database.db import (
     GoalPlanModel,
 )
 from .dependencies import get_current_user, get_optional_current_user
+from .. import fo_contracts
 from ..models.schemas import (
     Quote, Holding, Order, OrderResponse, Alert, AlertCreate,
     AlertResponse, HealthCheck, TradeHistory, HistoryCandle, OrderTraceLookupResponse, PortfolioSummary, PortfolioValue,
@@ -143,16 +144,8 @@ _MF_NAV_SOURCE_URL = os.getenv("MF_NAV_SOURCE_URL", "https://www.amfiindia.com/s
 _MF_LIVE_CACHE_TTL_SECONDS = int(os.getenv("MF_LIVE_CACHE_TTL_SECONDS", "1800"))
 _MF_LIVE_CACHE: dict[str, object] = {"fetched_at": 0.0, "funds": []}
 _MF_SORT_FIELDS = {"name", "nav", "returns1y", "returns3y", "returns5y", "risk", "category"}
-_FUTURES_LOT_SIZE_HINTS = {
-    "NIFTY": 50,
-    "BANKNIFTY": 25,
-    "FINNIFTY": 65,
-    "RELIANCE": 250,
-    "TCS": 150,
-    "INFY": 300,
-    "SBIN": 750,
-    "GOLDM": 10,
-}
+# Lot sizes live in fo_contracts so practice fills and teaching boards agree.
+_FUTURES_LOT_SIZE_HINTS = fo_contracts.KNOWN_LOT_SIZES
 _SIGNAL_LAB_CACHE_TTL_SECONDS = int(os.getenv("SIGNAL_LAB_CACHE_TTL_SECONDS", "90"))
 _SIGNAL_LAB_CACHE_MAX_ITEMS = 6
 _SIGNAL_LAB_CACHE: dict[int, tuple[float, SignalLabBucketsResponse]] = {}
@@ -778,9 +771,16 @@ def _resolve_derivatives_spot(symbol: str) -> tuple[float, bool]:
 def _generate_synthetic_option_chain(symbol: str, expiry: str) -> OptionChainResponse:
     spot, illustrative = _resolve_derivatives_spot(symbol)
 
-    step = 50.0 if spot >= 1000 else 20.0 if spot >= 300 else 10.0
+    normalized_symbol = symbol.strip().upper()
+    step = _option_strike_step(normalized_symbol, spot)
     atm = round(spot / step) * step
     base_seed = sum(ord(ch) for ch in f"{symbol.upper()}:{expiry}")
+    # Premiums decay toward the expiry the learner typed, not a fixed three weeks.
+    try:
+        days_left = (datetime.strptime(expiry.strip()[:10], "%Y-%m-%d").date() - datetime.utcnow().date()).days
+    except ValueError:
+        days_left = 21
+    time_years = max(1, days_left) / 365.0
     contracts: list[OptionContract] = []
     for index in range(-10, 11):
         strike = round(atm + (index * step), 2)
@@ -792,7 +792,7 @@ def _generate_synthetic_option_chain(symbol: str, expiry: str) -> OptionChainRes
         greeks = _black_scholes_greeks(
             spot=spot,
             strike=strike,
-            time_years=21 / 365,
+            time_years=time_years,
             rate=0.065,
             iv=iv,
         )
@@ -848,9 +848,11 @@ def _generate_synthetic_option_chain(symbol: str, expiry: str) -> OptionChainRes
         pcr=metrics.get("pcr"),
         ivSkew=metrics.get("ivSkew"),
         atmIv=metrics.get("atmIv"),
+        lotSize=fo_contracts.lot_size_for(normalized_symbol, spot),
         notes=[
             "Teaching chain — live exchange chain unavailable.",
             "PCR / IV skew are computed on this educational board — verify with your broker.",
+            fo_contracts.expiry_note(normalized_symbol),
             *(
                 ["Spot is illustrative because a live index print was unavailable."]
                 if illustrative
@@ -877,6 +879,7 @@ def _generate_option_chain(symbol: str, expiry: str) -> OptionChainResponse:
                 pcr=live.get("pcr"),
                 ivSkew=live.get("ivSkew"),
                 atmIv=live.get("atmIv"),
+                lotSize=fo_contracts.lot_size_for(symbol, float(live.get("spot") or 0.0)),
                 notes=list(live.get("notes") or []),
             )
     except Exception as exc:
@@ -884,19 +887,19 @@ def _generate_option_chain(symbol: str, expiry: str) -> OptionChainResponse:
     return _generate_synthetic_option_chain(symbol=symbol, expiry=expiry)
 
 
+def _option_strike_step(symbol: str, spot: float) -> float:
+    """Exchange strike spacing: BANKNIFTY/SENSEX 100, NIFTY 50, stocks by price."""
+    if symbol in {"BANKNIFTY", "NIFTYBANK", "SENSEX"}:
+        return 100.0
+    if symbol in {"NIFTY", "NIFTY50", "FINNIFTY"}:
+        return 50.0
+    if symbol == "MIDCPNIFTY":
+        return 25.0
+    return 50.0 if spot >= 1000 else 20.0 if spot >= 300 else 10.0
+
+
 def _lot_size_for_symbol(symbol: str, spot: float) -> int:
-    normalized = symbol.strip().upper()
-    hinted = _FUTURES_LOT_SIZE_HINTS.get(normalized)
-    if hinted:
-        return hinted
-
-    if spot <= 0:
-        return 100
-
-    target_notional = 120_000.0
-    raw = int(round(target_notional / spot))
-    rounded = max(10, ((raw + 4) // 5) * 5)
-    return rounded
+    return fo_contracts.lot_size_for(symbol, spot)
 
 
 def _generate_synthetic_futures_contracts(symbol: str) -> FuturesContractsResponse:
@@ -908,9 +911,14 @@ def _generate_synthetic_futures_contracts(symbol: str) -> FuturesContractsRespon
     today = datetime.utcnow().date()
 
     contracts: list[FuturesContract] = []
-    expiry_offsets = [7, 14, 28]
-    for idx, day_offset in enumerate(expiry_offsets, start=1):
-        expiry_date = today + timedelta(days=day_offset)
+    # Near, next and far month on the exchange cycle (last Tuesday), not arbitrary offsets.
+    near = fo_contracts.next_expiry_for("STOCK", today)
+    expiries = [near]
+    for _ in range(2):
+        prev = expiries[-1]
+        year, month = (prev.year + 1, 1) if prev.month == 12 else (prev.year, prev.month + 1)
+        expiries.append(fo_contracts.monthly_expiry(year, month))
+    for idx, expiry_date in enumerate(expiries, start=1):
         carry = 0.0012 * idx + 0.0004 * ((base_seed + idx) % 3)
         contract_last = round(spot * (1 + carry), 2)
         basis = round(contract_last - spot, 2)
@@ -948,6 +956,7 @@ def _generate_synthetic_futures_contracts(symbol: str) -> FuturesContractsRespon
         source="synthetic",
         notes=[
             "Teaching futures board — live exchange list unavailable.",
+            fo_contracts.expiry_note(normalized_symbol),
             "Contract metrics are indicative — validate against broker RMS before execution.",
             "Margin preview excludes span spikes and intraday leverage changes.",
             *(

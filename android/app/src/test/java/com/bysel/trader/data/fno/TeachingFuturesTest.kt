@@ -13,7 +13,7 @@ class TeachingFuturesTest {
         assertEquals("NIFTY", board.symbol)
         assertEquals("synthetic", board.source)
         assertEquals(3, board.contracts.size)
-        assertEquals(50, board.contracts.first().lotSize)
+        assertEquals(65, board.contracts.first().lotSize) // NSE/FAOP/70616
         assertTrue(board.spot > 0.0)
         assertTrue(board.contracts.all { it.marginPerLot > 0.0 })
     }
@@ -33,7 +33,7 @@ class TeachingFuturesTest {
         )
         assertEquals("BUY", preview.side)
         assertEquals(2, preview.lots)
-        assertEquals(100, preview.quantity)
+        assertEquals(130, preview.quantity)
         assertEquals(expiry, preview.expiry)
         assertTrue(preview.estimatedMargin > 0.0)
     }

@@ -456,6 +456,7 @@ class OptionChainResponse(BaseModel):
     pcr: Optional[float] = None
     ivSkew: Optional[float] = None
     atmIv: Optional[float] = None
+    lotSize: Optional[int] = None
     notes: List[str] = []
 
 

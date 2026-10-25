@@ -18,26 +18,16 @@ import kotlin.math.round
  * Local educational futures board when Cloud Run still 404s on a missing live spot.
  */
 object TeachingFutures {
-    private val lotHints = mapOf(
-        "NIFTY" to 50,
-        "BANKNIFTY" to 25,
-        "FINNIFTY" to 65,
-        "RELIANCE" to 250,
-        "TCS" to 150,
-        "INFY" to 300,
-        "SBIN" to 750,
-    )
 
     fun build(symbol: String): FuturesContractsResponse {
         val raw = symbol.trim().uppercase()
         val spot = EDUCATIONAL_SPOT[raw] ?: 1_000.0
-        val lotSize = lotHints[raw] ?: lotSizeFor(spot)
+        val lotSize = FoContractFacts.lotSize(raw, spot)
         val seed = raw.sumOf { it.code }
-        val today = Calendar.getInstance()
-        val contracts = listOf(7, 14, 28).mapIndexed { index, days ->
+        val contracts = FoContractFacts.monthlyCycle(3).mapIndexed { index, expiryDate ->
             val expiryCal = Calendar.getInstance().apply {
-                timeInMillis = today.timeInMillis
-                add(Calendar.DAY_OF_YEAR, days)
+                clear()
+                set(expiryDate.year, expiryDate.monthValue - 1, expiryDate.dayOfMonth)
             }
             val idx = index + 1
             val carry = 0.0012 * idx + 0.0004 * ((seed + idx) % 3)
@@ -66,6 +56,7 @@ object TeachingFutures {
             source = "synthetic",
             notes = listOf(
                 "Teaching futures board — live exchange list unavailable.",
+                FoContractFacts.expiryNote(raw),
                 "Contract metrics are indicative — validate against broker RMS before execution.",
                 "Margin preview excludes span spikes and intraday leverage changes.",
                 "Spot is illustrative because a live print was unavailable.",
@@ -112,12 +103,6 @@ object TeachingFutures {
                 "Use broker confirmation before placing live futures orders.",
             ),
         )
-    }
-
-    private fun lotSizeFor(spot: Double): Int {
-        if (spot <= 0.0) return 100
-        val raw = kotlin.math.round(120_000.0 / spot).toInt()
-        return max(10, ((raw + 4) / 5) * 5)
     }
 
     private fun formatIso(cal: Calendar): String {

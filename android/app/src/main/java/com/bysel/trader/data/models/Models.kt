@@ -763,6 +763,8 @@ data class SavedPaperPractice(
     val speed: Int,
     val booked: Boolean = false,
     val iv: Double = 0.16,
+    /** Underlying the drill was on, so a BANKNIFTY session is not replayed on NIFTY. */
+    val symbol: String? = null,
 )
 
 data class PaperOptionPracticeRequest(
@@ -811,6 +813,8 @@ data class OptionChainResponse(
     val pcr: Double? = null,
     val ivSkew: Double? = null,
     val atmIv: Double? = null,
+    /** Exchange lot for this underlying, so practice P&L matches the booked fill. */
+    val lotSize: Int? = null,
     val notes: List<String> = emptyList(),
 )
 

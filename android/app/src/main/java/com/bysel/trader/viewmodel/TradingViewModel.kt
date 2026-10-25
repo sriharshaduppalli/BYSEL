@@ -2453,6 +2453,7 @@ class TradingViewModel(
             session.speed.toString(),
             session.booked.toString(),
             session.iv.toString(),
+            session.symbol.orEmpty().trim().uppercase(),
         ).joinToString("|")
         practicePrefs.edit().putString(key, raw).apply()
     }
@@ -2471,6 +2472,7 @@ class TradingViewModel(
             speed = parts[6].toIntOrNull() ?: return null,
             booked = parts.getOrNull(7)?.toBooleanStrictOrNull() ?: false,
             iv = parts.getOrNull(8)?.toDoubleOrNull() ?: 0.16,
+            symbol = parts.getOrNull(9)?.takeIf { it.isNotBlank() },
         )
     }
 

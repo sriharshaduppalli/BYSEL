@@ -52,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bysel.trader.data.fno.FoContractFacts
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import com.bysel.trader.data.models.*
@@ -1906,9 +1907,11 @@ fun DerivativesIntelligenceScreen(
     val loading by viewModel.derivativesLoading.collectAsStateWithLifecycle()
     val foCandles by viewModel.optionCandles.collectAsStateWithLifecycle()
     val foCandlesLoading by viewModel.optionCandlesLoading.collectAsStateWithLifecycle()
-    var symbol by remember { mutableStateOf("NIFTY") }
-    var practiceSymbol by remember { mutableStateOf("NIFTY") }
-    var expiry by remember { mutableStateOf(nextWeeklyThursday()) }
+    // Resume on the underlying of an unfinished drill; otherwise start on NIFTY.
+    val startSymbol = savedOptionPractice?.symbol?.takeIf { it.isNotBlank() } ?: "NIFTY"
+    var symbol by rememberSaveable { mutableStateOf(startSymbol) }
+    var practiceSymbol by rememberSaveable { mutableStateOf(startSymbol) }
+    var expiry by rememberSaveable { mutableStateOf(FoContractFacts.nextExpiryFor(startSymbol).toString()) }
     var showMoreStrikes by rememberSaveable { mutableStateOf(false) }
     var showGreeks by rememberSaveable { mutableStateOf(false) }
 
@@ -1919,12 +1922,20 @@ fun DerivativesIntelligenceScreen(
             viewModel.loadOptionChain(symbol, expiry)
         }
     }
+    // The chart drill and the chain always describe the same underlying.
     LaunchedEffect(practiceSymbol) {
         viewModel.loadFoCandles(practiceSymbol, "options")
+        if (optionChain != null && !optionChain?.symbol.equals(practiceSymbol, ignoreCase = true)) {
+            symbol = practiceSymbol
+            expiry = FoContractFacts.nextExpiryFor(practiceSymbol).toString()
+            viewModel.loadOptionChain(practiceSymbol, expiry)
+        }
     }
-    LaunchedEffect(optionChain?.expiry) {
+    LaunchedEffect(optionChain?.symbol, optionChain?.expiry) {
         val loaded = optionChain?.expiry?.trim().orEmpty()
         if (loaded.length >= 10 && loaded[4] == '-') expiry = loaded.take(10)
+        val loadedSymbol = optionChain?.symbol?.trim()?.uppercase().orEmpty()
+        if (loadedSymbol.isNotBlank() && loadedSymbol != practiceSymbol) practiceSymbol = loadedSymbol
     }
 
     val bullCall = remember(optionChain) { bullCallLegs(optionChain) }
@@ -1961,6 +1972,7 @@ fun DerivativesIntelligenceScreen(
             onSymbol = { practiceSymbol = it },
             modifier = Modifier.weight(1f).fillMaxWidth(),
             asScreen = true,
+            lotSize = optionChain?.takeIf { it.symbol.equals(practiceSymbol, ignoreCase = true) }?.lotSize,
             bookNote = derivativesError ?: productActionMessage,
             saved = savedOptionPractice,
             onSession = { viewModel.saveOptionPractice(it) },
@@ -2009,7 +2021,7 @@ fun DerivativesIntelligenceScreen(
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Option Chain", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Start with NIFTY. Expiry is when the option ends — weekly index options usually Thursday.",
+                        "Start with NIFTY. Expiry is when the option ends — NIFTY weeklies expire on Tuesday; BANKNIFTY, FINNIFTY and stocks on the last Tuesday of the month.",
                         color = LocalAppTheme.current.textSecondary,
                         fontSize = 11.sp,
                     )
@@ -2027,6 +2039,31 @@ fun DerivativesIntelligenceScreen(
                         label = { Text("Expiry (YYYY-MM-DD)") },
                         singleLine = true,
                     )
+                    // One-tap exchange expiries so nobody has to know the calendar.
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        val weekly = FoContractFacts.nextWeeklyExpiry()
+                        val monthly = FoContractFacts.monthlyExpiry(java.time.YearMonth.from(weekly))
+                            .let { if (it.isBefore(weekly)) FoContractFacts.monthlyExpiry(java.time.YearMonth.from(weekly).plusMonths(1)) else it }
+                        val nextMonthly = FoContractFacts.monthlyExpiry(java.time.YearMonth.from(monthly).plusMonths(1))
+                        val quick = buildList {
+                            if (FoContractFacts.isWeeklyIndex(symbol)) add("This Tue" to weekly)
+                            add("Monthly" to monthly)
+                            add("Next month" to nextMonthly)
+                        }.distinctBy { it.second }
+                        quick.forEach { (label, day) ->
+                            FilterChip(
+                                selected = expiry == day.toString(),
+                                onClick = {
+                                    expiry = day.toString()
+                                    viewModel.loadOptionChain(symbol, expiry)
+                                },
+                                label = { Text("$label ${day.dayOfMonth} ${day.month.name.take(3)}", maxLines = 1, fontSize = 11.sp) },
+                            )
+                        }
+                    }
                     Button(onClick = { viewModel.loadOptionChain(symbol, expiry) }) {
                         Text("Load Chain", maxLines = 1)
                     }
@@ -2989,12 +3026,6 @@ private fun nearestAtmContract(chain: OptionChainResponse): OptionContract? {
 
 private fun nextHigherContract(chain: OptionChainResponse, strike: Double): OptionContract? {
     return chain.contracts.filter { it.strike > strike }.minByOrNull { it.strike }
-}
-
-private fun nextWeeklyThursday(): String {
-    val today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"))
-    val ahead = (java.time.DayOfWeek.THURSDAY.value - today.dayOfWeek.value + 7) % 7
-    return today.plusDays(ahead.toLong()).toString()
 }
 
 private fun bullCallLegs(chain: OptionChainResponse?): Pair<String, List<StrategyLeg>>? {

@@ -213,7 +213,7 @@ _TIP_BANKS: dict[str, list[dict[str, str]]] = {
         {
             "id": "fo_lot",
             "title": "Think in lots, not shares",
-            "body": "1 NIFTY lot is typically 50. Notional = lot × price. Margin is only cash blocked — a move can lose more than margin.",
+            "body": "1 NIFTY lot is 65 units (NSE, since Oct 2025); lots get revised, so check the contract file. Notional = lot × price. Margin is only cash blocked — a move can lose more than margin.",
             "category": "risk",
         },
         {

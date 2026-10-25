@@ -139,13 +139,13 @@ fun putMoneyness(spot: Double, strike: Double): String {
 private fun termsFor(mode: FnoLiteracyMode): List<FnoTerm> {
     val shared = listOf(
         FnoTerm("Paper only", "BYSEL F&O is a practice gym. No live brokerage, no guaranteed P&L, no SPAN from your broker."),
-        FnoTerm("Lot", "You cannot buy 1 share of NIFTY futures. You buy 1 lot (e.g. 50). Size risk from the lot, not the LTP."),
+        FnoTerm("Lot", "You cannot buy 1 share of NIFTY futures. You buy 1 lot (NIFTY 65, BANKNIFTY 30 as of Oct 2025 — lots get revised). Size risk from the lot, not the LTP."),
         FnoTerm("Notional vs margin", "Notional = lot × price (value you control). Margin is cash typically blocked. A move can lose more than margin."),
     )
     val options = listOf(
         FnoTerm("Call", "Right to buy the underlying. Helps if you think the price will rise. Max loss if you buy a call = premium paid."),
         FnoTerm("Put", "Right to sell the underlying. Helps if you think the price will fall, or as a hedge on shares you already hold."),
-        FnoTerm("Strike + expiry", "Strike is the agreed price. Expiry is when the right ends. Theta (time decay) speeds up near expiry."),
+        FnoTerm("Strike + expiry", "Strike is the agreed price. Expiry is when the right ends — NIFTY weeklies on Tuesday, monthly contracts on the last Tuesday. Theta (time decay) speeds up near expiry."),
         FnoTerm("ITM / ATM / OTM", "In / at / out of the money. Start with the ATM row — that is closest to today’s spot."),
         FnoTerm("OI + PCR", "Open interest is outstanding contracts. PCR = put OI / call OI. Context only — not a buy/sell signal."),
         FnoTerm("Greeks", "Delta ≈ how much premium moves if spot moves ₹1. Theta = daily time decay. Vega = sensitivity to IV. Gamma = how fast delta changes."),

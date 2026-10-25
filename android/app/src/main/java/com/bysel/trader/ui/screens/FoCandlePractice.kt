@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bysel.trader.data.fno.FoContractFacts
 import com.bysel.trader.data.models.HistoryCandle
 import com.bysel.trader.data.models.SavedPaperPractice
 import com.bysel.trader.data.models.StrategyPayoffPoint
@@ -94,6 +95,8 @@ fun FoCandlePractice(
     onFlatten: (right: String, strike: Double, price: Double, lots: Int) -> Unit = { _, _, _, _ -> },
     onExtend: () -> Unit = {},
     optionsContent: @Composable () -> Unit = {},
+    /** Exchange lot from the loaded chain/board; falls back to the local table. */
+    lotSize: Int? = null,
 ) {
     val theme = LocalAppTheme.current
     var cursor by remember(symbol) { mutableIntStateOf(0) }
@@ -115,7 +118,9 @@ fun FoCandlePractice(
     }
     LaunchedEffect(symbol, candles.size) {
         if (candles.isEmpty()) return@LaunchedEffect
-        if (!restored && saved != null) {
+        val savedMatches = saved != null &&
+            (saved.symbol.isNullOrBlank() || saved.symbol.equals(symbol, ignoreCase = true))
+        if (!restored && saved != null && savedMatches) {
             sim = CandleSim(saved.right, saved.strike, saved.entryPremium, saved.entrySpot)
             cursor = saved.cursor.coerceIn(0, candles.lastIndex)
             speed = saved.speed.coerceIn(1, 4)
@@ -151,6 +156,7 @@ fun FoCandlePractice(
                     speed = speed,
                     booked = booked,
                     iv = if (iv > 0.0) iv else 0.16,
+                    symbol = symbol.trim().uppercase(),
                 )
             },
         )
@@ -185,7 +191,7 @@ fun FoCandlePractice(
     val strike = if (atmStrike > 0.0) atmStrike + strikeOffset * step else 0.0
     val days = if (bar == null) 7.0 else daysAhead(bar.timestamp, expiry)
     val vol = if (iv > 0.0) iv else 0.16
-    val lot = practiceLot(symbol, spot)
+    val lot = lotSize?.takeIf { it > 0 } ?: practiceLot(symbol, spot)
     val callNow = if (spot > 0.0) PaperFoMark.premium(spot, strike, days, vol, call = true) else 0.0
     val putNow = if (spot > 0.0) PaperFoMark.premium(spot, strike, days, vol, call = false) else 0.0
 
@@ -223,13 +229,21 @@ fun FoCandlePractice(
                     )
                 }
                 Text(
-                    symbol.uppercase(),
+                    "${symbol.uppercase()} · lot $lot",
                     color = theme.textSecondary,
                     fontSize = 12.sp,
                     maxLines = 1,
                 )
             }
             if (!showChain) {
+                PracticeSymbolPicker(
+                    symbol = symbol,
+                    enabled = sim == null,
+                    onSymbol = {
+                        playing = false
+                        onSymbol(it)
+                    },
+                )
                 com.bysel.trader.ui.components.DataSourceBadge(label = com.bysel.trader.ui.components.replayDataLabel)
             }
             if (loading) {
@@ -324,6 +338,7 @@ fun FoCandlePractice(
                         callNow = callNow,
                         putNow = putNow,
                         lots = lots,
+                        lot = lot,
                         simOpen = sim != null,
                         onLots = { lots = it },
                         onOpen = { right, premium ->
@@ -398,6 +413,23 @@ fun FoCandlePractice(
                 )
                 OutlinedButton(onClick = onReload) { Text(stringResource(R.string.practice_load_candles)) }
             }
+            PracticeSymbolPicker(
+                symbol = symbol,
+                enabled = sim == null,
+                onSymbol = {
+                    playing = false
+                    onSymbol(it)
+                },
+            )
+            Text(
+                "${symbol.uppercase()} · 1 lot = $lot units" +
+                    (if (spot > 0.0) " · ₹${String.format("%,.0f", spot * lot)} notional" else "") +
+                    (if (expiry.isNotBlank()) " · expiry $expiry" else ""),
+                color = theme.textSecondary,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Button(
                 onClick = {
                     if (candles.size > 1 && (finished || safeCursor >= candles.lastIndex)) {
@@ -561,6 +593,7 @@ fun FoCandlePractice(
                             callNow = callNow,
                             putNow = putNow,
                             lots = lots,
+                            lot = lot,
                             simOpen = sim != null,
                             onLots = { lots = it },
                             onOpen = { right, premium ->
@@ -597,7 +630,40 @@ fun FoCandlePractice(
                         }
                     }
                 }
+                if (showOptions) {
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        optionsContent()
+                    }
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun PracticeSymbolPicker(
+    symbol: String,
+    enabled: Boolean,
+    onSymbol: (String) -> Unit,
+) {
+    val current = symbol.trim().uppercase()
+    val picks = remember(current) {
+        if (current in FoContractFacts.PRACTICE_PICKS) FoContractFacts.PRACTICE_PICKS
+        else listOf(current) + FoContractFacts.PRACTICE_PICKS
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        picks.forEach { pick ->
+            FilterChip(
+                selected = pick == current,
+                onClick = { if (pick != current) onSymbol(pick) },
+                enabled = enabled || pick == current,
+                label = { Text(pick, maxLines = 1, fontSize = 11.sp) },
+            )
         }
     }
 }
@@ -614,6 +680,7 @@ private fun PracticeOrderControls(
     callNow: Double,
     putNow: Double,
     lots: Int,
+    lot: Int,
     simOpen: Boolean,
     onLots: (Int) -> Unit,
     onOpen: (right: String, premium: Double) -> Unit,
@@ -665,6 +732,16 @@ private fun PracticeOrderControls(
                 label = { Text(if (count == 1) "1 lot" else "$count lots", maxLines = 1) },
             )
         }
+    }
+    if (lot > 0) {
+        Text(
+            "1 lot = $lot units" +
+                if (spot > 0.0) " · $lots lot${if (lots == 1) "" else "s"} controls ₹${String.format("%,.0f", spot * lot * lots)}" else "",
+            color = theme.textSecondary,
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -848,7 +925,11 @@ private fun openingCursor(size: Int): Int {
 }
 
 private fun strikeStep(symbol: String, spot: Double): Double {
-    if (symbol.trim().equals("GOLDM", ignoreCase = true)) return 100.0
+    when (symbol.trim().uppercase()) {
+        "GOLDM", "BANKNIFTY", "NIFTYBANK", "SENSEX" -> return 100.0
+        "NIFTY", "NIFTY50", "FINNIFTY" -> return 50.0
+        "MIDCPNIFTY" -> return 25.0
+    }
     return when {
         spot >= 1000.0 -> 50.0
         spot >= 300.0 -> 20.0
@@ -861,22 +942,7 @@ private fun practiceStrike(symbol: String, spot: Double): Double {
     return round(spot / step) * step
 }
 
-private fun practiceLot(symbol: String, spot: Double): Int {
-    return when (symbol.trim().uppercase()) {
-        "NIFTY", "NIFTY50" -> 50
-        "BANKNIFTY", "NIFTYBANK" -> 25
-        "FINNIFTY" -> 65
-        "GOLDM" -> 10
-        "RELIANCE" -> 250
-        "TCS" -> 150
-        "INFY" -> 300
-        "SBIN" -> 750
-        else -> {
-            if (spot <= 0.0) 1
-            else max(10, ((round(120_000.0 / spot).toInt() + 4) / 5) * 5)
-        }
-    }
-}
+private fun practiceLot(symbol: String, spot: Double): Int = FoContractFacts.lotSize(symbol, spot)
 
 private fun daysAhead(timestamp: Long, expiry: String): Double {
     val expiryDate = runCatching { LocalDate.parse(expiry.trim().take(10)) }.getOrNull() ?: return 7.0

@@ -1147,25 +1147,43 @@ private fun FuturesRadarScreen(
             .take(6)
     }
 
-    var underlyingInput by remember { mutableStateOf("NIFTY") }
-    var practiceSymbol by remember { mutableStateOf("NIFTY") }
-    var selectedExpiry by remember { mutableStateOf<String?>(null) }
+    val productActionMessage by viewModel.productActionMessage.collectAsStateWithLifecycle()
+    // Resume on the underlying of an unfinished drill; otherwise start on NIFTY.
+    val startSymbol = savedFuturePractice?.symbol?.takeIf { it.isNotBlank() } ?: "NIFTY"
+    var underlyingInput by rememberSaveable { mutableStateOf(startSymbol) }
+    var practiceSymbol by rememberSaveable { mutableStateOf(startSymbol) }
+    var selectedExpiry by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         if (futuresContracts == null) {
-            viewModel.loadFuturesContracts("NIFTY")
+            viewModel.loadFuturesContracts(startSymbol)
         }
     }
+    // The chart drill and the contract board always describe the same underlying.
     LaunchedEffect(practiceSymbol) {
         viewModel.loadFoCandles(practiceSymbol, "futures")
-    }
-
-    LaunchedEffect(futuresContracts?.generatedAt) {
-        val firstExpiry = futuresContracts?.contracts?.firstOrNull()?.expiry
-        if (!firstExpiry.isNullOrBlank() && selectedExpiry.isNullOrBlank()) {
-            selectedExpiry = firstExpiry
+        val board = futuresContracts
+        if (board != null && !board.symbol.equals(practiceSymbol, ignoreCase = true)) {
+            underlyingInput = practiceSymbol
+            selectedExpiry = null
+            viewModel.loadFuturesContracts(practiceSymbol)
         }
     }
+
+    LaunchedEffect(futuresContracts?.symbol, futuresContracts?.generatedAt) {
+        val board = futuresContracts ?: return@LaunchedEffect
+        val loadedSymbol = board.symbol.trim().uppercase()
+        if (loadedSymbol.isNotBlank() && loadedSymbol != practiceSymbol) {
+            practiceSymbol = loadedSymbol
+            selectedExpiry = null
+        }
+        val expiries = board.contracts.map { it.expiry }
+        if (selectedExpiry.isNullOrBlank() || selectedExpiry !in expiries) {
+            selectedExpiry = expiries.firstOrNull()
+        }
+    }
+    val selectedContract = futuresContracts?.contracts?.firstOrNull { it.expiry == selectedExpiry }
+        ?: futuresContracts?.contracts?.firstOrNull()
 
     LazyColumn(
         modifier = Modifier
@@ -1187,7 +1205,7 @@ private fun FuturesRadarScreen(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        "Preview lot risk on a teaching board. Save a journaled drill — this does not buy the cash stock. No guaranteed P&L.",
+                        "Replay real 15-minute bars, go long or short in lots, and book the fill to Portfolio → F&O. Paper only — no cash stock is bought and no P&L is guaranteed.",
                         color = LocalAppTheme.current.textSecondary,
                         fontSize = 12.sp,
                     )
@@ -1288,7 +1306,7 @@ private fun FuturesRadarScreen(
         item {
             FoCandlePractice(
                 symbol = practiceSymbol,
-                expiry = selectedExpiry ?: futuresContracts?.contracts?.firstOrNull()?.expiry.orEmpty(),
+                expiry = selectedContract?.expiry.orEmpty(),
                 candles = foCandles,
                 loading = foCandlesLoading,
                 iv = 0.16,
@@ -1296,7 +1314,9 @@ private fun FuturesRadarScreen(
                 onExtend = { viewModel.loadFoCandles(practiceSymbol, "futures") },
                 onSymbol = { practiceSymbol = it },
                 future = true,
-                bookNote = derivativesError,
+                lotSize = selectedContract?.lotSize,
+                // Futures fills land in productActionMessage; only echo F&O ones here.
+                bookNote = derivativesError ?: productActionMessage?.takeIf { it.contains("FUT") || it.contains(" lot") },
                 saved = savedFuturePractice,
                 onSession = { viewModel.saveFuturePractice(it) },
                 onBook = { right, _, price, lots ->

@@ -10,11 +10,15 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.bysel.trader.data.models.HistoryCandle
+import com.bysel.trader.data.models.SavedPaperPractice
 import com.bysel.trader.ui.components.CandlestickChart
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -90,6 +94,79 @@ class FoCandlePracticeLayoutTest {
         }
         rule.waitForIdle()
         rule.onNode(hasText("Play") or hasText("Pause") or hasText("Check for bars")).assertExists()
+    }
+
+    @Test
+    fun practiceScreen_symbolPicker_switchesUnderlyingAndShowsExchangeLot() {
+        var picked: String? = null
+        rule.setContent {
+            Box(Modifier.width(360.dp).height(640.dp)) {
+                FoCandlePractice(
+                    symbol = "NIFTY",
+                    expiry = "2026-10-27",
+                    candles = candles(60),
+                    loading = false,
+                    iv = 0.16,
+                    onReload = {},
+                    onSymbol = { picked = it },
+                    asScreen = true,
+                    lotSize = 65,
+                )
+            }
+        }
+        rule.waitForIdle()
+        rule.onNodeWithText("NIFTY · lot 65").assertExists()
+        rule.onNodeWithText("BANKNIFTY").performClick()
+        rule.waitForIdle()
+        assertEquals("BANKNIFTY", picked)
+    }
+
+    @Test
+    fun practiceCard_fallsBackToKnownLotWhenBoardHasNone() {
+        rule.setContent {
+            Box(Modifier.width(360.dp).height(640.dp)) {
+                FoCandlePractice(
+                    symbol = "BANKNIFTY",
+                    expiry = "2026-10-27",
+                    candles = candles(30),
+                    loading = false,
+                    iv = 0.16,
+                    onReload = {},
+                    onSymbol = {},
+                    future = true,
+                )
+            }
+        }
+        rule.waitForIdle()
+        rule.onNode(hasText("BANKNIFTY · 1 lot = 30 units", substring = true)).assertExists()
+    }
+
+    @Test
+    fun savedSession_fromAnotherSymbol_isNotReplayedHere() {
+        var sessions = mutableListOf<SavedPaperPractice?>()
+        rule.setContent {
+            Box(Modifier.width(360.dp).height(640.dp)) {
+                FoCandlePractice(
+                    symbol = "NIFTY",
+                    expiry = "2026-10-27",
+                    candles = candles(60),
+                    loading = false,
+                    iv = 0.16,
+                    onReload = {},
+                    onSymbol = {},
+                    asScreen = true,
+                    saved = SavedPaperPractice(
+                        right = "CALL", strike = 56_000.0, entryPremium = 300.0, entrySpot = 56_000.0,
+                        lots = 2, cursor = 20, speed = 2, booked = false, iv = 0.16, symbol = "BANKNIFTY",
+                    ),
+                    onSession = { sessions.add(it) },
+                )
+            }
+        }
+        rule.waitForIdle()
+        // No open position was restored, so nothing mentions the BANKNIFTY call.
+        rule.onNode(hasText("Call bought", substring = true)).assertDoesNotExist()
+        assertTrue(sessions.all { it == null })
     }
 
     @Test
