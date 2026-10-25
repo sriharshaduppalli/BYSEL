@@ -1,5 +1,7 @@
 package com.bysel.trader.ui.screens
 import androidx.compose.animation.*
+import androidx.compose.ui.res.stringResource
+import com.bysel.trader.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -163,7 +165,7 @@ fun AiAssistantScreen(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text(
-                        "BYSEL AI Assistant",
+                        stringResource(R.string.ai_title),
                         color = appTheme.onPrimary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
@@ -189,7 +191,7 @@ fun AiAssistantScreen(
                 IconButton(onClick = onClearChat) {
                     Icon(
                         Icons.Filled.DeleteSweep,
-                        contentDescription = "Clear chat",
+                        contentDescription = stringResource(R.string.ai_clear_chat),
                         tint = appTheme.onPrimary.copy(alpha = 0.82f)
                     )
                 }
@@ -205,7 +207,7 @@ fun AiAssistantScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Simulation Mode — Paper trading with real market data. No real money involved.",
+                text = stringResource(R.string.ai_sim_banner),
                 fontSize = 11.sp,
                 color = appTheme.text,
                 lineHeight = 14.sp
@@ -318,7 +320,7 @@ fun AiAssistantScreen(
                     Box(modifier = Modifier.fillMaxWidth()) {
                         if (query.isEmpty()) {
                             Text(
-                                "Ask about any stock... / ఏ స్టాక్ గురించైనా అడగండి...",
+                                stringResource(R.string.ai_placeholder),
                                 color = appTheme.textSecondary,
                                 fontSize = 16.sp,
                                 lineHeight = 22.sp,
@@ -348,7 +350,7 @@ fun AiAssistantScreen(
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send",
+                    contentDescription = stringResource(R.string.ai_send),
                     tint = appTheme.onPrimary
                 )
             }
@@ -357,19 +359,19 @@ fun AiAssistantScreen(
 }
 
 private fun buildSymbolSuggestions(symbol: String): List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>> = listOf(
-    "Should I buy $symbol?" to Icons.AutoMirrored.Filled.TrendingUp,
-    "Predict $symbol price" to Icons.Filled.Timeline,
+    "Buy or sell case for $symbol" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Bull case vs bear case for $symbol" to Icons.Filled.Timeline,
     "Analyze $symbol" to Icons.Filled.Analytics,
     "Practice levels for $symbol" to Icons.AutoMirrored.Filled.ShowChart,
-    "Entry and exit targets for $symbol" to Icons.Filled.PriceCheck,
-    "Profit potential for $symbol this quarter" to Icons.Filled.Payments,
+    "Practice levels: entry and exit for $symbol" to Icons.Filled.PriceCheck,
+    "Upside potential and risks for $symbol" to Icons.Filled.Payments,
     "Risk vs reward for buying $symbol now" to Icons.Filled.Warning,
     "Is $symbol overvalued?" to Icons.Filled.PriceCheck,
     "Technical analysis of $symbol" to Icons.Filled.Analytics,
     "Support and resistance for $symbol" to Icons.AutoMirrored.Filled.ShowChart,
     "What are risks in $symbol now?" to Icons.Filled.Warning,
     "Compare $symbol with peers" to Icons.AutoMirrored.Filled.CompareArrows,
-    "Best entry price for $symbol with stop-loss" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Practice levels and stop-loss for $symbol" to Icons.AutoMirrored.Filled.TrendingUp,
 )
 
 private val knownSymbols = setOf(
@@ -536,10 +538,10 @@ private fun buildAdaptiveSuggestions(
     val hasPrediction = recent.any { textContainsAny(it, listOf("predict", "forecast", "target", "future", "price next", "this quarter", "this month", "outlook", "upside")) }
     if (hasPrediction && primarySymbol != null) {
         suggestions.add("Bull case vs bear case for $primarySymbol" to Icons.Filled.Analytics)
-        suggestions.add("$primarySymbol price target for next 3 months" to Icons.Filled.Timeline)
+        suggestions.add("Forecast range for $primarySymbol over 3 months" to Icons.Filled.Timeline)
         suggestions.add("What catalysts could drive $primarySymbol higher?" to Icons.AutoMirrored.Filled.TrendingUp)
         suggestions.add("Downside risk for $primarySymbol if market corrects" to Icons.Filled.Warning)
-        suggestions.add("Should I buy $primarySymbol after this forecast?" to Icons.AutoMirrored.Filled.TrendingUp)
+        suggestions.add("Buy or sell case for $primarySymbol after this forecast" to Icons.AutoMirrored.Filled.TrendingUp)
         suggestions.add("Key support and resistance for $primarySymbol" to Icons.AutoMirrored.Filled.ShowChart)
     }
 
@@ -682,26 +684,26 @@ private fun buildDefaultSuggestionPool(): List<Pair<String, androidx.compose.ui.
     "Best bank stocks in India" to Icons.Filled.AccountBalance,
     "Analyze RELIANCE" to Icons.Filled.Analytics,
     "What is the price of TCS?" to Icons.Filled.PriceCheck,
-    "Should I buy RELIANCE?" to Icons.AutoMirrored.Filled.TrendingUp,
-    // Buy / Invest — specific stocks
-    "Should I buy TCS?" to Icons.AutoMirrored.Filled.TrendingUp,
-    "Should I buy HDFCBANK?" to Icons.AutoMirrored.Filled.TrendingUp,
-    "Should I buy SBIN?" to Icons.AutoMirrored.Filled.TrendingUp,
-    "Should I buy LUPIN?" to Icons.AutoMirrored.Filled.TrendingUp,
-    "Is ETERNAL a good buy right now?" to Icons.AutoMirrored.Filled.TrendingUp,
-    "Is Infosys a good investment?" to Icons.AutoMirrored.Filled.TrendingUp,
-    "Should I invest in Tata Motors?" to Icons.AutoMirrored.Filled.TrendingUp,
-    "Should I buy ICICIBANK?" to Icons.AutoMirrored.Filled.TrendingUp,
-    "Should I invest in BAJFINANCE?" to Icons.AutoMirrored.Filled.TrendingUp,
-    // Predict — specific stocks
-    "Predict TCS price" to Icons.Filled.Timeline,
-    "Predict RELIANCE price" to Icons.Filled.Timeline,
-    "Predict WIPRO price" to Icons.Filled.Timeline,
-    "Predict SUNPHARMA price" to Icons.Filled.Timeline,
-    "Predict TMPV price" to Icons.Filled.Timeline,
-    "Predict ICICIBANK price" to Icons.Filled.Timeline,
-    "Predict HDFCBANK price next month" to Icons.Filled.Timeline,
-    "Predict LUPIN price this quarter" to Icons.Filled.Timeline,
+    "Buy or sell case for RELIANCE" to Icons.AutoMirrored.Filled.TrendingUp,
+    // Buy-or-sell case studies — specific stocks (educational framing, routes to BUY_SELL intent)
+    "Buy or sell case for TCS" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Buy or sell case for HDFCBANK" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Buy or sell case for SBIN" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Buy or sell case for LUPIN" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Weigh the buy or sell case for ETERNAL" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Long-term buy or sell case for Infosys" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Long-term buy or sell case for Tata Motors" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Buy or sell case for ICICIBANK" to Icons.AutoMirrored.Filled.TrendingUp,
+    "Long-term buy or sell case for BAJFINANCE" to Icons.AutoMirrored.Filled.TrendingUp,
+    // Forecast scenarios — specific stocks (routes to PREDICT intent)
+    "Forecast range for TCS" to Icons.Filled.Timeline,
+    "Bull case vs bear case for RELIANCE" to Icons.Filled.Timeline,
+    "Forecast range for WIPRO" to Icons.Filled.Timeline,
+    "Bull case vs bear case for SUNPHARMA" to Icons.Filled.Timeline,
+    "Forecast range for TMPV" to Icons.Filled.Timeline,
+    "Bull case vs bear case for ICICIBANK" to Icons.Filled.Timeline,
+    "Forecast range for HDFCBANK next month" to Icons.Filled.Timeline,
+    "Forecast range for LUPIN this quarter" to Icons.Filled.Timeline,
     // Compare — specific pairs
     "Compare INFY and TCS" to Icons.AutoMirrored.Filled.CompareArrows,
     "Compare ICICI Bank and HDFC Bank" to Icons.AutoMirrored.Filled.CompareArrows,
@@ -794,7 +796,7 @@ private fun WelcomeContent(
         Spacer(modifier = Modifier.height(20.dp))
 
         Text(
-            "Hi! I'm your AI Stock Assistant",
+            stringResource(R.string.ai_greeting_title),
             color = theme.text,
             fontWeight = FontWeight.Bold,
             fontSize = 20.sp,
@@ -803,9 +805,9 @@ private fun WelcomeContent(
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             if (!focusedSymbol.isNullOrBlank()) {
-                "You're looking at $focusedSymbol. Ask about this stock or any NSE name."
+                stringResource(R.string.ai_greeting_focused, focusedSymbol)
             } else {
-                "Ask me anything about Indian stocks.\nI can explain, compare, and walk through paper-practice levels with you."
+                stringResource(R.string.ai_greeting_body)
             },
             color = theme.textSecondary,
             fontSize = 14.sp,
@@ -814,7 +816,7 @@ private fun WelcomeContent(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            "Or type your own question in the box below.",
+            stringResource(R.string.ai_or_type),
             color = theme.textSecondary,
             fontSize = 12.sp,
             textAlign = TextAlign.Center
@@ -823,7 +825,7 @@ private fun WelcomeContent(
         Spacer(modifier = Modifier.height(32.dp))
 
         Text(
-            "Try asking:",
+            stringResource(R.string.ai_try_asking),
             color = theme.primary,
             fontWeight = FontWeight.SemiBold,
             fontSize = 14.sp
@@ -864,7 +866,7 @@ private fun AdaptiveSuggestionsStrip(
             .padding(horizontal = 12.dp)
     ) {
         Text(
-            text = "Suggested next prompts",
+            text = stringResource(R.string.ai_suggested_next),
             color = LocalAppTheme.current.primary,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
@@ -1080,7 +1082,7 @@ private fun ChatBubble(
         // Source + confidence badge for AI responses
         if (!message.isUser && message.source.isNotBlank()) {
             Text(
-                text = "Educational · Not SEBI RA",
+                text = stringResource(R.string.ai_disclaimer_tag),
                 fontSize = 10.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = LocalAppTheme.current.primary.copy(alpha = 0.85f),
@@ -1091,7 +1093,7 @@ private fun ChatBubble(
         // AI disclaimer + feedback for all AI responses
         if (!message.isUser) {
             Text(
-                text = "AI analysis is for educational purposes only. Not financial advice. Always do your own research.",
+                text = stringResource(R.string.ai_disclaimer),
                 style = MaterialTheme.typography.labelSmall,
                 color = LocalAppTheme.current.textSecondary,
                 modifier = Modifier.padding(start = 8.dp, top = 4.dp, end = 8.dp),
@@ -1113,7 +1115,7 @@ private fun ChatBubble(
                                 feedbackSent = true
                                 onAiFeedback(priorUserQuery, message.text, true)
                             },
-                            modifier = Modifier.size(28.dp),
+                            modifier = Modifier.size(40.dp),
                         ) {
                             Icon(
                                 Icons.Filled.ThumbUp,
@@ -1127,7 +1129,7 @@ private fun ChatBubble(
                                 feedbackSent = false
                                 onAiFeedback(priorUserQuery, message.text, false)
                             },
-                            modifier = Modifier.size(28.dp),
+                            modifier = Modifier.size(40.dp),
                         ) {
                             Icon(
                                 Icons.Filled.ThumbDown,
@@ -1155,7 +1157,7 @@ private fun ChatBubble(
                             Intent.createChooser(intent, "Share AI answer"),
                         )
                     },
-                    modifier = Modifier.size(28.dp),
+                    modifier = Modifier.size(40.dp),
                 ) {
                     Icon(
                         Icons.Filled.Share,
@@ -1280,7 +1282,7 @@ private fun ChatBubble(
                         modifier = Modifier.height(32.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                     ) {
-                        Text("Practice BUY", fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(stringResource(R.string.buy), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
                 if (onNavigateToStock != null) {
@@ -1289,7 +1291,7 @@ private fun ChatBubble(
                         modifier = Modifier.height(32.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                     ) {
-                        Text("View chart", fontSize = 11.sp, maxLines = 1)
+                        Text(stringResource(R.string.view_chart), fontSize = 11.sp, maxLines = 1)
                     }
                 }
                 if (onAlertAction != null) {
@@ -1304,7 +1306,7 @@ private fun ChatBubble(
                         modifier = Modifier.height(32.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                     ) {
-                        Text("Set Alert", fontSize = 11.sp, maxLines = 1)
+                        Text(stringResource(R.string.set_alert), fontSize = 11.sp, maxLines = 1)
                     }
                 }
             }

@@ -117,4 +117,182 @@
     <string name="settings_language">ऐप की भाषा</string>
     <string name="settings_language_sub">मेनू और अभ्यास स्क्रीन। चार्ट और AI जवाब आपके सवाल की भाषा में।</string>
     <string name="settings_language_system">फ़ोन की सेटिंग के अनुसार</string>
+
+    <!-- Common actions -->
+    <string name="create">बनाएँ</string>
+    <string name="cancel">रद्द करें</string>
+    <string name="close">बंद करें</string>
+    <string name="back">वापस</string>
+    <string name="next">आगे</string>
+    <string name="done">हो गया</string>
+    <string name="refresh">रिफ्रेश</string>
+    <string name="updating">अपडेट हो रहा है</string>
+    <string name="delete">हटाएँ</string>
+    <string name="remove">निकालें</string>
+    <string name="keep">रखें</string>
+    <string name="today">आज</string>
+    <string name="view_chart">चार्ट देखें</string>
+    <string name="view_details">विवरण देखें</string>
+    <string name="go_back">वापस जाएँ</string>
+    <string name="skip_for_now">अभी छोड़ें</string>
+    <string name="export">एक्सपोर्ट</string>
+    <string name="filter_all">सभी</string>
+    <string name="qty">मात्रा</string>
+    <string name="total">कुल</string>
+    <string name="watch">वॉच करें</string>
+    <string name="watching">वॉच में</string>
+
+    <!-- AI assistant -->
+    <string name="ai_title">BYSEL AI सहायक</string>
+    <string name="ai_clear_chat">चैट साफ़ करें</string>
+    <string name="ai_send">भेजें</string>
+    <string name="ai_placeholder">किसी भी स्टॉक के बारे में पूछें…</string>
+    <string name="ai_greeting_title">नमस्ते! मैं आपका BYSEL AI सहायक हूँ</string>
+    <string name="ai_greeting_focused">आप %1$s देख रहे हैं। इस स्टॉक या किसी भी NSE नाम के बारे में पूछें।</string>
+    <string name="ai_greeting_body">भारतीय स्टॉक्स के बारे में कुछ भी पूछें।\nमैं समझा सकता हूँ, तुलना कर सकता हूँ और पेपर-प्रैक्टिस लेवल साथ में देख सकता हूँ।</string>
+    <string name="ai_or_type">या नीचे बॉक्स में अपना सवाल लिखें।</string>
+    <string name="ai_try_asking">ये पूछकर देखें:</string>
+    <string name="ai_suggested_next">अगले सुझाए गए सवाल</string>
+    <string name="ai_sim_banner">सिमुलेशन मोड — असली बाज़ार डेटा के साथ पेपर ट्रेडिंग। कोई असली पैसा नहीं।</string>
+    <string name="ai_disclaimer_tag">शैक्षिक · SEBI RA नहीं</string>
+    <string name="ai_disclaimer">AI विश्लेषण केवल शिक्षा के लिए है। यह वित्तीय सलाह नहीं है। हमेशा अपना शोध करें।</string>
+
+    <!-- Home -->
+    <string name="home_markets">बाज़ार</string>
+    <string name="home_markets_sub">निफ्टी · सेंसेक्स · बैंक निफ्टी</string>
+    <string name="home_guide">गाइड</string>
+    <string name="home_customize">कस्टमाइज़</string>
+    <string name="home_news">समाचार</string>
+    <string name="home_ask_ai">AI से पूछें</string>
+    <string name="home_guide_title">होम गाइड</string>
+    <string name="home_practice_picks">अभ्यास के नाम</string>
+    <string name="home_practice_picks_sub">आज के पेपर अभ्यास स्वाइप करके देखें। केवल कैश और डिलीवरी।</string>
+    <string name="home_add_credit_first">Practice BUY से पहले अभ्यास क्रेडिट जोड़ें।</string>
+    <string name="home_add_credit">क्रेडिट जोड़ें</string>
+    <string name="home_pull_refresh">आज के अभ्यास नामों के लिए नीचे खींचकर रिफ्रेश करें।</string>
+    <string name="home_customize_title">होम कस्टमाइज़ करें</string>
+    <string name="home_reset_layout">लेआउट रीसेट</string>
+
+    <!-- Portfolio -->
+    <string name="portfolio_sub_empty">पेपर अभ्यास · सिम्युलेटेड होल्डिंग</string>
+    <string name="portfolio_load_error">पोर्टफोलियो लोड नहीं हो सका</string>
+    <string name="portfolio_empty">अभी कोई होल्डिंग नहीं</string>
+    <string name="portfolio_tap_refresh">फिर से कोशिश के लिए रिफ्रेश दबाएँ।</string>
+    <string name="portfolio_empty_body">पेपर ट्रेडिंग शुरू करें, या ब्रोकर CSV / CAS फ़ाइल इम्पोर्ट करें (केवल पढ़ने के लिए)।</string>
+    <string name="portfolio_import">CSV / CAS इम्पोर्ट</string>
+    <string name="portfolio_equity">इक्विटी</string>
+    <string name="portfolio_etfs">ETF</string>
+    <string name="portfolio_fno">F&amp;O</string>
+    <string name="portfolio_health">पोर्टफोलियो हेल्थ</string>
+    <string name="portfolio_health_loading">पोर्टफोलियो हेल्थ जाँची जा रही है…</string>
+
+    <!-- Watchlist -->
+    <string name="wl_empty_title">अभी कोई सिंबल ट्रैक नहीं</string>
+    <string name="wl_empty_body">पूरी NSE लिस्टेड सूची खोजें, वॉच दबाएँ, और वह खुली हुई लिस्ट में जुड़ जाएगा।</string>
+    <string name="wl_new_list">नई लिस्ट</string>
+    <string name="wl_delete_list">लिस्ट हटाएँ</string>
+    <string name="wl_list_name">लिस्ट का नाम</string>
+
+    <!-- Alerts -->
+    <string name="alerts_new">+ नया अलर्ट</string>
+    <string name="alerts_empty">कोई अलर्ट सेट नहीं</string>
+    <string name="alerts_create_first">अपना पहला अलर्ट बनाएँ</string>
+    <string name="alerts_create_title">प्राइस अलर्ट बनाएँ</string>
+    <string name="alerts_symbol_label">सिंबल (जैसे TCS)</string>
+    <string name="alerts_price_hint">0 से ऊपर कीमत डालें, जैसे 2450.50</string>
+
+    <!-- Search -->
+    <string name="search_sub">पूरी NSE लिस्टेड सूची (~2,400+)। विवरण के लिए नाम पर टैप करें।</string>
+    <string name="search_placeholder">कंपनी या सिंबल (जैसे INFY, Reliance)</string>
+    <string name="search_recent">हाल ही में</string>
+    <string name="search_recent_sub">जो सिंबल आपने हाल में खोले।</string>
+    <string name="search_your_watchlist">आपकी वॉचलिस्ट</string>
+    <string name="search_searching">NSE सूची में खोज रहे हैं…</string>
+    <string name="search_stocks">स्टॉक्स</string>
+    <string name="search_empty_hint">टिकर (TCS) या कंपनी का नाम (Tata Consultancy) आज़माएँ।</string>
+    <string name="search_shortcuts">ऐप शॉर्टकट</string>
+
+    <!-- Achievements -->
+    <string name="ach_unlocked">अनलॉक हुआ!</string>
+
+    <!-- Journal -->
+    <string name="journal_sub">आपके ट्रेडिंग व्यवहार का विश्लेषण</string>
+    <string name="journal_tab_insights">इनसाइट</string>
+    <string name="journal_tab_log">ट्रेड लॉग</string>
+    <string name="journal_no_insights">अभी कोई इनसाइट नहीं।</string>
+    <string name="journal_behavioral">व्यवहार संबंधी इनसाइट</string>
+    <string name="journal_most_traded">सबसे ज़्यादा ट्रेड</string>
+    <string name="journal_no_trades">अभी कोई ट्रेड दर्ज नहीं।</string>
+    <string name="journal_no_trades_body">आपके किए ट्रेड यहाँ दिखेंगे।</string>
+
+    <!-- Order history -->
+    <string name="order_history_sub">केवल पेपर फिल — लाइव ब्रोकर बुक नहीं</string>
+    <string name="order_history_error">आपका पेपर ऑर्डर इतिहास लोड नहीं हो सका।</string>
+
+    <!-- Earnings -->
+    <string name="earnings_sub">आगामी तिमाही नतीजे</string>
+    <string name="earnings_empty">कोई आगामी नतीजे नहीं मिले।</string>
+
+    <!-- Risk Lab -->
+    <string name="risk_sub">शैक्षिक पेपर व्यू — सलाह नहीं</string>
+    <string name="risk_empty">कोई रिस्क डेटा उपलब्ध नहीं।</string>
+
+    <!-- Market calendar -->
+    <string name="calendar_title">मार्केट कैलेंडर %1$d</string>
+    <string name="calendar_sub">%1$d छुट्टियाँ | NSE &amp; BSE</string>
+    <string name="calendar_next_trading">अगला ट्रेडिंग दिन: %1$s</string>
+    <string name="calendar_all">सभी छुट्टियाँ (%1$d)</string>
+    <string name="calendar_upcoming">आगामी छुट्टियाँ (%1$d)</string>
+    <string name="calendar_show_upcoming">आगामी दिखाएँ</string>
+    <string name="calendar_show_all">सभी दिखाएँ</string>
+    <string name="calendar_empty">लोड की गई सूची में कोई आगामी NSE छुट्टी नहीं। NSE अगले साल का कैलेंडर दिसंबर में जारी करता है; सूची अगले ऐप अपडेट के साथ रिफ्रेश होगी।</string>
+
+    <!-- Onboarding -->
+    <string name="onb_p1_title">NSE के लिए पेपर अभ्यास</string>
+    <string name="onb_p1_body">सिम्युलेटेड पैसे से खरीद-बिक्री का अभ्यास करें। कोई डीमैट, UPI या असली रुपये नहीं।</string>
+    <string name="onb_p2_title">शैक्षिक जवाब</string>
+    <string name="onb_p2_body">किसी नाम, सेशन या पेपर प्लान के बारे में पूछें। यह SEBI-पंजीकृत सलाह या पूर्वानुमान नहीं है।</string>
+    <string name="onb_p3_title">लूप सीखें</string>
+    <string name="onb_p3_body">आइडिया → Practice BUY या अलर्ट → समीक्षा। अभ्यास क्रेडिट जोड़ने तक वॉलेट ₹0 पर रहता है।</string>
+    <string name="onb_credit_title">अभ्यास क्रेडिट</string>
+    <string name="onb_credit_body">वैकल्पिक सिमुलेशन कैश ताकि आज ही Practice BUY कर सकें। असली पैसा नहीं। कर्ज़ नहीं।</string>
+    <string name="onb_add_credit">₹25,000 अभ्यास क्रेडिट जोड़ें</string>
+    <string name="onb_selected_zero">चुना गया · ₹0 से शुरू</string>
+    <string name="onb_skip_zero">छोड़ें — वॉलेट ₹0 पर रखें</string>
+    <string name="onb_picks_title">देखने के लिए तीन नाम</string>
+    <string name="onb_picks_body">अपनी वॉचलिस्ट के लिए %1$d NSE स्टॉक चुनें। बाद में बदल सकते हैं।</string>
+    <string name="onb_selected_count">%2$d में से %1$d चुने</string>
+    <string name="onb_open_trade">ट्रेड खोलें</string>
+
+    <!-- Auth -->
+    <string name="auth_sign_in_otp">OTP से साइन इन</string>
+    <string name="auth_sign_in_password">यूज़रनेम या ईमेल से साइन इन</string>
+    <string name="auth_create_account_title">अपना खाता बनाएँ</string>
+    <string name="auth_username_or_email">यूज़रनेम या ईमेल</string>
+    <string name="auth_username">यूज़रनेम</string>
+    <string name="auth_email">ईमेल</string>
+    <string name="auth_mobile">मोबाइल नंबर</string>
+    <string name="auth_otp_code">OTP कोड</string>
+    <string name="auth_send_otp">OTP भेजें</string>
+    <string name="auth_resend_otp">OTP फिर भेजें</string>
+    <string name="auth_verify_otp">OTP सत्यापित करें</string>
+    <string name="auth_password">पासवर्ड</string>
+    <string name="auth_sign_in">साइन इन</string>
+    <string name="auth_create_account">खाता बनाएँ</string>
+    <string name="auth_forgot">पासवर्ड भूल गए?</string>
+    <string name="auth_guest">साइन-इन छोड़ें (गेस्ट मोड)</string>
+
+    <!-- Stock detail -->
+    <string name="sd_opening">यह स्टॉक खुल रहा है…</string>
+    <string name="sd_decision_setup">निर्णय सेटअप</string>
+    <string name="sd_decision_sub">पेपर ऑर्डर से पहले लागत देखें। यह अभ्यास है, सिफ़ारिश नहीं।</string>
+    <string name="sd_trade_preview">ट्रेड प्रीव्यू</string>
+    <string name="sd_calculating">ट्रेड अनुमान निकाला जा रहा है…</string>
+    <string name="sd_session">सेशन</string>
+    <string name="sd_fundamentals">फंडामेंटल</string>
+    <string name="sd_snapshot">स्नैपशॉट</string>
+    <string name="sd_price_chart">प्राइस चार्ट</string>
+    <string name="sd_alert_up" formatted="false">अलर्ट +2%</string>
+    <string name="sd_alert_down" formatted="false">अलर्ट -2%</string>
+    <string name="sd_research">रिसर्च (शैक्षिक)</string>
 </resources>

@@ -47,8 +47,8 @@ fun StockNotesIcon(
     modifier: Modifier = Modifier,
     displaySymbol: String = symbol,
     showPreview: Boolean = false,
-    iconSize: Dp = 16.dp,
-    buttonSize: Dp = 28.dp,
+    iconSize: Dp = 18.dp,
+    buttonSize: Dp = 40.dp,
 ) {
     if (symbol.isBlank()) return
     val notesViewModel: StockNotesViewModel = viewModel()

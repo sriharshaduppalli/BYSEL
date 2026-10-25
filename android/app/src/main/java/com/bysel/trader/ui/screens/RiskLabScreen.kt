@@ -1,6 +1,8 @@
 package com.bysel.trader.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.res.stringResource
+import com.bysel.trader.R
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -67,8 +69,8 @@ fun RiskLabScreen(
             }
             Spacer(modifier = Modifier.width(4.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("Risk Lab", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = appTheme.text)
-                Text("Educational paper view — not advice", fontSize = 12.sp, color = appTheme.textSecondary)
+                Text(stringResource(R.string.more_risk_lab), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = appTheme.text)
+                Text(stringResource(R.string.risk_sub), fontSize = 12.sp, color = appTheme.textSecondary)
             }
             IconButton(onClick = { load() }, enabled = !isLoading) {
                 Icon(Icons.Filled.Refresh, contentDescription = "Refresh", tint = appTheme.primary)
@@ -96,7 +98,7 @@ fun RiskLabScreen(
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(onClick = { load() }, enabled = !isLoading) {
-                        Text("Retry")
+                        Text(stringResource(R.string.retry))
                     }
                 }
             }
@@ -104,7 +106,7 @@ fun RiskLabScreen(
                 val data = riskData
                 if (data == null) {
                     Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                        Text("No risk data available.", color = appTheme.textSecondary, fontSize = 14.sp)
+                        Text(stringResource(R.string.risk_empty), color = appTheme.textSecondary, fontSize = 14.sp)
                     }
                 } else {
                     RiskLabContent(data = data, appTheme = appTheme)

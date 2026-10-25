@@ -100,7 +100,8 @@ fun CompactFilterChip(
     FilterChip(
         selected = selected,
         onClick = onClick,
-        modifier = modifier.height(28.dp),
+        // 36dp keeps the row compact while clearing the 40dp-ish touch floor with chip padding.
+        modifier = modifier.heightIn(min = 36.dp),
         label = {
             Text(
                 label,

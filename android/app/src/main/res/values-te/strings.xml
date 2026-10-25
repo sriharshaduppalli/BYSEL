@@ -117,4 +117,182 @@
     <string name="settings_language">యాప్ భాష</string>
     <string name="settings_language_sub">మెనూలు మరియు ప్రాక్టీస్ స్క్రీన్లు. చార్టులు, AI జవాబులు మీ ప్రశ్న భాషలో.</string>
     <string name="settings_language_system">ఫోన్ సెట్టింగ్ ప్రకారం</string>
+
+    <!-- Common actions -->
+    <string name="create">సృష్టించు</string>
+    <string name="cancel">రద్దు</string>
+    <string name="close">మూసివేయి</string>
+    <string name="back">వెనక్కి</string>
+    <string name="next">తర్వాత</string>
+    <string name="done">పూర్తయింది</string>
+    <string name="refresh">రిఫ్రెష్</string>
+    <string name="updating">అప్‌డేట్ అవుతోంది</string>
+    <string name="delete">తొలగించు</string>
+    <string name="remove">తీసివేయి</string>
+    <string name="keep">ఉంచు</string>
+    <string name="today">ఈరోజు</string>
+    <string name="view_chart">చార్ట్ చూడండి</string>
+    <string name="view_details">వివరాలు చూడండి</string>
+    <string name="go_back">వెనక్కి వెళ్ళు</string>
+    <string name="skip_for_now">ఇప్పుడు దాటవేయి</string>
+    <string name="export">ఎక్స్‌పోర్ట్</string>
+    <string name="filter_all">అన్నీ</string>
+    <string name="qty">పరిమాణం</string>
+    <string name="total">మొత్తం</string>
+    <string name="watch">వాచ్ చేయి</string>
+    <string name="watching">వాచ్‌లో ఉంది</string>
+
+    <!-- AI assistant -->
+    <string name="ai_title">BYSEL AI సహాయకుడు</string>
+    <string name="ai_clear_chat">చాట్ క్లియర్ చేయి</string>
+    <string name="ai_send">పంపు</string>
+    <string name="ai_placeholder">ఏ స్టాక్ గురించైనా అడగండి…</string>
+    <string name="ai_greeting_title">నమస్కారం! నేను మీ BYSEL AI సహాయకుడిని</string>
+    <string name="ai_greeting_focused">మీరు %1$s చూస్తున్నారు. ఈ స్టాక్ గురించి లేదా ఏ NSE పేరు గురించైనా అడగండి.</string>
+    <string name="ai_greeting_body">భారతీయ స్టాక్‌ల గురించి ఏదైనా అడగండి.\nనేను వివరించగలను, పోల్చగలను, పేపర్-ప్రాక్టీస్ స్థాయిలను మీతో కలిసి చూడగలను.</string>
+    <string name="ai_or_type">లేదా కింది బాక్స్‌లో మీ ప్రశ్న టైప్ చేయండి.</string>
+    <string name="ai_try_asking">ఇలా అడిగి చూడండి:</string>
+    <string name="ai_suggested_next">తర్వాత సూచించిన ప్రశ్నలు</string>
+    <string name="ai_sim_banner">సిమ్యులేషన్ మోడ్ — నిజమైన మార్కెట్ డేటాతో పేపర్ ట్రేడింగ్. అసలు డబ్బు లేదు.</string>
+    <string name="ai_disclaimer_tag">విద్యాపరం · SEBI RA కాదు</string>
+    <string name="ai_disclaimer">AI విశ్లేషణ విద్యా ప్రయోజనాల కోసమే. ఆర్థిక సలహా కాదు. ఎప్పుడూ మీ స్వంత పరిశోధన చేయండి.</string>
+
+    <!-- Home -->
+    <string name="home_markets">మార్కెట్లు</string>
+    <string name="home_markets_sub">నిఫ్టీ · సెన్సెక్స్ · బ్యాంక్ నిఫ్టీ</string>
+    <string name="home_guide">గైడ్</string>
+    <string name="home_customize">అనుకూలీకరించు</string>
+    <string name="home_news">వార్తలు</string>
+    <string name="home_ask_ai">AIని అడగండి</string>
+    <string name="home_guide_title">హోమ్ గైడ్</string>
+    <string name="home_practice_picks">ప్రాక్టీస్ ఎంపికలు</string>
+    <string name="home_practice_picks_sub">ఈరోజు పేపర్ డ్రిల్స్ స్వైప్ చేసి చూడండి. క్యాష్, డెలివరీ మాత్రమే.</string>
+    <string name="home_add_credit_first">Practice BUY కంటే ముందు ప్రాక్టీస్ క్రెడిట్ జోడించండి.</string>
+    <string name="home_add_credit">క్రెడిట్ జోడించు</string>
+    <string name="home_pull_refresh">ఈరోజు ప్రాక్టీస్ పేర్ల కోసం కిందకు లాగి రిఫ్రెష్ చేయండి.</string>
+    <string name="home_customize_title">హోమ్ అనుకూలీకరించు</string>
+    <string name="home_reset_layout">లేఅవుట్ రీసెట్</string>
+
+    <!-- Portfolio -->
+    <string name="portfolio_sub_empty">పేపర్ ప్రాక్టీస్ · సిమ్యులేటెడ్ హోల్డింగ్స్</string>
+    <string name="portfolio_load_error">పోర్ట్‌ఫోలియో లోడ్ కాలేదు</string>
+    <string name="portfolio_empty">ఇంకా హోల్డింగ్స్ లేవు</string>
+    <string name="portfolio_tap_refresh">మళ్ళీ ప్రయత్నించడానికి రిఫ్రెష్ నొక్కండి.</string>
+    <string name="portfolio_empty_body">పేపర్ ట్రేడింగ్ ప్రారంభించండి, లేదా బ్రోకర్ CSV / CAS ఫైల్ ఇంపోర్ట్ చేయండి (చదవడానికి మాత్రమే).</string>
+    <string name="portfolio_import">CSV / CAS ఇంపోర్ట్</string>
+    <string name="portfolio_equity">ఈక్విటీ</string>
+    <string name="portfolio_etfs">ETFలు</string>
+    <string name="portfolio_fno">F&amp;O</string>
+    <string name="portfolio_health">పోర్ట్‌ఫోలియో ఆరోగ్యం</string>
+    <string name="portfolio_health_loading">పోర్ట్‌ఫోలియో ఆరోగ్యం విశ్లేషిస్తోంది…</string>
+
+    <!-- Watchlist -->
+    <string name="wl_empty_title">ఇంకా ట్రాక్ చేసిన సింబల్స్ లేవు</string>
+    <string name="wl_empty_body">పూర్తి NSE లిస్టెడ్ జాబితాలో వెతికి, వాచ్ నొక్కండి; అది మీరు తెరిచిన జాబితాలో చేరుతుంది.</string>
+    <string name="wl_new_list">కొత్త జాబితా</string>
+    <string name="wl_delete_list">జాబితా తొలగించు</string>
+    <string name="wl_list_name">జాబితా పేరు</string>
+
+    <!-- Alerts -->
+    <string name="alerts_new">+ కొత్త అలర్ట్</string>
+    <string name="alerts_empty">అలర్ట్‌లు సెట్ చేయలేదు</string>
+    <string name="alerts_create_first">మీ మొదటి అలర్ట్ సృష్టించండి</string>
+    <string name="alerts_create_title">ధర అలర్ట్ సృష్టించు</string>
+    <string name="alerts_symbol_label">సింబల్ (ఉదా. TCS)</string>
+    <string name="alerts_price_hint">0 కంటే ఎక్కువ ధర నమోదు చేయండి, ఉదా. 2450.50</string>
+
+    <!-- Search -->
+    <string name="search_sub">పూర్తి NSE లిస్టెడ్ జాబితా (~2,400+). వివరాల కోసం పేరు నొక్కండి.</string>
+    <string name="search_placeholder">కంపెనీ లేదా సింబల్ (ఉదా. INFY, Reliance)</string>
+    <string name="search_recent">ఇటీవల</string>
+    <string name="search_recent_sub">మీరు ఇటీవల తెరిచిన సింబల్స్.</string>
+    <string name="search_your_watchlist">మీ వాచ్‌లిస్ట్</string>
+    <string name="search_searching">NSE జాబితాలో వెతుకుతోంది…</string>
+    <string name="search_stocks">స్టాక్‌లు</string>
+    <string name="search_empty_hint">టిక్కర్ (TCS) లేదా కంపెనీ పేరు (Tata Consultancy) ప్రయత్నించండి.</string>
+    <string name="search_shortcuts">యాప్ షార్ట్‌కట్‌లు</string>
+
+    <!-- Achievements -->
+    <string name="ach_unlocked">అన్‌లాక్ అయింది!</string>
+
+    <!-- Journal -->
+    <string name="journal_sub">మీ ట్రేడింగ్ ప్రవర్తన విశ్లేషణ</string>
+    <string name="journal_tab_insights">అంతర్దృష్టులు</string>
+    <string name="journal_tab_log">ట్రేడ్ లాగ్</string>
+    <string name="journal_no_insights">ఇంకా అంతర్దృష్టులు లేవు.</string>
+    <string name="journal_behavioral">ప్రవర్తనా అంతర్దృష్టులు</string>
+    <string name="journal_most_traded">ఎక్కువగా ట్రేడ్ చేసినవి</string>
+    <string name="journal_no_trades">ఇంకా ట్రేడ్‌లు నమోదు కాలేదు.</string>
+    <string name="journal_no_trades_body">మీరు చేసే ట్రేడ్‌లు ఇక్కడ కనిపిస్తాయి.</string>
+
+    <!-- Order history -->
+    <string name="order_history_sub">పేపర్ ఫిల్స్ మాత్రమే — లైవ్ బ్రోకర్ బుక్ కాదు</string>
+    <string name="order_history_error">మీ పేపర్ ఆర్డర్ చరిత్ర లోడ్ కాలేదు.</string>
+
+    <!-- Earnings -->
+    <string name="earnings_sub">రాబోయే త్రైమాసిక ఫలితాలు</string>
+    <string name="earnings_empty">రాబోయే ఫలితాలు ఏవీ లేవు.</string>
+
+    <!-- Risk Lab -->
+    <string name="risk_sub">విద్యాపరమైన పేపర్ వ్యూ — సలహా కాదు</string>
+    <string name="risk_empty">రిస్క్ డేటా అందుబాటులో లేదు.</string>
+
+    <!-- Market calendar -->
+    <string name="calendar_title">మార్కెట్ క్యాలెండర్ %1$d</string>
+    <string name="calendar_sub">%1$d సెలవులు | NSE &amp; BSE</string>
+    <string name="calendar_next_trading">తదుపరి ట్రేడింగ్ రోజు: %1$s</string>
+    <string name="calendar_all">అన్ని సెలవులు (%1$d)</string>
+    <string name="calendar_upcoming">రాబోయే సెలవులు (%1$d)</string>
+    <string name="calendar_show_upcoming">రాబోయేవి చూపించు</string>
+    <string name="calendar_show_all">అన్నీ చూపించు</string>
+    <string name="calendar_empty">లోడ్ అయిన జాబితాలో రాబోయే NSE సెలవులు లేవు. NSE వచ్చే సంవత్సర క్యాలెండర్‌ను డిసెంబర్‌లో ప్రకటిస్తుంది; తదుపరి యాప్ అప్‌డేట్‌తో జాబితా రిఫ్రెష్ అవుతుంది.</string>
+
+    <!-- Onboarding -->
+    <string name="onb_p1_title">NSE కోసం పేపర్ ప్రాక్టీస్</string>
+    <string name="onb_p1_body">సిమ్యులేటెడ్ డబ్బుతో కొనుగోలు, అమ్మకాలు సాధన చేయండి. డీమ్యాట్, UPI, అసలు రూపాయలు లేవు.</string>
+    <string name="onb_p2_title">విద్యాపరమైన జవాబులు</string>
+    <string name="onb_p2_body">ఒక పేరు, సెషన్ లేదా పేపర్ ప్లాన్ గురించి అడగండి. ఇది SEBI-నమోదిత సలహా కాదు, అంచనా కాదు.</string>
+    <string name="onb_p3_title">లూప్ నేర్చుకోండి</string>
+    <string name="onb_p3_body">ఐడియా → Practice BUY లేదా అలర్ట్ → సమీక్ష. ప్రాక్టీస్ క్రెడిట్ జోడించే వరకు మీ వాలెట్ ₹0 వద్దే ఉంటుంది.</string>
+    <string name="onb_credit_title">ప్రాక్టీస్ క్రెడిట్</string>
+    <string name="onb_credit_body">ఈరోజే Practice BUY చేయడానికి ఐచ్ఛిక సిమ్యులేషన్ క్యాష్. అసలు డబ్బు కాదు. అప్పు కాదు.</string>
+    <string name="onb_add_credit">₹25,000 ప్రాక్టీస్ క్రెడిట్ జోడించు</string>
+    <string name="onb_selected_zero">ఎంచుకున్నారు · ₹0 నుండి ప్రారంభం</string>
+    <string name="onb_skip_zero">దాటవేయి — వాలెట్ ₹0 వద్ద ఉంచు</string>
+    <string name="onb_picks_title">చూడటానికి మూడు పేర్లు</string>
+    <string name="onb_picks_body">మీ వాచ్‌లిస్ట్ కోసం %1$d NSE స్టాక్‌లు ఎంచుకోండి. తర్వాత మార్చుకోవచ్చు.</string>
+    <string name="onb_selected_count">%2$dలో %1$d ఎంచుకున్నారు</string>
+    <string name="onb_open_trade">ట్రేడ్ తెరువు</string>
+
+    <!-- Auth -->
+    <string name="auth_sign_in_otp">OTPతో సైన్ ఇన్</string>
+    <string name="auth_sign_in_password">యూజర్‌నేమ్ లేదా ఇమెయిల్‌తో సైన్ ఇన్</string>
+    <string name="auth_create_account_title">మీ ఖాతా సృష్టించండి</string>
+    <string name="auth_username_or_email">యూజర్‌నేమ్ లేదా ఇమెయిల్</string>
+    <string name="auth_username">యూజర్‌నేమ్</string>
+    <string name="auth_email">ఇమెయిల్</string>
+    <string name="auth_mobile">మొబైల్ నంబర్</string>
+    <string name="auth_otp_code">OTP కోడ్</string>
+    <string name="auth_send_otp">OTP పంపు</string>
+    <string name="auth_resend_otp">OTP మళ్ళీ పంపు</string>
+    <string name="auth_verify_otp">OTP ధృవీకరించు</string>
+    <string name="auth_password">పాస్‌వర్డ్</string>
+    <string name="auth_sign_in">సైన్ ఇన్</string>
+    <string name="auth_create_account">ఖాతా సృష్టించు</string>
+    <string name="auth_forgot">పాస్‌వర్డ్ మర్చిపోయారా?</string>
+    <string name="auth_guest">సైన్-ఇన్ దాటవేయి (గెస్ట్ మోడ్)</string>
+
+    <!-- Stock detail -->
+    <string name="sd_opening">ఈ స్టాక్ తెరుస్తోంది…</string>
+    <string name="sd_decision_setup">నిర్ణయ సెటప్</string>
+    <string name="sd_decision_sub">పేపర్ ఆర్డర్‌కు ముందు ఖర్చు చూడండి. ఇది ప్రాక్టీస్, సిఫార్సు కాదు.</string>
+    <string name="sd_trade_preview">ట్రేడ్ ప్రివ్యూ</string>
+    <string name="sd_calculating">ట్రేడ్ అంచనా లెక్కిస్తోంది…</string>
+    <string name="sd_session">సెషన్</string>
+    <string name="sd_fundamentals">ఫండమెంటల్స్</string>
+    <string name="sd_snapshot">స్నాప్‌షాట్</string>
+    <string name="sd_price_chart">ధర చార్ట్</string>
+    <string name="sd_alert_up" formatted="false">అలర్ట్ +2%</string>
+    <string name="sd_alert_down" formatted="false">అలర్ట్ -2%</string>
+    <string name="sd_research">రీసెర్చ్ (విద్యాపరం)</string>
 </resources>

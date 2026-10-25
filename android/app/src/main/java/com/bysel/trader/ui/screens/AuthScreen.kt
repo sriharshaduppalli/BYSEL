@@ -1,6 +1,8 @@
 package com.bysel.trader.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.res.stringResource
+import com.bysel.trader.R
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -267,8 +269,8 @@ fun AuthScreen(
         Spacer(modifier = Modifier.height(10.dp))
         Text(
             text = if (isLoginMode) {
-                if (isOtpMode) "Sign in with OTP" else "Sign in with username or email"
-            } else "Create your account",
+                if (isOtpMode) stringResource(R.string.auth_sign_in_otp) else stringResource(R.string.auth_sign_in_password)
+            } else stringResource(R.string.auth_create_account_title),
             color = appTheme.textSecondary
         )
         if (isLoginMode && !isOtpMode) {
@@ -313,7 +315,7 @@ fun AuthScreen(
                             message = null
                         },
                     ),
-                label = { Text(if (isLoginMode) "Username or Email" else "Username") },
+                label = { Text(if (isLoginMode) stringResource(R.string.auth_username_or_email) else stringResource(R.string.auth_username)) },
                 isError = !message.isNullOrBlank() && username.trim().isEmpty(),
                 enabled = !loading,
                 singleLine = true,
@@ -338,7 +340,7 @@ fun AuthScreen(
                                 message = null
                             },
                         ),
-                    label = { Text("Email") },
+                    label = { Text(stringResource(R.string.auth_email)) },
                     isError = !message.isNullOrBlank() && email.trim().isEmpty(),
                     enabled = !loading,
                     singleLine = true,
@@ -358,7 +360,7 @@ fun AuthScreen(
                     message = null
                 },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Mobile number") },
+                label = { Text(stringResource(R.string.auth_mobile)) },
                 placeholder = { Text("10-digit number", color = appTheme.textSecondary) },
                 prefix = { Text("+91 ", color = appTheme.textSecondary) },
                 isError = !message.isNullOrBlank() && mobileNumber.trim().isEmpty(),
@@ -377,7 +379,7 @@ fun AuthScreen(
                         message = null
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("OTP code") },
+                    label = { Text(stringResource(R.string.auth_otp_code)) },
                     isError = !message.isNullOrBlank() && otpCode.trim().isEmpty(),
                     enabled = !sendingOtp && !verifyingOtp,
                     singleLine = true,
@@ -495,7 +497,7 @@ fun AuthScreen(
                 if (sendingOtp) {
                     CircularProgressIndicator(color = LocalContentColor.current, modifier = Modifier.height(20.dp))
                 } else {
-                    Text(if (otpSent) "Resend OTP" else "Send OTP")
+                    Text(if (otpSent) stringResource(R.string.auth_resend_otp) else stringResource(R.string.auth_send_otp))
                 }
             }
 
@@ -582,7 +584,7 @@ fun AuthScreen(
                     if (verifyingOtp) {
                         CircularProgressIndicator(color = LocalContentColor.current, modifier = Modifier.height(20.dp))
                     } else {
-                        Text("Verify OTP")
+                        Text(stringResource(R.string.auth_verify_otp))
                     }
                 }
             }
@@ -608,7 +610,7 @@ fun AuthScreen(
                             message = null
                         },
                     ),
-                label = { Text("Password") },
+                label = { Text(stringResource(R.string.auth_password)) },
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
                     IconButton(onClick = { passwordVisible = !passwordVisible }) {
@@ -726,7 +728,7 @@ fun AuthScreen(
                         modifier = Modifier.height(20.dp)
                     )
                 } else {
-                    Text(if (isLoginMode) "Sign in" else "Create account")
+                    Text(if (isLoginMode) stringResource(R.string.auth_sign_in) else stringResource(R.string.auth_create_account))
                 }
             }
         }
@@ -791,7 +793,7 @@ fun AuthScreen(
                     enabled = !loading,
                     modifier = Modifier.align(Alignment.End)
                 ) {
-                    Text("Forgot password?", color = appTheme.primary)
+                    Text(stringResource(R.string.auth_forgot), color = appTheme.primary)
                 }
                 Spacer(modifier = Modifier.height(4.dp))
             }
@@ -831,7 +833,7 @@ fun AuthScreen(
                 },
                 enabled = !loading
             ) {
-                Text("Skip sign-in (Guest Mode)", color = appTheme.textSecondary)
+                Text(stringResource(R.string.auth_guest), color = appTheme.textSecondary)
             }
         }
         } // capped-width auth column

@@ -36,6 +36,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -76,6 +79,25 @@ private data class CandleSim(
     val entrySpot: Double,
 )
 
+/** Flattens the open position into a Bundle-safe list; an empty list means "no position". */
+private val CandleSimSaver: Saver<CandleSim?, Any> = listSaver(
+    save = { sim ->
+        if (sim == null) emptyList() else listOf(sim.right, sim.strike, sim.entryPremium, sim.entrySpot)
+    },
+    restore = { parts ->
+        if (parts.size < 4) {
+            null
+        } else {
+            CandleSim(
+                right = parts[0] as String,
+                strike = parts[1] as Double,
+                entryPremium = parts[2] as Double,
+                entrySpot = parts[3] as Double,
+            )
+        }
+    },
+)
+
 @Composable
 fun FoCandlePractice(
     symbol: String,
@@ -99,19 +121,22 @@ fun FoCandlePractice(
     lotSize: Int? = null,
 ) {
     val theme = LocalAppTheme.current
-    var cursor by remember(symbol) { mutableIntStateOf(0) }
-    var playing by remember(symbol) { mutableStateOf(false) }
-    var speed by remember(symbol) { mutableIntStateOf(2) }
-    var finished by remember(symbol) { mutableStateOf(false) }
-    var sim by remember(symbol) { mutableStateOf<CandleSim?>(null) }
-    var closedSummary by remember(symbol) { mutableStateOf<String?>(null) }
-    var fullscreen by remember(symbol) { mutableStateOf(false) }
-    var showOptions by remember(symbol) { mutableStateOf(false) }
-    var strikeOffset by remember(symbol) { mutableIntStateOf(0) }
-    var lots by remember(symbol) { mutableIntStateOf((saved?.lots ?: 1).coerceIn(1, 5)) }
-    var booked by remember(symbol) { mutableStateOf(saved?.booked == true) }
-    var primed by remember(symbol) { mutableStateOf(false) }
-    var restored by remember(symbol) { mutableStateOf(false) }
+    // Saveable so a rotation keeps the replay where it was: same bar, same open
+    // position, fullscreen and chain still open. Keyed on symbol so a new
+    // underlying starts fresh.
+    var cursor by rememberSaveable(symbol) { mutableIntStateOf(0) }
+    var playing by rememberSaveable(symbol) { mutableStateOf(false) }
+    var speed by rememberSaveable(symbol) { mutableIntStateOf(2) }
+    var finished by rememberSaveable(symbol) { mutableStateOf(false) }
+    var sim by rememberSaveable(symbol, stateSaver = CandleSimSaver) { mutableStateOf<CandleSim?>(null) }
+    var closedSummary by rememberSaveable(symbol) { mutableStateOf<String?>(null) }
+    var fullscreen by rememberSaveable(symbol) { mutableStateOf(false) }
+    var showOptions by rememberSaveable(symbol) { mutableStateOf(false) }
+    var strikeOffset by rememberSaveable(symbol) { mutableIntStateOf(0) }
+    var lots by rememberSaveable(symbol) { mutableIntStateOf((saved?.lots ?: 1).coerceIn(1, 5)) }
+    var booked by rememberSaveable(symbol) { mutableStateOf(saved?.booked == true) }
+    var primed by rememberSaveable(symbol) { mutableStateOf(false) }
+    var restored by rememberSaveable(symbol) { mutableStateOf(false) }
     BackHandler(enabled = fullscreen) {
         playing = false
         fullscreen = false
@@ -196,8 +221,8 @@ fun FoCandlePractice(
     val putNow = if (spot > 0.0) PaperFoMark.premium(spot, strike, days, vol, call = false) else 0.0
 
     if (asScreen) {
-        var showChain by remember(symbol) { mutableStateOf(false) }
-        var screenStarted by remember(symbol) { mutableStateOf(false) }
+        var showChain by rememberSaveable(symbol) { mutableStateOf(false) }
+        var screenStarted by rememberSaveable(symbol) { mutableStateOf(false) }
         LaunchedEffect(symbol, candles.size) {
             if (!screenStarted && candles.size > 1 && !finished) {
                 screenStarted = true
@@ -260,12 +285,10 @@ fun FoCandlePractice(
             if (shown.isNotEmpty() && !showChain) {
                 PriceHistoryChart(
                     history = shown,
-                    symbol = symbol,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
                         .heightIn(min = 180.dp),
-                    isDarkTheme = !theme.isLight,
                     rangeLabel = "5D",
                     expandPlot = true,
                 )
@@ -507,11 +530,9 @@ fun FoCandlePractice(
                 if (shown.isNotEmpty() && !showOptions) {
                     PriceHistoryChart(
                         history = shown,
-                        symbol = symbol,
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f),
-                        isDarkTheme = !theme.isLight,
                         rangeLabel = "5D",
                         expandPlot = true,
                     )

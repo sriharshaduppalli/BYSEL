@@ -1,6 +1,8 @@
 package com.bysel.trader.ui.screens
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.ui.res.stringResource
+import com.bysel.trader.R
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
@@ -269,7 +271,7 @@ private fun HomeGuideDialog(
                                     )
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = "Home Guide",
+                                            text = stringResource(R.string.home_guide_title),
                                             color = theme.textSecondary,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Medium,
@@ -357,12 +359,12 @@ private fun HomeGuideDialog(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             TextButton(onClick = onDismiss) {
-                                Text("Close")
+                                Text(stringResource(R.string.close))
                             }
                             Spacer(modifier = Modifier.weight(1f))
                             if (safeStep > 0) {
                                 OutlinedButton(onClick = { onStepChange(safeStep - 1) }) {
-                                    Text("Back")
+                                    Text(stringResource(R.string.back))
                                 }
                             }
                             Button(
@@ -1207,13 +1209,13 @@ private fun MarketPulseHero(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Markets",
+                        text = stringResource(R.string.home_markets),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = theme.text,
                     )
                     Text(
-                        text = "Nifty · Sensex · Bank Nifty",
+                        text = stringResource(R.string.home_markets_sub),
                         fontSize = 12.sp,
                         lineHeight = 16.sp,
                         color = theme.textSecondary,
@@ -1260,21 +1262,21 @@ private fun MarketPulseHero(
                             onDismissRequest = { menuOpen = false },
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Guide") },
+                                text = { Text(stringResource(R.string.home_guide)) },
                                 onClick = {
                                     menuOpen = false
                                     onGuide()
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("Customize") },
+                                text = { Text(stringResource(R.string.home_customize)) },
                                 onClick = {
                                     menuOpen = false
                                     onCustomize()
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("News") },
+                                text = { Text(stringResource(R.string.home_news)) },
                                 onClick = {
                                     menuOpen = false
                                     onNews()
@@ -1282,7 +1284,7 @@ private fun MarketPulseHero(
                             )
                             if (onAskAi != null) {
                                 DropdownMenuItem(
-                                    text = { Text("Ask AI") },
+                                    text = { Text(stringResource(R.string.home_ask_ai)) },
                                     onClick = {
                                         menuOpen = false
                                         onAskAi()
@@ -1889,13 +1891,13 @@ private fun TodaysPracticeDeck(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Practice picks",
+                    text = stringResource(R.string.home_practice_picks),
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = theme.text,
                 )
                 Text(
-                    text = "Swipe through today’s paper drills. Cash and delivery only.",
+                    text = stringResource(R.string.home_practice_picks_sub),
                     fontSize = 11.sp,
                     color = theme.textSecondary,
                 )
@@ -1914,7 +1916,7 @@ private fun TodaysPracticeDeck(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Add practice credit before Practice BUY.",
+                    text = stringResource(R.string.home_add_credit_first),
                     fontSize = 12.sp,
                     color = theme.textSecondary,
                     modifier = Modifier.weight(1f),
@@ -1926,7 +1928,7 @@ private fun TodaysPracticeDeck(
                     colors = ButtonDefaults.buttonColors(containerColor = theme.primary),
                     shape = RoundedCornerShape(10.dp),
                 ) {
-                    Text("Add credit", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.home_add_credit), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -1943,7 +1945,7 @@ private fun TodaysPracticeDeck(
             }
             items.isEmpty() -> {
                 Text(
-                    text = "Pull to refresh for today’s practice names.",
+                    text = stringResource(R.string.home_pull_refresh),
                     fontSize = 12.sp,
                     color = theme.textSecondary,
                 )
@@ -2730,7 +2732,7 @@ private fun HomeCustomizeSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = "Customize Home",
+                text = stringResource(R.string.home_customize_title),
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = theme.text,
@@ -2778,7 +2780,7 @@ private fun HomeCustomizeSheet(
             OutlinedButton(onClick = onReset, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Default.Restore, contentDescription = null)
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Reset layout")
+                Text(stringResource(R.string.home_reset_layout))
             }
             if (!resetHint.isNullOrBlank()) {
                 Text(text = resetHint, color = theme.primary, fontSize = 12.sp)

@@ -1,6 +1,8 @@
 package com.bysel.trader.ui.screens
 
 import android.content.Context
+import androidx.compose.ui.res.stringResource
+import com.bysel.trader.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -176,8 +178,8 @@ fun SearchScreen(
         ) {
             item {
                 ScreenHeader(
-                    title = "Search Stocks",
-                    subtitle = "Full NSE listed catalog (~2,400+). Tap a name for detail.",
+                    title = stringResource(R.string.more_search),
+                    subtitle = stringResource(R.string.search_sub),
                     onBack = onBack,
                 )
             }
@@ -187,7 +189,7 @@ fun SearchScreen(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     placeholder = {
-                        Text("Company or symbol (e.g. INFY, Reliance)", color = theme.textSecondary)
+                        Text(stringResource(R.string.search_placeholder), color = theme.textSecondary)
                     },
                     leadingIcon = {
                         Icon(Icons.Filled.Search, contentDescription = null, tint = theme.textSecondary)
@@ -232,8 +234,8 @@ fun SearchScreen(
                 if (recentSymbols.isNotEmpty()) {
                     item {
                         SearchSectionHeader(
-                            title = "Recent",
-                            subtitle = "Symbols you opened recently.",
+                            title = stringResource(R.string.search_recent),
+                            subtitle = stringResource(R.string.search_recent_sub),
                         )
                     }
                     item {
@@ -251,7 +253,7 @@ fun SearchScreen(
                 if (watchlistQuotes.isNotEmpty()) {
                     item {
                         SearchSectionHeader(
-                            title = "Your watchlist",
+                            title = stringResource(R.string.search_your_watchlist),
                             subtitle = "Tracked names with quotes on the live board.",
                         )
                     }
@@ -300,7 +302,7 @@ fun SearchScreen(
                                 color = theme.primary,
                             )
                             Text(
-                                text = "Searching the NSE catalog…",
+                                text = stringResource(R.string.search_searching),
                                 fontSize = 13.sp,
                                 color = theme.textSecondary,
                             )
@@ -311,7 +313,7 @@ fun SearchScreen(
                 if (searchResults.isNotEmpty()) {
                     item {
                         SearchSectionHeader(
-                            title = "Stocks",
+                            title = stringResource(R.string.search_stocks),
                             subtitle = "${searchResults.size} match${if (searchResults.size == 1) "" else "es"} in the listed universe.",
                         )
                     }
@@ -362,7 +364,7 @@ fun SearchScreen(
                 if (matchingJumps.isNotEmpty()) {
                     item {
                         SearchSectionHeader(
-                            title = "App shortcuts",
+                            title = stringResource(R.string.search_shortcuts),
                             subtitle = "Optional jumps — stock matches stay above.",
                         )
                     }
@@ -399,7 +401,7 @@ fun SearchScreen(
                                     color = theme.text,
                                 )
                                 Text(
-                                    text = "Try a ticker (TCS) or company name (Tata Consultancy).",
+                                    text = stringResource(R.string.search_empty_hint),
                                     fontSize = 12.sp,
                                     color = theme.textSecondary,
                                     modifier = Modifier.padding(top = 8.dp),
@@ -481,7 +483,7 @@ private fun DiscoveryQuoteCard(
             }
             when {
                 isWatchlisted -> {
-                    Text("Watching", fontSize = 11.sp, color = LocalAppTheme.current.positive, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.watching), fontSize = 11.sp, color = LocalAppTheme.current.positive, fontWeight = FontWeight.SemiBold)
                 }
                 onWatch != null -> {
                     OutlinedButton(
@@ -489,7 +491,7 @@ private fun DiscoveryQuoteCard(
                         shape = RoundedCornerShape(10.dp),
                         contentPadding = PaddingValues(horizontal = 10.dp),
                         modifier = Modifier.height(34.dp),
-                    ) { Text("Watch", fontSize = 12.sp) }
+                    ) { Text(stringResource(R.string.watch), fontSize = 12.sp) }
                 }
             }
         }
@@ -551,7 +553,7 @@ private fun SearchResultCard(
             }
             when {
                 isWatchlisted -> {
-                    Text("Watching", fontSize = 11.sp, color = LocalAppTheme.current.positive, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.watching), fontSize = 11.sp, color = LocalAppTheme.current.positive, fontWeight = FontWeight.SemiBold)
                 }
                 onAddToWatchlist != null -> {
                     OutlinedButton(
@@ -559,7 +561,7 @@ private fun SearchResultCard(
                         shape = RoundedCornerShape(10.dp),
                         contentPadding = PaddingValues(horizontal = 10.dp),
                         modifier = Modifier.height(34.dp),
-                    ) { Text("Watch", fontSize = 12.sp) }
+                    ) { Text(stringResource(R.string.watch), fontSize = 12.sp) }
                 }
             }
         }

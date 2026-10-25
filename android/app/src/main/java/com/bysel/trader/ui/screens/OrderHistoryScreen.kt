@@ -1,6 +1,8 @@
 package com.bysel.trader.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.res.stringResource
+import com.bysel.trader.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -87,8 +89,8 @@ fun OrderHistoryScreen(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = theme.text)
             }
             Column(modifier = Modifier.weight(1f)) {
-                Text("Order history", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = theme.text)
-                Text("Paper fills only — not a live broker book", fontSize = 12.sp, color = theme.textSecondary)
+                Text(stringResource(R.string.more_order_history), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = theme.text)
+                Text(stringResource(R.string.order_history_sub), fontSize = 12.sp, color = theme.textSecondary)
             }
             IconButton(onClick = { reload() }) {
                 Icon(Icons.Filled.Refresh, contentDescription = "Refresh", tint = theme.primary)
@@ -104,14 +106,14 @@ fun OrderHistoryScreen(
             error != null && rows.isEmpty() -> {
                 Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Couldn't load your paper order history.", color = theme.text, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.order_history_error), color = theme.text, fontWeight = FontWeight.SemiBold)
                         Text(
                             "Check your connection and retry — nothing has been lost.",
                             color = theme.textSecondary,
                             fontSize = 12.sp,
                             modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
                         )
-                        Button(onClick = { reload() }) { Text("Retry") }
+                        Button(onClick = { reload() }) { Text(stringResource(R.string.retry)) }
                     }
                 }
             }

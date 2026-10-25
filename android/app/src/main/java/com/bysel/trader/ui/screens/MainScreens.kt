@@ -1,6 +1,8 @@
 package com.bysel.trader.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.res.stringResource
+import com.bysel.trader.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -168,7 +170,7 @@ fun WatchlistScreen(
                     )
                     Text(
                         text = if (sortedQuotes.isEmpty()) {
-                            "Empty · add from Search (full NSE catalog)"
+                            stringResource(R.string.wl_empty_title)
                         } else {
                             "${sortedQuotes.size} on this list · ${sortMode.label} · swipe left to remove"
                         },
@@ -185,7 +187,7 @@ fun WatchlistScreen(
                     ),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text("Refresh", fontSize = 12.sp)
+                    Text(stringResource(R.string.refresh), fontSize = 12.sp)
                 }
             }
             }
@@ -242,7 +244,7 @@ fun WatchlistScreen(
                                         modifier = Modifier.size(14.dp),
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("New list", fontSize = 11.sp)
+                                    Text(stringResource(R.string.wl_new_list), fontSize = 11.sp)
                                 }
                             },
                         )
@@ -266,7 +268,7 @@ fun WatchlistScreen(
                         }
                         if (canDeleteActive) {
                             TextButton(onClick = { pendingDeleteListId = activeList.id }) {
-                                Text("Delete list", fontSize = 12.sp, color = LocalAppTheme.current.negative)
+                                Text(stringResource(R.string.wl_delete_list), fontSize = 12.sp, color = LocalAppTheme.current.negative)
                             }
                         }
                     }
@@ -318,14 +320,14 @@ fun WatchlistScreen(
                         verticalArrangement = Arrangement.Center,
                     ) {
                         Text(
-                            text = "No tracked symbols yet",
+                            text = stringResource(R.string.wl_empty_title),
                             fontWeight = FontWeight.Bold,
                             color = LocalAppTheme.current.text,
                             fontSize = 16.sp,
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Search the full NSE listed universe, tap Watch, then it lands on the list you have open.",
+                            text = stringResource(R.string.wl_empty_body),
                             color = LocalAppTheme.current.textSecondary,
                             fontSize = 13.sp,
                         )
@@ -396,10 +398,10 @@ fun WatchlistScreen(
                         onRemove(symbol)
                         pendingRemoveSymbol = null
                     }
-                ) { Text("Remove") }
+                ) { Text(stringResource(R.string.remove)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingRemoveSymbol = null }) { Text("Keep") }
+                TextButton(onClick = { pendingRemoveSymbol = null }) { Text(stringResource(R.string.keep)) }
             },
         )
     }
@@ -407,12 +409,12 @@ fun WatchlistScreen(
     if (showNewListDialog) {
         AlertDialog(
             onDismissRequest = { showNewListDialog = false },
-            title = { Text("New list") },
+            title = { Text(stringResource(R.string.wl_new_list)) },
             text = {
                 OutlinedTextField(
                     value = newListName,
                     onValueChange = { newListName = it.take(NamedWatchlists.MAX_NAME) },
-                    label = { Text("List name") },
+                    label = { Text(stringResource(R.string.wl_list_name)) },
                     singleLine = true,
                 )
             },
@@ -422,10 +424,10 @@ fun WatchlistScreen(
                         onCreateList(newListName)
                         showNewListDialog = false
                     }
-                ) { Text("Create") }
+                ) { Text(stringResource(R.string.create)) }
             },
             dismissButton = {
-                TextButton(onClick = { showNewListDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { showNewListDialog = false }) { Text(stringResource(R.string.cancel)) }
             },
         )
     }
@@ -442,10 +444,10 @@ fun WatchlistScreen(
                         onDeleteList(listId)
                         pendingDeleteListId = null
                     }
-                ) { Text("Delete") }
+                ) { Text(stringResource(R.string.delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDeleteListId = null }) { Text("Keep") }
+                TextButton(onClick = { pendingDeleteListId = null }) { Text(stringResource(R.string.keep)) }
             },
         )
     }
@@ -537,7 +539,7 @@ fun UpgradedQuoteCard(quote: Quote, onClick: () -> Unit) {
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Text(
-                    text = "View details",
+                    text = stringResource(R.string.view_details),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -702,7 +704,7 @@ fun PortfolioScreen(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Portfolio",
+                        text = stringResource(R.string.tab_portfolio),
                         fontSize = 28.sp,
                         fontWeight = FontWeight.Bold,
                         color = theme.text,
@@ -716,7 +718,7 @@ fun PortfolioScreen(
                     }
                     Text(
                         text = when {
-                            holdings.isEmpty() && !hasImported -> "Paper Practice · Simulated holdings"
+                            holdings.isEmpty() && !hasImported -> stringResource(R.string.portfolio_sub_empty)
                             riskSnapshot.totalInvested > 0.0 -> {
                                 val sign = if (riskSnapshot.totalPnl >= 0.0) "+" else "-"
                                 "Overall $sign${formatInr(kotlin.math.abs(riskSnapshot.totalPnl))} · ${formatSignedPct(overallPct)} since entry"
@@ -774,7 +776,7 @@ fun PortfolioScreen(
                         tint = theme.primary,
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Export", fontSize = 12.sp, color = theme.primary)
+                    Text(stringResource(R.string.export), fontSize = 12.sp, color = theme.primary)
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(
@@ -803,11 +805,16 @@ fun PortfolioScreen(
                         )
                     }
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(if (isLoading) "Updating" else "Refresh", fontSize = 12.sp, color = theme.onPrimary)
+                    Text(if (isLoading) stringResource(R.string.updating) else stringResource(R.string.refresh), fontSize = 12.sp, color = theme.onPrimary)
                 }
             }
             }
 
+            // Resolved here because LazyRow/LazyColumn item lambdas are not composable scopes.
+            val allChipLabel = stringResource(R.string.filter_all)
+            val equityTitle = stringResource(R.string.portfolio_equity)
+            val etfTitle = stringResource(R.string.portfolio_etfs)
+            val fnoTitle = stringResource(R.string.portfolio_fno)
             if (holdings.isNotEmpty() || sipPlans.isNotEmpty() || hasImported) {
                 LazyRow(
                     modifier = Modifier
@@ -818,7 +825,7 @@ fun PortfolioScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     val chips = buildList {
-                        add("ALL" to "All")
+                        add("ALL" to allChipLabel)
                         add("EQUITY" to "Equity ${equityHoldings.size}")
                         add("ETF" to "ETF ${etfHoldings.size}")
                         add("MF" to "MF ${mfHoldings.size + sipPlans.size}")
@@ -879,9 +886,9 @@ fun PortfolioScreen(
                         )
                         Text(
                             text = if (loadFailed) {
-                                "Couldn't load portfolio"
+                                stringResource(R.string.portfolio_load_error)
                             } else {
-                                "No holdings yet"
+                                stringResource(R.string.portfolio_empty)
                             },
                             fontSize = 16.sp,
                             color = LocalAppTheme.current.textSecondary,
@@ -889,9 +896,9 @@ fun PortfolioScreen(
                         )
                         Text(
                             text = if (loadFailed) {
-                                error ?: "Tap Refresh to retry."
+                                error ?: stringResource(R.string.portfolio_tap_refresh)
                             } else {
-                                "Start paper trading, or import a broker CSV / CAS extract (read-only)."
+                                stringResource(R.string.portfolio_empty_body)
                             },
                             fontSize = 12.sp,
                             color = LocalAppTheme.current.textSecondary,
@@ -903,7 +910,7 @@ fun PortfolioScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("Practice BUY")
+                            Text(stringResource(R.string.buy))
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedButton(
@@ -911,7 +918,7 @@ fun PortfolioScreen(
                                 csvPicker.launch(arrayOf("text/*", "text/csv", "text/comma-separated-values", "application/vnd.ms-excel"))
                             }
                         ) {
-                            Text("Import CSV / CAS")
+                            Text(stringResource(R.string.portfolio_import))
                         }
                     }
                 }
@@ -967,7 +974,7 @@ fun PortfolioScreen(
 
                     if (categoryFilter == "ALL") {
                         portfolioCategoryBlock(
-                            title = "Equity",
+                            title = equityTitle,
                             rows = equityHoldings,
                             quoteBySymbol = quoteBySymbol,
                             emptyHint = "No equity holdings yet. Paper-buy a stock from Trade or Search.",
@@ -977,7 +984,7 @@ fun PortfolioScreen(
                             onOpenSymbol = onOpenSymbol,
                         )
                         portfolioCategoryBlock(
-                            title = "ETFs",
+                            title = etfTitle,
                             rows = etfHoldings,
                             quoteBySymbol = quoteBySymbol,
                             emptyHint = "No ETF holdings yet. Gold, Nifty, and sector ETFs live here.",
@@ -1012,7 +1019,7 @@ fun PortfolioScreen(
                         }
                         if (fnoHoldings.isNotEmpty()) {
                             portfolioCategoryBlock(
-                                title = "F&O",
+                                title = fnoTitle,
                                 rows = fnoHoldings,
                                 quoteBySymbol = quoteBySymbol,
                                 emptyHint = "",
@@ -1387,8 +1394,8 @@ fun UpgradedPortfolioHoldingItem(
                 Button(
                     onClick = onBuy,
                     modifier = Modifier
-                        .defaultMinSize(minWidth = 108.dp, minHeight = 32.dp)
-                        .height(32.dp),
+                        .defaultMinSize(minWidth = 108.dp, minHeight = 40.dp)
+                        .height(40.dp),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = LocalAppTheme.current.positive,
@@ -1396,18 +1403,18 @@ fun UpgradedPortfolioHoldingItem(
                     ),
                     shape = RoundedCornerShape(8.dp),
                 ) {
-                    Text("Practice BUY", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    Text(stringResource(R.string.buy), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 }
                 Button(
                     onClick = onSell,
                     modifier = Modifier
-                        .defaultMinSize(minWidth = 108.dp, minHeight = 32.dp)
-                        .height(32.dp),
+                        .defaultMinSize(minWidth = 108.dp, minHeight = 40.dp)
+                        .height(40.dp),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = theme.negative, contentColor = theme.onNegative),
                     shape = RoundedCornerShape(8.dp),
                 ) {
-                    Text("Practice SELL", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    Text(stringResource(R.string.sell), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 }
             }
         }
@@ -1482,7 +1489,7 @@ fun PortfolioHealthCard(
                         modifier = Modifier.size(32.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Analyzing portfolio health...", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                    Text(stringResource(R.string.portfolio_health_loading), color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                 }
             }
         } else if (health != null) {
@@ -1516,7 +1523,7 @@ fun PortfolioHealthCard(
                     Spacer(modifier = Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "Portfolio Health",
+                            stringResource(R.string.portfolio_health),
                             color = theme.text,
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,

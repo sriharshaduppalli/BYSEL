@@ -1,6 +1,8 @@
 package com.bysel.trader.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.ui.res.stringResource
+import com.bysel.trader.R
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -63,13 +65,13 @@ fun AlertsScreen(
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Price Alerts",
+                    text = stringResource(R.string.more_alerts),
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     color = LocalAppTheme.current.text
                 )
                 Text(
-                    text = "Checked about every 15 minutes in the background; faster while the app is open.",
+                    text = stringResource(R.string.more_alerts_sub),
                     fontSize = 12.sp,
                     color = LocalAppTheme.current.textSecondary
                 )
@@ -78,7 +80,7 @@ fun AlertsScreen(
                 onClick = { showDialog = true },
                 colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary)
             ) {
-                Text("+ New Alert")
+                Text(stringResource(R.string.alerts_new))
             }
         }
         }
@@ -90,7 +92,7 @@ fun AlertsScreen(
                 horizontalArrangement = Arrangement.End,
             ) {
                 TextButton(onClick = { showDialog = true }) {
-                    Text("+ New Alert", fontSize = 12.sp)
+                    Text(stringResource(R.string.alerts_new), fontSize = 12.sp)
                 }
             }
         }
@@ -109,7 +111,7 @@ fun AlertsScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "No alerts set",
+                        text = stringResource(R.string.alerts_empty),
                         fontSize = 16.sp,
                         color = LocalAppTheme.current.textSecondary
                     )
@@ -119,7 +121,7 @@ fun AlertsScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Create Your First Alert")
+                        Text(stringResource(R.string.alerts_create_first))
                     }
                 }
             }
@@ -165,7 +167,7 @@ fun CreateAlertDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Create Price Alert", color = LocalAppTheme.current.text) },
+        title = { Text(stringResource(R.string.alerts_create_title), color = LocalAppTheme.current.text) },
         text = {
             Column(
                 modifier = Modifier
@@ -177,7 +179,7 @@ fun CreateAlertDialog(
                 TextField(
                     value = symbol,
                     onValueChange = { symbol = it.uppercase() },
-                    label = { Text("Symbol (e.g., TCS)") },
+                    label = { Text(stringResource(R.string.alerts_symbol_label)) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = appFilledTextFieldColors(containerColor = LocalAppTheme.current.surface),
                 )
@@ -187,7 +189,7 @@ fun CreateAlertDialog(
                 TextField(
                     value = price,
                     onValueChange = { price = it },
-                    label = { Text("Threshold Price") },
+                    label = { Text(stringResource(R.string.threshold)) },
                     modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                         keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
@@ -195,7 +197,7 @@ fun CreateAlertDialog(
                     ),
                     isError = priceInvalid,
                     supportingText = if (priceInvalid) {
-                        { Text("Enter a price above 0, e.g. 2450.50") }
+                        { Text(stringResource(R.string.alerts_price_hint)) }
                     } else {
                         null
                     },
@@ -214,7 +216,7 @@ fun CreateAlertDialog(
                             contentColor = if (alertType == "ABOVE") LocalAppTheme.current.onPrimary else LocalAppTheme.current.text,
                         )
                     ) {
-                        Text("Above")
+                        Text(stringResource(R.string.above))
                     }
                     Button(
                         onClick = { alertType = "BELOW" },
@@ -224,7 +226,7 @@ fun CreateAlertDialog(
                             contentColor = if (alertType == "BELOW") LocalAppTheme.current.onPrimary else LocalAppTheme.current.text,
                         )
                     ) {
-                        Text("Below")
+                        Text(stringResource(R.string.below))
                     }
                 }
             }
@@ -238,12 +240,12 @@ fun CreateAlertDialog(
                     onConfirm(symbol.trim(), value, alertType)
                 }
             ) {
-                Text("Create")
+                Text(stringResource(R.string.create))
             }
         },
         dismissButton = {
             Button(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         },
         containerColor = LocalAppTheme.current.card

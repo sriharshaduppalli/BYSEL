@@ -1,6 +1,8 @@
 package com.bysel.trader.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.res.stringResource
+import com.bysel.trader.R
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -29,7 +31,7 @@ fun AchievementsScreen(
                 OverlayBackButton(onBack = onBack)
             }
             Text(
-                "Achievements",
+                stringResource(R.string.more_achievements),
                 style = MaterialTheme.typography.headlineMedium,
                 color = appTheme.text,
                 modifier = Modifier.weight(1f),
@@ -57,7 +59,7 @@ fun AchievementsScreen(
                             color = appTheme.textSecondary,
                         )
                         if (a.unlocked) {
-                            Text("Unlocked!", color = appTheme.positive)
+                            Text(stringResource(R.string.ach_unlocked), color = appTheme.positive)
                         }
                     }
                 }

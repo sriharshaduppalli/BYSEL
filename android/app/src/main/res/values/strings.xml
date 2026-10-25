@@ -136,4 +136,182 @@
     <string name="language_en">English</string>
     <string name="language_hi">हिन्दी</string>
     <string name="language_te">తెలుగు</string>
+
+    <!-- Common actions -->
+    <string name="create">Create</string>
+    <string name="cancel">Cancel</string>
+    <string name="close">Close</string>
+    <string name="back">Back</string>
+    <string name="next">Next</string>
+    <string name="done">Done</string>
+    <string name="refresh">Refresh</string>
+    <string name="updating">Updating</string>
+    <string name="delete">Delete</string>
+    <string name="remove">Remove</string>
+    <string name="keep">Keep</string>
+    <string name="today">Today</string>
+    <string name="view_chart">View chart</string>
+    <string name="view_details">View details</string>
+    <string name="go_back">Go back</string>
+    <string name="skip_for_now">Skip for now</string>
+    <string name="export">Export</string>
+    <string name="filter_all">All</string>
+    <string name="qty">Qty</string>
+    <string name="total">Total</string>
+    <string name="watch">Watch</string>
+    <string name="watching">Watching</string>
+
+    <!-- AI assistant -->
+    <string name="ai_title">BYSEL AI Assistant</string>
+    <string name="ai_clear_chat">Clear chat</string>
+    <string name="ai_send">Send</string>
+    <string name="ai_placeholder">Ask about any stock…</string>
+    <string name="ai_greeting_title">Hi! I\'m your BYSEL AI Assistant</string>
+    <string name="ai_greeting_focused">You\'re looking at %1$s. Ask about this stock or any NSE name.</string>
+    <string name="ai_greeting_body">Ask me anything about Indian stocks.\nI can explain, compare, and walk through paper-practice levels with you.</string>
+    <string name="ai_or_type">Or type your own question in the box below.</string>
+    <string name="ai_try_asking">Try asking:</string>
+    <string name="ai_suggested_next">Suggested next prompts</string>
+    <string name="ai_sim_banner">Simulation Mode — Paper trading with real market data. No real money involved.</string>
+    <string name="ai_disclaimer_tag">Educational · Not SEBI RA</string>
+    <string name="ai_disclaimer">AI analysis is for educational purposes only. Not financial advice. Always do your own research.</string>
+
+    <!-- Home -->
+    <string name="home_markets">Markets</string>
+    <string name="home_markets_sub">Nifty · Sensex · Bank Nifty</string>
+    <string name="home_guide">Guide</string>
+    <string name="home_customize">Customize</string>
+    <string name="home_news">News</string>
+    <string name="home_ask_ai">Ask AI</string>
+    <string name="home_guide_title">Home Guide</string>
+    <string name="home_practice_picks">Practice picks</string>
+    <string name="home_practice_picks_sub">Swipe through today’s paper drills. Cash and delivery only.</string>
+    <string name="home_add_credit_first">Add practice credit before Practice BUY.</string>
+    <string name="home_add_credit">Add credit</string>
+    <string name="home_pull_refresh">Pull to refresh for today’s practice names.</string>
+    <string name="home_customize_title">Customize Home</string>
+    <string name="home_reset_layout">Reset layout</string>
+
+    <!-- Portfolio -->
+    <string name="portfolio_sub_empty">Paper Practice · Simulated holdings</string>
+    <string name="portfolio_load_error">Couldn\'t load portfolio</string>
+    <string name="portfolio_empty">No holdings yet</string>
+    <string name="portfolio_tap_refresh">Tap Refresh to retry.</string>
+    <string name="portfolio_empty_body">Start paper trading, or import a broker CSV / CAS extract (read-only).</string>
+    <string name="portfolio_import">Import CSV / CAS</string>
+    <string name="portfolio_equity">Equity</string>
+    <string name="portfolio_etfs">ETFs</string>
+    <string name="portfolio_fno">F&amp;O</string>
+    <string name="portfolio_health">Portfolio Health</string>
+    <string name="portfolio_health_loading">Analyzing portfolio health…</string>
+
+    <!-- Watchlist -->
+    <string name="wl_empty_title">No tracked symbols yet</string>
+    <string name="wl_empty_body">Search the full NSE listed universe, tap Watch, then it lands on the list you have open.</string>
+    <string name="wl_new_list">New list</string>
+    <string name="wl_delete_list">Delete list</string>
+    <string name="wl_list_name">List name</string>
+
+    <!-- Alerts -->
+    <string name="alerts_new">+ New Alert</string>
+    <string name="alerts_empty">No alerts set</string>
+    <string name="alerts_create_first">Create Your First Alert</string>
+    <string name="alerts_create_title">Create Price Alert</string>
+    <string name="alerts_symbol_label">Symbol (e.g., TCS)</string>
+    <string name="alerts_price_hint">Enter a price above 0, e.g. 2450.50</string>
+
+    <!-- Search -->
+    <string name="search_sub">Full NSE listed catalog (~2,400+). Tap a name for detail.</string>
+    <string name="search_placeholder">Company or symbol (e.g. INFY, Reliance)</string>
+    <string name="search_recent">Recent</string>
+    <string name="search_recent_sub">Symbols you opened recently.</string>
+    <string name="search_your_watchlist">Your watchlist</string>
+    <string name="search_searching">Searching the NSE catalog…</string>
+    <string name="search_stocks">Stocks</string>
+    <string name="search_empty_hint">Try a ticker (TCS) or company name (Tata Consultancy).</string>
+    <string name="search_shortcuts">App shortcuts</string>
+
+    <!-- Achievements -->
+    <string name="ach_unlocked">Unlocked!</string>
+
+    <!-- Journal -->
+    <string name="journal_sub">Your trading behavior analysis</string>
+    <string name="journal_tab_insights">Insights</string>
+    <string name="journal_tab_log">Trade Log</string>
+    <string name="journal_no_insights">No insights yet.</string>
+    <string name="journal_behavioral">Behavioral Insights</string>
+    <string name="journal_most_traded">Most Traded</string>
+    <string name="journal_no_trades">No trades logged yet.</string>
+    <string name="journal_no_trades_body">Trades you execute will appear here.</string>
+
+    <!-- Order history -->
+    <string name="order_history_sub">Paper fills only — not a live broker book</string>
+    <string name="order_history_error">Couldn\'t load your paper order history.</string>
+
+    <!-- Earnings -->
+    <string name="earnings_sub">Upcoming quarterly results</string>
+    <string name="earnings_empty">No upcoming earnings found.</string>
+
+    <!-- Risk Lab -->
+    <string name="risk_sub">Educational paper view — not advice</string>
+    <string name="risk_empty">No risk data available.</string>
+
+    <!-- Market calendar -->
+    <string name="calendar_title">Market Calendar %1$d</string>
+    <string name="calendar_sub">%1$d holidays | NSE &amp; BSE</string>
+    <string name="calendar_next_trading">Next trading day: %1$s</string>
+    <string name="calendar_all">All Holidays (%1$d)</string>
+    <string name="calendar_upcoming">Upcoming Holidays (%1$d)</string>
+    <string name="calendar_show_upcoming">Show Upcoming</string>
+    <string name="calendar_show_all">Show All</string>
+    <string name="calendar_empty">No upcoming NSE holidays in the loaded list. NSE publishes next year\'s calendar in December; the list refreshes with the next app update.</string>
+
+    <!-- Onboarding -->
+    <string name="onb_p1_title">Paper practice for NSE</string>
+    <string name="onb_p1_body">Rehearse buys and sells with simulated money. No demat, no UPI, no real rupees.</string>
+    <string name="onb_p2_title">Educational answers</string>
+    <string name="onb_p2_body">Ask about a name, the session, or a paper plan. This is not SEBI-registered advice and not a forecast.</string>
+    <string name="onb_p3_title">Learn the loop</string>
+    <string name="onb_p3_body">Idea → Practice BUY or alert → review. Your wallet stays at ₹0 until you add practice credit.</string>
+    <string name="onb_credit_title">Practice credit</string>
+    <string name="onb_credit_body">Optional simulation cash so you can Practice BUY today. Not real money. Not a loan.</string>
+    <string name="onb_add_credit">Add ₹25,000 practice credit</string>
+    <string name="onb_selected_zero">Selected · start at ₹0</string>
+    <string name="onb_skip_zero">Skip — keep wallet at ₹0</string>
+    <string name="onb_picks_title">Three names to watch</string>
+    <string name="onb_picks_body">Pick %1$d NSE stocks for your watchlist. You can change them later.</string>
+    <string name="onb_selected_count">%1$d of %2$d selected</string>
+    <string name="onb_open_trade">Open Trade</string>
+
+    <!-- Auth -->
+    <string name="auth_sign_in_otp">Sign in with OTP</string>
+    <string name="auth_sign_in_password">Sign in with username or email</string>
+    <string name="auth_create_account_title">Create your account</string>
+    <string name="auth_username_or_email">Username or Email</string>
+    <string name="auth_username">Username</string>
+    <string name="auth_email">Email</string>
+    <string name="auth_mobile">Mobile number</string>
+    <string name="auth_otp_code">OTP code</string>
+    <string name="auth_send_otp">Send OTP</string>
+    <string name="auth_resend_otp">Resend OTP</string>
+    <string name="auth_verify_otp">Verify OTP</string>
+    <string name="auth_password">Password</string>
+    <string name="auth_sign_in">Sign in</string>
+    <string name="auth_create_account">Create account</string>
+    <string name="auth_forgot">Forgot password?</string>
+    <string name="auth_guest">Skip sign-in (Guest Mode)</string>
+
+    <!-- Stock detail -->
+    <string name="sd_opening">Opening this stock…</string>
+    <string name="sd_decision_setup">Decision Setup</string>
+    <string name="sd_decision_sub">Preview cost before a paper order. This is practice, not a recommendation.</string>
+    <string name="sd_trade_preview">Trade preview</string>
+    <string name="sd_calculating">Calculating trade estimate…</string>
+    <string name="sd_session">Session</string>
+    <string name="sd_fundamentals">Fundamentals</string>
+    <string name="sd_snapshot">Snapshot</string>
+    <string name="sd_price_chart">Price chart</string>
+    <string name="sd_alert_up" formatted="false">Alert +2%</string>
+    <string name="sd_alert_down" formatted="false">Alert -2%</string>
+    <string name="sd_research">Research (educational)</string>
 </resources>

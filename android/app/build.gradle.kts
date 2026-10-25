@@ -126,8 +126,6 @@ android {
         buildConfigField("String", "MARKET_DATA_PROVIDER", "\"REST_FALLBACK\"")
         buildConfigField("String", "MARKET_TRUEDATA_WS_URL", "\"wss://push.truedata.in\"")
         buildConfigField("String", "MARKET_TRUEDATA_TOKEN", "\"\"")
-        // CANVAS = native Compose candles (offline-reliable). COMPOSE = Lightweight Charts WebView.
-        buildConfigField("String", "CHART_ENGINE", "\"CANVAS\"")
         buildConfigField("String", "CERT_PIN_HOST", "\"$certPinHost\"")
         buildConfigField("String", "CERT_PIN_PRIMARY", "\"$certPinPrimary\"")
         buildConfigField("String", "CERT_PIN_BACKUP", "\"$certPinBackup\"")

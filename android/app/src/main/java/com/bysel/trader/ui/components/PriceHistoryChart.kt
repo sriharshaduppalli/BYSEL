@@ -1,50 +1,29 @@
 package com.bysel.trader.ui.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
-import com.bysel.trader.BuildConfig
 import com.bysel.trader.data.api.ChartPattern
 import com.bysel.trader.data.models.HistoryCandle
 
+/**
+ * Single entry point for price history. The Canvas renderer is the only engine
+ * shipped; the WebView (TradingView) and SciChart branches were dormant code
+ * that silently dropped [patterns], so they are gone.
+ */
 @Composable
 fun PriceHistoryChart(
     history: List<HistoryCandle>,
     modifier: Modifier = Modifier,
-    symbol: String = "",
-    isDarkTheme: Boolean = true,
     patterns: List<ChartPattern> = emptyList(),
     /** Chart window label used for X-axis cadence: 5D / 1M / 3M / 1Y */
     rangeLabel: String = "1M",
     expandPlot: Boolean = false,
 ) {
-    return when (BuildConfig.CHART_ENGINE.uppercase()) {
-        "SCICHART" -> {
-            Box(
-                modifier = modifier
-                    .fillMaxWidth()
-                    .height(220.dp)
-                    .background(Color(0x1FFFFFFF))
-                    .padding(12.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("SciChart mode selected. Add SciChart SDK/license to enable native renderer.")
-            }
-        }
-        "CANVAS" -> CandlestickChart(
-            history = history,
-            modifier = modifier,
-            rangeLabel = rangeLabel,
-            expandPlot = expandPlot,
-        )
-        else -> TradingViewChart(symbol = symbol, history = history, modifier = modifier, isDarkTheme = isDarkTheme, patterns = patterns)
-    }
+    CandlestickChart(
+        history = history,
+        modifier = modifier,
+        rangeLabel = rangeLabel,
+        expandPlot = expandPlot,
+        patterns = patterns,
+    )
 }

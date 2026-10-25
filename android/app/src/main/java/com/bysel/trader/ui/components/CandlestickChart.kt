@@ -26,7 +26,11 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import com.bysel.trader.data.api.ChartPattern
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -64,6 +68,12 @@ private enum class Overlay(val label: String, val color: Color) {
 
 private val MACD_LINE = Color(0xFF29B6F6)
 private val MACD_SIGNAL = Color(0xFFFFA726)
+
+/** Overlay toggles persist across rotation by name. */
+private val OverlaySetSaver: Saver<Set<Overlay>, Any> = listSaver(
+    save = { set -> set.map { it.name } },
+    restore = { names -> names.mapNotNull { n -> Overlay.entries.firstOrNull { it.name == n } }.toSet() },
+)
 
 private val IST: ZoneId = ZoneId.of("Asia/Kolkata")
 private val DAY_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM")
@@ -199,12 +209,18 @@ fun CandlestickChart(
     initialBarWidthDp: Float = 10f,
     rangeLabel: String = "1M",
     expandPlot: Boolean = false,
+    /** Detected formations (index ranges into [history]) drawn as study bands. */
+    patterns: List<ChartPattern> = emptyList(),
 ) {
     if (history.isEmpty()) return
 
-    var activeOverlays by remember { mutableStateOf(setOf<Overlay>()) }
-    var heikinAshi by remember { mutableStateOf(false) }
-    var showMacd by remember { mutableStateOf(false) }
+    // Saveable so indicator toggles survive rotation.
+    var activeOverlays by rememberSaveable(stateSaver = OverlaySetSaver) { mutableStateOf(setOf<Overlay>()) }
+    var heikinAshi by rememberSaveable { mutableStateOf(false) }
+    var showMacd by rememberSaveable { mutableStateOf(false) }
+    val drawablePatterns = remember(patterns, history.size) {
+        patterns.filter { it.startIdx in history.indices && it.endIdx in history.indices && it.endIdx >= it.startIdx }
+    }
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer()
 
@@ -584,6 +600,41 @@ fun CandlestickChart(
                             }
                         }
                         i++
+                    }
+
+                    // Pattern study bands: tint the bars the detector grouped, name them at the top.
+                    drawablePatterns.forEachIndexed { pIndex, pattern ->
+                        val x0 = xFor(pattern.startIdx) - barPx / 2f
+                        val x1 = xFor(pattern.endIdx) + barPx / 2f
+                        if (x1 < leftPad || x0 > size.width) return@forEachIndexed
+                        val clampedX0 = x0.coerceAtLeast(leftPad)
+                        val clampedX1 = x1.coerceAtMost(size.width)
+                        val tint = when (pattern.signal.uppercase()) {
+                            "BUY", "BULLISH" -> theme.positive
+                            "SELL", "BEARISH" -> theme.negative
+                            else -> theme.caution
+                        }
+                        drawRect(
+                            color = tint.copy(alpha = 0.10f),
+                            topLeft = Offset(clampedX0, topPad),
+                            size = Size((clampedX1 - clampedX0).coerceAtLeast(1f), plotH),
+                        )
+                        drawLine(
+                            color = tint.copy(alpha = 0.6f),
+                            start = Offset(clampedX0, topPad + plotH),
+                            end = Offset(clampedX1, topPad + plotH),
+                            strokeWidth = 3f,
+                        )
+                        val tag = textMeasurer.measure(
+                            "${pattern.pattern} · ${pattern.confidence}%",
+                            style = axisLabelStyle.copy(color = tint),
+                        )
+                        // Stagger labels so overlapping patterns stay legible.
+                        val ty = topPad + 2f + (pIndex % 3) * (tag.size.height + 2f)
+                        val tx = (clampedX0 + 4f).clampLabel(leftPad, (size.width - tag.size.width).coerceAtLeast(leftPad))
+                        if (tag.size.width < plotW && ty + tag.size.height < topPad + plotH) {
+                            drawText(tag, topLeft = Offset(tx, ty))
+                        }
                     }
 
                     // MACD pane: histogram bars, MACD line, signal line, zero line.

@@ -1,6 +1,8 @@
 package com.bysel.trader.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.res.stringResource
+import com.bysel.trader.R
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -63,20 +65,20 @@ fun MarketCalendarScreen(onBack: () -> Unit) {
             IconButton(onClick = onBack) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
+                    contentDescription = stringResource(R.string.back),
                     tint = LocalAppTheme.current.onPrimary
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
             Column {
                 Text(
-                    text = "Market Calendar ${today.year}",
+                    text = stringResource(R.string.calendar_title, today.year),
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     color = LocalAppTheme.current.onPrimary
                 )
                 Text(
-                    text = "${allHolidays.size} holidays | NSE & BSE",
+                    text = stringResource(R.string.calendar_sub, allHolidays.size),
                     fontSize = 12.sp,
                     color = LocalAppTheme.current.onPrimary.copy(alpha = 0.8f)
                 )
@@ -108,7 +110,7 @@ fun MarketCalendarScreen(onBack: () -> Unit) {
                 ) {
                     Column {
                         Text(
-                            text = "Today",
+                            text = stringResource(R.string.today),
                             fontSize = 12.sp,
                             color = LocalAppTheme.current.textSecondary
                         )
@@ -158,7 +160,7 @@ fun MarketCalendarScreen(onBack: () -> Unit) {
                 if (!isTradingDay) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Next trading day: ${nextTradingDay.format(DateTimeFormatter.ofPattern("dd MMM yyyy"))}",
+                        text = stringResource(R.string.calendar_next_trading, nextTradingDay.format(DateTimeFormatter.ofPattern("dd MMM yyyy"))),
                         fontSize = 12.sp,
                         color = LocalAppTheme.current.textSecondary
                     )
@@ -175,7 +177,7 @@ fun MarketCalendarScreen(onBack: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = if (showAllHolidays) "All Holidays (${allHolidays.size})" else "Upcoming Holidays (${upcomingHolidays.size})",
+                text = if (showAllHolidays) stringResource(R.string.calendar_all, allHolidays.size) else stringResource(R.string.calendar_upcoming, upcomingHolidays.size),
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = LocalAppTheme.current.text
@@ -185,7 +187,7 @@ fun MarketCalendarScreen(onBack: () -> Unit) {
                 onClick = { showAllHolidays = !showAllHolidays },
                 colors = ButtonDefaults.buttonColors(containerColor = LocalAppTheme.current.primary)
             ) {
-                Text(if (showAllHolidays) "Show Upcoming" else "Show All")
+                Text(if (showAllHolidays) stringResource(R.string.calendar_show_upcoming) else stringResource(R.string.calendar_show_all))
             }
         }
 
@@ -201,7 +203,7 @@ fun MarketCalendarScreen(onBack: () -> Unit) {
             if (holidaysToShow.isEmpty()) {
                 item {
                     Text(
-                        text = "No upcoming NSE holidays in the loaded list. NSE publishes next year's calendar in December; the list refreshes with the next app update.",
+                        text = stringResource(R.string.calendar_empty),
                         color = LocalAppTheme.current.textSecondary,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(vertical = 12.dp),

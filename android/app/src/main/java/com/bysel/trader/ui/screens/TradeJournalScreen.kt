@@ -1,6 +1,8 @@
 package com.bysel.trader.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.ui.res.stringResource
+import com.bysel.trader.R
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -86,8 +88,8 @@ fun TradeJournalScreen(
             }
             Spacer(modifier = Modifier.width(4.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("Trade Journal", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = appTheme.text)
-                Text("Your trading behavior analysis", fontSize = 12.sp, color = appTheme.textSecondary)
+                Text(stringResource(R.string.more_journal), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = appTheme.text)
+                Text(stringResource(R.string.journal_sub), fontSize = 12.sp, color = appTheme.textSecondary)
             }
             IconButton(onClick = { load() }) {
                 Icon(Icons.Filled.Refresh, contentDescription = "Refresh", tint = appTheme.primary)
@@ -108,12 +110,12 @@ fun TradeJournalScreen(
             Tab(
                 selected = selectedTab == 0,
                 onClick = { selectedTab = 0 },
-                text = { Text("Insights", fontSize = 13.sp) }
+                text = { Text(stringResource(R.string.journal_tab_insights), fontSize = 13.sp) }
             )
             Tab(
                 selected = selectedTab == 1,
                 onClick = { selectedTab = 1 },
-                text = { Text("Trade Log", fontSize = 13.sp) }
+                text = { Text(stringResource(R.string.journal_tab_log), fontSize = 13.sp) }
             )
         }
 
@@ -126,7 +128,7 @@ fun TradeJournalScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(loadError.orEmpty(), color = appTheme.text, fontSize = 14.sp)
                     Spacer(modifier = Modifier.height(12.dp))
-                    Button(onClick = { load() }) { Text("Retry") }
+                    Button(onClick = { load() }) { Text(stringResource(R.string.retry)) }
                 }
             }
         } else {
@@ -145,7 +147,7 @@ private fun JournalInsightsTab(
 ) {
     if (insights == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No insights yet.", color = appTheme.textSecondary, fontSize = 14.sp)
+            Text(stringResource(R.string.journal_no_insights), color = appTheme.textSecondary, fontSize = 14.sp)
         }
         return
     }
@@ -188,7 +190,7 @@ private fun JournalInsightsTab(
 
         if (insightsList.isNotEmpty()) {
             item {
-                Text("Behavioral Insights", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = appTheme.text)
+                Text(stringResource(R.string.journal_behavioral), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = appTheme.text)
             }
             items(insightsList) { insight ->
                 InsightCard(insight = insight, appTheme = appTheme)
@@ -198,7 +200,7 @@ private fun JournalInsightsTab(
         if (topSymbols.isNotEmpty()) {
             item {
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("Most Traded", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = appTheme.text)
+                Text(stringResource(R.string.journal_most_traded), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = appTheme.text)
             }
             item {
                 Card(
@@ -296,8 +298,8 @@ private fun JournalEntriesTab(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.Filled.Book, contentDescription = null, tint = appTheme.textSecondary, modifier = Modifier.size(48.dp))
                 Spacer(modifier = Modifier.height(12.dp))
-                Text("No trades logged yet.", color = appTheme.textSecondary, fontSize = 14.sp)
-                Text("Trades you execute will appear here.", color = appTheme.textSecondary, fontSize = 12.sp)
+                Text(stringResource(R.string.journal_no_trades), color = appTheme.textSecondary, fontSize = 14.sp)
+                Text(stringResource(R.string.journal_no_trades_body), color = appTheme.textSecondary, fontSize = 12.sp)
             }
         }
         return
@@ -355,15 +357,15 @@ private fun JournalEntryCard(
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Column {
-                    Text("Qty", fontSize = 10.sp, color = appTheme.textSecondary)
+                    Text(stringResource(R.string.qty), fontSize = 10.sp, color = appTheme.textSecondary)
                     Text("$qty", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = appTheme.text)
                 }
                 Column {
-                    Text("Price", fontSize = 10.sp, color = appTheme.textSecondary)
+                    Text(stringResource(R.string.price), fontSize = 10.sp, color = appTheme.textSecondary)
                     Text("₹${String.format("%.2f", price)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = appTheme.text)
                 }
                 Column {
-                    Text("Total", fontSize = 10.sp, color = appTheme.textSecondary)
+                    Text(stringResource(R.string.total), fontSize = 10.sp, color = appTheme.textSecondary)
                     Text("₹${String.format("%.0f", total)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = appTheme.text)
                 }
             }

@@ -1,6 +1,8 @@
 package com.bysel.trader.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.res.stringResource
+import com.bysel.trader.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,16 +58,16 @@ fun OnboardingScreen(onFinish: (FirstSessionResult) -> Unit) {
     var selected by remember { mutableStateOf(setOf("RELIANCE", "TCS", "INFY")) }
     val pages = listOf(
         OnboardingPage(
-            title = "Paper practice for NSE",
-            description = "Rehearse buys and sells with simulated money. No demat, no UPI, no real rupees.",
+            title = stringResource(R.string.onb_p1_title),
+            description = stringResource(R.string.onb_p1_body),
         ),
         OnboardingPage(
-            title = "Educational answers",
-            description = "Ask about a name, the session, or a paper plan. This is not SEBI-registered advice and not a forecast.",
+            title = stringResource(R.string.onb_p2_title),
+            description = stringResource(R.string.onb_p2_body),
         ),
         OnboardingPage(
-            title = "Learn the loop",
-            description = "Idea → Practice BUY or alert → review. Your wallet stays at ₹0 until you add practice credit.",
+            title = stringResource(R.string.onb_p3_title),
+            description = stringResource(R.string.onb_p3_body),
         ),
     )
     val lastIntro = pages.lastIndex
@@ -114,13 +116,13 @@ fun OnboardingScreen(onFinish: (FirstSessionResult) -> Unit) {
                 }
                 creditPage -> {
                     Text(
-                        text = "Practice credit",
+                        text = stringResource(R.string.onb_credit_title),
                         style = MaterialTheme.typography.headlineMedium,
                         color = theme.primary,
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "Optional simulation cash so you can Practice BUY today. Not real money. Not a loan.",
+                        text = stringResource(R.string.onb_credit_body),
                         style = MaterialTheme.typography.bodyLarge,
                         color = theme.text,
                         fontSize = 16.sp,
@@ -134,25 +136,25 @@ fun OnboardingScreen(onFinish: (FirstSessionResult) -> Unit) {
                             contentColor = if (addCredit) theme.onPrimary else theme.text,
                         ),
                     ) {
-                        Text("Add ₹25,000 practice credit", fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.onb_add_credit), fontWeight = FontWeight.SemiBold)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedButton(
                         onClick = { addCredit = false },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text(if (!addCredit) "Selected · start at ₹0" else "Skip — keep wallet at ₹0")
+                        Text(if (!addCredit) stringResource(R.string.onb_selected_zero) else stringResource(R.string.onb_skip_zero))
                     }
                 }
                 namesPage -> {
                     Text(
-                        text = "Three names to watch",
+                        text = stringResource(R.string.onb_picks_title),
                         style = MaterialTheme.typography.headlineMedium,
                         color = theme.primary,
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "Pick ${FirstSession.PICK_COUNT} NSE stocks for your watchlist. You can change them later.",
+                        text = stringResource(R.string.onb_picks_body, FirstSession.PICK_COUNT),
                         style = MaterialTheme.typography.bodyLarge,
                         color = theme.text,
                         fontSize = 16.sp,
@@ -180,7 +182,7 @@ fun OnboardingScreen(onFinish: (FirstSessionResult) -> Unit) {
                         }
                     }
                     Text(
-                        text = "${selected.size} of ${FirstSession.PICK_COUNT} selected",
+                        text = stringResource(R.string.onb_selected_count, selected.size, FirstSession.PICK_COUNT),
                         fontSize = 12.sp,
                         color = theme.textSecondary,
                         modifier = Modifier.padding(top = 8.dp),
@@ -215,9 +217,9 @@ fun OnboardingScreen(onFinish: (FirstSessionResult) -> Unit) {
             ) {
                 Text(
                     when {
-                        page < lastIntro -> "Next"
-                        page == creditPage -> "Next"
-                        else -> "Open Trade"
+                        page < lastIntro -> stringResource(R.string.next)
+                        page == creditPage -> stringResource(R.string.next)
+                        else -> stringResource(R.string.onb_open_trade)
                     },
                 )
             }

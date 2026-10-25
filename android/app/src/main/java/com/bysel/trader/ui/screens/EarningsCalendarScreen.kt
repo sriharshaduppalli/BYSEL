@@ -1,6 +1,8 @@
 package com.bysel.trader.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.res.stringResource
+import com.bysel.trader.R
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -66,8 +68,8 @@ fun EarningsCalendarScreen(
             }
             Spacer(modifier = Modifier.width(4.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("Earnings Calendar", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = appTheme.text)
-                Text("Upcoming quarterly results", fontSize = 12.sp, color = appTheme.textSecondary)
+                Text(stringResource(R.string.more_earnings), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = appTheme.text)
+                Text(stringResource(R.string.earnings_sub), fontSize = 12.sp, color = appTheme.textSecondary)
             }
             IconButton(onClick = { load() }, enabled = !isLoading) {
                 Icon(Icons.Filled.Refresh, contentDescription = "Refresh", tint = appTheme.primary)
@@ -91,7 +93,7 @@ fun EarningsCalendarScreen(
                     Text(errorMsg.orEmpty(), color = appTheme.textSecondary, fontSize = 14.sp)
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(onClick = { load() }, enabled = !isLoading) {
-                        Text("Retry")
+                        Text(stringResource(R.string.retry))
                     }
                 }
             }
@@ -100,7 +102,7 @@ fun EarningsCalendarScreen(
                 val disclaimerNote = data?.disclaimer
                 if (entries.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No upcoming earnings found.", color = appTheme.textSecondary, fontSize = 14.sp)
+                        Text(stringResource(R.string.earnings_empty), color = appTheme.textSecondary, fontSize = 14.sp)
                     }
                 } else {
                     LazyColumn(

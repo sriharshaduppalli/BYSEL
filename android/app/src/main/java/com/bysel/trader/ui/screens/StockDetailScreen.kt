@@ -1,6 +1,8 @@
 package com.bysel.trader.ui.screens
 
 import android.widget.Toast
+import androidx.compose.ui.res.stringResource
+import com.bysel.trader.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -166,7 +168,7 @@ fun StockDetailScreen(
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    "Opening this stock…",
+                    stringResource(R.string.sd_opening),
                     color = theme.text,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
@@ -180,7 +182,7 @@ fun StockDetailScreen(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedButton(onClick = onBackPress) {
-                    Text("Go back")
+                    Text(stringResource(R.string.go_back))
                 }
             }
         }
@@ -431,7 +433,7 @@ fun StockDetailScreen(
                         symbol = quote.symbol,
                         showPreview = true,
                         iconSize = 22.dp,
-                        buttonSize = 36.dp,
+                        buttonSize = 40.dp,
                         modifier = Modifier.weight(1f),
                     )
                     FilledTonalButton(onClick = refreshDetailContext) {
@@ -544,8 +546,8 @@ fun StockDetailScreen(
                     }
                     item {
                         SectionHeader(
-                            title = "Decision Setup",
-                            subtitle = "Preview cost before a paper order. This is practice, not a recommendation.",
+                            title = stringResource(R.string.sd_decision_setup),
+                            subtitle = stringResource(R.string.sd_decision_sub),
                         )
                     }
                     item {
@@ -661,7 +663,7 @@ private fun StockDetailHeroCard(
                         StockNotesIcon(
                             symbol = quote.symbol,
                             iconSize = 20.dp,
-                            buttonSize = 36.dp,
+                            buttonSize = 40.dp,
                         )
                     }
                     StockNotesPreviewText(
@@ -771,7 +773,7 @@ private fun TradeSetupCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Trade preview",
+                    text = stringResource(R.string.sd_trade_preview),
                     fontSize = 18.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = theme.text,
@@ -803,7 +805,7 @@ private fun TradeSetupCard(
             OutlinedTextField(
                 value = quantityText,
                 onValueChange = onQuantityChange,
-                label = { Text("Quantity") },
+                label = { Text(stringResource(R.string.quantity)) },
                 singleLine = true,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                     keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
@@ -867,7 +869,7 @@ private fun TradeSetupCard(
                         color = theme.primary,
                     )
                     Text(
-                        text = "Calculating trade estimate...",
+                        text = stringResource(R.string.sd_calculating),
                         color = theme.textSecondary,
                         fontSize = 12.sp,
                     )
@@ -1118,9 +1120,7 @@ private fun PriceStoryCard(
                     }
                     PriceHistoryChart(
                         history = history,
-                        symbol = quote.symbol,
                         modifier = Modifier.fillMaxWidth(),
-                        isDarkTheme = !theme.isLight,
                         patterns = patterns,
                         rangeLabel = historyLabel,
                     )
@@ -1246,10 +1246,10 @@ private fun AlertsCard(
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilledTonalButton(onClick = onCreateAbove) {
-                    Text("Alert +2%")
+                    Text(stringResource(R.string.sd_alert_up))
                 }
                 OutlinedButton(onClick = onCreateBelow) {
-                    Text("Alert -2%")
+                    Text(stringResource(R.string.sd_alert_down))
                 }
             }
 
@@ -1412,7 +1412,7 @@ private fun HeadlinesCard(
 @Composable
 private fun StockSessionCard(quote: Quote) {
     DetailFactCard(
-        title = "Session",
+        title = stringResource(R.string.sd_session),
         subtitle = "Today's print. A blank field was not in the last quote.",
         rows = listOf(
             "Open" to moneyOrDash(quote.open),
@@ -1452,7 +1452,7 @@ private fun StockFundamentalsCard(quote: Quote, row: ScannerRow?) {
     )
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         DetailFactCard(
-            title = "Fundamentals",
+            title = stringResource(R.string.sd_fundamentals),
             subtitle = "Published quote and scanner figures. A dash means that field was not available. Not a recommendation.",
             rows = rows,
         )
@@ -1542,7 +1542,7 @@ private fun DetailSnapshotCard(quote: Quote) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = "Snapshot",
+                text = stringResource(R.string.sd_snapshot),
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = theme.text,
@@ -1620,7 +1620,7 @@ private fun StockDetailActionBar(
                 colors = ButtonDefaults.buttonColors(containerColor = theme.positive, contentColor = theme.onPositive),
                 shape = RoundedCornerShape(14.dp),
             ) {
-                Text("Practice BUY", maxLines = 1)
+                Text(stringResource(R.string.buy), maxLines = 1)
             }
             Button(
                 onClick = { pendingAction = "SELL"; showConfirmDialog = true },
@@ -1628,7 +1628,7 @@ private fun StockDetailActionBar(
                 colors = ButtonDefaults.buttonColors(containerColor = theme.negative, contentColor = theme.onNegative),
                 shape = RoundedCornerShape(14.dp),
             ) {
-                Text("Practice SELL", maxLines = 1)
+                Text(stringResource(R.string.sell), maxLines = 1)
             }
         }
     }
@@ -1664,7 +1664,7 @@ private fun LazyListScope.stockDetailPriceChartSection(
 ) {
     item(key = "price-chart-header") {
         SectionHeader(
-            title = "Price chart",
+            title = stringResource(R.string.sd_price_chart),
             subtitle = historyWindow.subtitle,
         )
     }
@@ -1774,7 +1774,7 @@ private fun StockResearchCard(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("Research (educational)", fontWeight = FontWeight.SemiBold, color = theme.text)
+            Text(stringResource(R.string.sd_research), fontWeight = FontWeight.SemiBold, color = theme.text)
             Text(
                 "Analyze uses available market fields. Ensemble is linear trend 40% + smoothing 35% + momentum 25% — not a forecast.",
                 fontSize = 11.sp,
