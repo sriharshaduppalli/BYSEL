@@ -1,4 +1,5 @@
 package com.bysel.trader.ui.components
+import com.bysel.trader.ui.format.usFmt
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -339,7 +340,7 @@ fun ProfitSignalCard(
                     riskReward?.let {
                         val rrColor = if (it >= 2.0) theme.positive else if (it >= 1.0) theme.caution else theme.negative
                         Text(
-                            text = "R:R ${String.format("%.1f", it)}x",
+                            text = "R:R ${usFmt("%.1f", it)}x",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = rrColor
@@ -356,7 +357,7 @@ fun ProfitSignalCard(
                     if (signal.entry != null && signal.target != null) {
                         val pctGain = ((signal.target - signal.entry) / signal.entry) * 100.0
                         Text(
-                            text = "Potential: ${if (pctGain > 0) "+" else ""}${String.format("%.1f", pctGain)}%",
+                            text = "Potential: ${if (pctGain > 0) "+" else ""}${usFmt("%.1f", pctGain)}%",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = if (pctGain > 0) theme.positive else theme.negative
@@ -429,7 +430,7 @@ private fun PriceLabel(label: String, price: Double, color: Color) {
             color = LocalAppTheme.current.textSecondary
         )
         Text(
-            text = "₹${String.format("%,.1f", price)}",
+            text = "₹${usFmt("%,.1f", price)}",
             fontSize = 15.sp,
             fontWeight = FontWeight.Bold,
             color = color

@@ -1,4 +1,5 @@
 package com.bysel.trader.ui.screens
+import com.bysel.trader.ui.format.usFmt
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.ui.res.stringResource
@@ -1721,7 +1722,7 @@ private fun PracticeReviewSheet(
                 color = theme.text,
             )
             Text(
-                text = "${target.symbol} · ${target.qty} share(s) @ ₹${"%.2f".format(target.price)}",
+                text = "${target.symbol} · ${target.qty} share(s) @ ₹${usFmt("%.2f", target.price)}",
                 fontSize = 13.sp,
                 color = theme.textSecondary,
             )
@@ -2592,13 +2593,13 @@ private fun PracticeIdeaCard(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            LevelPill(label = "Entry", value = "₹${"%.1f".format(idea.entry)}")
-            LevelPill(label = "SL", value = "₹${"%.1f".format(idea.stopLoss)}")
-            LevelPill(label = "Target", value = "₹${"%.1f".format(idea.target)}")
+            LevelPill(label = "Entry", value = "₹${usFmt("%.1f", idea.entry)}")
+            LevelPill(label = "SL", value = "₹${usFmt("%.1f", idea.stopLoss)}")
+            LevelPill(label = "Target", value = "₹${usFmt("%.1f", idea.target)}")
         }
 
         Text(
-            text = "R:R ${"%.2f".format(idea.riskReward)} · qty ${idea.suggestedQty.coerceAtLeast(1)}",
+            text = "R:R ${usFmt("%.2f", idea.riskReward)} · qty ${idea.suggestedQty.coerceAtLeast(1)}",
             fontSize = 10.sp,
             color = theme.textSecondary,
         )
@@ -2905,7 +2906,7 @@ fun PortfolioSummaryCard(
                 color = LocalAppTheme.current.textSecondary
             )
             Text(
-                text = "₹${String.format("%.2f", totalValue)}",
+                text = "₹${usFmt("%.2f", totalValue)}",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
                 color = LocalAppTheme.current.text,
@@ -2925,7 +2926,7 @@ fun PortfolioSummaryCard(
                         color = LocalAppTheme.current.textSecondary
                     )
                     Text(
-                        text = "₹${String.format("%.2f", totalInvested)}",
+                        text = "₹${usFmt("%.2f", totalInvested)}",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = LocalAppTheme.current.text
@@ -2939,7 +2940,7 @@ fun PortfolioSummaryCard(
                         color = LocalAppTheme.current.textSecondary
                     )
                     Text(
-                        text = "₹${String.format("%.2f", totalPnL)} (${String.format("%.2f", totalPnLPercent)}%)",
+                        text = "₹${usFmt("%.2f", totalPnL)} (${usFmt("%.2f", totalPnLPercent)}%)",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = if (totalPnL >= 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
@@ -2998,7 +2999,7 @@ fun GainerLosersCard(
                     color = LocalAppTheme.current.text
                 )
                 Text(
-                    text = "₹${String.format("%.2f", quote.last)}",
+                    text = "₹${usFmt("%.2f", quote.last)}",
                     fontSize = 12.sp,
                     color = LocalAppTheme.current.textSecondary,
                     modifier = Modifier.padding(top = 4.dp)
@@ -3031,7 +3032,7 @@ fun GainerLosersCard(
                     modifier = Modifier.size(20.dp)
                 )
                 Text(
-                    text = "${if (quote.pctChange > 0) "+" else ""}${String.format("%.2f", quote.pctChange)}%",
+                    text = "${if (quote.pctChange > 0) "+" else ""}${usFmt("%.2f", quote.pctChange)}%",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = if (isGainer) LocalAppTheme.current.positive else LocalAppTheme.current.negative

@@ -1,4 +1,5 @@
 package com.bysel.trader.ui.screens
+import com.bysel.trader.ui.format.usFmt
 
 import com.bysel.trader.R
 import androidx.compose.ui.res.stringResource
@@ -109,8 +110,8 @@ import kotlinx.coroutines.delay
 private fun formatVolume(v: Long?): String {
     if (v == null) return "N/A"
     return when {
-        v >= 1_000_000 -> String.format("%.2fM", v / 1_000_000.0)
-        v >= 1_000 -> String.format("%.1fK", v / 1_000.0)
+        v >= 1_000_000 -> usFmt("%.2fM", v / 1_000_000.0)
+        v >= 1_000 -> usFmt("%.1fK", v / 1_000.0)
         else -> v.toString()
     }
 }
@@ -136,8 +137,8 @@ private fun tapeFlagsForQuote(quote: Quote): List<String> {
         null
     }
     if (abs(quote.pctChange) >= 2.0) flags.add("Move ${formatSignedPct(quote.pctChange)}")
-    if (intradayRangePct >= 3.0) flags.add("Range ${String.format("%.1f", intradayRangePct)}%")
-    if (volumeRatio != null && volumeRatio >= 1.5) flags.add("${String.format("%.1f", volumeRatio)}x vol")
+    if (intradayRangePct >= 3.0) flags.add("Range ${usFmt("%.1f", intradayRangePct)}%")
+    if (volumeRatio != null && volumeRatio >= 1.5) flags.add("${usFmt("%.1f", volumeRatio)}x vol")
     if (spreadPct >= 0.35) flags.add("Wide spread")
     if (flags.isEmpty()) flags.add("Quiet tape")
     return flags
@@ -168,7 +169,7 @@ private fun PracticeWalletChip(
             if (walletBalance > 0.0) {
                 AnimatedAmountText(
                     amount = walletBalance,
-                    formatter = { "₹${String.format("%,.0f", it)}" },
+                    formatter = { "₹${usFmt("%,.0f", it)}" },
                     style = if (compact) {
                         MaterialTheme.typography.labelMedium
                     } else {
@@ -1145,6 +1146,7 @@ private fun FuturesRadarScreen(
     }
 
     val productActionMessage by viewModel.productActionMessage.collectAsStateWithLifecycle()
+    val optionChain by viewModel.optionChain.collectAsStateWithLifecycle()
     // Resume on the underlying of an unfinished drill; otherwise start on NIFTY.
     val startSymbol = savedFuturePractice?.symbol?.takeIf { it.isNotBlank() } ?: "NIFTY"
     var underlyingInput by rememberSaveable { mutableStateOf(startSymbol) }
@@ -1157,6 +1159,10 @@ private fun FuturesRadarScreen(
         }
     }
     // The chart drill and the contract board always describe the same underlying.
+    LaunchedEffect(practiceSymbol, selectedExpiry, futuresContracts?.contracts?.firstOrNull()?.expiry) {
+        val expiry = selectedExpiry ?: futuresContracts?.contracts?.firstOrNull()?.expiry.orEmpty()
+        if (expiry.isNotBlank()) viewModel.loadOptionChain(practiceSymbol, expiry, quiet = true)
+    }
     LaunchedEffect(practiceSymbol) {
         viewModel.loadFoCandles(practiceSymbol, "futures")
         val board = futuresContracts
@@ -1306,9 +1312,16 @@ private fun FuturesRadarScreen(
                 expiry = selectedContract?.expiry.orEmpty(),
                 candles = foCandles,
                 loading = foCandlesLoading,
-                iv = 0.16,
+                iv = optionChain
+                    ?.takeIf {
+                        it.symbol.equals(practiceSymbol, ignoreCase = true) &&
+                            !it.source.equals("synthetic", ignoreCase = true)
+                    }
+                    ?.atmIv
+                    ?.takeIf { it > 0.0 }
+                    ?: 0.0,
                 onReload = { viewModel.loadFoCandles(practiceSymbol, "futures") },
-                onExtend = { viewModel.loadFoCandles(practiceSymbol, "futures") },
+                onExtend = { viewModel.loadFoCandles(practiceSymbol, "futures", extend = true) },
                 onSymbol = { practiceSymbol = it },
                 future = true,
                 lotSize = selectedContract?.lotSize,
@@ -1629,7 +1642,7 @@ fun TradingQuoteCard(
                     }
                     TickPriceText(
                         price = quote.last,
-                        text = "₹${String.format("%.2f", quote.last)}",
+                        text = "₹${usFmt("%.2f", quote.last)}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = theme.textSecondary,
                         modifier = Modifier.padding(top = 4.dp),
@@ -1638,7 +1651,7 @@ fun TradingQuoteCard(
                 }
 
                 Text(
-                    text = "${if (quote.pctChange > 0) "+" else ""}${String.format("%.2f", quote.pctChange)}%",
+                    text = "${if (quote.pctChange > 0) "+" else ""}${usFmt("%.2f", quote.pctChange)}%",
                     style = MaterialTheme.typography.titleSmall,
                     color = animatedChangeColor(quote.pctChange),
                     maxLines = 1,
@@ -1646,8 +1659,8 @@ fun TradingQuoteCard(
                 )
             }
             Text(
-                text = "O ₹${String.format("%.2f", quote.open ?: quote.prevClose ?: quote.last)} · " +
-                    "H/L ₹${String.format("%.2f", quote.dayHigh ?: quote.last)}/${String.format("%.2f", quote.dayLow ?: quote.last)} · " +
+                text = "O ₹${usFmt("%.2f", quote.open ?: quote.prevClose ?: quote.last)} · " +
+                    "H/L ₹${usFmt("%.2f", quote.dayHigh ?: quote.last)}/${usFmt("%.2f", quote.dayLow ?: quote.last)} · " +
                     "Vol ${formatVolume(quote.volume)}",
                 fontSize = 11.sp,
                 color = LocalAppTheme.current.textSecondary,
@@ -2034,7 +2047,8 @@ private fun TradeBottomSheetContent(
     var quantity by rememberSaveable(quote.symbol) { mutableStateOf("") }
     var tradeType by rememberSaveable(quote.symbol) { mutableStateOf("BUY") }
     var orderType by rememberSaveable(quote.symbol) { mutableStateOf("MARKET") }
-    var limitPriceInput by rememberSaveable(quote.symbol) { mutableStateOf(String.format("%.2f", quote.last)) }
+    var limitPriceInput by rememberSaveable(quote.symbol) { mutableStateOf(usFmt("%.2f", quote.last)) }
+    var triggerPriceInput by rememberSaveable(quote.symbol) { mutableStateOf(usFmt("%.2f", quote.last)) }
     var showConfirmDialog by remember { mutableStateOf(false) }
     val holdings by viewModel.holdings.collectAsStateWithLifecycle()
     val preTradeSignal by viewModel.copilotPreTradeSignal.collectAsStateWithLifecycle()
@@ -2050,7 +2064,14 @@ private fun TradeBottomSheetContent(
 
     val qty = quantity.toIntOrNull() ?: 0
     val limitPrice = limitPriceInput.toDoubleOrNull() ?: 0.0
-    val localExecutionPrice = if (orderType == "LIMIT" && limitPrice > 0.0) limitPrice else quote.last
+    val triggerPrice = triggerPriceInput.toDoubleOrNull() ?: 0.0
+    val stopOrder = orderType == "SL" || orderType == "SLM"
+    val localExecutionPrice = when {
+        orderType == "LIMIT" && limitPrice > 0.0 -> limitPrice
+        orderType == "SL" && limitPrice > 0.0 -> limitPrice
+        orderType == "SLM" && triggerPrice > 0.0 -> triggerPrice
+        else -> quote.last
+    }
     val localTradeValue = qty * localExecutionPrice
     val localBrokerage = localTradeValue * 0.0003
     val localExchangeFee = localTradeValue * 0.00034
@@ -2067,7 +2088,8 @@ private fun TradeBottomSheetContent(
         ((quote.ask - quote.bid) / quote.last) * 100.0
     } else 0.0
     val priceGapPct = if (quote.last > 0.0) ((localExecutionPrice - quote.last) / quote.last) * 100.0 else 0.0
-    val limitInvalid = orderType == "LIMIT" && limitPrice <= 0.0
+    val limitInvalid = (orderType == "LIMIT" || orderType == "SL") && limitPrice <= 0.0
+    val triggerInvalid = stopOrder && triggerPrice <= 0.0
     val limitDeviationWarning = orderType == "LIMIT" && abs(priceGapPct) > 3.0
     val limitDeviationHardBlock = orderType == "LIMIT" && abs(priceGapPct) > 8.0
     val localWalletUtilizationPct = if (tradeType == "BUY" && walletBalance > 0.0) {
@@ -2103,8 +2125,8 @@ private fun TradeBottomSheetContent(
         onDispose { viewModel.clearPreTradeCopilotSignal() }
     }
 
-    LaunchedEffect(quote.symbol, qty, tradeType, orderType, limitPriceInput, isMarketOpen) {
-        if (qty <= 0 || limitInvalid || limitDeviationHardBlock) {
+    LaunchedEffect(quote.symbol, qty, tradeType, orderType, limitPriceInput, triggerPriceInput, isMarketOpen) {
+        if (qty <= 0 || limitInvalid || triggerInvalid || limitDeviationHardBlock) {
             viewModel.clearPreTradeCopilotSignal()
             return@LaunchedEffect
         }
@@ -2116,8 +2138,8 @@ private fun TradeBottomSheetContent(
                 side = tradeType,
                 orderType = orderType,
                 validity = "DAY",
-                limitPrice = if (orderType == "LIMIT") limitPrice else null,
-                triggerPrice = null,
+                limitPrice = if (orderType == "LIMIT" || orderType == "SL") limitPrice else null,
+                triggerPrice = if (stopOrder) triggerPrice else null,
             )
         )
     }
@@ -2168,12 +2190,12 @@ private fun TradeBottomSheetContent(
                 ) {
                     TickPriceText(
                         price = quote.last,
-                        text = "₹${String.format("%.2f", quote.last)}",
+                        text = "₹${usFmt("%.2f", quote.last)}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = LocalAppTheme.current.text,
                     )
                     Text(
-                        text = "${if (quote.pctChange >= 0) "+" else ""}${String.format("%.2f", quote.pctChange)}%",
+                        text = "${if (quote.pctChange >= 0) "+" else ""}${usFmt("%.2f", quote.pctChange)}%",
                         style = MaterialTheme.typography.bodyMedium,
                         color = animatedChangeColor(quote.pctChange),
                     )
@@ -2237,7 +2259,7 @@ private fun TradeBottomSheetContent(
 
         // Price info
         Text(
-            text = "Day Range: ₹${String.format("%.2f", quote.dayLow ?: quote.last)} – ₹${String.format("%.2f", quote.dayHigh ?: quote.last)}",
+            text = "Day Range: ₹${usFmt("%.2f", quote.dayLow ?: quote.last)} – ₹${usFmt("%.2f", quote.dayHigh ?: quote.last)}",
             fontSize = 12.sp,
             color = LocalAppTheme.current.textSecondary,
             modifier = Modifier.padding(bottom = 14.dp)
@@ -2264,14 +2286,14 @@ private fun TradeBottomSheetContent(
                 TradeSummaryLine(
                     label = "Spread",
                     value = if (quote.bid != null && quote.ask != null) {
-                        "${String.format("%.2f", spreadPct)}%"
+                        "${usFmt("%.2f", spreadPct)}%"
                     } else {
                         "— · No live book"
                     }
                 )
                 TradeSummaryLine(
                     label = "Range",
-                    value = "${String.format("%.1f", intradayRangePct)}%"
+                    value = "${usFmt("%.1f", intradayRangePct)}%"
                 )
                 currentHolding?.let { holding ->
                     HorizontalDivider(
@@ -2324,13 +2346,15 @@ private fun TradeBottomSheetContent(
         // Order type
         Text("Order Type", fontSize = 12.sp, color = LocalAppTheme.current.textSecondary, modifier = Modifier.padding(bottom = 8.dp))
         Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            listOf("MARKET", "LIMIT").forEach { otype ->
+            listOf("MARKET", "LIMIT", "SL", "SLM").forEach { otype ->
                 AssistChip(
                     onClick = { orderType = otype },
-                    label = { Text(otype.lowercase().replaceFirstChar { it.uppercase() }) },
+                    label = {
+                        Text(if (otype == "SLM") "SL-M" else otype.lowercase().replaceFirstChar { it.uppercase() })
+                    },
                     colors = AssistChipDefaults.assistChipColors(
                         containerColor = if (orderType == otype) LocalAppTheme.current.primary.copy(alpha = 0.25f) else LocalAppTheme.current.mutedSurface,
                         labelColor = LocalAppTheme.current.text
@@ -2339,7 +2363,32 @@ private fun TradeBottomSheetContent(
             }
         }
 
-        if (orderType == "LIMIT") {
+        if (stopOrder) {
+            Text(
+                if (tradeType == "BUY") {
+                    "Buy stop queues until the last price reaches the trigger. It is not filled now."
+                } else {
+                    "Sell stop queues until the last price falls to the trigger. It is not filled now."
+                },
+                fontSize = 11.sp,
+                color = LocalAppTheme.current.textSecondary,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+            OutlinedTextField(
+                value = triggerPriceInput,
+                onValueChange = { triggerPriceInput = filterDecimalInput(it) },
+                label = { Text("Trigger Price", color = LocalAppTheme.current.textSecondary) },
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Decimal,
+                    imeAction = ImeAction.Next,
+                ),
+                colors = appOutlinedTextFieldColors(containerColor = LocalAppTheme.current.surface),
+            )
+        }
+
+        if (orderType == "LIMIT" || orderType == "SL") {
             OutlinedTextField(
                 value = limitPriceInput,
                 onValueChange = { limitPriceInput = filterDecimalInput(it) },
@@ -2399,7 +2448,7 @@ private fun TradeBottomSheetContent(
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text("Order Summary", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = LocalAppTheme.current.text)
                     Spacer(modifier = Modifier.height(8.dp))
-                    TradeSummaryLine("Execution", "₹${String.format("%.2f", executionPrice)}")
+                    TradeSummaryLine("Execution", "₹${usFmt("%.2f", executionPrice)}")
                     TradeSummaryLine("Trade Value", formatCurrency(tradeValue))
                     HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = LocalAppTheme.current.textSecondary.copy(alpha = 0.15f))
                     // Charges breakdown
@@ -2427,7 +2476,7 @@ private fun TradeBottomSheetContent(
                         Spacer(modifier = Modifier.height(6.dp))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Wallet Used", fontSize = 11.sp, color = LocalAppTheme.current.textSecondary)
-                            Text("${String.format("%.1f", walletUtilizationPct)}%", fontSize = 11.sp, color = when {
+                            Text("${usFmt("%.1f", walletUtilizationPct)}%", fontSize = 11.sp, color = when {
                                 walletUtilizationPct >= 90 -> LocalAppTheme.current.negative
                                 walletUtilizationPct >= 60 -> LocalAppTheme.current.caution
                                 else -> LocalAppTheme.current.positive
@@ -2489,7 +2538,7 @@ private fun TradeBottomSheetContent(
                 hasEstimate = preTradeEstimate != null,
                 onRefreshGuidance = {
                     viewModel.loadPortfolioCopilotActions()
-                    if (qty > 0 && !limitInvalid && !limitDeviationHardBlock) {
+                    if (qty > 0 && !limitInvalid && !triggerInvalid && !limitDeviationHardBlock) {
                         viewModel.fetchPreTradeEstimate(
                             com.bysel.trader.data.models.AdvancedOrderRequest(
                                 symbol = quote.symbol,
@@ -2497,8 +2546,8 @@ private fun TradeBottomSheetContent(
                                 side = tradeType,
                                 orderType = orderType,
                                 validity = "DAY",
-                                limitPrice = if (orderType == "LIMIT") limitPrice else null,
-                                triggerPrice = null,
+                                limitPrice = if (orderType == "LIMIT" || orderType == "SL") limitPrice else null,
+                                triggerPrice = if (stopOrder) triggerPrice else null,
                             )
                         )
                     }
@@ -2515,7 +2564,7 @@ private fun TradeBottomSheetContent(
                         when (resolution.category) {
                             RejectionCategory.FUNDS -> onAddFunds?.invoke()
                             RejectionCategory.QUANTITY -> quantity = ((qty / 2).coerceAtLeast(1)).toString()
-                            RejectionCategory.PRICE -> limitPriceInput = String.format("%.2f", quote.last)
+                            RejectionCategory.PRICE -> limitPriceInput = usFmt("%.2f", quote.last)
                             RejectionCategory.INSTRUMENT -> {
                                 onOpenSearch?.invoke()
                                 onDismiss()
@@ -2542,7 +2591,7 @@ private fun TradeBottomSheetContent(
 
             // Warnings
             Text(
-                "Impact cues: range ${String.format("%.1f", intradayRangePct)}% • spread ${String.format("%.2f", spreadPct)}%",
+                "Impact cues: range ${usFmt("%.1f", intradayRangePct)}% • spread ${usFmt("%.2f", spreadPct)}%",
                 fontSize = 11.sp, color = LocalAppTheme.current.textSecondary, modifier = Modifier.padding(bottom = 4.dp)
             )
             estimateWarnings.take(2).forEach { warning ->
@@ -2561,7 +2610,7 @@ private fun TradeBottomSheetContent(
                 )
             }
             if (estimateWarnings.isEmpty() && limitDeviationWarning) {
-                Text("⚠ Limit is ${String.format("%.2f", abs(priceGapPct))}% away from market price.", fontSize = 12.sp, color = LocalAppTheme.current.negative, modifier = Modifier.padding(top = 4.dp))
+                Text("⚠ Limit is ${usFmt("%.2f", abs(priceGapPct))}% away from market price.", fontSize = 12.sp, color = LocalAppTheme.current.negative, modifier = Modifier.padding(top = 4.dp))
             }
             if (estimateWarnings.isEmpty() && spreadPct >= 0.45) {
                 Text("⚠ Wide spread detected. Consider limit order.", fontSize = 12.sp, color = LocalAppTheme.current.negative, modifier = Modifier.padding(top = 4.dp))
@@ -2708,7 +2757,7 @@ private fun TradeBottomSheetContent(
                         }
                     },
                     isBuy = tradeType == "BUY",
-                    enabled = qty > 0 && !limitInvalid && !limitDeviationHardBlock && !copilotBlocksTrade && !orderExecutionLoading &&
+                    enabled = qty > 0 && !limitInvalid && !triggerInvalid && !limitDeviationHardBlock && !copilotBlocksTrade && !orderExecutionLoading &&
                         (if (tradeType == "SELL") qty <= (currentHolding?.qty ?: 0) else canAfford),
                     modifier = Modifier.weight(2f),
                     height = 48.dp,
@@ -2721,7 +2770,12 @@ private fun TradeBottomSheetContent(
                         )
                     } else {
                         Text(
-                            if (orderType == "MARKET") tradeType else "LIMIT $tradeType",
+                            when (orderType) {
+                                "MARKET" -> tradeType
+                                "LIMIT" -> "LIMIT $tradeType"
+                                "SL" -> "SL $tradeType"
+                                else -> "SL-M $tradeType"
+                            },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                         )
@@ -2745,11 +2799,18 @@ private fun TradeBottomSheetContent(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("${quote.symbol} • $qty share${if (qty == 1) "" else "s"}")
-                    Text("Order type: ${if (orderType == "MARKET") "Market" else "Limit @ ₹${String.format("%.2f", limitPrice)}"}")
-                    Text("Est. value: ₹${String.format("%,.2f", tradeValue)}")
-                    Text("Est. charges: ₹${String.format("%.2f", totalCharges)}")
                     Text(
-                        "Net amount: ₹${String.format("%,.2f", netAmount)}",
+                        when (orderType) {
+                            "LIMIT" -> "Limit @ ₹${usFmt("%.2f", limitPrice)}"
+                            "SL" -> "Stop-limit. Trigger ₹${usFmt("%.2f", triggerPrice)}, limit ₹${usFmt("%.2f", limitPrice)}. Queued until the trigger."
+                            "SLM" -> "Stop-market. Trigger ₹${usFmt("%.2f", triggerPrice)}. Queued until the trigger."
+                            else -> "Market"
+                        }
+                    )
+                    Text("Est. value: ₹${usFmt("%,.2f", tradeValue)}")
+                    Text("Est. charges: ₹${usFmt("%.2f", totalCharges)}")
+                    Text(
+                        "Net amount: ₹${usFmt("%,.2f", netAmount)}",
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -2758,7 +2819,24 @@ private fun TradeBottomSheetContent(
                 TradeActionButton(
                     onClick = {
                         showConfirmDialog = false
-                        if (tradeType == "BUY") onBuy(qty) else onSell(qty)
+                        when (orderType) {
+                            "SL", "SLM" -> viewModel.createTriggerOrder(
+                                symbol = quote.symbol,
+                                quantity = qty,
+                                side = tradeType,
+                                triggerPrice = triggerPrice,
+                                orderType = orderType,
+                                limitPrice = if (orderType == "SL") limitPrice else null,
+                            )
+                            "LIMIT" -> viewModel.placeAdvancedOrder(
+                                symbol = quote.symbol,
+                                quantity = qty,
+                                side = tradeType,
+                                orderType = "LIMIT",
+                                limitPrice = limitPrice,
+                            )
+                            else -> if (tradeType == "BUY") onBuy(qty) else onSell(qty)
+                        }
                     },
                     isBuy = tradeType == "BUY",
                     height = 40.dp,

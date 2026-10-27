@@ -1,4 +1,5 @@
 package com.bysel.trader.ui.components
+import com.bysel.trader.ui.format.usFmt
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -105,10 +106,10 @@ private fun Float.clampLabel(min: Float, max: Float): Float {
 }
 
 private fun formatAxisPrice(price: Double): String = when {
-    price >= 10_000 -> String.format("%.0f", price)
-    price >= 1_000 -> String.format("%.1f", price)
-    price >= 100 -> String.format("%.1f", price)
-    else -> String.format("%.2f", price)
+    price >= 10_000 -> usFmt("%.0f", price)
+    price >= 1_000 -> usFmt("%.1f", price)
+    price >= 100 -> usFmt("%.1f", price)
+    else -> usFmt("%.2f", price)
 }
 
 /**
@@ -218,6 +219,7 @@ fun CandlestickChart(
     var activeOverlays by rememberSaveable(stateSaver = OverlaySetSaver) { mutableStateOf(setOf<Overlay>()) }
     var heikinAshi by rememberSaveable { mutableStateOf(false) }
     var showMacd by rememberSaveable { mutableStateOf(false) }
+    var markedPrice by rememberSaveable { mutableStateOf(Float.NaN) }
     val drawablePatterns = remember(patterns, history.size) {
         patterns.filter { it.startIdx in history.indices && it.endIdx in history.indices && it.endIdx >= it.startIdx }
     }
@@ -258,10 +260,10 @@ fun CandlestickChart(
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(text = "O: ${String.format("%.2f", lastCandle.open)}", color = theme.textSecondary, fontSize = 11.sp)
-            Text(text = "H: ${String.format("%.2f", lastCandle.high)}", color = theme.textSecondary, fontSize = 11.sp)
-            Text(text = "L: ${String.format("%.2f", lastCandle.low)}", color = theme.textSecondary, fontSize = 11.sp)
-            Text(text = "C: ${String.format("%.2f", lastCandle.close)}", color = theme.textSecondary, fontSize = 11.sp)
+            Text(text = "O: ${usFmt("%.2f", lastCandle.open)}", color = theme.textSecondary, fontSize = 11.sp)
+            Text(text = "H: ${usFmt("%.2f", lastCandle.high)}", color = theme.textSecondary, fontSize = 11.sp)
+            Text(text = "L: ${usFmt("%.2f", lastCandle.low)}", color = theme.textSecondary, fontSize = 11.sp)
+            Text(text = "C: ${usFmt("%.2f", lastCandle.close)}", color = theme.textSecondary, fontSize = 11.sp)
         }
 
         if (!expandPlot) {
@@ -300,6 +302,15 @@ fun CandlestickChart(
                     modifier = Modifier.height(28.dp),
                 )
                 FilterChip(
+                    selected = markedPrice.isFinite() && markedPrice > 0f,
+                    onClick = {
+                        val last = history.lastOrNull()?.close?.toFloat() ?: Float.NaN
+                        markedPrice = if (markedPrice.isFinite() && markedPrice > 0f) Float.NaN else last
+                    },
+                    label = { Text("Level", fontSize = 10.sp, maxLines = 1) },
+                    modifier = Modifier.height(28.dp),
+                )
+                FilterChip(
                     selected = showMacd,
                     onClick = { showMacd = !showMacd },
                     label = { Text("MACD", fontSize = 10.sp, maxLines = 1) },
@@ -326,7 +337,7 @@ fun CandlestickChart(
                 if (lastMacd != null && lastSignal != null && lastHist != null) {
                     val above = lastMacd >= lastSignal
                     Text(
-                        text = "MACD(12,26,9): ${String.format("%.2f", lastMacd)} · signal ${String.format("%.2f", lastSignal)} — " +
+                        text = "MACD(12,26,9): ${usFmt("%.2f", lastMacd)} · signal ${usFmt("%.2f", lastSignal)} — " +
                             if (above) "MACD above signal (momentum up)" else "MACD below signal (momentum down)",
                         color = if (above) theme.positive else theme.negative,
                         fontSize = 11.sp,
@@ -349,7 +360,7 @@ fun CandlestickChart(
                     else -> "Neutral"
                 }
                 Text(
-                    text = "RSI(14): ${String.format("%.1f", lastRsi)} — $rsiLabel",
+                    text = "RSI(14): ${usFmt("%.1f", lastRsi)} — $rsiLabel",
                     color = rsiColor,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
@@ -549,6 +560,30 @@ fun CandlestickChart(
                         val ty = (y - layout.size.height / 2f).clampLabel(0f, size.height - layout.size.height)
                         if (layout.size.height < size.height) {
                             drawText(layout, topLeft = Offset(tx, ty))
+                        }
+                    }
+
+                    if (markedPrice.isFinite() && markedPrice > 0f) {
+                        val levelY = yFor(markedPrice.toDouble())
+                        drawLine(
+                            color = theme.caution,
+                            start = Offset(leftPad, levelY),
+                            end = Offset(size.width, levelY),
+                            strokeWidth = 1.6f,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f),
+                        )
+                        val levelLabel = textMeasurer.measure(
+                            "Level ${formatAxisPrice(markedPrice.toDouble())}",
+                            style = axisLabelStyle.copy(color = theme.caution),
+                        )
+                        if (levelLabel.size.height < size.height) {
+                            drawText(
+                                levelLabel,
+                                topLeft = Offset(
+                                    leftPad + 6f,
+                                    (levelY - levelLabel.size.height - 2f).clampLabel(0f, size.height - levelLabel.size.height),
+                                ),
+                            )
                         }
                     }
 

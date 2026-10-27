@@ -1,4 +1,5 @@
 package com.bysel.trader.data.fno
+import com.bysel.trader.ui.format.usFmt
 
 import com.bysel.trader.data.models.FuturesContract
 import com.bysel.trader.data.models.FuturesContractsResponse
@@ -106,8 +107,7 @@ object TeachingFutures {
     }
 
     private fun formatIso(cal: Calendar): String {
-        return String.format(
-            Locale.US,
+        return usFmt(
             "%04d-%02d-%02d",
             cal.get(Calendar.YEAR),
             cal.get(Calendar.MONTH) + 1,

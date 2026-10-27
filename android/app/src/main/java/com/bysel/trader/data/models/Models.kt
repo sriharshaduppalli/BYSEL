@@ -1,4 +1,5 @@
 package com.bysel.trader.data.models
+import com.bysel.trader.ui.format.usFmt
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
@@ -1412,7 +1413,7 @@ data class ScannerRow(
         val inferred = mutableListOf<ScannerAnomaly>()
         val vol = metrics.volumeRatio
         if (vol != null && vol > 2.0) {
-            inferred += ScannerAnomaly("unusual_volume", "Unusual volume", String.format("%.1f× avg", vol))
+            inferred += ScannerAnomaly("unusual_volume", "Unusual volume", usFmt("%.1f× avg", vol))
         }
         val pledge = metrics.pledge
         if (pledge != null && pledge > 0) {
@@ -1420,7 +1421,7 @@ data class ScannerRow(
         }
         val margin = metrics.marginPct
         if (margin != null) {
-            inferred += ScannerAnomaly("margin", "Margin", String.format("Margin %.1f%%", margin))
+            inferred += ScannerAnomaly("margin", "Margin", usFmt("Margin %.1f%%", margin))
         }
         return inferred
     }

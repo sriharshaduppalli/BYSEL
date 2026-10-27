@@ -1,4 +1,5 @@
 package com.bysel.trader.ui.screens
+import com.bysel.trader.ui.format.usFmt
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.res.stringResource
@@ -486,7 +487,7 @@ fun UpgradedQuoteCard(quote: Quote, onClick: () -> Unit) {
                         StockNotesIcon(symbol = quote.symbol)
                     }
                     Text(
-                        text = "₹${String.format("%.2f", quote.last)}",
+                        text = "₹${usFmt("%.2f", quote.last)}",
                         fontSize = 16.sp,
                         color = LocalAppTheme.current.textSecondary,
                         modifier = Modifier.padding(top = 4.dp)
@@ -519,7 +520,7 @@ fun UpgradedQuoteCard(quote: Quote, onClick: () -> Unit) {
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = "${if (quote.pctChange > 0) "+" else ""}${String.format("%.2f", quote.pctChange)}%",
+                            text = "${if (quote.pctChange > 0) "+" else ""}${usFmt("%.2f", quote.pctChange)}%",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (quote.pctChange > 0) LocalAppTheme.current.positive else LocalAppTheme.current.negative
@@ -573,6 +574,8 @@ fun PortfolioScreen(
     onBrowseEtfs: () -> Unit = {},
     onBrowseMutualFunds: () -> Unit = {},
     walletBalance: Double = 0.0,
+    trades: List<com.bysel.trader.data.api.TradeHistory> = emptyList(),
+    onRefreshTrades: () -> Unit = {},
     onImportCsv: (String, String) -> Unit = { _, _ -> },
     onClearImport: () -> Unit = {},
     onOpenImportedSymbol: (String) -> Unit = {},
@@ -586,6 +589,7 @@ fun PortfolioScreen(
     onOpenRiskLab: () -> Unit = {},
 ) {
     val hasImported = importedBook?.rows?.isNotEmpty() == true
+    LaunchedEffect(Unit) { onRefreshTrades() }
     LaunchedEffect(holdings.isNotEmpty(), hasImported) {
         if ((holdings.isNotEmpty() || hasImported) && (portfolioHealth == null || paperRisk == null)) {
             onRefreshHealth()
@@ -716,6 +720,12 @@ fun PortfolioScreen(
                     } else {
                         0.0
                     }
+                    val openValue = holdings.sumOf { holding ->
+                        val live = quoteBySymbol[holding.symbol.uppercase()]?.last
+                        val price = if (live != null && live > 0.0) live else holding.last
+                        holding.qty * price
+                    }
+                    val xirr = com.bysel.trader.portfolio.PaperXirr.annualizedPercent(trades, openValue)
                     Text(
                         text = when {
                             holdings.isEmpty() && !hasImported -> stringResource(R.string.portfolio_sub_empty)
@@ -737,6 +747,16 @@ fun PortfolioScreen(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    if (xirr != null) {
+                        Text(
+                            text = stringResource(R.string.portfolio_xirr, formatSignedPct(xirr)),
+                            fontSize = 11.sp,
+                            color = theme.textSecondary,
+                            modifier = Modifier.padding(top = 2.dp),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -750,10 +770,10 @@ fun PortfolioScreen(
                             val value = last * h.qty
                             val invested = h.avgPrice * h.qty
                             val pnl = value - invested
-                            val pct = if (invested > 0) "%.2f".format(pnl / invested * 100) else "0.00"
+                            val pct = if (invested > 0) usFmt("%.2f", pnl / invested * 100) else "0.00"
                             sb.appendLine(
-                                "${h.symbol},${h.qty},${"%.2f".format(h.avgPrice)},${"%.2f".format(last)}," +
-                                    "${"%.2f".format(value)},${"%.2f".format(pnl)},$pct",
+                                "${h.symbol},${h.qty},${usFmt("%.2f", h.avgPrice)},${usFmt("%.2f", last)}," +
+                                    "${usFmt("%.2f", value)},${usFmt("%.2f", pnl)},$pct",
                             )
                         }
                         val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
@@ -815,6 +835,15 @@ fun PortfolioScreen(
             val equityTitle = stringResource(R.string.portfolio_equity)
             val etfTitle = stringResource(R.string.portfolio_etfs)
             val fnoTitle = stringResource(R.string.portfolio_fno)
+            val findStocksLabel = stringResource(R.string.portfolio_find_stocks)
+            val browseEtfsLabel = stringResource(R.string.portfolio_browse_etfs)
+            val emptyEquity = stringResource(R.string.portfolio_empty_equity)
+            val emptyEtf = stringResource(R.string.portfolio_empty_etf)
+            val emptyEquityShort = stringResource(R.string.portfolio_empty_equity_short)
+            val emptyEtfShort = stringResource(R.string.portfolio_empty_etf_short)
+            val emptyMf = stringResource(R.string.portfolio_empty_mf)
+            val emptyFno = stringResource(R.string.portfolio_empty_fno)
+            val browseMfLabel = stringResource(R.string.portfolio_browse_mf)
             if (holdings.isNotEmpty() || sipPlans.isNotEmpty() || hasImported) {
                 LazyRow(
                     modifier = Modifier
@@ -977,9 +1006,9 @@ fun PortfolioScreen(
                             title = equityTitle,
                             rows = equityHoldings,
                             quoteBySymbol = quoteBySymbol,
-                            emptyHint = "No equity holdings yet. Paper-buy a stock from Trade or Search.",
+                            emptyHint = emptyEquity,
                             onBrowse = onNavigateToTrade,
-                            browseLabel = "Find stocks",
+                            browseLabel = findStocksLabel,
                             onAskTrade = { pendingTrade = it },
                             onOpenSymbol = onOpenSymbol,
                         )
@@ -987,9 +1016,9 @@ fun PortfolioScreen(
                             title = etfTitle,
                             rows = etfHoldings,
                             quoteBySymbol = quoteBySymbol,
-                            emptyHint = "No ETF holdings yet. Gold, Nifty, and sector ETFs live here.",
+                            emptyHint = emptyEtf,
                             onBrowse = onBrowseEtfs,
-                            browseLabel = "Browse ETFs",
+                            browseLabel = browseEtfsLabel,
                             onAskTrade = { pendingTrade = it },
                             onOpenSymbol = onOpenSymbol,
                         )
@@ -1034,15 +1063,15 @@ fun PortfolioScreen(
                             item {
                                 PortfolioCategoryEmpty(
                                     hint = when (categoryFilter) {
-                                        "ETF" -> "No ETF holdings in this paper book."
-                                        "MF" -> "No mutual-fund holdings yet."
-                                        "FNO" -> "No F&O positions in holdings."
-                                        else -> "No equity holdings yet."
+                                        "ETF" -> emptyEtfShort
+                                        "MF" -> emptyMf
+                                        "FNO" -> emptyFno
+                                        else -> emptyEquityShort
                                     },
                                     actionLabel = when (categoryFilter) {
-                                        "ETF" -> "Browse ETFs"
-                                        "MF" -> "Browse mutual funds"
-                                        else -> "Find stocks"
+                                        "ETF" -> browseEtfsLabel
+                                        "MF" -> browseMfLabel
+                                        else -> findStocksLabel
                                     },
                                     onAction = when (categoryFilter) {
                                         "ETF" -> onBrowseEtfs
@@ -1273,7 +1302,7 @@ fun UpgradedPortfolioHoldingItem(
                         )
                     }
                     Text(
-                        text = "₹${String.format("%.2f", holding.last)}",
+                        text = "₹${usFmt("%.2f", holding.last)}",
                         fontSize = 12.sp,
                         color = theme.textSecondary,
                         modifier = Modifier.padding(top = 1.dp)
@@ -1291,7 +1320,7 @@ fun UpgradedPortfolioHoldingItem(
 
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "${if (holding.pnl >= 0) "+" else ""}₹${String.format("%.2f", holding.pnl)}  ${formatSignedPct(pnlPct)}",
+                        text = "${if (holding.pnl >= 0) "+" else ""}₹${usFmt("%.2f", holding.pnl)}  ${formatSignedPct(pnlPct)}",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (holding.pnl >= 0) theme.positive else theme.negative,
@@ -1365,7 +1394,7 @@ fun UpgradedPortfolioHoldingItem(
                         color = theme.textSecondary
                     )
                     Text(
-                        text = "₹${String.format("%.2f", holding.avgPrice)}",
+                        text = "₹${usFmt("%.2f", holding.avgPrice)}",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = theme.text
@@ -1378,7 +1407,7 @@ fun UpgradedPortfolioHoldingItem(
                         color = theme.textSecondary
                     )
                     Text(
-                        text = "₹${String.format("%.2f", kotlin.math.abs(holding.qty) * holding.last)}",
+                        text = "₹${usFmt("%.2f", kotlin.math.abs(holding.qty) * holding.last)}",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = theme.text

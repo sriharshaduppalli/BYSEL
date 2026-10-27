@@ -1,4 +1,5 @@
 package com.bysel.trader.viewmodel
+import com.bysel.trader.ui.format.usFmt
 
 import android.app.Application
 import android.content.Context
@@ -127,6 +128,17 @@ class TradingViewModel(
 
     private val _holdings = MutableStateFlow<List<Holding>>(emptyList())
     val holdings: StateFlow<List<Holding>> = _holdings.asStateFlow()
+    private val _tradeHistory = MutableStateFlow<List<com.bysel.trader.data.api.TradeHistory>>(emptyList())
+    val tradeHistory: StateFlow<List<com.bysel.trader.data.api.TradeHistory>> = _tradeHistory.asStateFlow()
+
+    fun refreshTradeHistory() {
+        viewModelScope.launch {
+            when (val response = repository.loadTradeHistory()) {
+                is Result.Success -> _tradeHistory.value = response.data
+                else -> {}
+            }
+        }
+    }
 
     private val _importedBook = MutableStateFlow<ImportedBook?>(null)
     val importedBook: StateFlow<ImportedBook?> = _importedBook.asStateFlow()
@@ -2353,7 +2365,8 @@ class TradingViewModel(
         side: String,
         premium: Double,
         lots: Int = 1,
-        iv: Double = 0.16,
+        iv: Double = 0.0,
+        liveIv: Boolean = false,
     ) {
         if (underlying.isBlank() || expiry.isBlank()) {
             _derivativesError.value = "Load a chain before a paper option fill"
@@ -2383,7 +2396,7 @@ class TradingViewModel(
                     } else {
                         _derivativesError.value = null
                         _productActionMessage.value = response.data.message
-                        rememberOptionIv(underlying, expiry, strike, right, iv)
+                        if (liveIv && iv > 0.0) rememberOptionIv(underlying, expiry, strike, right, iv)
                         refreshHoldings()
                         refreshWallet()
                         unlockAchievement("first_trade")
@@ -2396,19 +2409,33 @@ class TradingViewModel(
         }
     }
 
-    fun loadFoCandles(symbol: String, desk: String = "options") {
+    private val foCandlePeriod = mutableMapOf<String, String>()
+
+    fun loadFoCandles(symbol: String, desk: String = "options", extend: Boolean = false) {
         val normalized = symbol.trim().uppercase()
         if (normalized.isBlank()) return
         val target = if (desk == "futures") _futureCandles else _optionCandles
         val loading = if (desk == "futures") _futureCandlesLoading else _optionCandlesLoading
+        val spanKey = "$desk:$normalized"
+        val (period, interval) = com.bysel.trader.data.fno.FoCandleSpan.request(
+            foCandlePeriod[spanKey] ?: "5d",
+            extend,
+        )
         viewModelScope.launch {
             loading.value = true
-            when (val response = repository.getQuoteHistory(normalized, "5d", "15m")) {
+            when (val response = repository.getQuoteHistory(normalized, period, interval)) {
                 is Result.Success -> {
                     val fresh = response.data.filter { candle ->
                         candle.close > 0.0 && candle.high >= candle.low
+                    }.sortedBy { it.timestamp }
+                    foCandlePeriod[spanKey] = period
+                    target.value = if (!extend) {
+                        fresh
+                    } else if (fresh.size >= target.value.size) {
+                        fresh
+                    } else {
+                        mergeCandles(target.value, fresh)
                     }
-                    target.value = mergeCandles(target.value, fresh)
                 }
                 else -> if (target.value.isEmpty()) target.value = emptyList()
             }
@@ -2521,22 +2548,22 @@ class TradingViewModel(
         }
     }
 
-    fun loadOptionChain(symbol: String, expiry: String) {
+    fun loadOptionChain(symbol: String, expiry: String, quiet: Boolean = false) {
         if (symbol.isBlank() || expiry.isBlank()) {
-            _derivativesError.value = "Symbol and expiry are required"
+            if (!quiet) _derivativesError.value = "Symbol and expiry are required"
             return
         }
         viewModelScope.launch {
-            _derivativesLoading.value = true
+            if (!quiet) _derivativesLoading.value = true
             when (val response = repository.getOptionChain(symbol.trim().uppercase(), expiry.trim())) {
                 is Result.Success -> {
                     _optionChain.value = response.data
-                    _derivativesError.value = null
+                    if (!quiet) _derivativesError.value = null
                 }
-                is Result.Error -> _derivativesError.value = response.message
+                is Result.Error -> if (!quiet) _derivativesError.value = response.message
                 else -> {}
             }
-            _derivativesLoading.value = false
+            if (!quiet) _derivativesLoading.value = false
         }
     }
 
@@ -3077,7 +3104,7 @@ class TradingViewModel(
                             lastWalletRefreshAt = System.currentTimeMillis()
                             _error.value = null
                             _productActionMessage.value = r.data.message?.takeIf { it.isNotBlank() }
-                                ?: "Practice credit added · ₹${String.format("%,.0f", r.data.balance)} available"
+                                ?: "Practice credit added · ₹${usFmt("%,.0f", r.data.balance)} available"
                         } else {
                             _walletBalance.value = previous
                             persistCachedWalletBalance(previous)
@@ -3123,7 +3150,7 @@ class TradingViewModel(
                 // Informational — never put this on shared _error (it was blocking My Watchlist).
                 _error.value = null
                 _productActionMessage.value =
-                    "Alert already set for $normalizedSymbol at ₹${String.format("%.2f", price)}"
+                    "Alert already set for $normalizedSymbol at ₹${usFmt("%.2f", price)}"
                 return@launch
             }
 
@@ -3156,7 +3183,7 @@ class TradingViewModel(
 
     /** Alert still saves without notification permission — nudge only when banners can't fire. */
     private fun alertCreatedUserMessage(symbol: String, alertType: String, price: Double): String {
-        val base = "Alert set: $symbol $alertType ₹${String.format("%.2f", price)}"
+        val base = "Alert set: $symbol $alertType ₹${usFmt("%.2f", price)}"
         return if (alertsManager.canDeliverNotifications()) {
             base
         } else {
@@ -3385,9 +3412,9 @@ class TradingViewModel(
                 val variance = closes.map { (it - avgClose) * (it - avgClose) }.average()
                 val volatility = kotlin.math.sqrt(variance)
                 contextParts.add("history_count=${recentHistory.size}")
-                contextParts.add("history_avg=${String.format("%.2f", avgClose)}")
-                contextParts.add("history_vol=${String.format("%.4f", volatility)}")
-                val closesShort = recentHistory.joinToString(",") { String.format("%.2f", it.close) }
+                contextParts.add("history_avg=${usFmt("%.2f", avgClose)}")
+                contextParts.add("history_vol=${usFmt("%.4f", volatility)}")
+                val closesShort = recentHistory.joinToString(",") { usFmt("%.2f", it.close) }
                 contextParts.add("history_closes=[$closesShort]")
             }
 
@@ -3615,13 +3642,13 @@ class TradingViewModel(
             return
         }
         val holdingsBlock = holdings.joinToString("\n") { h ->
-            "  ${h.symbol}: ${h.qty} shares at ₹${String.format("%.2f", h.last)}"
+            "  ${h.symbol}: ${h.qty} shares at ₹${usFmt("%.2f", h.last)}"
         }
         val wallet = _walletBalance.value
         val query = buildString {
             append("Optimize my portfolio for maximum returns.\n\n")
             append("My current holdings:\n$holdingsBlock\n\n")
-            append("Available cash: ₹${String.format("%.2f", wallet)}\n\n")
+            append("Available cash: ₹${usFmt("%.2f", wallet)}\n\n")
             append("For each holding tell me: HOLD, ADD MORE, or EXIT with reasoning.\n")
             append("Then suggest new stocks to buy with entry price, target, and stop-loss.\n")
             append("Prioritize risk-reward ratio above 2:1.\n")

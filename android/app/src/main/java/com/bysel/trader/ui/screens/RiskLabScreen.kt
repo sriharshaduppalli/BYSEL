@@ -1,4 +1,5 @@
 package com.bysel.trader.ui.screens
+import com.bysel.trader.ui.format.usFmt
 
 import androidx.compose.foundation.background
 import androidx.compose.ui.res.stringResource
@@ -412,17 +413,17 @@ private fun peakPairwiseCorrelation(matrix: List<List<Double>>): Double? {
 
 private fun safeNumber(value: Double, decimals: Int): String {
     if (!value.isFinite()) return "--"
-    return String.format("%.${decimals}f", value)
+    return usFmt("%.${decimals}f", value)
 }
 
 /** Backend already returns percent units (e.g. -1.8). */
 private fun formatPct(value: Double): String {
     if (!value.isFinite()) return "--"
-    return String.format("%.1f", kotlin.math.abs(value))
+    return usFmt("%.1f", kotlin.math.abs(value))
 }
 
 private fun formatSignedPct(value: Double): String {
     if (!value.isFinite()) return "--"
     val sign = if (value > 0) "+" else ""
-    return "$sign${String.format("%.1f", value)}%"
+    return "$sign${usFmt("%.1f", value)}%"
 }

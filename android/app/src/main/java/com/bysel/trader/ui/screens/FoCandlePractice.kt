@@ -2,6 +2,7 @@ package com.bysel.trader.ui.screens
 
 import com.bysel.trader.R
 import androidx.compose.ui.res.stringResource
+import com.bysel.trader.ui.format.usFmt
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
@@ -215,7 +216,8 @@ fun FoCandlePractice(
     val step = if (spot > 0.0) strikeStep(symbol, spot) else 0.0
     val strike = if (atmStrike > 0.0) atmStrike + strikeOffset * step else 0.0
     val days = if (bar == null) 7.0 else daysAhead(bar.timestamp, expiry)
-    val vol = if (iv > 0.0) iv else 0.16
+    val liveVol = iv > 0.0
+    val vol = if (liveVol) iv else 0.16
     val lot = lotSize?.takeIf { it > 0 } ?: practiceLot(symbol, spot)
     val callNow = if (spot > 0.0) PaperFoMark.premium(spot, strike, days, vol, call = true) else 0.0
     val putNow = if (spot > 0.0) PaperFoMark.premium(spot, strike, days, vol, call = false) else 0.0
@@ -260,6 +262,19 @@ fun FoCandlePractice(
                     maxLines = 1,
                 )
             }
+            Text(
+                stringResource(if (future) R.string.practice_futures_hint else R.string.practice_options_hint),
+                color = theme.textSecondary,
+                fontSize = 11.sp,
+            )
+            Text(
+                stringResource(
+                    if (liveVol) R.string.practice_iv_live else R.string.practice_iv_teaching,
+                    usFmt("%.1f", vol * 100.0),
+                ),
+                color = theme.textSecondary,
+                fontSize = 11.sp,
+            )
             if (!showChain) {
                 PracticeSymbolPicker(
                     symbol = symbol,
@@ -276,7 +291,7 @@ fun FoCandlePractice(
             }
             if (shown.isEmpty() && !loading && !showChain) {
                 Text(
-                    "No 15-minute candles for ${symbol.uppercase()} yet. Try another symbol or reload after the session opens.",
+                    stringResource(R.string.practice_no_candles, symbol.uppercase()),
                     color = theme.textSecondary,
                     fontSize = 12.sp,
                 )
@@ -300,7 +315,7 @@ fun FoCandlePractice(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
-                        "Bar ${safeCursor + 1} of ${candles.size} · close ₹${String.format("%.2f", spot)}",
+                        stringResource(R.string.practice_bar_close, safeCursor + 1, candles.size, usFmt("%.2f", spot)),
                         color = theme.textSecondary,
                         fontSize = 11.sp,
                         maxLines = 1,
@@ -410,27 +425,31 @@ fun FoCandlePractice(
     Card(colors = CardDefaults.cardColors(containerColor = theme.card)) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                if (future) "Futures candle practice" else "Candle practice",
+                stringResource(if (future) R.string.practice_futures_title else R.string.practice_options_title),
                 color = theme.text,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
             )
             Text(
-                if (future) {
-                    "Long gains if the next bars rise. Short gains if they fall. P&L is the move times the lots you pick."
-                } else {
-                    "Buy a call if the next bars look higher. Buy a put if they look lower. Book this fill writes the lots you pick into Portfolio → F&O."
-                },
+                stringResource(if (future) R.string.practice_futures_hint else R.string.practice_options_hint),
                 color = theme.textSecondary,
                 fontSize = 11.sp,
                 lineHeight = 15.sp,
+            )
+            Text(
+                stringResource(
+                    if (liveVol) R.string.practice_iv_live else R.string.practice_iv_teaching,
+                    usFmt("%.1f", vol * 100.0),
+                ),
+                color = theme.textSecondary,
+                fontSize = 11.sp,
             )
             if (loading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = theme.primary)
             }
             if (shown.isEmpty() && !loading) {
                 Text(
-                    "No 15-minute candles for ${symbol.uppercase()} yet.",
+                    stringResource(R.string.practice_no_candles_short, symbol.uppercase()),
                     color = theme.textSecondary,
                     fontSize = 12.sp,
                 )
@@ -446,7 +465,7 @@ fun FoCandlePractice(
             )
             Text(
                 "${symbol.uppercase()} · 1 lot = $lot units" +
-                    (if (spot > 0.0) " · ₹${String.format("%,.0f", spot * lot)} notional" else "") +
+                    (if (spot > 0.0) " · ₹${usFmt("%,.0f", spot * lot)} notional" else "") +
                     (if (expiry.isNotBlank()) " · expiry $expiry" else ""),
                 color = theme.textSecondary,
                 fontSize = 11.sp,
@@ -521,7 +540,7 @@ fun FoCandlePractice(
                 }
                 if (shown.isEmpty() && !loading) {
                     Text(
-                        "No 15-minute candles for ${symbol.uppercase()} yet.",
+                        stringResource(R.string.practice_no_candles_short, symbol.uppercase()),
                         color = theme.textSecondary,
                         fontSize = 12.sp,
                     )
@@ -544,7 +563,7 @@ fun FoCandlePractice(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(
-                            "Bar ${safeCursor + 1} of ${candles.size} · close ₹${String.format("%.2f", spot)}",
+                            stringResource(R.string.practice_bar_close, safeCursor + 1, candles.size, usFmt("%.2f", spot)),
                             color = theme.textSecondary,
                             fontSize = 11.sp,
                             maxLines = 1,
@@ -563,9 +582,9 @@ fun FoCandlePractice(
                         }
                         Text(
                             when {
-                                playing -> "Graph moving · ${speed}×"
-                                finished -> "Caught up to the last saved 15-minute bar."
-                                else -> "Graph paused."
+                                playing -> stringResource(R.string.practice_graph_moving, speed.toString())
+                                finished -> stringResource(R.string.practice_caught_up)
+                                else -> stringResource(R.string.practice_graph_paused)
                             },
                             color = theme.textSecondary,
                             fontSize = 11.sp,
@@ -722,7 +741,7 @@ private fun PracticeOrderControls(
                     enabled = !simOpen,
                     label = {
                         Text(
-                            if (offset == 0) "ATM ${String.format("%.0f", price)}" else String.format("%.0f", price),
+                            if (offset == 0) "ATM ${usFmt("%.0f", price)}" else usFmt("%.0f", price),
                             maxLines = 1,
                         )
                     },
@@ -732,7 +751,12 @@ private fun PracticeOrderControls(
     }
     if (!future) {
         Text(
-            "Call ₹${String.format("%.2f", callNow)} · put ₹${String.format("%.2f", putNow)} · strike ₹${String.format("%.0f", strike)}",
+            stringResource(
+                R.string.practice_call_put_strike,
+                usFmt("%.2f", callNow),
+                usFmt("%.2f", putNow),
+                usFmt("%.0f", strike),
+            ),
             color = theme.textSecondary,
             fontSize = 11.sp,
             maxLines = 1,
@@ -750,14 +774,24 @@ private fun PracticeOrderControls(
                 selected = lots == count,
                 onClick = { if (!simOpen) onLots(count) },
                 enabled = !simOpen,
-                label = { Text(if (count == 1) "1 lot" else "$count lots", maxLines = 1) },
+                label = {
+                    Text(
+                        if (count == 1) stringResource(R.string.practice_lot_one) else stringResource(R.string.practice_lots, count),
+                        maxLines = 1,
+                    )
+                },
             )
         }
     }
     if (lot > 0) {
         Text(
-            "1 lot = $lot units" +
-                if (spot > 0.0) " · $lots lot${if (lots == 1) "" else "s"} controls ₹${String.format("%,.0f", spot * lot * lots)}" else "",
+            stringResource(R.string.practice_lot_units, lot) +
+                if (spot > 0.0) {
+                    val lotLabel = if (lots == 1) stringResource(R.string.practice_lot_one) else stringResource(R.string.practice_lots, lots)
+                    stringResource(R.string.practice_lot_controls, lotLabel, usFmt("%,.0f", spot * lot * lots))
+                } else {
+                    ""
+                },
             color = theme.textSecondary,
             fontSize = 11.sp,
             maxLines = 1,
@@ -773,23 +807,23 @@ private fun PracticeOrderControls(
                 onClick = { onOpen("LONG", spot) },
                 enabled = spot > 0.0 && !simOpen,
                 modifier = Modifier.weight(1f),
-            ) { Text("Long", maxLines = 1) }
+            ) { Text(stringResource(R.string.practice_action_long), maxLines = 1) }
             Button(
                 onClick = { onOpen("SHORT", spot) },
                 enabled = spot > 0.0 && !simOpen,
                 modifier = Modifier.weight(1f),
-            ) { Text("Short", maxLines = 1) }
+            ) { Text(stringResource(R.string.practice_action_short), maxLines = 1) }
         } else {
             Button(
                 onClick = { onOpen("CALL", callNow) },
                 enabled = spot > 0.0 && callNow > 0.0 && !simOpen,
                 modifier = Modifier.weight(1f),
-            ) { Text("Buy call", maxLines = 1) }
+            ) { Text(stringResource(R.string.practice_buy_call), maxLines = 1) }
             Button(
                 onClick = { onOpen("PUT", putNow) },
                 enabled = spot > 0.0 && putNow > 0.0 && !simOpen,
                 modifier = Modifier.weight(1f),
-            ) { Text("Buy put", maxLines = 1) }
+            ) { Text(stringResource(R.string.practice_buy_put), maxLines = 1) }
         }
     }
 }
@@ -818,12 +852,22 @@ private fun PracticeResult(
         else -> (mark - open.entryPremium) * contracts
     }
     val maxLoss = if (futureSide) null else open.entryPremium * contracts
-    val lotLabel = if (lots == 1) "1 lot" else "$lots lots"
+    val lotLabel = if (lots == 1) stringResource(R.string.practice_lot_one) else stringResource(R.string.practice_lots, lots)
+    val closedSide = stringResource(
+        when (open.right) {
+            "LONG" -> R.string.practice_side_long
+            "SHORT" -> R.string.practice_side_short
+            "PUT" -> R.string.practice_side_put
+            else -> R.string.practice_side_call
+        },
+    )
+    val pnlText = usFmt("%.0f", pnl)
+    val closedNote = stringResource(R.string.practice_closed, closedSide, lotLabel, pnlText)
     val headline = when (open.right) {
-        "LONG" -> "Long from ₹${String.format("%.2f", open.entrySpot)}. This bar ₹${String.format("%.2f", spot)}. $lotLabel P&L ₹${String.format("%.0f", pnl)}."
-        "SHORT" -> "Short from ₹${String.format("%.2f", open.entrySpot)}. This bar ₹${String.format("%.2f", spot)}. $lotLabel P&L ₹${String.format("%.0f", pnl)}."
-        "PUT" -> "Put bought at ₹${String.format("%.2f", open.entryPremium)}. This bar ₹${String.format("%.2f", mark)}. $lotLabel P&L ₹${String.format("%.0f", pnl)}."
-        else -> "Call bought at ₹${String.format("%.2f", open.entryPremium)}. This bar ₹${String.format("%.2f", mark)}. $lotLabel P&L ₹${String.format("%.0f", pnl)}."
+        "LONG" -> stringResource(R.string.practice_long_line, usFmt("%.2f", open.entrySpot), usFmt("%.2f", spot), lotLabel, pnlText)
+        "SHORT" -> stringResource(R.string.practice_short_line, usFmt("%.2f", open.entrySpot), usFmt("%.2f", spot), lotLabel, pnlText)
+        "PUT" -> stringResource(R.string.practice_put_line, usFmt("%.2f", open.entryPremium), usFmt("%.2f", mark), lotLabel, pnlText)
+        else -> stringResource(R.string.practice_call_line, usFmt("%.2f", open.entryPremium), usFmt("%.2f", mark), lotLabel, pnlText)
     }
     Text(
         headline,
@@ -833,13 +877,13 @@ private fun PracticeResult(
     )
     if (maxLoss != null) {
         Text(
-            "Most you can lose is ₹${String.format("%.0f", maxLoss)}, the premium for $lotLabel.",
+            stringResource(R.string.practice_max_loss, usFmt("%.0f", maxLoss), lotLabel),
             color = theme.textSecondary,
             fontSize = 12.sp,
             lineHeight = 16.sp,
         )
         Text(
-            "This premium is a model from the candle close. It is not a traded option price.",
+            stringResource(R.string.practice_premium_model),
             color = theme.textSecondary,
             fontSize = 11.sp,
             lineHeight = 15.sp,
@@ -847,7 +891,7 @@ private fun PracticeResult(
     }
     if (open.right == "SHORT" && !booked) {
         Text(
-            "Booking a short opens it in Portfolio. Cash is not credited, and the loss is not capped.",
+            stringResource(R.string.practice_short_book),
             color = theme.textSecondary,
             fontSize = 11.sp,
             lineHeight = 15.sp,
@@ -868,10 +912,7 @@ private fun PracticeResult(
         OutlinedButton(
             onClick = {
                 val flattenPrice = if (futureSide) spot else mark
-                onClose(
-                    "Closed the ${open.right.lowercase()}. $lotLabel result ₹${String.format("%.0f", pnl)}.",
-                    flattenPrice,
-                )
+                onClose(closedNote, flattenPrice)
             },
             modifier = Modifier.weight(1f),
         ) { Text(stringResource(if (booked) R.string.practice_close_booked else R.string.practice_close), maxLines = 1) }
@@ -895,7 +936,7 @@ fun PayoffCurveChart(
     val spanX = (maxSpot - minSpot).takeIf { it > 0.0 } ?: 1.0
     val spanY = (maxPay - minPay).takeIf { abs(it) > 0.0 } ?: 1.0
     Text(
-        "Payoff at expiry",
+        stringResource(R.string.practice_payoff),
         color = theme.text,
         fontWeight = FontWeight.Medium,
         fontSize = 12.sp,
@@ -934,7 +975,7 @@ fun PayoffCurveChart(
         )
     }
     Text(
-        "Horizontal line is zero. Vertical line is today's spot. The curve is the recipe at expiry.",
+        stringResource(R.string.practice_payoff_caption),
         color = theme.textSecondary,
         fontSize = 10.sp,
     )

@@ -1,4 +1,5 @@
 package com.bysel.trader.utils
+import com.bysel.trader.ui.format.usFmt
 
 import com.bysel.trader.data.models.HistoryCandle
 import com.bysel.trader.data.models.Quote
@@ -33,9 +34,9 @@ object PromptBuilder {
             val variance = closes.map { (it - avgClose) * (it - avgClose) }.average()
             val volatility = kotlin.math.sqrt(variance)
             contextParts.add("history_count=${lastN.size}")
-            contextParts.add("history_avg=${String.format("%.2f", avgClose)}")
-            contextParts.add("history_vol=${String.format("%.4f", volatility)}")
-            val closesShort = lastN.joinToString(",") { String.format("%.2f", it.close) }
+            contextParts.add("history_avg=${usFmt("%.2f", avgClose)}")
+            contextParts.add("history_vol=${usFmt("%.4f", volatility)}")
+            val closesShort = lastN.joinToString(",") { usFmt("%.2f", it.close) }
             contextParts.add("history_closes=[$closesShort]")
         }
 

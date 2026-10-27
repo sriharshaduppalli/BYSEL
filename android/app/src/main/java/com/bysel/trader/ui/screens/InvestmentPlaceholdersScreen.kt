@@ -1,5 +1,8 @@
 package com.bysel.trader.ui.screens
+import com.bysel.trader.ui.format.usFmt
 
+import androidx.compose.ui.res.stringResource
+import com.bysel.trader.R
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -56,6 +59,7 @@ import com.bysel.trader.data.fno.FoContractFacts
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import com.bysel.trader.data.models.*
+import com.bysel.trader.ui.components.CompactFilterChip
 import com.bysel.trader.ui.components.FnoLiteracyMode
 import com.bysel.trader.ui.components.FnoLiteracyPrimer
 import com.bysel.trader.ui.components.HabitLiteracyCatalog
@@ -423,7 +427,7 @@ private val DecimalKeyboard = androidx.compose.foundation.text.KeyboardOptions(
 )
 
 private fun formatInvestmentCurrency(value: Double): String {
-    return "₹${String.format("%,.2f", value)}"
+    return "₹${usFmt("%,.2f", value)}"
 }
 
 @Composable
@@ -453,7 +457,7 @@ private fun PreTradeEstimateCard(estimate: PreTradeEstimateResponse) {
             )
             if (estimate.side == "BUY") {
                 Text(
-                    "Wallet utilization ${String.format("%.1f", estimate.walletUtilizationPct)}% • ${if (estimate.canAfford) "Affordable" else "Insufficient funds"}",
+                    "Wallet utilization ${usFmt("%.1f", estimate.walletUtilizationPct)}% • ${if (estimate.canAfford) "Affordable" else "Insufficient funds"}",
                     color = if (estimate.canAfford) LocalAppTheme.current.textSecondary else LocalAppTheme.current.negative,
                     fontSize = 12.sp,
                 )
@@ -596,33 +600,37 @@ fun MutualFundsScreen(
                             singleLine = true,
                         )
 
-                        Text("Category", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.mf_category), color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
                         Row(
                             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             categoryOptions.forEach { option ->
-                                TextButton(onClick = { selectedCategory = option }) {
-                                    val selectedText = if (selectedCategory == option) "● $option" else option
-                                    Text(selectedText)
-                                }
+                                CompactFilterChip(
+                                    selected = selectedCategory == option,
+                                    onClick = { selectedCategory = option },
+                                    label = option,
+                                )
                             }
                         }
 
-                        Text("Sort", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.mf_sort), color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
                         Row(
                             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             listOf("name", "nav", "risk", "category").forEach { option ->
-                                TextButton(onClick = { sortBy = option }) {
-                                    val selectedText = if (sortBy == option) "● ${option.uppercase()}" else option.uppercase()
-                                    Text(selectedText)
-                                }
+                                CompactFilterChip(
+                                    selected = sortBy == option,
+                                    onClick = { sortBy = option },
+                                    label = option.uppercase(),
+                                )
                             }
-                            TextButton(onClick = { sortOrder = if (sortOrder == "asc") "desc" else "asc" }) {
-                                Text(if (sortOrder == "asc") "ASC ↑" else "DESC ↓")
-                            }
+                            CompactFilterChip(
+                                selected = true,
+                                onClick = { sortOrder = if (sortOrder == "asc") "desc" else "asc" },
+                                label = if (sortOrder == "asc") "ASC ↑" else "DESC ↓",
+                            )
                         }
 
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -666,9 +674,11 @@ fun MutualFundsScreen(
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf("LOW", "MODERATE", "HIGH").forEach { profile ->
-                                TextButton(onClick = { recommendationRisk = profile }) {
-                                    Text(if (recommendationRisk == profile) "● $profile" else profile)
-                                }
+                                CompactFilterChip(
+                                    selected = recommendationRisk == profile,
+                                    onClick = { recommendationRisk = profile },
+                                    label = profile,
+                                )
                             }
                         }
                         OutlinedTextField(
@@ -841,7 +851,7 @@ fun MutualFundsScreen(
                                     )
                                 }
                                 Text(
-                                    "NAV ₹${"%.2f".format(item.nav)} · ${item.navDate.ifBlank { "date n/a" }}",
+                                    "NAV ₹${usFmt("%.2f", item.nav)} · ${item.navDate.ifBlank { "date n/a" }}",
                                     fontSize = 12.sp,
                                     color = LocalAppTheme.current.text,
                                 )
@@ -889,7 +899,7 @@ fun MutualFundsScreen(
 }
 
 private fun formatMfReturn(value: Double?): String {
-    return if (value == null) "—" else "${"%.1f".format(value)}%"
+    return if (value == null) "—" else "${usFmt("%.1f", value)}%"
 }
 
 private fun sortMutualFundsLocal(
@@ -1598,8 +1608,8 @@ fun AdvancedOrdersScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("$quantity x $symbol", fontWeight = FontWeight.Bold)
                     Text("$orderType order, $validity validity")
-                    limitPrice?.let { Text("Limit price: ₹${String.format("%.2f", it)}") }
-                    triggerPrice?.let { Text("Trigger price: ₹${String.format("%.2f", it)}") }
+                    limitPrice?.let { Text("Limit price: ₹${usFmt("%.2f", it)}") }
+                    triggerPrice?.let { Text("Trigger price: ₹${usFmt("%.2f", it)}") }
                     if (orderType == "MARKET") {
                         Text(
                             text = "A market order fills at the best available price, which may differ from the last traded price.",
@@ -1814,7 +1824,7 @@ fun AdvancedOrdersScreen(
                         Text("${response.status.uppercase()} • ${response.order.symbol} ${response.order.side}", color = LocalAppTheme.current.text)
                         Text(response.message, color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                         response.executedPrice?.let {
-                            Text("Executed Price: ₹${String.format("%.2f", it)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                            Text("Executed Price: ₹${usFmt("%.2f", it)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                         }
                         if (response.riskFlags.isNotEmpty()) {
                             Text("Risk Flags: ${response.riskFlags.joinToString(", ")}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
@@ -1994,9 +2004,13 @@ fun DerivativesIntelligenceScreen(
             expiry = expiry,
             candles = foCandles,
             loading = foCandlesLoading,
-            iv = optionChain?.atmIv ?: 0.0,
+            iv = optionChain
+                ?.takeIf { !it.source.equals("synthetic", ignoreCase = true) }
+                ?.atmIv
+                ?.takeIf { it > 0.0 }
+                ?: 0.0,
             onReload = { viewModel.loadFoCandles(practiceSymbol, "options") },
-            onExtend = { viewModel.loadFoCandles(practiceSymbol, "options") },
+            onExtend = { viewModel.loadFoCandles(practiceSymbol, "options", extend = true) },
             onSymbol = { practiceSymbol = it },
             modifier = Modifier.weight(1f).fillMaxWidth(),
             asScreen = true,
@@ -2005,12 +2019,26 @@ fun DerivativesIntelligenceScreen(
             saved = savedOptionPractice,
             onSession = { viewModel.saveOptionPractice(it) },
             onBook = { right, strike, price, lots ->
-                val bookedIv = optionChain?.atmIv?.takeIf { it > 0.0 } ?: 0.16
-                viewModel.practiceOption(practiceSymbol, expiry, strike, right, "BUY", price, lots, bookedIv)
+                val liveIv = optionChain
+                    ?.takeIf { !it.source.equals("synthetic", ignoreCase = true) }
+                    ?.atmIv
+                    ?.takeIf { it > 0.0 }
+                viewModel.practiceOption(
+                    practiceSymbol, expiry, strike, right, "BUY", price, lots,
+                    iv = liveIv ?: 0.0,
+                    liveIv = liveIv != null,
+                )
             },
             onFlatten = { right, strike, price, lots ->
-                val bookedIv = optionChain?.atmIv?.takeIf { it > 0.0 } ?: savedOptionPractice?.iv ?: 0.16
-                viewModel.practiceOption(practiceSymbol, expiry, strike, right, "SELL", price, lots, bookedIv)
+                val liveIv = optionChain
+                    ?.takeIf { !it.source.equals("synthetic", ignoreCase = true) }
+                    ?.atmIv
+                    ?.takeIf { it > 0.0 }
+                viewModel.practiceOption(
+                    practiceSymbol, expiry, strike, right, "SELL", price, lots,
+                    iv = liveIv ?: 0.0,
+                    liveIv = liveIv != null,
+                )
             },
             optionsContent = {
     LazyColumn(
@@ -2131,7 +2159,7 @@ fun DerivativesIntelligenceScreen(
                 Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            "${chain.symbol} Spot: ₹${String.format("%.2f", chain.spot)}",
+                            "${chain.symbol} Spot: ₹${usFmt("%.2f", chain.spot)}",
                             color = LocalAppTheme.current.text,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
@@ -2172,7 +2200,7 @@ fun DerivativesIntelligenceScreen(
                                 verticalArrangement = Arrangement.spacedBy(2.dp),
                             ) {
                                 Text(
-                                    "₹${String.format("%.0f", contract.strike)}  ·  ${callPlainEnglish(chain.spot, contract.strike)}  ·  ${putPlainEnglish(chain.spot, contract.strike)}",
+                                    "₹${usFmt("%.0f", contract.strike)}  ·  ${callPlainEnglish(chain.spot, contract.strike)}  ·  ${putPlainEnglish(chain.spot, contract.strike)}",
                                     color = LocalAppTheme.current.text,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 12.sp,
@@ -2180,7 +2208,7 @@ fun DerivativesIntelligenceScreen(
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
-                                    "Call last ₹${String.format("%.1f", contract.callLtp)}   ·   Put last ₹${String.format("%.1f", contract.putLtp)}",
+                                    "Call last ₹${usFmt("%.1f", contract.callLtp)}   ·   Put last ₹${usFmt("%.1f", contract.putLtp)}",
                                     color = LocalAppTheme.current.textSecondary,
                                     fontSize = 11.sp,
                                     maxLines = 1,
@@ -2195,7 +2223,7 @@ fun DerivativesIntelligenceScreen(
                                 )
                                 if (showGreeks) {
                                     Text(
-                                        "Call Δ ${String.format("%.2f", contract.callDelta)}  ·  Put Δ ${String.format("%.2f", contract.putDelta)}  ·  Θ ${String.format("%.1f", contract.theta)}  ·  Vega ${String.format("%.1f", contract.vega)}",
+                                        "Call Δ ${usFmt("%.2f", contract.callDelta)}  ·  Put Δ ${usFmt("%.2f", contract.putDelta)}  ·  Θ ${usFmt("%.1f", contract.theta)}  ·  Vega ${usFmt("%.1f", contract.vega)}",
                                         color = LocalAppTheme.current.textSecondary,
                                         fontSize = 11.sp,
                                         maxLines = 2,
@@ -2230,9 +2258,9 @@ fun DerivativesIntelligenceScreen(
                         Text("Bull call spread", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
                         Text(meaning, color = LocalAppTheme.current.textSecondary, fontSize = 12.sp, lineHeight = 16.sp)
                         strategyPreview?.let { preview ->
-                            Text("Max profit ₹${String.format("%.0f", preview.maxProfit)} · max loss ₹${String.format("%.0f", preview.maxLoss)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                            Text("Max profit ₹${usFmt("%.0f", preview.maxProfit)} · max loss ₹${usFmt("%.0f", preview.maxLoss)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                             if (preview.breakevenPoints.isNotEmpty()) {
-                                Text("Breakeven ${preview.breakevenPoints.joinToString { String.format("%.0f", it) }}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                                Text("Breakeven ${preview.breakevenPoints.joinToString { usFmt("%.0f", it) }}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                             }
                             PayoffCurveChart(
                                 points = preview.payoffCurve,
@@ -2367,7 +2395,7 @@ fun WealthOsScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = null) {
                 )
                 WealthMetricTile(
                     title = "Goal Progress",
-                    value = "${String.format("%.1f", averageGoalProgress)}%",
+                    value = "${usFmt("%.1f", averageGoalProgress)}%",
                     caption = "Average across all goals",
                 )
                 WealthMetricTile(
@@ -2396,7 +2424,7 @@ fun WealthOsScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = null) {
                                 Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                                     Text(allocation.key, color = LocalAppTheme.current.text, fontWeight = FontWeight.Medium, fontSize = 12.sp)
                                     Text(
-                                        "${String.format("%.1f", allocation.value)}%",
+                                        "${usFmt("%.1f", allocation.value)}%",
                                         color = LocalAppTheme.current.textSecondary,
                                         fontSize = 11.sp,
                                     )
@@ -2483,7 +2511,7 @@ fun WealthOsScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = null) {
                         fontSize = 12.sp,
                     )
                     Text(
-                        text = "Household share ${String.format("%.1f", sharePercent)}%",
+                        text = "Household share ${usFmt("%.1f", sharePercent)}%",
                         color = LocalAppTheme.current.textSecondary,
                         fontSize = 12.sp,
                     )
@@ -2593,7 +2621,7 @@ fun WealthOsScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = null) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(goal.goalName, color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Progress ${String.format("%.1f", goal.progressPercent)}% • ${formatInvestmentCurrency(goal.currentAmount)} / ${formatInvestmentCurrency(goal.targetAmount)}",
+                        "Progress ${usFmt("%.1f", goal.progressPercent)}% • ${formatInvestmentCurrency(goal.currentAmount)} / ${formatInvestmentCurrency(goal.targetAmount)}",
                         color = LocalAppTheme.current.textSecondary,
                         fontSize = 12.sp,
                     )
@@ -2899,7 +2927,7 @@ fun CopilotCenterScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = nul
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("Post-Trade Summary", color = LocalAppTheme.current.text, fontWeight = FontWeight.SemiBold)
                         Text(review.summary, color = LocalAppTheme.current.text)
-                        Text("PnL Now: ₹${String.format("%.2f", review.pnlNow)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        Text("PnL Now: ₹${usFmt("%.2f", review.pnlNow)}", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                         review.coaching.take(4).forEach {
                             Text("• $it", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
                         }
@@ -3066,7 +3094,7 @@ private fun bullCallLegs(chain: OptionChainResponse?): Pair<String, List<Strateg
     val atm = nearestAtmContract(loaded) ?: return null
     val higher = nextHigherContract(loaded, atm.strike) ?: return null
     if (atm.callLtp <= 0.0 || higher.callLtp < 0.0) return null
-    val meaning = "Buy the ₹${String.format("%.0f", atm.strike)} call and sell the ₹${String.format("%.0f", higher.strike)} call. Profit is capped at the higher strike."
+    val meaning = "Buy the ₹${usFmt("%.0f", atm.strike)} call and sell the ₹${usFmt("%.0f", higher.strike)} call. Profit is capped at the higher strike."
     val legs = listOf(
         StrategyLeg(optionType = "CALL", side = "BUY", strike = atm.strike, premium = atm.callLtp),
         StrategyLeg(optionType = "CALL", side = "SELL", strike = higher.strike, premium = higher.callLtp),

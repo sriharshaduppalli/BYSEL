@@ -142,10 +142,13 @@ fun ScannerScreen(
         viewModel.ensureScannerBoardsLoaded()
     }
 
+    var appliedSavedBoard by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(scannerBoards.activeId) {
+        if (appliedSavedBoard) return@LaunchedEffect
         val board = scannerBoards.active ?: return@LaunchedEffect
         selectedKey = board.mode
         setupFilterKey = board.setupFilter
+        appliedSavedBoard = true
     }
 
     LaunchedEffect(selected) {
@@ -217,6 +220,7 @@ fun ScannerScreen(
                     selected = selected == chip && activeBoard == null,
                     onClick = {
                         selectedKey = chip.name
+                        appliedSavedBoard = true
                         viewModel.clearActiveScannerBoard()
                     },
                     label = chip.title,
@@ -236,7 +240,12 @@ fun ScannerScreen(
                 items(scannerBoards.boards, key = { it.id }) { board ->
                     FilterChip(
                         selected = board.id == activeBoard?.id,
-                        onClick = { viewModel.applyScannerBoard(board.id) },
+                        onClick = {
+                            selectedKey = board.mode
+                            setupFilterKey = board.setupFilter
+                            appliedSavedBoard = true
+                            viewModel.applyScannerBoard(board.id)
+                        },
                         label = {
                             Text(
                                 board.chipLabel(),

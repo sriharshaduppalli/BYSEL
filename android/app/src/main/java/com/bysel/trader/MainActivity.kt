@@ -614,6 +614,7 @@ fun BYSELApp(
     val featuredWatchlistTitle = featuredWatchlist?.name ?: "My Watchlist"
     val activeWatchlistSymbols = watchlistBoard.active?.symbols ?: watchlistSymbols
     val holdings by viewModel.holdings.collectAsStateWithLifecycle()
+    val tradeHistory by viewModel.tradeHistory.collectAsStateWithLifecycle()
     val etfInstruments by viewModel.etfInstruments.collectAsStateWithLifecycle()
     val sipPlans by viewModel.sipPlans.collectAsStateWithLifecycle()
     val alerts by viewModel.alerts.collectAsStateWithLifecycle()
@@ -1199,6 +1200,8 @@ fun BYSELApp(
                                         etfSymbols = etfInstruments.map { it.symbol }.toSet(),
                                         sipPlans = sipPlans,
                                         walletBalance = walletBalance,
+                                        trades = tradeHistory,
+                                        onRefreshTrades = { viewModel.refreshTradeHistory() },
                                         onBrowseEtfs = { navigatePushingCurrent(13) },
                                         onBrowseMutualFunds = { navigatePushingCurrent(11) },
                                         onImportCsv = { text, name -> viewModel.importHoldingsCsv(text, name) },

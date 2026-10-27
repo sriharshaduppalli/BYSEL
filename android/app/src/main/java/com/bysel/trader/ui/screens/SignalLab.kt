@@ -1,4 +1,5 @@
 package com.bysel.trader.ui.screens
+import com.bysel.trader.ui.format.usFmt
 
 import com.bysel.trader.ui.format.formatSignedPct
 import com.bysel.trader.data.models.Quote
@@ -203,8 +204,8 @@ private fun percentFromLevel(last: Double, level: Double?): Double? {
     return ((last - level) / level) * 100.0
 }
 
-private fun formatPercent(value: Double): String = String.format("%.1f%%", value)
+private fun formatPercent(value: Double): String = usFmt("%.1f%%", value)
 
-private fun formatMultiple(value: Double): String = String.format("%.1fx", value)
+private fun formatMultiple(value: Double): String = usFmt("%.1fx", value)
 
 private fun formatSignedPercent(value: Double): String = formatSignedPct(value)

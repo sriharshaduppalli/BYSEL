@@ -1,4 +1,5 @@
 package com.bysel.trader.ui.screens
+import com.bysel.trader.ui.format.usFmt
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.ui.res.stringResource
@@ -362,11 +363,11 @@ private fun JournalEntryCard(
                 }
                 Column {
                     Text(stringResource(R.string.price), fontSize = 10.sp, color = appTheme.textSecondary)
-                    Text("₹${String.format("%.2f", price)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = appTheme.text)
+                    Text("₹${usFmt("%.2f", price)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = appTheme.text)
                 }
                 Column {
                     Text(stringResource(R.string.total), fontSize = 10.sp, color = appTheme.textSecondary)
-                    Text("₹${String.format("%.0f", total)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = appTheme.text)
+                    Text("₹${usFmt("%.0f", total)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = appTheme.text)
                 }
             }
 

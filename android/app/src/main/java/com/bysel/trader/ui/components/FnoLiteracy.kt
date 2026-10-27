@@ -1,4 +1,5 @@
 package com.bysel.trader.ui.components
+import com.bysel.trader.ui.format.usFmt
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -45,7 +46,7 @@ fun pcrPlainEnglish(pcr: Double?): String {
     if (pcr == null) {
         return "PCR compares put open interest to call open interest. Above 1 means more puts than calls."
     }
-    val value = String.format("%.2f", pcr)
+    val value = usFmt("%.2f", pcr)
     return when {
         pcr >= 1.2 ->
             "PCR $value — more put OI than calls. Often read as hedging or caution, not a sell signal."
@@ -57,20 +58,20 @@ fun pcrPlainEnglish(pcr: Double?): String {
 }
 
 fun atmIvPlainEnglish(atmIv: Double?): String {
-    val value = atmIv?.let { String.format("%.1f%%", it * 100.0) } ?: "—"
+    val value = atmIv?.let { usFmt("%.1f%%", it * 100.0) } ?: "—"
     return "ATM IV $value is the market’s priced-in move size. Higher IV makes options more expensive."
 }
 
 fun ivSkewPlainEnglish(skew: Double?): String {
     if (skew == null) return "IV skew compares put vs call implied vol. Puts often cost more as crash insurance."
-    val value = String.format("%+.1f%%", skew * 100.0)
+    val value = usFmt("%+.1f%%", skew * 100.0)
     return "IV skew $value (put IV − call IV). A richer put IV usually means more demand for downside protection."
 }
 
 /** One tape sentence for the options desk — no PCR/IV formula strip. */
 fun optionTapePlainEnglish(pcr: Double?, atmIv: Double?, skew: Double?): String {
     val ivBit = atmIv?.let {
-        "Options here are priced for about a ${String.format("%.0f", it * 100.0)}% yearly move."
+        "Options here are priced for about a ${usFmt("%.0f", it * 100.0)}% yearly move."
     } ?: "Option prices already include a move-size premium."
     val pcrBit = when {
         pcr == null -> ""
@@ -108,7 +109,7 @@ fun putPlainEnglish(spot: Double, strike: Double): String {
 fun basisPlainEnglish(basis: Double, spot: Double): String {
     val absBasis = abs(basis)
     val vsSpot = if (spot > 0.0) absBasis / spot * 100.0 else 0.0
-    val pct = if (vsSpot > 0.0) String.format(" (%.2f%% vs spot)", vsSpot) else ""
+    val pct = if (vsSpot > 0.0) usFmt(" (%.2f%% vs spot)", vsSpot) else ""
     return when {
         basis > 0.5 -> "Futures trade at a premium to spot$pct — buyers are paying extra for later delivery."
         basis < -0.5 -> "Futures trade at a discount to spot$pct — the contract is cheaper than cash."

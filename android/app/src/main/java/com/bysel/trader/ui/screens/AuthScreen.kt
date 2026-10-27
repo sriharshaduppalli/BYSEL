@@ -1,4 +1,5 @@
 package com.bysel.trader.ui.screens
+import com.bysel.trader.ui.format.usFmt
 
 import androidx.compose.foundation.background
 import androidx.compose.ui.res.stringResource
@@ -511,7 +512,7 @@ fun AuthScreen(
                 }
                 if (otpCountdown > 0) {
                     Text(
-                        text = "Code expires in ${otpCountdown / 60}:${String.format("%02d", otpCountdown % 60)}",
+                        text = "Code expires in ${otpCountdown / 60}:${usFmt("%02d", otpCountdown % 60)}",
                         color = if (otpCountdown < 15) MaterialTheme.colorScheme.error else appTheme.textSecondary,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(top = 4.dp)

@@ -1,4 +1,5 @@
 package com.bysel.trader.ui.screens
+import com.bysel.trader.ui.format.usFmt
 
 import android.widget.Toast
 import androidx.compose.ui.res.stringResource
@@ -255,7 +256,7 @@ fun StockDetailScreen(
     ) {
         val volumeValue = when {
             volumeRatio != null && volumePulseLabel != null ->
-                "${String.format("%.2f", volumeRatio)}x · $volumePulseLabel"
+                "${usFmt("%.2f", volumeRatio)}x · $volumePulseLabel"
             (quote.volume ?: 0L) > 0L -> formatVolumeCompact(quote.volume)
             else -> "—"
         }
@@ -298,7 +299,7 @@ fun StockDetailScreen(
             ),
             DetailMetric(
                 title = "52W Position",
-                value = yearPositionPct?.let { "${String.format("%.0f", it)}%" } ?: "N/A",
+                value = yearPositionPct?.let { "${usFmt("%.0f", it)}%" } ?: "N/A",
                 caption = "Where price sits inside the 52-week range",
                 accent = theme.primary,
             ),
@@ -726,7 +727,7 @@ private fun StockDetailHeroCard(
                 }
                 yearPositionPct?.let {
                     InfoChip(label = {
-                        Text("52W ${String.format("%.0f", it)}%", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("52W ${usFmt("%.0f", it)}%", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     })
                 }
                 quote.volume?.let {
@@ -890,7 +891,7 @@ private fun TradeSetupCard(
                     )
                     DetailLineItem(
                         label = "Wallet utilization",
-                        value = "${String.format("%.1f", estimate.walletUtilizationPct)}%",
+                        value = "${usFmt("%.1f", estimate.walletUtilizationPct)}%",
                     )
                     DetailLineItem(
                         label = "Impact tag",
@@ -1446,7 +1447,7 @@ private fun StockFundamentalsCard(quote: Quote, row: ScannerRow?) {
         "Margin" to percentOrDash(metrics?.marginPct),
         "Revenue growth" to percentOrDash(metrics?.revenueGrowth),
         "Earnings growth" to percentOrDash(metrics?.earningsGrowth),
-        "Dividend yield" to quote.dividendYield?.let { "${String.format("%.2f", it)}%" }.orDash(),
+        "Dividend yield" to quote.dividendYield?.let { "${usFmt("%.2f", it)}%" }.orDash(),
         "Promoter pledge" to percentOrDash(metrics?.pledge),
         "RSI" to numberOrDash(metrics?.rsi, 0),
     )
@@ -1517,10 +1518,10 @@ private fun volumeOrDash(value: Long?): String = value?.takeIf { it > 0L }?.let 
 
 private fun numberOrDash(value: Double?, decimals: Int): String {
     if (value == null) return "—"
-    return String.format("%.${decimals}f", value)
+    return usFmt("%.${decimals}f", value)
 }
 
-private fun percentOrDash(value: Double?): String = value?.let { "${String.format("%.0f", it)}%" } ?: "—"
+private fun percentOrDash(value: Double?): String = value?.let { "${usFmt("%.0f", it)}%" } ?: "—"
 
 private fun String?.orDash(): String = this?.takeIf { it.isNotBlank() } ?: "—"
 
@@ -1565,11 +1566,11 @@ private fun DetailSnapshotCard(quote: Quote) {
             )
             DetailLineItem(
                 label = "P/E / EPS",
-                value = "${quote.trailingPE?.let { String.format("%.2f", it) } ?: "N/A"} / ${quote.eps?.let { String.format("%.2f", it) } ?: "N/A"}",
+                value = "${quote.trailingPE?.let { usFmt("%.2f", it) } ?: "N/A"} / ${quote.eps?.let { usFmt("%.2f", it) } ?: "N/A"}",
             )
             DetailLineItem(
                 label = "Dividend yield",
-                value = quote.dividendYield?.let { "${String.format("%.2f", it)}%" } ?: "N/A",
+                value = quote.dividendYield?.let { "${usFmt("%.2f", it)}%" } ?: "N/A",
             )
             if (lastUpdated.isNotBlank()) {
                 DetailLineItem(label = "Last updated", value = lastUpdated)

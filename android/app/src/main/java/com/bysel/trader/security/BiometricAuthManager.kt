@@ -1,4 +1,5 @@
 package com.bysel.trader.security
+import com.bysel.trader.ui.format.usFmt
 
 import android.content.Context
 import androidx.biometric.BiometricManager
@@ -183,7 +184,7 @@ class BiometricAuthManager(private val context: Context) {
         authenticate(
             activity = activity,
             title = "Confirm Transaction",
-            subtitle = "Trade amount: ₹${String.format("%.2f", amount)}",
+            subtitle = "Trade amount: ₹${usFmt("%.2f", amount)}",
             description = "Authenticate to confirm this order",
             onSuccess = onSuccess,
             onError = { _, _ -> onCancel() }

@@ -1,4 +1,5 @@
 package com.bysel.trader.data.api
+import com.bysel.trader.ui.format.usFmt
 
 import com.bysel.trader.data.models.*
 import retrofit2.http.*
@@ -664,7 +665,7 @@ data class EarningsEntry(
         val match = Regex("""datetime\.date\((\d+),\s*(\d+),\s*(\d+)\)""").find(raw)
         if (match != null) {
             val (year, month, day) = match.destructured
-            return String.format("%s-%02d-%02d", year, month.toInt(), day.toInt())
+            return usFmt("%s-%02d-%02d", year, month.toInt(), day.toInt())
         }
         return raw.take(10)
     }

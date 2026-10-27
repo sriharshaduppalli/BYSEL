@@ -322,6 +322,14 @@ open class TradingRepository(private val database: BYSELDatabase) {
         }
     }
 
+    suspend fun loadTradeHistory(): Result<List<TradeHistory>> {
+        return try {
+            Result.Success(apiService.getTradeHistory())
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
     fun getTradeHistory(): Flow<Result<List<TradeHistory>>> = flow {
         try {
             emit(Result.Loading)

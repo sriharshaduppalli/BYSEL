@@ -1,4 +1,5 @@
 package com.bysel.trader.ui.screens
+import com.bysel.trader.ui.format.usFmt
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -651,20 +652,20 @@ private fun publicCandidateThesis(thesis: String): String {
     return cleaned.ifBlank { "Tap for stock context" }
 }
 
-private fun formatSignalCurrency(value: Double): String = "₹${String.format("%.2f", value)}"
+private fun formatSignalCurrency(value: Double): String = "₹${usFmt("%.2f", value)}"
 
 private fun formatSignalChange(value: Double): String = buildString {
     if (value > 0) append("+")
-    append(String.format("%.2f", value))
+    append(usFmt("%.2f", value))
     append("%")
 }
 
 private fun formatCompactVolume(volume: Long?): String {
     val v = volume ?: return "—"
     return when {
-        v >= 10_000_000 -> String.format("%.1fCr", v / 10_000_000.0)
-        v >= 100_000 -> String.format("%.1fL", v / 100_000.0)
-        v >= 1_000 -> String.format("%.1fK", v / 1_000.0)
+        v >= 10_000_000 -> usFmt("%.1fCr", v / 10_000_000.0)
+        v >= 100_000 -> usFmt("%.1fL", v / 100_000.0)
+        v >= 1_000 -> usFmt("%.1fK", v / 1_000.0)
         else -> v.toString()
     }
 }

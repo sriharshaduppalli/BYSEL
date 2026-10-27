@@ -1,4 +1,5 @@
 package com.bysel.trader.ui.screens
+import com.bysel.trader.ui.format.usFmt
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -357,7 +358,7 @@ private fun InvestorPortfolioCard(
                         InfoChip(
                             label = {
                                 Text(
-                                    text = "${holding.symbol} · ${String.format("%.1f", holding.holdingPct)}%",
+                                    text = "${holding.symbol} · ${usFmt("%.1f", holding.holdingPct)}%",
                                     fontSize = 11.sp,
                                 )
                             },
@@ -542,7 +543,7 @@ private fun InvestorHoldingRow(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "${String.format("%.2f", holding.holdingPct)}% holding",
+                        text = "${usFmt("%.2f", holding.holdingPct)}% holding",
                         color = theme.primary,
                         fontSize = 11.sp,
                     )
@@ -781,8 +782,8 @@ private fun InvestorInitialsAvatar(name: String, color: Color) {
 
 private fun formatDelta(value: Double): String = buildString {
     if (value > 0.0) append("+")
-    append(String.format("%.2f", value))
+    append(usFmt("%.2f", value))
     append("%")
 }
 
-private fun formatHolding(value: Double): String = String.format("%.2f%%", value)
+private fun formatHolding(value: Double): String = usFmt("%.2f%%", value)

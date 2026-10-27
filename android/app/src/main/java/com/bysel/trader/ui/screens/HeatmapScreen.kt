@@ -1,4 +1,5 @@
 package com.bysel.trader.ui.screens
+import com.bysel.trader.ui.format.usFmt
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -590,7 +591,7 @@ private fun MarketBreathCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Best Sector", color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
                     Text(
-                        "${heatmap.bestSector.name} (${String.format("%+.2f", bestChange)}%)",
+                        "${heatmap.bestSector.name} (${usFmt("%+.2f", bestChange)}%)",
                         color = LocalAppTheme.current.positive,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
@@ -604,7 +605,7 @@ private fun MarketBreathCard(
                 ) {
                     Text("Worst Sector", color = LocalAppTheme.current.textSecondary, fontSize = 11.sp)
                     Text(
-                        "${heatmap.worstSector.name} (${String.format("%+.2f", worstChange)}%)",
+                        "${heatmap.worstSector.name} (${usFmt("%+.2f", worstChange)}%)",
                         color = LocalAppTheme.current.negative,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
@@ -828,7 +829,7 @@ private fun SectorHeatmapCard(
                     }
                 }
                 Text(
-                    "${String.format("%+.2f", sector.avgChange)}%",
+                    "${usFmt("%+.2f", sector.avgChange)}%",
                     color = sectorColor,
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp
@@ -906,7 +907,7 @@ private fun StockHeatTile(
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                "${String.format("%+.1f", stock.pctChange)}%",
+                "${usFmt("%+.1f", stock.pctChange)}%",
                 color = onTile.copy(alpha = 0.9f),
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Medium

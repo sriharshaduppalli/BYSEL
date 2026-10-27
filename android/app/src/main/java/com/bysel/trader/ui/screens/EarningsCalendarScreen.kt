@@ -1,4 +1,5 @@
 package com.bysel.trader.ui.screens
+import com.bysel.trader.ui.format.usFmt
 
 import androidx.compose.foundation.background
 import androidx.compose.ui.res.stringResource
@@ -197,25 +198,25 @@ private fun EarningsCard(
             Row(modifier = Modifier.fillMaxWidth()) {
                 EarningsMetric(
                     label = "EPS Fwd",
-                    value = epsEstimate?.let { String.format("%.2f", it) } ?: "N/A",
+                    value = epsEstimate?.let { usFmt("%.2f", it) } ?: "N/A",
                     color = appTheme.textSecondary,
                     modifier = Modifier.weight(1f)
                 )
                 EarningsMetric(
                     label = "EPS Trail",
-                    value = epsActual?.let { String.format("%.2f", it) } ?: "N/A",
+                    value = epsActual?.let { usFmt("%.2f", it) } ?: "N/A",
                     color = appTheme.textSecondary,
                     modifier = Modifier.weight(1f)
                 )
                 EarningsMetric(
                     label = "Trailing P/E",
-                    value = trailingPe?.let { String.format("%.1f", it) } ?: "N/A",
+                    value = trailingPe?.let { usFmt("%.1f", it) } ?: "N/A",
                     color = appTheme.textSecondary,
                     modifier = Modifier.weight(1f)
                 )
                 EarningsMetric(
                     label = "Rev growth",
-                    value = entry.revenueGrowth?.let { String.format("%.1f%%", it) } ?: "N/A",
+                    value = entry.revenueGrowth?.let { usFmt("%.1f%%", it) } ?: "N/A",
                     color = appTheme.textSecondary,
                     modifier = Modifier.weight(1f)
                 )

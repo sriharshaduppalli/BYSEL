@@ -314,4 +314,52 @@
     <string name="sd_alert_up" formatted="false">Alert +2%</string>
     <string name="sd_alert_down" formatted="false">Alert -2%</string>
     <string name="sd_research">Research (educational)</string>
+    <string name="portfolio_find_stocks">Find stocks</string>
+    <string name="portfolio_browse_etfs">Browse ETFs</string>
+    <string name="portfolio_browse_mf">Browse mutual funds</string>
+    <string name="portfolio_empty_equity">No equity holdings yet. Paper-buy a stock from Trade or Search.</string>
+    <string name="portfolio_empty_etf">No ETF holdings yet. Gold, Nifty, and sector ETFs live here.</string>
+    <string name="portfolio_empty_equity_short">No equity holdings yet.</string>
+    <string name="portfolio_empty_etf_short">No ETF holdings in this paper book.</string>
+    <string name="portfolio_empty_mf">No mutual-fund holdings yet.</string>
+    <string name="portfolio_empty_fno">No F&amp;O positions in holdings.</string>
+    <string name="portfolio_xirr">Money-weighted return %1$s a year from your fills and today\'s open positions. Teaching figure, not a forecast.</string>
+    <string name="practice_futures_title">Futures candle practice</string>
+    <string name="practice_options_title">Candle practice</string>
+    <string name="practice_futures_hint">Long gains if the next bars rise. Short gains if they fall. P&amp;L is the move times the lots you pick.</string>
+    <string name="practice_options_hint">Buy a call if the next bars look higher. Buy a put if they look lower. Booking writes the lots into Portfolio, F&amp;O.</string>
+    <string name="practice_iv_live">Premiums use the live ATM volatility of %1$s%%.</string>
+    <string name="practice_iv_teaching">No live ATM volatility is loaded. Premiums use a 16%% teaching assumption, not the market\'s volatility.</string>
+    <string name="calendar_2027_note">2027 lists Republic Day (26 Jan) and Ambedkar Jayanti (14 Apr) only. Those are weekday national holidays. NSE has not published the 2027 festival list, so those dates are not guessed.</string>
+    <string name="mf_category">Category</string>
+    <string name="mf_sort">Sort</string>
+    <string name="practice_no_candles">No 15-minute candles for %1$s yet. Try another symbol or reload after the session opens.</string>
+    <string name="practice_no_candles_short">No 15-minute candles for %1$s yet.</string>
+    <string name="practice_bar_close">Bar %1$d of %2$d · close ₹%3$s</string>
+    <string name="practice_graph_moving">Graph moving · %1$s×</string>
+    <string name="practice_caught_up">Caught up to the last saved 15-minute bar.</string>
+    <string name="practice_graph_paused">Graph paused.</string>
+    <string name="practice_call_put_strike">Call ₹%1$s · put ₹%2$s · strike ₹%3$s</string>
+    <string name="practice_lot_one">1 lot</string>
+    <string name="practice_lots">%1$d lots</string>
+    <string name="practice_lot_units">1 lot = %1$d units</string>
+    <string name="practice_lot_controls"> · %1$s controls ₹%2$s</string>
+    <string name="practice_action_long">Long</string>
+    <string name="practice_action_short">Short</string>
+    <string name="practice_buy_call">Buy call</string>
+    <string name="practice_buy_put">Buy put</string>
+    <string name="practice_long_line">Long from ₹%1$s. This bar ₹%2$s. %3$s P&amp;L ₹%4$s.</string>
+    <string name="practice_short_line">Short from ₹%1$s. This bar ₹%2$s. %3$s P&amp;L ₹%4$s.</string>
+    <string name="practice_put_line">Put bought at ₹%1$s. This bar ₹%2$s. %3$s P&amp;L ₹%4$s.</string>
+    <string name="practice_call_line">Call bought at ₹%1$s. This bar ₹%2$s. %3$s P&amp;L ₹%4$s.</string>
+    <string name="practice_max_loss">Most you can lose is ₹%1$s, the premium for %2$s.</string>
+    <string name="practice_premium_model">This premium is a model from the candle close. It is not a traded option price.</string>
+    <string name="practice_short_book">Booking a short opens it in Portfolio. Cash is not credited, and the loss is not capped.</string>
+    <string name="practice_closed">Closed the %1$s. %2$s result ₹%3$s.</string>
+    <string name="practice_side_long">long</string>
+    <string name="practice_side_short">short</string>
+    <string name="practice_side_call">call</string>
+    <string name="practice_side_put">put</string>
+    <string name="practice_payoff">Payoff at expiry</string>
+    <string name="practice_payoff_caption">Horizontal line is zero. Vertical line is today\'s spot. The curve is the recipe at expiry.</string>
 </resources>

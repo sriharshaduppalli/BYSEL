@@ -122,10 +122,31 @@ object MarketHolidayCalendar {
     )
 
     /**
+     * Weekday national holidays for 2027. NSE has not published the 2027 festival
+     * circular, so lunar dates are not listed here.
+     * 26 Jan 2027 is a Tuesday. 14 Apr 2027 is a Wednesday.
+     * Independence Day, Gandhi Jayanti, and Christmas fall on a weekend in 2027.
+     */
+    private val holidays2027 = listOf(
+        MarketHoliday(
+            date = LocalDate.of(2027, 1, 26),
+            holidayName = "Republic Day",
+            description = "National holiday. NSE has not published the rest of the 2027 festival list.",
+        ),
+        MarketHoliday(
+            date = LocalDate.of(2027, 4, 14),
+            holidayName = "Dr. Baba Saheb Ambedkar Jayanti",
+            description = "National holiday. Festival closures for 2027 are added when NSE publishes them.",
+        ),
+    )
+
+    private val holidays = holidays2026 + holidays2027
+
+    /**
      * Check if a given date is a market holiday
      */
     fun isMarketHoliday(date: LocalDate, exchange: String = "NSE"): Boolean {
-        return holidays2026.any { 
+        return holidays.any {
             it.date == date && it.exchanges.contains(exchange)
         }
     }
@@ -134,15 +155,15 @@ object MarketHolidayCalendar {
      * Get holiday info for a specific date
      */
     fun getHolidayInfo(date: LocalDate): MarketHoliday? {
-        return holidays2026.find { it.date == date }
+        return holidays.find { it.date == date }
     }
 
     /**
      * Get all holidays in a month
      */
     fun getHolidaysInMonth(year: Int, month: Int): List<MarketHoliday> {
-        return holidays2026.filter { 
-            it.date.year == year && it.date.monthValue == month 
+        return holidays.filter {
+            it.date.year == year && it.date.monthValue == month
         }
     }
 
@@ -151,7 +172,7 @@ object MarketHolidayCalendar {
      */
     fun getUpcomingHolidays(count: Int = 5): List<MarketHoliday> {
         val today = LocalDate.now()
-        return holidays2026
+        return holidays
             .filter { it.date >= today }
             .sortedBy { it.date }
             .take(count)
@@ -161,7 +182,7 @@ object MarketHolidayCalendar {
      * Get all holidays for the year
      */
     fun getAllHolidays(): List<MarketHoliday> {
-        return holidays2026.sortedBy { it.date }
+        return holidays.sortedBy { it.date }
     }
 
     /**

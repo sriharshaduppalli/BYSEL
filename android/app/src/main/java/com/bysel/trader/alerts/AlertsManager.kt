@@ -1,4 +1,5 @@
 package com.bysel.trader.alerts
+import com.bysel.trader.ui.format.usFmt
 
 import android.Manifest
 import android.app.NotificationChannel
@@ -109,8 +110,8 @@ class AlertsManager(private val context: Context) {
         if (!canDeliverNotifications()) return
 
         val symbol = alert.symbol.trim().uppercase()
-        val threshold = String.format("%.2f", alert.thresholdPrice)
-        val now = String.format("%.2f", price)
+        val threshold = usFmt("%.2f", alert.thresholdPrice)
+        val now = usFmt("%.2f", price)
         // Title = most important scan line (≤30 chars); keep app name out of the title.
         val title = symbol.take(30)
         val body = when (alert.alertType.uppercase()) {

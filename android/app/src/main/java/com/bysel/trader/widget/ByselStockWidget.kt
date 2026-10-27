@@ -1,4 +1,5 @@
 package com.bysel.trader.widget
+import com.bysel.trader.ui.format.usFmt
 
 import android.content.Context
 import android.content.Intent
@@ -139,17 +140,17 @@ class ByselStockWidget : GlanceAppWidget() {
                 val niftyChange = nifty?.second ?: 0.0
 
                 WidgetData(
-                    portfolioValue = "₹${String.format("%,.0f", portfolio.value)}",
-                    pnlText = "${if (pnlPositive) "+" else ""}${String.format("%.2f", portfolio.pnlPercent)}% today",
+                    portfolioValue = "₹${usFmt("%,.0f", portfolio.value)}",
+                    pnlText = "${if (pnlPositive) "+" else ""}${usFmt("%.2f", portfolio.pnlPercent)}% today",
                     pnlPositive = pnlPositive,
-                    niftyLevel = niftyLevel?.let { String.format("%,.0f", it) } ?: "--",
-                    niftyChange = "${String.format("%+.2f", niftyChange)}%",
+                    niftyLevel = niftyLevel?.let { usFmt("%,.0f", it) } ?: "--",
+                    niftyChange = "${usFmt("%+.2f", niftyChange)}%",
                     niftyPositive = niftyChange >= 0,
                     topGainer = sortedByChange.firstOrNull()?.let { s ->
-                        "${s.symbol} +${String.format("%.1f", s.pctChange)}%"
+                        "${s.symbol} +${usFmt("%.1f", s.pctChange)}%"
                     } ?: "--",
                     topLoser = sortedByChange.lastOrNull()?.let { s ->
-                        "${s.symbol} ${String.format("%.1f", s.pctChange)}%"
+                        "${s.symbol} ${usFmt("%.1f", s.pctChange)}%"
                     } ?: "--",
                     lastUpdated = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
                         .format(java.util.Date()),

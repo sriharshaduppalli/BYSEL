@@ -12,7 +12,8 @@ import kotlin.math.sqrt
 
 /**
  * Marks a booked paper option or future from the underlying price.
- * Option prices use a fixed 16% volatility. They are not traded option prints.
+ * Option prices use the volatility saved with the fill. A fill with no saved
+ * volatility uses a 16% teaching assumption. They are not traded option prints.
  */
 object PaperFoMark {
     private val IST: ZoneId = ZoneId.of("Asia/Kolkata")
@@ -49,7 +50,7 @@ object PaperFoMark {
         return if (parsed.call == null) {
             "Marked from the underlying price. Not the futures contract last."
         } else {
-            "Marked from the underlying at the volatility booked with this fill. Not a traded option price."
+            "Marked from the underlying. A fill with no saved volatility uses a 16% teaching assumption, not a traded option price."
         }
     }
 

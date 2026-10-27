@@ -214,6 +214,14 @@ fun MarketCalendarScreen(onBack: () -> Unit) {
             items(holidaysToShow) { holiday ->
                 HolidayCard(holiday = holiday, isToday = holiday.date == today)
             }
+            item {
+                Text(
+                    text = stringResource(R.string.calendar_2027_note),
+                    color = LocalAppTheme.current.textSecondary,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(vertical = 8.dp),
+                )
+            }
             
             // Bottom spacing
             item {

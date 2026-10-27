@@ -75,6 +75,8 @@ HISTORY_ALLOWED_INTERVALS = {
 # If Yahoo returns empty for a preferred interval, try these in order.
 HISTORY_INTERVAL_FALLBACKS = {
     ("5d", "15m"): [("5d", "15m"), ("5d", "30m"), ("5d", "1h"), ("5d", "5m")],
+    ("1mo", "15m"): [("1mo", "15m"), ("1mo", "30m"), ("1mo", "1h"), ("1mo", "1d")],
+    ("3mo", "1h"): [("3mo", "1h"), ("3mo", "1d")],
     ("5d", "30m"): [("5d", "30m"), ("5d", "15m"), ("5d", "1h")],
     ("1mo", "1d"): [("1mo", "1d"), ("1mo", "1h")],
     ("3mo", "1d"): [("3mo", "1d")],

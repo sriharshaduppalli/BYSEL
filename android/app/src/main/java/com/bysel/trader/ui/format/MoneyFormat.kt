@@ -39,6 +39,9 @@ fun indianDigits(value: Double, decimals: Int = 2): String {
     return if (negative) "-$grouped$decPart" else "$grouped$decPart"
 }
 
+/** Decimal numbers stay on a dot even when the device locale uses a comma. */
+fun usFmt(pattern: String, vararg args: Any?): String = String.format(Locale.US, pattern, *args)
+
 /** Rupee amount with Indian grouping, e.g. `₹5,24,850.00`. */
 fun formatInr(value: Double, decimals: Int = 2): String = "₹${indianDigits(value, decimals)}"
 
