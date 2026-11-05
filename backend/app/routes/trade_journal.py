@@ -25,6 +25,22 @@ logger = logging.getLogger(__name__)
 journal_router = APIRouter(prefix="/api/ai/v2/journal", tags=["AI Trade Journal"])
 
 
+def _json_safe(value: Any) -> Any:
+    """Drop NaN and infinity so the journal response can be sent as JSON."""
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, (int, float)):
+        number = float(value)
+        if number != number or number in (float("inf"), float("-inf")):
+            return None
+        return value
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    return value
+
+
 def _entry_to_dict(row: TradeJournalModel) -> Dict[str, Any]:
     context: Dict[str, Any] = {}
     auto_notes: List[str] = []
@@ -39,7 +55,7 @@ def _entry_to_dict(row: TradeJournalModel) -> Dict[str, Any]:
     except Exception:
         auto_notes = []
     created = row.created_at or datetime.now(timezone.utc)
-    return {
+    return _json_safe({
         "id": row.id,
         "userId": row.user_id,
         "symbol": row.symbol,
@@ -53,7 +69,7 @@ def _entry_to_dict(row: TradeJournalModel) -> Dict[str, Any]:
         "autoNotes": auto_notes,
         "userNote": row.user_note or "",
         "outcome": row.outcome,
-    }
+    })
 
 
 @journal_router.post("/log")
@@ -126,7 +142,7 @@ async def log_trade(
             price=price,
             total=0.0 if side == "STUDY" else qty * price,
             order_id=int(order_id) if order_id is not None else None,
-            context_json=json.dumps({} if side == "STUDY" else context),
+            context_json=json.dumps(_json_safe({} if side == "STUDY" else context)),
             auto_notes_json=json.dumps(
                 ["Study note. Not a paper order and not a recommendation."]
                 if side == "STUDY"
@@ -210,7 +226,7 @@ async def get_journal_insights(
     scored = score_session_habits(orders, journal_entries=journal_rows)
     sample = int(scored.get("sampleSize") or 0)
     if sample < 3 and len(recent) < 3:
-        return {
+        return _json_safe({
             "hasEnoughData": False,
             "message": (
                 f"Need at least {MIN_PATTERN_TRADES} paper fills (or 3 journaled trades) "
@@ -222,7 +238,7 @@ async def get_journal_insights(
             "sells": 0,
             "topSymbols": [],
             "paperNote": scored.get("paperNote") or "",
-        }
+        })
 
     buys = [e for e in recent if e.get("side") == "BUY"]
     sells = [e for e in recent if e.get("side") == "SELL"]
@@ -256,7 +272,7 @@ async def get_journal_insights(
             ),
         })
 
-    return {
+    return _json_safe({
         "hasEnoughData": bool(scored.get("hasEnoughData")) or len(recent) >= 3,
         "totalTrades": sample or len(recent),
         "buys": len(buys) if recent else int((scored.get("stats") or {}).get("buys") or 0),
@@ -266,7 +282,7 @@ async def get_journal_insights(
             [{"symbol": o.symbol, "trades": 1} for o in orders if getattr(o, "symbol", None)]
         ),
         "paperNote": scored.get("paperNote") or "",
-    }
+    })
 
 
 def _safe_float(value: Any) -> Optional[float]:
