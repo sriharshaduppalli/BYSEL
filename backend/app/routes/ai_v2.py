@@ -824,56 +824,153 @@ def _fetch_one_earnings_row(sym: str) -> Dict:
 
     if not row.get("nextEarningsDate"):
         curated = _CURATED_EARNINGS_DATES.get(sym)
-        if curated:
+        if curated and str(curated[0]) >= date_cls.today().isoformat():
             row["nextEarningsDate"] = curated[0]
             row["sector"] = row.get("sector") or curated[1]
             row["estimated"] = True
+    return _finite_earnings_row(row)
+
+
+_INDEX_CALENDAR_TOKENS = {"NIFTY", "NIFTY50", "BANKNIFTY", "SENSEX", "INDIAVIX"}
+_EARNINGS_CACHE_TTL = 6 * 3600
+_earnings_cache: Dict[str, tuple] = {}
+import threading
+_earnings_cache_guard = threading.Lock()
+
+
+def _finite_number(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number or number in (float("inf"), float("-inf")):
+        return None
+    return number
+
+
+def _finite_earnings_row(row: Dict) -> Dict:
+    cleaned = dict(row)
+    for key in ("epsTrailing", "epsForward", "revenueGrowth", "pe"):
+        number = _finite_number(cleaned.get(key))
+        cleaned[key] = None if number is None else round(number, 2 if key.startswith("eps") else 1)
+    return cleaned
+
+
+def calendar_symbols(requested: List[str]) -> List[str]:
+    """Watchlist names plus the Nifty 50 board. Index tokens are not companies."""
+    from ..market_scanner import NIFTY50_UNIVERSE
+
+    out: List[str] = []
+    seen = set()
+    for raw in list(requested) + list(NIFTY50_UNIVERSE):
+        sym = str(raw or "").strip().upper().replace(".NS", "").replace(".BO", "")
+        if not sym or sym in _INDEX_CALENDAR_TOKENS or sym in seen:
+            continue
+        seen.add(sym)
+        out.append(sym)
+    return out
+
+
+def upcoming_rows(rows: List[Dict], today: str) -> List[Dict]:
+    """Keep a row only when the quote feed gave a result date that is still ahead."""
+    kept = []
+    for row in rows:
+        date_text = str(row.get("nextEarningsDate") or "")[:10]
+        if len(date_text) == 10 and date_text >= today:
+            kept.append(row)
+    kept.sort(key=lambda row: str(row.get("nextEarningsDate") or "9999"))
+    return kept
+
+
+def _cached_earnings_row(symbol: str):
+    import time
+
+    with _earnings_cache_guard:
+        hit = _earnings_cache.get(symbol)
+    if not hit:
+        return None
+    stored_at, row = hit
+    if time.time() - stored_at > _EARNINGS_CACHE_TTL:
+        return None
+    return row
+
+
+def _store_earnings_row(symbol: str, row: Dict) -> None:
+    import time
+
+    with _earnings_cache_guard:
+        _earnings_cache[symbol] = (time.time(), row)
+
+
+def _fetch_cached_earnings_row(symbol: str) -> Dict:
+    cached = _cached_earnings_row(symbol)
+    if cached is not None:
+        return cached
+    row = _fetch_one_earnings_row(symbol)
+    _store_earnings_row(symbol, row)
     return row
 
 
 @router.get("/earnings-calendar")
 async def get_earnings_calendar(symbols: str = ""):
     """
-    Upcoming earnings dates + EPS history for watchlist stocks.
-    Uses Yahoo when available; curated approximate dates when Yahoo is blocked.
+    Upcoming result dates for the Nifty 50 board plus any names the app sent.
+    A name is omitted when the quote feed has no date still ahead.
     """
     import asyncio
     from datetime import date
 
+    today = date.today().isoformat()
     try:
-        sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
-        if not sym_list:
-            sym_list = ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "ITC", "WIPRO", "SBIN"]
-
-        rows = await asyncio.gather(
-            *[asyncio.to_thread(_fetch_one_earnings_row, sym) for sym in sym_list[:12]]
-        )
-        calendar_items = list(rows)
-        calendar_items.sort(key=lambda x: x.get("nextEarningsDate") or "9999")
-
+        requested = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        sym_list = calendar_symbols(requested)
+        fresh: List[Dict] = []
+        missing: List[str] = []
+        for sym in sym_list:
+            cached = _cached_earnings_row(sym)
+            if cached is None:
+                missing.append(sym)
+            else:
+                fresh.append(cached)
+        if missing:
+            tasks = [
+                asyncio.create_task(asyncio.to_thread(_fetch_cached_earnings_row, sym))
+                for sym in missing
+            ]
+            done, _pending = await asyncio.wait(tasks, timeout=9)
+            for task in done:
+                try:
+                    fresh.append(task.result())
+                except Exception:
+                    logger.debug("earnings.row_failed", exc_info=True)
+        calendar_items = upcoming_rows(fresh, today)
+        estimated = any(item.get("estimated") for item in calendar_items)
         return {
             "items": calendar_items,
             "count": len(calendar_items),
-            "generatedAt": str(date.today()),
+            "generatedAt": today,
             "disclaimer": (
-                "Some dates are approximate educational estimates when live calendar "
-                "data is unavailable."
-                if any(i.get("estimated") for i in calendar_items)
-                else None
+                "Next result dates from the quote feed for Nifty 50 plus the names you sent. "
+                "A name is left off when that feed has no date still ahead."
+                + (
+                    " Some dates are approximate educational estimates."
+                    if estimated
+                    else ""
+                )
             ),
         }
     except Exception as exc:
         logger.exception("earnings_calendar.error reason=%s", exc)
-        # Never hard-fail the Android screen — return curated shell.
-        from datetime import date
+        from datetime import date as date_cls
 
-        fallback_syms = [s.strip().upper() for s in symbols.split(",") if s.strip()] or list(
-            _CURATED_EARNINGS_DATES.keys()
-        )[:8]
-        items = [_fetch_one_earnings_row(s) for s in fallback_syms[:12]]
+        today = date_cls.today().isoformat()
+        fallback = upcoming_rows(
+            [_fetch_cached_earnings_row(sym) for sym in calendar_symbols([])[:12]],
+            today,
+        )
         return {
-            "items": items,
-            "count": len(items),
-            "generatedAt": str(date.today()),
-            "disclaimer": "Educational earnings calendar (live feed unavailable).",
+            "items": fallback,
+            "count": len(fallback),
+            "generatedAt": today,
+            "disclaimer": "Educational earnings calendar. Live dates did not all load.",
         }
