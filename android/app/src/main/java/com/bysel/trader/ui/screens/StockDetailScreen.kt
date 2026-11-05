@@ -53,9 +53,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.isActive
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -119,10 +121,11 @@ private enum class DetailHistoryWindow(
     val interval: String,
     val subtitle: String,
 ) {
-    FiveDay("5D", "5d", "15m", "15-min candles · last 5 sessions"),
-    OneMonth("1M", "1mo", "1d", "Daily candles · ~1 month"),
-    ThreeMonth("3M", "3mo", "1d", "Daily candles · ~3 months"),
-    OneYear("1Y", "1y", "1d", "Daily candles · ~1 year"),
+    OneDay("1D", "1d", "1m", "1-minute candles · today's session · delayed print"),
+    FiveDay("5D", "5d", "15m", "15-min candles · last 5 sessions · delayed print"),
+    OneMonth("1M", "1mo", "1d", "Daily candles · ~1 month · delayed print"),
+    ThreeMonth("3M", "3mo", "1d", "Daily candles · ~3 months · delayed print"),
+    OneYear("1Y", "1y", "1d", "Daily candles · ~1 year · delayed print"),
 }
 
 @Composable
@@ -158,6 +161,9 @@ fun StockDetailScreen(
     val stockResearchLoading by viewModel.stockResearchLoading.collectAsStateWithLifecycle()
     val stockResearchError by viewModel.stockResearchError.collectAsStateWithLifecycle()
     val requestedChartFocus by viewModel.openDetailAtChart.collectAsStateWithLifecycle()
+    val compareHistory by viewModel.compareHistory.collectAsStateWithLifecycle()
+    var compareOn by rememberSaveable(quote?.symbol) { mutableStateOf(false) }
+    var earningsMark by remember(quote?.symbol) { mutableStateOf<Pair<String, Boolean>?>(null) }
 
     if (quote == null) {
         Box(
@@ -374,6 +380,44 @@ fun StockDetailScreen(
         viewModel.fetchQuoteHistory(quote.symbol, historyWindow.period, historyWindow.interval)
     }
 
+    LaunchedEffect(compareOn, quote.symbol, historyWindow.period, historyWindow.interval) {
+        if (compareOn && !quote.symbol.equals("NIFTY50", ignoreCase = true)) {
+            viewModel.fetchCompareHistory("NIFTY50", historyWindow.period, historyWindow.interval)
+        } else {
+            viewModel.clearCompareHistory()
+        }
+    }
+
+    LaunchedEffect(quote.symbol) {
+        earningsMark = viewModel.fetchSymbolEarningsMark(quote.symbol)
+    }
+
+    LaunchedEffect(quote.symbol, historyWindow.label, earningsMark) {
+        val mark = earningsMark
+        viewModel.noteChatDesk(
+            mapOf(
+                "chart_symbol" to quote.symbol.trim().uppercase(),
+                "timeframe" to historyWindow.label,
+                "earnings_date" to (mark?.first ?: ""),
+                "earnings_illustrative" to when {
+                    mark == null -> ""
+                    mark.second -> "1"
+                    else -> "0"
+                },
+            )
+        )
+    }
+
+    LaunchedEffect(quote.symbol, historyWindow.period, historyWindow.interval) {
+        if (historyWindow.interval != "1m" && historyWindow.interval != "5m") return@LaunchedEffect
+        while (true) {
+            kotlinx.coroutines.delay(60_000)
+            if (com.bysel.trader.utils.MarketSession.isOpen()) {
+                viewModel.fetchQuoteHistory(quote.symbol, historyWindow.period, historyWindow.interval)
+            }
+        }
+    }
+
     LaunchedEffect(quote.symbol, tradeQuantity, previewSide) {
         viewModel.fetchPreTradeEstimate(
             AdvancedOrderRequest(
@@ -504,6 +548,26 @@ fun StockDetailScreen(
                         sentimentData = sentimentData,
                         sentimentLoading = sentimentLoading,
                         onAiQuery = onAiQuery,
+                        compareOn = compareOn,
+                        compareCloses = compareHistory.map { it.close },
+                        onCompareChange = { compareOn = it },
+                        eventDate = earningsMark?.first.orEmpty(),
+                        eventCaption = earningsMark?.let { (date, illustrative) ->
+                            if (illustrative) {
+                                "Illustrative result date $date. Not company guidance."
+                            } else {
+                                "Result date $date from the earnings calendar."
+                            }
+                        }.orEmpty(),
+                        onAlertAtLevel = { level ->
+                            val type = if (quote.last > level) "BELOW" else "ABOVE"
+                            viewModel.createAlert(quote.symbol, level, type)
+                        },
+                        onLevelChange = { level ->
+                            viewModel.noteChatDesk(
+                                mapOf("chart_level" to (level?.let { usFmt("%.2f", it) } ?: ""))
+                            )
+                        },
                     )
                 }
                 StockDetailTab.Fundamentals -> {
@@ -1052,9 +1116,44 @@ private fun PriceStoryCard(
     sentimentData: com.bysel.trader.data.api.SentimentScoreResponse? = null,
     sentimentLoading: Boolean = false,
     onAiQuery: ((String) -> Unit)? = null,
+    onNeedOlderBars: () -> Unit = {},
+    compareOn: Boolean = false,
+    compareCloses: List<Double> = emptyList(),
+    onCompareChange: (Boolean) -> Unit = {},
+    eventDate: String = "",
+    eventCaption: String = "",
+    onAlertAtLevel: (Double) -> Unit = {},
+    onLevelChange: (Double?) -> Unit = {},
 ) {
     val theme = LocalAppTheme.current
     val literacyCards = remember(history) { StockLiteracyCatalog.cardsFor(history) }
+    var replayOn by rememberSaveable(quote.symbol, historyLabel) { mutableStateOf(false) }
+    var replayCursor by rememberSaveable(quote.symbol, historyLabel) { mutableIntStateOf(0) }
+    var replayPlaying by rememberSaveable(quote.symbol, historyLabel) { mutableStateOf(false) }
+    LaunchedEffect(replayOn, history.size, historyLabel) {
+        if (!replayOn || history.isEmpty()) return@LaunchedEffect
+        if (replayCursor <= 0 || replayCursor > history.lastIndex) {
+            replayCursor = (history.size / 3).coerceIn(0, history.lastIndex)
+        }
+    }
+    LaunchedEffect(replayPlaying, replayOn, history.size) {
+        if (!replayPlaying || !replayOn || history.size < 2) return@LaunchedEffect
+        val last = history.lastIndex
+        while (isActive && replayPlaying) {
+            kotlinx.coroutines.delay(700)
+            val next = replayCursor + 1
+            if (next > last) {
+                replayPlaying = false
+                break
+            }
+            replayCursor = next
+        }
+    }
+    val shownHistory = if (replayOn && history.isNotEmpty()) {
+        history.take(replayCursor.coerceIn(0, history.lastIndex) + 1)
+    } else {
+        history
+    }
     Card(
         colors = CardDefaults.cardColors(containerColor = theme.card),
         shape = RoundedCornerShape(20.dp),
@@ -1120,11 +1219,71 @@ private fun PriceStoryCard(
                         )
                     }
                     PriceHistoryChart(
-                        history = history,
+                        history = shownHistory,
                         modifier = Modifier.fillMaxWidth(),
                         patterns = patterns,
                         rangeLabel = historyLabel,
+                        livePrice = if (replayOn) 0.0 else quote.last,
+                        onNeedOlderBars = onNeedOlderBars,
+                        compareCloses = if (compareOn && !replayOn) compareCloses else emptyList(),
+                        compareLabel = if (compareOn && !replayOn) "Nifty" else "",
+                        eventDate = eventDate,
+                        eventCaption = eventCaption,
+                        onAlertAtLevel = onAlertAtLevel,
+                        onLevelChange = onLevelChange,
                     )
+                    if (eventDate.isNotBlank()) {
+                        Text(
+                            text = eventCaption.ifBlank { "Result date $eventDate" },
+                            color = theme.textSecondary,
+                            fontSize = 11.sp,
+                            lineHeight = 14.sp,
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = replayOn,
+                            onClick = {
+                            val turningOn = !replayOn
+                            replayOn = turningOn
+                            replayPlaying = false
+                            if (turningOn && history.isNotEmpty()) {
+                                replayCursor = (history.size / 3).coerceIn(0, history.lastIndex)
+                            }
+                        },
+                            label = { Text(if (replayOn) "Live bars" else "Replay") },
+                        )
+                        if (replayOn) {
+                            FilterChip(
+                                selected = replayPlaying,
+                                onClick = { replayPlaying = !replayPlaying },
+                                label = { Text(if (replayPlaying) "Pause" else "Play") },
+                            )
+                            FilterChip(
+                                selected = false,
+                                onClick = {
+                                    replayPlaying = false
+                                    replayCursor = (replayCursor + 1).coerceAtMost(history.lastIndex.coerceAtLeast(0))
+                                },
+                                label = { Text("Step") },
+                            )
+                        }
+                        if (!quote.symbol.equals("NIFTY50", ignoreCase = true)) {
+                            FilterChip(
+                                selected = compareOn,
+                                onClick = { onCompareChange(!compareOn) },
+                                label = { Text("Vs Nifty") },
+                            )
+                        }
+                    }
+                    if (replayOn) {
+                        Text(
+                            text = "Replay walks bars already loaded. It does not forecast the next print.",
+                            color = theme.textSecondary,
+                            fontSize = 11.sp,
+                            lineHeight = 14.sp,
+                        )
+                    }
                 }
             }
 
@@ -1662,6 +1821,13 @@ private fun LazyListScope.stockDetailPriceChartSection(
     sentimentData: com.bysel.trader.data.api.SentimentScoreResponse?,
     sentimentLoading: Boolean,
     onAiQuery: ((String) -> Unit)?,
+    compareOn: Boolean = false,
+    compareCloses: List<Double> = emptyList(),
+    onCompareChange: (Boolean) -> Unit = {},
+    eventDate: String = "",
+    eventCaption: String = "",
+    onAlertAtLevel: (Double) -> Unit = {},
+    onLevelChange: (Double?) -> Unit = {},
 ) {
     item(key = "price-chart-header") {
         SectionHeader(
@@ -1692,6 +1858,18 @@ private fun LazyListScope.stockDetailPriceChartSection(
             sentimentData = sentimentData,
             sentimentLoading = sentimentLoading,
             onAiQuery = onAiQuery,
+            onNeedOlderBars = {
+                val next = DetailHistoryWindow.entries.getOrNull(historyWindow.ordinal + 1)
+                    ?: return@PriceStoryCard
+                onHistoryWindowChange(next)
+            },
+            compareOn = compareOn,
+            compareCloses = compareCloses,
+            onCompareChange = onCompareChange,
+            eventDate = eventDate,
+            eventCaption = eventCaption,
+            onAlertAtLevel = onAlertAtLevel,
+            onLevelChange = onLevelChange,
         )
     }
 }

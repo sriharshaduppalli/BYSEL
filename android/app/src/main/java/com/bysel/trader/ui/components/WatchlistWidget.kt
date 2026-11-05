@@ -45,6 +45,8 @@ fun WatchlistWidget(
 ) {
     val theme = LocalAppTheme.current
     var sort by rememberSaveable { mutableStateOf(WatchlistSortMode.MOVE.name) }
+    var columns by rememberSaveable { mutableStateOf("range,hl,vol") }
+    val columnSet = remember(columns) { columns.split(',').filter { it.isNotBlank() }.toSet() }
     val selectedSort = remember(sort) {
         runCatching { WatchlistSortMode.valueOf(sort) }.getOrDefault(WatchlistSortMode.MOVE)
     }
@@ -124,6 +126,25 @@ fun WatchlistWidget(
                     )
                 }
             }
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 2.dp)
+                    .exclusiveHorizontalScroll(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(listOf("range" to "Range", "hl" to "High / low", "vol" to "Volume"), key = { it.first }) { (key, label) ->
+                    FilterChip(
+                        selected = key in columnSet,
+                        onClick = {
+                            val next = columnSet.toMutableSet()
+                            if (key in next) next.remove(key) else next.add(key)
+                            columns = listOf("range", "hl", "vol").filter { it in next }.joinToString(",")
+                        },
+                        label = { Text(label, fontSize = 11.sp) },
+                    )
+                }
+            }
         }
 
         Column(
@@ -157,7 +178,9 @@ fun WatchlistWidget(
                 sortedQuotes.forEachIndexed { index, quote ->
                     WatchRow(
                         quote = quote,
-                        showVolume = selectedSort == WatchlistSortMode.VOLUME,
+                        showRange = "range" in columnSet,
+                        showHighLow = "hl" in columnSet,
+                        showVolumeColumn = "vol" in columnSet || selectedSort == WatchlistSortMode.VOLUME,
                         onOpen = { onQuoteClick(quote) },
                         onTrade = onTradeClick?.let { handler -> { handler(quote) } },
                     )
@@ -178,7 +201,9 @@ private fun WatchRow(
     quote: Quote,
     onOpen: () -> Unit,
     onTrade: (() -> Unit)?,
-    showVolume: Boolean = false,
+    showRange: Boolean,
+    showHighLow: Boolean,
+    showVolumeColumn: Boolean,
 ) {
     val theme = LocalAppTheme.current
     val accent by animateColorAsState(
@@ -220,9 +245,32 @@ private fun WatchRow(
             TickPriceText(
                 price = quote.last,
                 text = formatInr(quote.last, decimals = 2),
-                style = MaterialTheme.typography.bodySmall,
-                color = theme.textSecondary,
-                fontWeight = FontWeight.Normal,
+                style = MaterialTheme.typography.titleMedium,
+                color = theme.text,
+                fontWeight = FontWeight.Bold,
+            )
+            if (showRange) {
+                SessionRangeBar(quote = quote)
+            }
+            val high = quote.dayHigh?.takeIf { it > 0.0 }?.let { formatInr(it, decimals = 2) } ?: "—"
+            val low = quote.dayLow?.takeIf { it > 0.0 }?.let { formatInr(it, decimals = 2) } ?: "—"
+            val vol = formatVolumeCompact(quote.volume)
+            val board = buildList {
+                if (showHighLow) add("H $high   L $low")
+                if (showVolumeColumn) add("Vol $vol")
+            }
+            if (board.isNotEmpty()) {
+                Text(
+                    text = board.joinToString("   "),
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
+                    color = theme.textSecondary,
+                )
+            }
+            Text(
+                text = "Delayed print",
+                fontSize = 10.sp,
+                color = theme.textSecondary.copy(alpha = 0.7f),
             )
             Box(
                 modifier = Modifier
@@ -247,21 +295,39 @@ private fun WatchRow(
                 fontWeight = FontWeight.Medium,
                 color = accent,
             )
-            if (showVolume) {
-                Text(
-                    text = "Vol ${formatVolumeCompact(quote.effectiveVolume())}",
-                    fontSize = 11.sp,
-                    color = theme.textSecondary,
-                )
-            }
             if (onTrade != null) {
                 TextButton(
                     onClick = onTrade,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                 ) {
-                    Text("Trade", fontSize = 11.sp, color = theme.positive)
+                    Text("Practice", fontSize = 11.sp, color = theme.positive)
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SessionRangeBar(quote: Quote) {
+    val low = quote.dayLow
+    val high = quote.dayHigh
+    val last = quote.last
+    if (low == null || high == null || high <= low || last <= 0.0) return
+    val fraction = ((last - low) / (high - low)).toFloat().coerceIn(0f, 1f)
+    val theme = LocalAppTheme.current
+    Box(
+        modifier = Modifier
+            .padding(top = 4.dp)
+            .fillMaxWidth(0.72f)
+            .height(6.dp)
+            .clip(RoundedCornerShape(3.dp))
+            .background(theme.textSecondary.copy(alpha = 0.16f)),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(fraction)
+                .background(theme.primary.copy(alpha = 0.75f)),
+        )
     }
 }

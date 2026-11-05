@@ -8,8 +8,6 @@ import com.bysel.trader.data.live.LiveMarketDataClient
 import com.bysel.trader.data.api.TradeHistory
 import com.bysel.trader.data.WatchlistSymbols
 import com.bysel.trader.data.local.BYSELDatabase
-import com.bysel.trader.data.fno.TeachingFutures
-import com.bysel.trader.data.fno.TeachingOptionChain
 import com.bysel.trader.data.models.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -1033,18 +1031,21 @@ open class TradingRepository(private val database: BYSELDatabase) {
     suspend fun getOptionChain(symbol: String, expiry: String): Result<OptionChainResponse> {
         return try {
             val response = apiService.getOptionChain(symbol = symbol, expiry = expiry)
-            Result.Success(response)
-        } catch (e: Exception) {
-            if (TeachingOptionChain.isMissingLiveSpot(e)) {
-                Result.Success(TeachingOptionChain.build(symbol, expiry))
-            } else {
+            if (response.contracts.isEmpty() || response.source.equals("missing", ignoreCase = true)) {
                 Result.Error(
-                    NetworkErrorMessages.forException(
-                        e,
-                        "Couldn't load the teaching chain. Tap Load Chain to retry.",
-                    )
+                    response.notes.firstOrNull()
+                        ?: "The exchange option chain did not load. Tap Load Chain to retry.",
                 )
+            } else {
+                Result.Success(response)
             }
+        } catch (e: Exception) {
+            Result.Error(
+                NetworkErrorMessages.forException(
+                    e,
+                    "The exchange option chain did not load. Tap Load Chain to retry.",
+                )
+            )
         }
     }
 
@@ -1093,18 +1094,21 @@ open class TradingRepository(private val database: BYSELDatabase) {
     suspend fun getFuturesContracts(symbol: String): Result<FuturesContractsResponse> {
         return try {
             val response = apiService.getFuturesContracts(symbol = symbol)
-            Result.Success(response)
-        } catch (e: Exception) {
-            if (TeachingOptionChain.isMissingLiveSpot(e)) {
-                Result.Success(TeachingFutures.build(symbol))
-            } else {
+            if (response.contracts.isEmpty() || response.source.equals("missing", ignoreCase = true)) {
                 Result.Error(
-                    NetworkErrorMessages.forException(
-                        e,
-                        "Couldn't load the teaching futures list. Tap Load Contracts to retry.",
-                    )
+                    response.notes.firstOrNull()
+                        ?: "The exchange futures list did not load. Tap Load Contracts to retry.",
                 )
+            } else {
+                Result.Success(response)
             }
+        } catch (e: Exception) {
+            Result.Error(
+                NetworkErrorMessages.forException(
+                    e,
+                    "The exchange futures list did not load. Tap Load Contracts to retry.",
+                )
+            )
         }
     }
 
@@ -1113,16 +1117,12 @@ open class TradingRepository(private val database: BYSELDatabase) {
             val response = apiService.previewFuturesTicket(request)
             Result.Success(response)
         } catch (e: Exception) {
-            if (TeachingOptionChain.isMissingLiveSpot(e)) {
-                Result.Success(TeachingFutures.preview(request))
-            } else {
-                Result.Error(
-                    NetworkErrorMessages.forException(
-                        e,
-                        "Couldn't preview this paper futures ticket. Retry.",
-                    )
+            Result.Error(
+                NetworkErrorMessages.forException(
+                    e,
+                    "The exchange futures contract did not load, so this paper ticket has no price.",
                 )
-            }
+            )
         }
     }
 

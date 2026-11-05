@@ -32,7 +32,7 @@ import java.time.format.DateTimeParseException
  * is itself illustrative. A learner should see which one they are looking at
  * on every F&O screen, the same way the Trade tab shows quote freshness.
  */
-enum class FoDataKind { DELAYED, TEACHING, ILLUSTRATIVE, REPLAY }
+enum class FoDataKind { DELAYED, TEACHING, ILLUSTRATIVE, REPLAY, UNAVAILABLE }
 
 data class FoDataLabel(val kind: FoDataKind, val title: String, val detail: String)
 
@@ -41,6 +41,11 @@ fun foDataLabel(source: String?, generatedAt: String?, notes: List<String>): FoD
     val illustrative = notes.any { it.contains("illustrative", ignoreCase = true) }
     val age = generatedAgeText(generatedAt)
     return when {
+        src == "missing" -> FoDataLabel(
+            FoDataKind.UNAVAILABLE,
+            "Exchange board did not load",
+            "No strikes or open interest are shown until the exchange chain answers. Nothing here is filled in.",
+        )
         src == "synthetic" && illustrative -> FoDataLabel(
             FoDataKind.ILLUSTRATIVE,
             "Teaching board · spot illustrative",
@@ -65,6 +70,12 @@ val replayDataLabel = FoDataLabel(
     "You are stepping through saved bars from a delayed source. Nothing on this chart is live.",
 )
 
+fun sessionChartLabel(marketOpen: Boolean) = FoDataLabel(
+    FoDataKind.DELAYED,
+    if (marketOpen) "Session · 5-minute candles" else "Last session · 5-minute candles",
+    "Delayed candles, refreshed while the market is open. Pinch to zoom. Call and put marks use the latest close, not a traded option price.",
+)
+
 @Composable
 fun DataSourceBadge(
     label: FoDataLabel,
@@ -75,12 +86,12 @@ fun DataSourceBadge(
     val accent = when (label.kind) {
         FoDataKind.DELAYED -> theme.primary
         FoDataKind.TEACHING, FoDataKind.REPLAY -> theme.caution
-        FoDataKind.ILLUSTRATIVE -> theme.negative
+        FoDataKind.ILLUSTRATIVE, FoDataKind.UNAVAILABLE -> theme.negative
     }
     val icon = when (label.kind) {
         FoDataKind.DELAYED -> Icons.Filled.Schedule
         FoDataKind.REPLAY -> Icons.Filled.History
-        FoDataKind.TEACHING, FoDataKind.ILLUSTRATIVE -> Icons.Filled.School
+        FoDataKind.TEACHING, FoDataKind.ILLUSTRATIVE, FoDataKind.UNAVAILABLE -> Icons.Filled.School
     }
     androidx.compose.foundation.layout.Column(modifier = modifier) {
         Row(

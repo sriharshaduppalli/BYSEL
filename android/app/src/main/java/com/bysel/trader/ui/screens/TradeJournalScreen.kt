@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.ui.theme.LocalAppTheme
 import com.bysel.trader.viewmodel.TradingViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 
 @Composable
@@ -66,6 +67,10 @@ fun TradeJournalScreen(
     LaunchedEffect(Unit) { load() }
 
     val hideOnScroll = rememberHideOnScrollState()
+    val journalSeed by viewModel.journalSeed.collectAsStateWithLifecycle()
+    LaunchedEffect(journalSeed) {
+        if (!journalSeed.isNullOrBlank()) selectedTab = 1
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -135,7 +140,18 @@ fun TradeJournalScreen(
         } else {
             when (selectedTab) {
                 0 -> JournalInsightsTab(insights = insights, appTheme = appTheme)
-                1 -> JournalEntriesTab(entries = entries, appTheme = appTheme)
+                1 -> JournalEntriesTab(
+                    entries = entries,
+                    appTheme = appTheme,
+                    seedSymbol = journalSeed,
+                    onSeedConsumed = { viewModel.clearJournalSeed() },
+                    onSaveStudy = { symbol, timeframe, seen, invalidation ->
+                        scope.launch {
+                            viewModel.logStudyNote(symbol, timeframe, seen, invalidation)
+                            load()
+                        }
+                    },
+                )
             }
         }
     }
@@ -292,24 +308,91 @@ private fun StatChip(
 @Composable
 private fun JournalEntriesTab(
     entries: List<Map<String, Any>>,
-    appTheme: com.bysel.trader.ui.theme.AppTheme
+    appTheme: com.bysel.trader.ui.theme.AppTheme,
+    seedSymbol: String? = null,
+    onSeedConsumed: () -> Unit = {},
+    onSaveStudy: (String, String, String, String) -> Unit,
 ) {
-    if (entries.isEmpty()) {
-        Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Filled.Book, contentDescription = null, tint = appTheme.textSecondary, modifier = Modifier.size(48.dp))
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(stringResource(R.string.journal_no_trades), color = appTheme.textSecondary, fontSize = 14.sp)
-                Text(stringResource(R.string.journal_no_trades_body), color = appTheme.textSecondary, fontSize = 12.sp)
-            }
+    var symbol by rememberSaveable { mutableStateOf("") }
+    var timeframe by rememberSaveable { mutableStateOf("1D") }
+    var seen by rememberSaveable { mutableStateOf("") }
+    var invalidation by rememberSaveable { mutableStateOf("") }
+    LaunchedEffect(seedSymbol) {
+        val seeded = seedSymbol?.trim().orEmpty()
+        if (seeded.isNotEmpty()) {
+            symbol = seeded.uppercase()
+            onSeedConsumed()
         }
-        return
     }
-
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = appTheme.card),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("Study note", fontWeight = FontWeight.Bold, color = appTheme.text)
+                    Text(
+                        "Write what you see and what would prove it wrong. This is for study. It does not book a paper order.",
+                        color = appTheme.textSecondary,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                    )
+                    OutlinedTextField(
+                        value = symbol,
+                        onValueChange = { symbol = it.uppercase() },
+                        label = { Text("Symbol") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("1D", "5D", "1M", "1Y").forEach { label ->
+                            FilterChip(
+                                selected = timeframe == label,
+                                onClick = { timeframe = label },
+                                label = { Text(label, fontSize = 12.sp) },
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = seen,
+                        onValueChange = { seen = it },
+                        label = { Text("What I see") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = invalidation,
+                        onValueChange = { invalidation = it },
+                        label = { Text("What would prove this wrong") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Button(
+                        enabled = symbol.isNotBlank() && seen.isNotBlank() && invalidation.isNotBlank(),
+                        onClick = {
+                            onSaveStudy(symbol.trim(), timeframe, seen.trim(), invalidation.trim())
+                            seen = ""
+                            invalidation = ""
+                        },
+                    ) { Text("Save study note") }
+                }
+            }
+        }
+        if (entries.isEmpty()) {
+            item {
+                Text(
+                    stringResource(R.string.journal_no_trades),
+                    color = appTheme.textSecondary,
+                    fontSize = 14.sp,
+                )
+            }
+        }
         items(entries) { entry ->
             JournalEntryCard(entry = entry, appTheme = appTheme)
         }
@@ -323,7 +406,12 @@ private fun JournalEntryCard(
     appTheme: com.bysel.trader.ui.theme.AppTheme
 ) {
     val side = entry["side"] as? String ?: "BUY"
-    val sideColor = if (side == "BUY") LocalAppTheme.current.positive else LocalAppTheme.current.negative
+    val study = side.equals("STUDY", ignoreCase = true)
+    val sideColor = when {
+        study -> LocalAppTheme.current.primary
+        side == "BUY" -> LocalAppTheme.current.positive
+        else -> LocalAppTheme.current.negative
+    }
     @Suppress("UNCHECKED_CAST")
     val notes = (entry["autoNotes"] as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
     val timestamp = (entry["timestamp"] as? String)?.take(16)?.replace("T", " ") ?: ""
@@ -356,6 +444,7 @@ private fun JournalEntryCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
+            if (!study) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Column {
                     Text(stringResource(R.string.qty), fontSize = 10.sp, color = appTheme.textSecondary)
@@ -370,12 +459,18 @@ private fun JournalEntryCard(
                     Text("₹${usFmt("%.0f", total)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = appTheme.text)
                 }
             }
+            }
 
             if (notes.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 notes.forEach { note ->
                     Text("• $note", fontSize = 11.sp, color = LocalAppTheme.current.caution)
                 }
+            }
+            val userNote = entry["userNote"] as? String ?: ""
+            if (userNote.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(userNote, fontSize = 13.sp, color = appTheme.text, lineHeight = 18.sp)
             }
         }
     }

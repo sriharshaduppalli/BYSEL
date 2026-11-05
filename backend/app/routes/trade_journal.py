@@ -75,34 +75,35 @@ async def log_trade(
             raise HTTPException(status_code=400, detail="symbol and qty are required")
 
         context: Dict[str, Any] = {}
-        try:
-            from ..habits import wilder_rsi
+        if side != "STUDY":
+            try:
+                from ..habits import wilder_rsi
 
-            ticker = yf.Ticker(symbol if symbol.endswith(".NS") else symbol + ".NS")
-            info = ticker.info or {}
-            hist = ticker.history(period="1mo")
-            if hist is not None and not hist.empty:
-                closes = [float(v) for v in hist["Close"].values]
-                rsi = wilder_rsi(closes)
-                vol_ratio = (
-                    (hist["Volume"].iloc[-1] / hist["Volume"].mean())
-                    if hist["Volume"].mean() > 0
-                    else 1.0
-                )
-                high_52 = info.get("fiftyTwoWeekHigh")
-                near_52w_high = bool(
-                    high_52 and price > 0 and price >= (float(high_52) * 0.97)
-                )
-                context = {
-                    "volumeRatio": round(float(vol_ratio), 2),
-                    "near52wHigh": near_52w_high,
-                    "trailingPE": info.get("trailingPE"),
-                    "marketCap": info.get("marketCap"),
-                }
-                if rsi is not None:
-                    context["rsiAtTrade"] = rsi
-        except Exception:
-            pass
+                ticker = yf.Ticker(symbol if symbol.endswith(".NS") else symbol + ".NS")
+                info = ticker.info or {}
+                hist = ticker.history(period="1mo")
+                if hist is not None and not hist.empty:
+                    closes = [float(v) for v in hist["Close"].values]
+                    rsi = wilder_rsi(closes)
+                    vol_ratio = (
+                        (hist["Volume"].iloc[-1] / hist["Volume"].mean())
+                        if hist["Volume"].mean() > 0
+                        else 1.0
+                    )
+                    high_52 = info.get("fiftyTwoWeekHigh")
+                    near_52w_high = bool(
+                        high_52 and price > 0 and price >= (float(high_52) * 0.97)
+                    )
+                    context = {
+                        "volumeRatio": round(float(vol_ratio), 2),
+                        "near52wHigh": near_52w_high,
+                        "trailingPE": info.get("trailingPE"),
+                        "marketCap": info.get("marketCap"),
+                    }
+                    if rsi is not None:
+                        context["rsiAtTrade"] = rsi
+            except Exception:
+                pass
 
         notes: List[str] = []
         rsi_at = context.get("rsiAtTrade")
@@ -123,10 +124,14 @@ async def log_trade(
             side=side,
             qty=qty,
             price=price,
-            total=qty * price,
+            total=0.0 if side == "STUDY" else qty * price,
             order_id=int(order_id) if order_id is not None else None,
-            context_json=json.dumps(context),
-            auto_notes_json=json.dumps(notes),
+            context_json=json.dumps({} if side == "STUDY" else context),
+            auto_notes_json=json.dumps(
+                ["Study note. Not a paper order and not a recommendation."]
+                if side == "STUDY"
+                else notes
+            ),
             user_note=str(entry.get("userNote", "") or ""),
             outcome=None,
             created_at=datetime.now(timezone.utc),
@@ -136,16 +141,17 @@ async def log_trade(
         db.refresh(row)
 
         # Feed anonymised interaction into Indian Stock LLM learning loop (best-effort).
-        try:
-            from ..llm_integration import record_chat_feedback
+        if side != "STUDY":
+            try:
+                from ..llm_integration import record_chat_feedback
 
-            record_chat_feedback(
-                query=f"paper {side} {qty} {symbol} @ {price}",
-                answer="; ".join(notes) if notes else "trade logged",
-                helpful=True,
-            )
-        except Exception:
-            pass
+                record_chat_feedback(
+                    query=f"paper {side} {qty} {symbol} @ {price}",
+                    answer="; ".join(notes) if notes else "trade logged",
+                    helpful=True,
+                )
+            except Exception:
+                pass
 
         return {"status": "logged", "entry": _entry_to_dict(row)}
 
@@ -200,7 +206,8 @@ async def get_journal_insights(
         .limit(80)
         .all()
     )
-    scored = score_session_habits(orders, journal_entries=rows)
+    journal_rows = [row for row in rows if (row.side or "").upper() != "STUDY"]
+    scored = score_session_habits(orders, journal_entries=journal_rows)
     sample = int(scored.get("sampleSize") or 0)
     if sample < 3 and len(recent) < 3:
         return {

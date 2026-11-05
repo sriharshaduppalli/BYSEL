@@ -66,13 +66,19 @@ fun TickPriceText(
     style: TextStyle = MaterialTheme.typography.titleMedium,
     color: Color = LocalAppTheme.current.text,
     fontWeight: FontWeight? = FontWeight.SemiBold,
+    motion: Boolean = true,
 ) {
     val theme = LocalAppTheme.current
     var previous by remember { mutableDoubleStateOf(price) }
     var flashColor by remember { mutableStateOf(Color.Transparent) }
     val flash = remember { Animatable(0f) }
 
-    LaunchedEffect(price) {
+    LaunchedEffect(price, motion) {
+        if (!motion) {
+            previous = price
+            flash.snapTo(0f)
+            return@LaunchedEffect
+        }
         val delta = price - previous
         if (abs(delta) >= 1e-9) {
             flashColor = if (delta > 0.0) theme.positive else theme.negative

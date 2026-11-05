@@ -13,6 +13,7 @@ import com.bysel.trader.data.models.IntradayTipsResponse
 import com.bysel.trader.data.models.InvestorTipsResponse
 import com.bysel.trader.data.models.MarketMoverQuote
 import com.bysel.trader.data.models.MarketNewsHeadline
+import com.bysel.trader.data.models.HistoryCandle
 import com.bysel.trader.data.models.StockRecommendationsResponse
 import com.bysel.trader.data.repository.Result
 import com.bysel.trader.data.repository.TradingRepository
@@ -32,6 +33,18 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _watchlistPinned = MutableStateFlow(false)
     val watchlistPinned: StateFlow<Boolean> = _watchlistPinned.asStateFlow()
+
+    private val _indexChartOn = MutableStateFlow(true)
+    val indexChartOn: StateFlow<Boolean> = _indexChartOn.asStateFlow()
+
+    private val _chartMotionOn = MutableStateFlow(true)
+    val chartMotionOn: StateFlow<Boolean> = _chartMotionOn.asStateFlow()
+
+    private val _homeIndexSymbol = MutableStateFlow("NIFTY50")
+    val homeIndexSymbol: StateFlow<String> = _homeIndexSymbol.asStateFlow()
+
+    private val _indexCandles = MutableStateFlow<List<HistoryCandle>>(emptyList())
+    val indexCandles: StateFlow<List<HistoryCandle>> = _indexCandles.asStateFlow()
 
     fun resetDashboardLayout() {
         val context = getApplication<Application>().applicationContext
@@ -127,6 +140,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         loadPinnedStocks()
         loadPinnedWidgets()
         loadWidgetOrder()
+        observeHomeChartPrefs()
         restoreCachedNews()
         restoreCachedRecommendations()
         // Stagger Home secondary fetches so they don't stampede wallet/holdings on cold start.
@@ -376,6 +390,66 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             val newValue = !_portfolioPinned.value
             _portfolioPinned.value = newValue
             PinnedWidgetsStore.setPortfolioPinned(context, newValue)
+        }
+    }
+
+    fun setIndexChartOn(on: Boolean) {
+        val context = getApplication<Application>().applicationContext
+        _indexChartOn.value = on
+        viewModelScope.launch { PinnedWidgetsStore.setIndexChartOn(context, on) }
+    }
+
+    fun setChartMotionOn(on: Boolean) {
+        val context = getApplication<Application>().applicationContext
+        _chartMotionOn.value = on
+        viewModelScope.launch { PinnedWidgetsStore.setChartMotionOn(context, on) }
+    }
+
+    fun selectHomeIndex(symbol: String) {
+        val normalized = symbol.trim().uppercase()
+        if (normalized !in PinnedWidgetsStore.HOME_INDEX_SYMBOLS) return
+        if (_homeIndexSymbol.value == normalized && _indexCandles.value.isNotEmpty()) return
+        _homeIndexSymbol.value = normalized
+        _indexCandles.value = emptyList()
+        val context = getApplication<Application>().applicationContext
+        viewModelScope.launch { PinnedWidgetsStore.setHomeIndexSymbol(context, normalized) }
+        refreshIndexSession(normalized)
+    }
+
+    fun refreshIndexSession(symbol: String = _homeIndexSymbol.value) {
+        val normalized = symbol.trim().uppercase()
+        if (normalized !in PinnedWidgetsStore.HOME_INDEX_SYMBOLS) return
+        viewModelScope.launch {
+            when (val response = repository.getQuoteHistory(normalized, "1d", "5m")) {
+                is Result.Success -> {
+                    val fresh = response.data
+                        .filter { it.close > 0.0 && it.high >= it.low }
+                        .sortedBy { it.timestamp }
+                    if (fresh.isNotEmpty() && _homeIndexSymbol.value == normalized) {
+                        _indexCandles.value = fresh
+                    }
+                }
+                else -> Unit
+            }
+        }
+    }
+
+    private fun observeHomeChartPrefs() {
+        val context = getApplication<Application>().applicationContext
+        viewModelScope.launch {
+            PinnedWidgetsStore.isIndexChartOn(context).collect { _indexChartOn.value = it }
+        }
+        viewModelScope.launch {
+            PinnedWidgetsStore.isChartMotionOn(context).collect { _chartMotionOn.value = it }
+        }
+        viewModelScope.launch {
+            PinnedWidgetsStore.homeIndexSymbol(context).collect { saved ->
+                if (saved != _homeIndexSymbol.value) {
+                    _homeIndexSymbol.value = saved
+                    _indexCandles.value = emptyList()
+                }
+                if (_indexCandles.value.isEmpty()) refreshIndexSession(saved)
+            }
         }
     }
 

@@ -1229,6 +1229,20 @@ def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | N
             "sentiment",
             "risks",
         }
+        # A bare definition must not be hidden just because the profile
+        # fell through to stock_analysis or derivatives.
+        if (
+            re.search(
+                r"\b(iron condor|grey[- ]market|\bgmp\b|expense ratio)\b",
+                cleaned,
+                flags=re.I,
+            )
+            or (
+                re.search(r"\b(what is|what are|explain|define|meaning of)\b", cleaned, flags=re.I)
+                and not re.search(r"\b(of|for|on)\s+[a-z]{2,15}\b", cleaned, flags=re.I)
+            )
+        ):
+            skip_glossary = False
         wants_numeric_calc = bool(
             re.search(r"\b(calculate|compute|cagr|return from buy)\b", cleaned.lower())
             and re.search(r"\d", cleaned)
@@ -1712,6 +1726,7 @@ def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | N
             "query_nlu": ctx.get("query_nlu") if isinstance(ctx.get("query_nlu"), dict) else None,
             "conversation": ctx.get("conversation") if isinstance(ctx.get("conversation"), dict) else None,
             "portfolio_context": ctx.get("portfolio_context"),
+            "desk": ctx.get("desk") if isinstance(ctx.get("desk"), dict) else None,
         }
         try:
             from indian_stock_llm.agent_tools import load_corporate_actions, session_snapshot
@@ -1739,6 +1754,7 @@ def _ask_llm_core(query: str, context: dict[str, Any] | None = None) -> dict | N
                 "peers",
                 "session",
                 "corporate_actions",
+                "desk",
             )
         ):
             market_context = None

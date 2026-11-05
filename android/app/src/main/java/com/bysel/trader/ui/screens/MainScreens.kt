@@ -494,10 +494,17 @@ fun UpgradedQuoteCard(quote: Quote, onClick: () -> Unit) {
                     )
                     val ago = remember(quote.timestamp) { formatTimeAgo(quote.timestamp) }
                     Text(
-                        text = ago,
+                        text = "Delayed · $ago",
                         fontSize = 10.sp,
                         color = LocalAppTheme.current.textSecondary.copy(alpha = 0.6f),
                         modifier = Modifier.padding(top = 2.dp)
+                    )
+                    Text(
+                        text = quoteBoardLine(quote),
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                        color = LocalAppTheme.current.textSecondary,
+                        modifier = Modifier.padding(top = 4.dp),
                     )
                 }
 
@@ -1815,6 +1822,24 @@ private fun healthScoreBuckets(health: PortfolioHealthScore): List<HealthScoreBu
         val maxScore = (raw["maxScore"] as? Number)?.toInt()?.takeIf { it > 0 } ?: 25
         val details = raw["details"]?.toString().orEmpty()
         HealthScoreBucket(title, score, maxScore, details)
+    }
+}
+
+private fun quoteBoardLine(quote: Quote): String {
+    val change = quote.prevClose?.takeIf { it > 0.0 }?.let { quote.last - it }
+    val changeText = change?.let { usFmt("%+.2f", it) } ?: "—"
+    val high = quote.dayHigh?.takeIf { it > 0.0 }?.let { usFmt("%.2f", it) } ?: "—"
+    val low = quote.dayLow?.takeIf { it > 0.0 }?.let { usFmt("%.2f", it) } ?: "—"
+    return "Chg $changeText   H $high   L $low   Vol ${compactCount(quote.volume)}"
+}
+
+private fun compactCount(value: Long?): String {
+    if (value == null || value <= 0L) return "—"
+    return when {
+        value >= 10_000_000L -> usFmt("%.1fCr", value / 1_00_00_000.0)
+        value >= 100_000L -> usFmt("%.1fL", value / 1_00_000.0)
+        value >= 1_000L -> usFmt("%.1fK", value / 1_000.0)
+        else -> value.toString()
     }
 }
 

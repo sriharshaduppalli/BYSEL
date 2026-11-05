@@ -211,6 +211,18 @@ class TradingViewModel(
     private val _lastExecutedOrder = MutableStateFlow<OrderResponse?>(null)
     val lastExecutedOrder: StateFlow<OrderResponse?> = _lastExecutedOrder.asStateFlow()
 
+    private val _journalSeed = MutableStateFlow<String?>(null)
+    val journalSeed: StateFlow<String?> = _journalSeed.asStateFlow()
+
+    fun seedJournal(symbol: String) {
+        val cleaned = symbol.trim().uppercase()
+        if (cleaned.isNotEmpty()) _journalSeed.value = cleaned
+    }
+
+    fun clearJournalSeed() {
+        _journalSeed.value = null
+    }
+
     private val _orderExecutionLoading = MutableStateFlow(false)
     val orderExecutionLoading: StateFlow<Boolean> = _orderExecutionLoading.asStateFlow()
 
@@ -244,10 +256,64 @@ class TradingViewModel(
     val selectedQuote: StateFlow<Quote?> = _selectedQuote.asStateFlow()
     private val _aiScreenContext = MutableStateFlow(AiScreenContext())
     val aiScreenContext: StateFlow<AiScreenContext> = _aiScreenContext.asStateFlow()
+    private val chatDesk = linkedMapOf<String, String>()
+
+    fun noteChatDesk(fields: Map<String, String>) {
+        fields.forEach { (key, value) ->
+            if (value.isBlank()) chatDesk.remove(key) else chatDesk[key] = value
+        }
+    }
+
+    private fun deskForAsk(screen: AiScreenContext): Map<String, String> {
+        val out = linkedMapOf<String, String>()
+        val chartSymbol = chatDesk["chart_symbol"]
+        if (!chartSymbol.isNullOrBlank() && chartSymbol.equals(screen.symbol, ignoreCase = true)) {
+            listOf("chart_symbol", "timeframe", "chart_level", "earnings_date", "earnings_illustrative")
+                .forEach { key -> chatDesk[key]?.let { out[key] = it } }
+        }
+        val optionSymbol = chatDesk["option_symbol"]
+        if (!optionSymbol.isNullOrBlank()) {
+            listOf(
+                "option_symbol", "option_expiry", "option_source", "option_pcr",
+                "option_max_pain", "option_straddle", "option_atm", "option_spot",
+            ).forEach { key -> chatDesk[key]?.let { out[key] = it } }
+        }
+        return out
+    }
+
+    private fun noteOptionDesk(chain: com.bysel.trader.data.models.OptionChainResponse) {
+        val spot = chain.spot
+        val atm = chain.contracts.minByOrNull { kotlin.math.abs(it.strike - spot) }
+        val straddle = atm?.let { it.callLtp + it.putLtp }?.takeIf { it > 0.0 }
+        val pain = chain.contracts
+            .takeIf { rows -> rows.any { it.callOi != 0 || it.putOi != 0 } }
+            ?.minByOrNull { candidate ->
+                chain.contracts.sumOf { row ->
+                    row.callOi * kotlin.math.max(0.0, candidate.strike - row.strike) +
+                        row.putOi * kotlin.math.max(0.0, row.strike - candidate.strike)
+                }
+            }
+            ?.strike
+        noteChatDesk(
+            mapOf(
+                "option_symbol" to chain.symbol.trim().uppercase(),
+                "option_expiry" to chain.expiry,
+                "option_source" to chain.source,
+                "option_pcr" to (chain.pcr?.let { usFmt("%.3f", it) } ?: ""),
+                "option_max_pain" to (pain?.let { usFmt("%.2f", it) } ?: ""),
+                "option_straddle" to (straddle?.let { usFmt("%.2f", it) } ?: ""),
+                "option_atm" to (atm?.let { usFmt("%.2f", it.strike) } ?: ""),
+                "option_spot" to if (spot > 0.0) usFmt("%.2f", spot) else "",
+            )
+        )
+    }
     private val _detailLoading = MutableStateFlow(false)
     val detailLoading: StateFlow<Boolean> = _detailLoading.asStateFlow()
 
     // Historical OHLCV for selected symbol (used for charting)
+    private val _compareHistory = MutableStateFlow<List<HistoryCandle>>(emptyList())
+    val compareHistory: StateFlow<List<HistoryCandle>> = _compareHistory.asStateFlow()
+    private var compareJob: kotlinx.coroutines.Job? = null
     private val _quoteHistory = MutableStateFlow<List<HistoryCandle>>(emptyList())
     val quoteHistory: StateFlow<List<HistoryCandle>> = _quoteHistory.asStateFlow()
     private val _quoteHistoryLoading = MutableStateFlow(false)
@@ -1640,6 +1706,27 @@ class TradingViewModel(
         return pending == symbol || selected == symbol
     }
 
+    fun clearCompareHistory() {
+        compareJob?.cancel()
+        _compareHistory.value = emptyList()
+    }
+
+    fun fetchCompareHistory(symbol: String, period: String, interval: String) {
+        val normalized = symbol.trim().uppercase()
+        if (normalized.isBlank()) return
+        compareJob?.cancel()
+        compareJob = viewModelScope.launch {
+            when (val response = repository.getQuoteHistory(
+                normalized,
+                period.trim().lowercase().ifBlank { "1mo" },
+                interval.trim().lowercase().ifBlank { "1d" },
+            )) {
+                is Result.Success -> _compareHistory.value = sanitizeHistoryCandles(response.data)
+                else -> _compareHistory.value = emptyList()
+            }
+        }
+    }
+
     fun fetchQuoteHistory(symbol: String, period: String = "1mo", interval: String = "1d") {
         val normalizedSymbol = symbol.trim().uppercase()
         if (normalizedSymbol.isBlank()) return
@@ -1997,6 +2084,18 @@ class TradingViewModel(
                     alertsManager.sendPriceAlert(a, price)
                     alertTriggered = true
                 }
+                "PCT_UP" -> if (q.pctChange >= a.thresholdPrice) {
+                    alertsManager.sendPriceAlert(a, price, "Session is up ${usFmt("%.2f", q.pctChange)}% · level was ${usFmt("%.2f", a.thresholdPrice)}%")
+                    alertTriggered = true
+                }
+                "PCT_DOWN" -> if (q.pctChange <= -kotlin.math.abs(a.thresholdPrice)) {
+                    alertsManager.sendPriceAlert(a, price, "Session is down ${usFmt("%.2f", q.pctChange)}% · level was ${usFmt("%.2f", -kotlin.math.abs(a.thresholdPrice))}%")
+                    alertTriggered = true
+                }
+                "VOLUME" -> if ((q.volume ?: 0L) >= a.thresholdPrice.toLong()) {
+                    alertsManager.sendPriceAlert(a, price, "Volume reached ${q.volume} shares · level was ${a.thresholdPrice.toLong()}")
+                    alertTriggered = true
+                }
             }
             // Deactivate alert after triggering to prevent spam
             if (alertTriggered) {
@@ -2082,6 +2181,9 @@ class TradingViewModel(
                             _copilotPostTradeReview.value = null
                             _productActionMessage.value = r.data.message.takeIf { !it.isNullOrBlank() }
                                 ?: "${side.uppercase()} order executed for ${symbol.uppercase()}"
+                            if (side.equals("BUY", ignoreCase = true)) {
+                                seedJournal(symbol)
+                            }
                             _error.value = null
                             refreshHoldings(); refreshWallet(); unlockAchievement("first_trade")
                             fetchTradeCoachTip(symbol, quantity, side)
@@ -2410,36 +2512,62 @@ class TradingViewModel(
     }
 
     private val foCandlePeriod = mutableMapOf<String, String>()
+    private val foLiveSpan = mutableMapOf<String, Pair<String, String>>()
 
-    fun loadFoCandles(symbol: String, desk: String = "options", extend: Boolean = false) {
+    fun loadFoCandles(
+        symbol: String,
+        desk: String = "options",
+        extend: Boolean = false,
+        live: Boolean = false,
+        widen: Boolean = false,
+        resetLive: Boolean = false,
+    ) {
         val normalized = symbol.trim().uppercase()
         if (normalized.isBlank()) return
         val target = if (desk == "futures") _futureCandles else _optionCandles
         val loading = if (desk == "futures") _futureCandlesLoading else _optionCandlesLoading
         val spanKey = "$desk:$normalized"
-        val (period, interval) = com.bysel.trader.data.fno.FoCandleSpan.request(
-            foCandlePeriod[spanKey] ?: "5d",
-            extend,
-        )
+        val (period, interval) = if (live) {
+            val next = when {
+                resetLive -> com.bysel.trader.data.fno.FoCandleSpan.live()
+                widen -> com.bysel.trader.data.fno.FoCandleSpan.widen(
+                    foLiveSpan[spanKey] ?: com.bysel.trader.data.fno.FoCandleSpan.live(),
+                )
+                else -> foLiveSpan[spanKey] ?: com.bysel.trader.data.fno.FoCandleSpan.live()
+            }
+            foLiveSpan[spanKey] = next
+            next
+        } else {
+            com.bysel.trader.data.fno.FoCandleSpan.request(
+                foCandlePeriod[spanKey] ?: "5d",
+                extend,
+            )
+        }
         viewModelScope.launch {
-            loading.value = true
+            val quiet = live && target.value.isNotEmpty()
+            if (!quiet) loading.value = true
             when (val response = repository.getQuoteHistory(normalized, period, interval)) {
                 is Result.Success -> {
                     val fresh = response.data.filter { candle ->
                         candle.close > 0.0 && candle.high >= candle.low
                     }.sortedBy { it.timestamp }
-                    foCandlePeriod[spanKey] = period
-                    target.value = if (!extend) {
-                        fresh
-                    } else if (fresh.size >= target.value.size) {
-                        fresh
-                    } else {
-                        mergeCandles(target.value, fresh)
+                    if (!live) foCandlePeriod[spanKey] = period
+                    if (live && fresh.isEmpty() && target.value.isEmpty() && interval == "1m") {
+                        foLiveSpan[spanKey] = "1d" to "5m"
+                        loading.value = false
+                        loadFoCandles(symbol = normalized, desk = desk, live = true)
+                        return@launch
+                    }
+                    target.value = when {
+                        live && fresh.isEmpty() -> target.value
+                        live || !extend -> fresh
+                        fresh.size >= target.value.size -> fresh
+                        else -> mergeCandles(target.value, fresh)
                     }
                 }
-                else -> if (target.value.isEmpty()) target.value = emptyList()
+                else -> if (!live && target.value.isEmpty()) target.value = emptyList()
             }
-            loading.value = false
+            if (!quiet) loading.value = false
         }
     }
 
@@ -2558,6 +2686,7 @@ class TradingViewModel(
             when (val response = repository.getOptionChain(symbol.trim().uppercase(), expiry.trim())) {
                 is Result.Success -> {
                     _optionChain.value = response.data
+                    noteOptionDesk(response.data)
                     if (!quiet) _derivativesError.value = null
                 }
                 is Result.Error -> if (!quiet) _derivativesError.value = response.message
@@ -3132,9 +3261,18 @@ class TradingViewModel(
                 _error.value = "Cannot set alert — stock symbol missing"
                 return@launch
             }
-            val normalizedType = if (alertType.equals("BELOW", ignoreCase = true)) "BELOW" else "ABOVE"
+            val normalizedType = when (alertType.trim().uppercase()) {
+                "BELOW" -> "BELOW"
+                "PCT_UP" -> "PCT_UP"
+                "PCT_DOWN" -> "PCT_DOWN"
+                "VOLUME" -> "VOLUME"
+                else -> "ABOVE"
+            }
 
-            val price = thresholdPrice?.takeIf { it > 0.0 } ?: resolveAlertPrice(normalizedSymbol, normalizedType)
+            val price = when (normalizedType) {
+                "PCT_UP", "PCT_DOWN", "VOLUME" -> thresholdPrice?.takeIf { it > 0.0 }
+                else -> thresholdPrice?.takeIf { it > 0.0 } ?: resolveAlertPrice(normalizedSymbol, normalizedType)
+            }
             if (price == null || price <= 0.0) {
                 _error.value = "Cannot set alert for $normalizedSymbol — price unavailable"
                 return@launch
@@ -3183,11 +3321,17 @@ class TradingViewModel(
 
     /** Alert still saves without notification permission — nudge only when banners can't fire. */
     private fun alertCreatedUserMessage(symbol: String, alertType: String, price: Double): String {
-        val base = "Alert set: $symbol $alertType ₹${usFmt("%.2f", price)}"
+        val base = when (alertType.uppercase()) {
+            "PCT_UP" -> "Alert set: $symbol when the session is up ${usFmt("%.2f", price)}% or more"
+            "PCT_DOWN" -> "Alert set: $symbol when the session is down ${usFmt("%.2f", price)}% or more"
+            "VOLUME" -> "Alert set: $symbol when volume reaches ${price.toLong()} shares"
+            else -> "Alert set: $symbol $alertType ₹${usFmt("%.2f", price)}"
+        }
+        val delayed = "$base. The print is delayed."
         return if (alertsManager.canDeliverNotifications()) {
-            base
+            delayed
         } else {
-            "$base — enable notifications in Settings for banners"
+            "$delayed Enable notifications in Settings for banners."
         }
     }
 
@@ -3446,7 +3590,7 @@ class TradingViewModel(
                     .distinct()
                     .take(24)
                     .ifEmpty { null },
-                screenContext = screen.toRequestMap(),
+                screenContext = screen.toRequestMap() + deskForAsk(screen),
             )) {
                 is Result.Success -> {
                     lastAiSuccessAtMs = System.currentTimeMillis()
@@ -4516,6 +4660,47 @@ class TradingViewModel(
                     )
                 )
             } catch (_: Exception) { }
+        }
+    }
+
+    /** A result date from the earnings calendar. The boolean is true when the date is illustrative. */
+    suspend fun fetchSymbolEarningsMark(symbol: String): Pair<String, Boolean>? {
+        val normalized = symbol.trim().uppercase()
+        if (normalized.isBlank()) return null
+        return try {
+            val response = com.bysel.trader.data.api.RetrofitClient.apiService.getEarningsCalendar(normalized)
+            val entry = response.resolvedEntries().firstOrNull {
+                it.symbol.equals(normalized, ignoreCase = true)
+            } ?: return null
+            val date = entry.displayDate() ?: return null
+            date to entry.estimated
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    suspend fun logStudyNote(symbol: String, timeframe: String, seen: String, invalidation: String) {
+        val normalized = symbol.trim().uppercase()
+        val what = seen.trim()
+        val disproof = invalidation.trim()
+        if (normalized.isBlank() || what.isBlank() || disproof.isBlank()) {
+            _productActionMessage.value = "A study note needs a symbol, what you see, and what would prove it wrong."
+            return
+        }
+        val note = "Timeframe $timeframe. What I see: $what. What would prove this wrong: $disproof. For study only."
+        try {
+            com.bysel.trader.data.api.RetrofitClient.apiService.logTrade(
+                mapOf(
+                    "symbol" to normalized,
+                    "side" to "STUDY",
+                    "qty" to 1,
+                    "price" to 0.0,
+                    "userNote" to note,
+                )
+            )
+            _productActionMessage.value = "Study note saved for $normalized. It is not a paper order."
+        } catch (e: Exception) {
+            _productActionMessage.value = "Study note could not be saved. Check the connection and try again."
         }
     }
 

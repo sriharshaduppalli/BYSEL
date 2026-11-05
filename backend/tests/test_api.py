@@ -2452,9 +2452,10 @@ def test_futures_contracts_survives_quote_http_404(monkeypatch):
     assert response.status_code == 200
     payload = response.json()
     assert payload["symbol"] == "NIFTY"
-    assert payload["source"] == "synthetic"
-    assert payload["spot"] > 0
-    assert len(payload["contracts"]) >= 1
+    assert payload["source"] == "missing"
+    assert payload["spot"] == 0
+    assert payload["contracts"] == []
+    assert any("did not load" in note.lower() for note in payload.get("notes") or [])
 
 
 def test_futures_contracts_endpoint_returns_contract_set(monkeypatch):
@@ -2473,14 +2474,9 @@ def test_futures_contracts_endpoint_returns_contract_set(monkeypatch):
     payload = response.json()
     assert payload["symbol"] == "TCS"
     assert payload["spot"] == 2450.0
-    assert payload["source"] == "synthetic"
-    assert len(payload["contracts"]) == 3
-
-    first_contract = payload["contracts"][0]
-    assert first_contract["contractSymbol"].startswith("TCS-")
-    assert first_contract["lotSize"] > 0
-    assert first_contract["last"] > 0
-    assert first_contract["marginPerLot"] > 0
+    assert payload["source"] == "missing"
+    assert payload["contracts"] == []
+    assert any("did not load" in note.lower() for note in payload.get("notes") or [])
 
 
 def test_option_chain_survives_quote_http_404(monkeypatch):
@@ -2499,10 +2495,10 @@ def test_option_chain_survives_quote_http_404(monkeypatch):
     assert response.status_code == 200
     payload = response.json()
     assert payload["symbol"] == "NIFTY"
-    assert payload["source"] == "synthetic"
-    assert payload["spot"] > 0
-    assert len(payload["contracts"]) >= 10
-    assert any("illustrative" in note.lower() for note in payload.get("notes") or [])
+    assert payload["source"] == "missing"
+    assert payload["spot"] == 0
+    assert payload["contracts"] == []
+    assert any("did not load" in note.lower() for note in payload.get("notes") or [])
 
 
 def test_option_chain_returns_teaching_board_when_quote_missing(monkeypatch):
@@ -2519,10 +2515,10 @@ def test_option_chain_returns_teaching_board_when_quote_missing(monkeypatch):
     assert response.status_code == 200
     payload = response.json()
     assert payload["symbol"] == "NIFTY"
-    assert payload["source"] == "synthetic"
-    assert payload["spot"] > 0
-    assert len(payload["contracts"]) >= 10
-    assert any("illustrative" in note.lower() for note in payload.get("notes") or [])
+    assert payload["source"] == "missing"
+    assert payload["spot"] == 0
+    assert payload["contracts"] == []
+    assert any("did not load" in note.lower() for note in payload.get("notes") or [])
 
 
 def test_option_chain_endpoint_returns_pcr_and_iv_skew(monkeypatch):
@@ -2539,12 +2535,11 @@ def test_option_chain_endpoint_returns_pcr_and_iv_skew(monkeypatch):
     assert response.status_code == 200
     payload = response.json()
     assert payload["symbol"] == "NIFTY"
-    assert payload["source"] == "synthetic"
-    assert payload["pcr"] is not None
-    assert payload["ivSkew"] is not None
-    assert payload["atmIv"] is not None
-    assert len(payload["contracts"]) >= 10
-    assert payload["contracts"][0]["callIv"] is not None
+    assert payload["source"] == "missing"
+    assert payload["contracts"] == []
+    assert payload["pcr"] is None
+    assert payload["lotSize"] == 65
+    assert any("did not load" in note.lower() for note in payload.get("notes") or [])
 
 
 def test_futures_ticket_preview_survives_quote_http_404(monkeypatch):
@@ -2569,13 +2564,8 @@ def test_futures_ticket_preview_survives_quote_http_404(monkeypatch):
             "orderType": "MARKET",
         },
     )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["symbol"] == "NIFTY"
-    assert data["side"] == "SELL"
-    assert data["lots"] == 1
-    assert data["notionalValue"] > 0
-    assert data["estimatedMargin"] > 0
+    assert response.status_code == 503
+    assert "did not load" in response.json()["detail"].lower()
 
 
 def test_futures_ticket_preview_endpoint_returns_margin_and_notional(monkeypatch):
@@ -2585,7 +2575,28 @@ def test_futures_ticket_preview_endpoint_returns_margin_and_notional(monkeypatch
     )
     monkeypatch.setattr(
         "app.derivatives_data.fetch_nse_futures_contracts",
-        lambda *args, **kwargs: None,
+        lambda *args, **kwargs: {
+            "symbol": "INFY",
+            "spot": 1985.0,
+            "generatedAt": "2026-11-01T00:00:00Z",
+            "source": "nse",
+            "contracts": [
+                {
+                    "contractSymbol": "INFY-2026-11-24-FUT",
+                    "expiry": "2026-11-24",
+                    "lotSize": 400,
+                    "last": 1990.0,
+                    "pctChange": 0.4,
+                    "oi": 1000,
+                    "oiChange": 10,
+                    "volume": 100,
+                    "basis": 5.0,
+                    "marginPct": 0.15,
+                    "marginPerLot": 119400.0,
+                }
+            ],
+            "notes": ["Exchange futures."],
+        },
     )
 
     contracts_response = client.get("/derivatives/futures/contracts?symbol=INFY")

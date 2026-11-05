@@ -751,6 +751,19 @@ _EDUCATIONAL_SPOT = {
 }
 
 
+def _live_spot_or_zero(symbol: str) -> float:
+    """A real last price, or zero. Never the classroom index level."""
+    raw = (symbol or "").strip().upper()
+    lookup = _QUOTE_ALIASES.get(raw, raw)
+    try:
+        last = float((fetch_quote(lookup) or {}).get("last") or 0.0)
+        if last <= 0 and lookup != raw:
+            last = float((fetch_quote(raw) or {}).get("last") or 0.0)
+    except Exception:
+        last = 0.0
+    return last if last > 0 else 0.0
+
+
 def _resolve_derivatives_spot(symbol: str) -> tuple[float, bool]:
     """Return (spot, illustrative). Never fail a teaching chain on a missing quote."""
     raw = (symbol or "").strip().upper()
@@ -884,7 +897,26 @@ def _generate_option_chain(symbol: str, expiry: str) -> OptionChainResponse:
             )
     except Exception as exc:
         logger.warning("option_chain_live_failed symbol=%s reason=%s", symbol, exc)
-    return _generate_synthetic_option_chain(symbol=symbol, expiry=expiry)
+    return _missing_option_chain(symbol=symbol, expiry=expiry)
+
+
+def _missing_option_chain(symbol: str, expiry: str) -> OptionChainResponse:
+    """The exchange board did not load. Do not invent strikes or open interest."""
+    normalized = (symbol or "").strip().upper()
+    spot = _live_spot_or_zero(normalized)
+    return OptionChainResponse(
+        symbol=normalized,
+        expiry=expiry,
+        spot=round(spot, 2) if spot > 0 else 0.0,
+        generatedAt=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        contracts=[],
+        source="missing",
+        lotSize=fo_contracts.lot_size_for(normalized, spot if spot > 0 else 0.0),
+        notes=[
+            "The exchange option chain did not load, so open interest and premiums are not shown.",
+            fo_contracts.expiry_note(normalized),
+        ],
+    )
 
 
 def _option_strike_step(symbol: str, spot: float) -> float:
@@ -1005,7 +1037,24 @@ def _generate_futures_contracts(symbol: str) -> FuturesContractsResponse:
                 )
     except Exception as exc:
         logger.warning("futures_contracts_live_failed symbol=%s reason=%s", normalized_symbol, exc)
-    return _generate_synthetic_futures_contracts(symbol=normalized_symbol)
+    return _missing_futures_contracts(normalized_symbol)
+
+
+def _missing_futures_contracts(symbol: str) -> FuturesContractsResponse:
+    """No exchange futures list. Do not invent last prices or open interest."""
+    normalized = (symbol or "").strip().upper()
+    spot = _live_spot_or_zero(normalized)
+    return FuturesContractsResponse(
+        symbol=normalized,
+        spot=round(spot, 2) if spot > 0 else 0.0,
+        generatedAt=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        contracts=[],
+        source="missing",
+        notes=[
+            "The exchange futures list did not load, so contract prices are not shown.",
+            fo_contracts.expiry_note(normalized),
+        ],
+    )
 
 
 def _preview_futures_ticket(payload: FuturesTicketPreviewRequest) -> FuturesTicketPreviewResponse:
@@ -1029,8 +1078,10 @@ def _preview_futures_ticket(payload: FuturesTicketPreviewRequest) -> FuturesTick
             key=lambda c: abs(_expiry_ord(c.expiry) - _expiry_ord(wanted)),
         )
     if selected is None:
-        contracts = _generate_synthetic_futures_contracts(payload.symbol)
-        selected = contracts.contracts[0]
+        raise HTTPException(
+            status_code=503,
+            detail="The exchange futures contract did not load, so this paper ticket has no price.",
+        )
 
     if order_type == "LIMIT" and (payload.limitPrice is None or payload.limitPrice <= 0):
         raise HTTPException(status_code=400, detail="limitPrice is required for LIMIT order previews")
@@ -2658,6 +2709,43 @@ async def ai_ask_endpoint(
     # App may wrap as "user_query:… | context:…". Intent / greetings must see only
     # the user's words — otherwise "hi" never short-circuits and becomes a stock.
     user_text = _extract_user_query(body.query)
+    _screen = body.screen_context if isinstance(body.screen_context, dict) else {}
+    _screen_symbol = str(_screen.get("symbol") or _screen.get("chart_symbol") or "").strip().upper()
+    if _screen_symbol and re.search(
+        r"\b(what is|what's|whats)\s+(the\s+)?(rsi|macd|vwap|atr|ema|sma)\b",
+        user_text,
+        flags=re.I,
+    ) and not re.search(r"\b(of|for|on)\s+[a-z]{2,15}\b", user_text, flags=re.I):
+        _ind = re.search(r"\b(rsi|macd|vwap|atr|ema|sma)\b", user_text, flags=re.I)
+        if _ind:
+            user_text = f"{_ind.group(1).upper()} of {_screen_symbol}"
+    if _screen_symbol and re.search(
+        r"\b(this candle|explain this candle|current candle)\b",
+        user_text,
+        flags=re.I,
+    ):
+        opens = _screen.get("candle_open") or _screen.get("open")
+        highs = _screen.get("candle_high") or _screen.get("high")
+        lows = _screen.get("candle_low") or _screen.get("low")
+        closes = _screen.get("candle_close") or _screen.get("close")
+        if all(v not in (None, "") for v in (opens, highs, lows, closes)):
+            candle_text = (
+                f"**{_screen_symbol} candle**\n\n"
+                f"Open {opens} · High {highs} · Low {lows} · Close {closes}.\n"
+                "These are the prints on this screen. They are delayed."
+            )
+        else:
+            candle_text = (
+                f"**{_screen_symbol} candle**\n\n"
+                "The open, high, low, and close for this candle were not on the screen, "
+                "so they are not shown."
+            )
+        return {
+            "answer": candle_text,
+            "source": "indian-stock-llm",
+            "tier_requested": requested_tier,
+            "intent": "stock_analysis",
+        }
     expanded_query = expand_acronyms_in_query(user_text)
     normalized_query = normalize_hinglish(expanded_query)
     from ..groq_llm import PERSONAL_FINANCE_CALC_RE, SCENARIO_QUERY_RE
@@ -2805,13 +2893,20 @@ async def ai_ask_endpoint(
         )
         and re.search(r"\b(compare|vs|versus|against|with|or|ya)\b", user_text, flags=re.I)
     )
-    if query_contract and query_contract.clarifier and not educational_like and not named_compare:
+    try:
+        from ..ism_desk import detect_desk_focus
+
+        desk_focus = detect_desk_focus(user_text) or detect_desk_focus(normalized_query)
+    except Exception:
+        desk_focus = ""
+    if query_contract and query_contract.clarifier and not educational_like and not named_compare and not desk_focus:
         return _validated({"answer": query_contract.clarifier}, "clarifier", requested_tier)
     if (
         detected_intent in stock_intents
         and intent_confidence < 60
         and not explicit_symbol
         and not educational_like
+        and not desk_focus
         and not (query_contract and query_contract.slots.symbol)
     ):
         lang = str(getattr(query_contract, "language", "") or "")
@@ -2866,7 +2961,14 @@ async def ai_ask_endpoint(
         and query_contract.profile
         and query_contract.profile not in {"literacy", "compare_concepts", "small_talk"}
     )
-    if education_answer and not stock_live_ask and not live_ism_profile:
+    definitional_primer = bool(re.search(
+        r"\b(what is|what are|explain|define|meaning of|iron condor|grey[- ]market|\bgmp\b|expense ratio)\b",
+        user_text,
+        flags=re.I,
+    ))
+    if education_answer and not stock_live_ask and not desk_focus and (
+        not live_ism_profile or definitional_primer
+    ):
         return _validated({"answer": education_answer}, "education", requested_tier)
 
     # For sector/compare (and always when user named tickers), run rule engine on the
@@ -2882,7 +2984,10 @@ async def ai_ask_endpoint(
     # skip it and let Groq answer from lightweight enrich context — biggest latency win.
     needs_rule_first = (
         requested_tier == "rule-engine"
-        or detected_intent in {"SECTOR_SCREEN", "COMPARE", "DERIVATIVES"}
+        or (
+            detected_intent in {"SECTOR_SCREEN", "COMPARE", "DERIVATIVES"}
+            and not (educational_like and not desk_focus and not explicit_symbol)
+        )
     )
     rule_result: dict = {}
     if needs_rule_first:
@@ -3154,7 +3259,11 @@ async def ai_ask_endpoint(
                 try:
                     # Same enrich depth Groq gets — required for ISM accuracy on
                     # buy/sell, valuation, and compare asks.
-                    enriched_ctx = await _build_enriched_context()
+                    # A chain, IPO list, journal, fund, or drawn-line ask already
+                    # has its own reader. A stock lookup here only slows the card.
+                    enriched_ctx = {}
+                    if desk_focus not in {"chain", "ipo", "journal", "funds", "level", "earnings"}:
+                        enriched_ctx = await _build_enriched_context()
                     for key in (
                         "symbol",
                         "current_price",
@@ -3192,15 +3301,41 @@ async def ai_ask_endpoint(
                 except Exception:
                     pass
                 llm_context["original_query"] = user_text
+                screen_for_ask = body.screen_context if isinstance(body.screen_context, dict) else {}
+                screen_symbol = str((screen_for_ask or {}).get("symbol") or "").strip()
+                on_open_name = bool(screen_symbol) and bool(
+                    re.search(
+                        r"\b(rsi|macd|vwap|atr|this line|this level|support|resistance)\b",
+                        user_text or "",
+                        re.I,
+                    )
+                )
+                if on_open_name and not str(llm_context.get("symbol") or "").strip():
+                    llm_context["symbol"] = screen_symbol
                 if query_contract and query_contract.profile in {
                     "literacy",
                     "small_talk",
                     "compare_concepts",
                     "session",
-                } and not query_contract.slots.follow_up:
+                } and not query_contract.slots.follow_up and not on_open_name:
                     llm_context.pop("symbol", None)
                     llm_context.pop("conversation_history", None)
                     llm_context.pop("screen_context", None)
+                try:
+                    from ..ism_desk import build_chat_desk
+
+                    desk = await asyncio.to_thread(
+                        build_chat_desk,
+                        user_text or ism_query,
+                        query_contract.profile if query_contract else "",
+                        str(llm_context.get("symbol") or ""),
+                        body.screen_context if isinstance(body.screen_context, dict) else None,
+                        auth_user_id,
+                    )
+                    if desk and desk.get("focus") or (desk or {}).get("earnings"):
+                        llm_context["desk"] = desk
+                except Exception as exc:
+                    logger.debug("ism desk skipped: %s", exc)
                 llm_result = await asyncio.to_thread(ask_llm, ism_query, llm_context or None)
                 ism_answer = str((llm_result or {}).get("answer") or "").strip()
                 # App chat is ISM-first: keep a real ISM answer even if confidence is

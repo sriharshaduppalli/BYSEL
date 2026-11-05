@@ -43,6 +43,43 @@ def _price_map(quotes: Iterable[dict] | None) -> dict[str, float]:
     return prices
 
 
+def _alert_hit(alert_type: str, last: float, threshold: float, pct: float | None, volume: float | None) -> bool:
+    kind = (alert_type or "").strip().upper()
+    if kind in ("ABOVE", "BELOW"):
+        return _threshold_hit(kind, last, threshold)
+    if kind == "PCT_UP":
+        return pct is not None and pct >= threshold
+    if kind == "PCT_DOWN":
+        return pct is not None and pct <= -abs(threshold)
+    if kind == "VOLUME":
+        return volume is not None and volume >= threshold
+    return False
+
+
+def _quote_stats(quotes: Iterable[dict] | None) -> dict[str, tuple[float, float | None, float | None]]:
+    stats: dict[str, tuple[float, float | None, float | None]] = {}
+    for quote in quotes or []:
+        if not isinstance(quote, dict):
+            continue
+        symbol = str(quote.get("symbol") or "")
+        try:
+            last = float(quote.get("last") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if last <= 0 or not symbol.strip():
+            continue
+        try:
+            pct = float(quote.get("pctChange")) if quote.get("pctChange") is not None else None
+        except (TypeError, ValueError):
+            pct = None
+        try:
+            volume = float(quote.get("volume")) if quote.get("volume") is not None else None
+        except (TypeError, ValueError):
+            volume = None
+        stats[_symbol_key(symbol)] = (last, pct, volume)
+    return stats
+
+
 def _threshold_hit(alert_type: str, price: float, threshold: float) -> bool:
     kind = (alert_type or "").strip().upper()
     if kind == "ABOVE":
@@ -94,7 +131,7 @@ def evaluate_price_alerts(
     triggered = 0
     pushed = 0
     try:
-        prices = _price_map(quotes)
+        stats = _quote_stats(quotes)
         symbol_filter = {_symbol_key(s) for s in (symbols or []) if s and str(s).strip()}
         query = session.query(AlertModel).filter(AlertModel.is_active.is_(True))
         alerts = query.all()
@@ -102,11 +139,12 @@ def evaluate_price_alerts(
             key = _symbol_key(alert.symbol or "")
             if symbol_filter and key not in symbol_filter:
                 continue
-            price = prices.get(key)
-            if price is None:
+            quote = stats.get(key)
+            if quote is None:
                 continue
+            price, pct, volume = quote
             checked += 1
-            if not _threshold_hit(alert.alert_type, price, float(alert.threshold_price or 0.0)):
+            if not _alert_hit(alert.alert_type, price, float(alert.threshold_price or 0.0), pct, volume):
                 continue
             alert.is_active = False
             triggered += 1

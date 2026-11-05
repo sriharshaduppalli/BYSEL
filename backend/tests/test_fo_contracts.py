@@ -55,10 +55,10 @@ def test_option_chain_reports_lot_size_and_expiry_aware_premiums(client, monkeyp
     assert near.status_code == 200 and far.status_code == 200
     near_body, far_body = near.json(), far.json()
     assert near_body["lotSize"] == 65
-    assert near_body["source"] == "synthetic"
-    atm_near = min(near_body["contracts"], key=lambda c: abs(c["strike"] - near_body["spot"]))
-    atm_far = min(far_body["contracts"], key=lambda c: abs(c["strike"] - far_body["spot"]))
-    assert atm_far["callLtp"] > atm_near["callLtp"]
+    assert near_body["source"] == "missing"
+    assert near_body["contracts"] == []
+    assert far_body["contracts"] == []
+    assert any("did not load" in note.lower() for note in near_body["notes"])
     assert any("Tuesday" in note for note in near_body["notes"])
 
 
@@ -67,10 +67,6 @@ def test_futures_board_uses_exchange_lot_and_monthly_cycle(client, monkeypatch):
     resp = client.get("/derivatives/futures/contracts", params={"symbol": "BANKNIFTY"})
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body["contracts"]) == 3
-    assert all(c["lotSize"] == 30 for c in body["contracts"])
-    expiries = [date.fromisoformat(c["expiry"]) for c in body["contracts"]]
-    assert expiries == sorted(expiries)
-    # Last Tuesday of the month, or the trading day before it on a holiday.
-    assert all(d.weekday() <= 1 for d in expiries)
-    assert len({(d.year, d.month) for d in expiries}) == 3
+    assert body["source"] == "missing"
+    assert body["contracts"] == []
+    assert any("did not load" in note.lower() for note in body["notes"])

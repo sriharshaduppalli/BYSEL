@@ -1074,6 +1074,9 @@ def extract_all_symbols_from_query(query: str) -> list[str]:
         "GROWTH", "INCOME", "DIVIDEND", "DIVIDENDS", "YIELD", "VALUE", "QUALITY", "RETURNS", "PROFIT", "LOSS",
         "SUPPORT", "RESIST", "VOLATILE", "VOLATILITY", "OVERVALUE", "UNDERVALUE",
         "RSI", "MACD", "SMA", "EMA", "ATR", "ADX", "VWAP", "OBV",
+        "MAX", "PAIN", "PCR", "STRADDLE", "OI",
+        "CHAIN", "CONDOR", "IRON", "CANDLE", "CANDLESTICK", "GREY", "GRAY",
+        "GMP", "PREMIUM", "DEPTH", "EXPENSE", "RATIO", "QWERTY", "ASDF",
         "PE", "PB", "PEG", "EPS", "ROE", "ROCE", "CAGR", "BETA",
         "STOCH", "BBANDS", "BOLLINGER", "BANDS", "BAND", "BANDWIDTH",
         "UPPER", "LOWER", "MIDDLE", "INDICATOR", "INDICATORS",
@@ -1478,7 +1481,9 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
         q_lower,
     ) and re.search(
         r"\b(rsi|macd|sma|ema|atr|pe|p/e|pb|peg|eps|roe|vwap|bollinger|stochastic|cagr|beta|"
-        r"cas|closing auction|market timings|market hours|trading hours)\b",
+        r"cas|closing auction|market timings|market hours|trading hours|"
+        r"max pain|open interest|option chain|straddle|pcr|put call ratio|"
+        r"ipo|study note)\b",
         q_lower,
     ) and not re.search(r"\b(of|for|on)\s+[a-z]{2,15}\b", q_lower):
         return None
@@ -1530,6 +1535,9 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
         "SUPPORT", "RESIST", "VOLATILE", "VOLATILITY",
         "OVERVALUE", "UNDERVALUE",
         "RSI", "MACD", "SMA", "EMA", "ATR", "ADX", "VWAP", "OBV",
+        "MAX", "PAIN", "PCR", "STRADDLE", "OI",
+        "CHAIN", "CONDOR", "IRON", "CANDLE", "CANDLESTICK", "GREY", "GRAY",
+        "GMP", "PREMIUM", "DEPTH", "EXPENSE", "RATIO", "QWERTY", "ASDF",
         "PE", "PB", "PEG", "EPS", "ROE", "ROCE", "CAGR", "BETA",
         "STOCH", "BBANDS", "BOLLINGER", "BANDS", "BAND", "BANDWIDTH",
         "UPPER", "LOWER", "MIDDLE", "INDICATOR", "INDICATORS",
@@ -1619,7 +1627,7 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
         for token in extracted_tokens:
             if token in _SKIP:
                 continue
-            candidates = get_close_matches(token, list(_NAME_TO_SYMBOL.values()), n=1, cutoff=0.75)
+            candidates = get_close_matches(token, list(_NAME_TO_SYMBOL.values()), n=1, cutoff=0.92)
             if candidates:
                 resolved = _resolve_listed_symbol(candidates[0])
                 if _is_catalog_symbol(resolved):

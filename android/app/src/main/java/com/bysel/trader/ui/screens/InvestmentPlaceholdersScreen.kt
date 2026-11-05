@@ -1,4 +1,6 @@
 package com.bysel.trader.ui.screens
+import com.bysel.trader.ui.components.ChainStudyCharts
+import com.bysel.trader.ui.components.chainMaxPain
 import com.bysel.trader.ui.format.usFmt
 
 import androidx.compose.ui.res.stringResource
@@ -44,6 +46,9 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import com.bysel.trader.utils.MarketSession
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -52,6 +57,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -554,7 +560,7 @@ fun MutualFundsScreen(
             item { ExplorerTitle("Mutual Funds", onBack) }
             item {
                 Text(
-                    "AMFI NAVs for browsing · SIP is paper-practice only · past returns are not guaranteed",
+                    "AMFI NAVs for browsing · SIP is paper-practice only · past returns are not guaranteed. Exit load and a star rating are not in this catalog, so they are not shown.",
                     color = LocalAppTheme.current.textSecondary,
                     fontSize = 12.sp,
                 )
@@ -785,6 +791,13 @@ fun MutualFundsScreen(
                         )
                         Text(
                             "Risk: ${fund.riskLevel ?: "N/A"} • House: ${fund.fundHouse ?: "N/A"}",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            "1Y ${formatMfReturn(fund.returns1Y)} · 3Y ${formatMfReturn(fund.returns3Y)} · 5Y ${formatMfReturn(fund.returns5Y)}",
                             color = LocalAppTheme.current.textSecondary,
                             fontSize = 12.sp,
                             maxLines = 1,
@@ -1050,8 +1063,13 @@ fun IpoListingsScreen(
                 )
             }
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { viewModel.loadIpoListings(refresh = true) }) { Text("Refresh IPOs") }
+                    Text(
+                        "Grey-market premium is not shown. BYSEL does not publish a GMP.",
+                        color = LocalAppTheme.current.textSecondary,
+                        fontSize = 12.sp,
+                    )
                 }
             }
 
@@ -1223,11 +1241,20 @@ private fun IpoDetailScreen(ipo: IPOListing, onBack: () -> Unit, onApply: () -> 
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EtfScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = null) {
     val etfs by viewModel.etfInstruments.collectAsStateWithLifecycle()
     val loading by viewModel.productsLoading.collectAsStateWithLifecycle()
     var selected by remember { mutableStateOf<ETFInstrument?>(null) }
+    var etfSort by rememberSaveable { mutableStateOf("name") }
+    val shownEtfs = remember(etfs, etfSort) {
+        when (etfSort) {
+            "expense" -> etfs.sortedBy { it.expenseRatio ?: Double.MAX_VALUE }
+            "move" -> etfs.sortedByDescending { kotlin.math.abs(it.pctChange) }
+            else -> etfs.sortedBy { it.name }
+        }
+    }
     BackHandler(enabled = selected != null) { selected = null }
 
     LaunchedEffect(Unit) { viewModel.loadEtfs() }
@@ -1248,7 +1275,21 @@ fun EtfScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = null) {
                     Button(onClick = { viewModel.loadEtfs() }) { Text("Refresh ETFs") }
                 }
             }
-            items(etfs, key = { it.symbol }) { etf ->
+            item {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    listOf("name" to "Name", "expense" to "Expense", "move" to "Move").forEach { (key, label) ->
+                        FilterChip(
+                            selected = etfSort == key,
+                            onClick = { etfSort = key },
+                            label = { Text(label, fontSize = 12.sp, maxLines = 1) },
+                        )
+                    }
+                }
+            }
+            items(shownEtfs, key = { it.symbol }) { etf ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card),
                     modifier = Modifier.fillMaxWidth().clickable { selected = etf }
@@ -1261,8 +1302,12 @@ fun EtfScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = null) {
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        Text("${etf.symbol} • ₹${etf.last} (${etf.pctChange}%)", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
-                        Text("AUM: ₹${etf.aumCr ?: 0.0} Cr • Expense: ${etf.expenseRatio ?: 0.0}%", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        Text("${etf.symbol} • ₹${usFmt("%.2f", etf.last)} (${usFmt("%+.2f", etf.pctChange)}%)", color = LocalAppTheme.current.textSecondary, fontSize = 12.sp)
+                        Text(
+                            "${etf.category.ifBlank { "Category n/a" }} · AUM ${etf.aumCr?.let { "₹${usFmt("%.0f", it)} Cr" } ?: "n/a"} · Expense ${etf.expenseRatio?.let { "${usFmt("%.2f", it)}%" } ?: "n/a"}",
+                            color = LocalAppTheme.current.textSecondary,
+                            fontSize = 12.sp,
+                        )
                     }
                 }
             }
@@ -1315,6 +1360,15 @@ fun SipPlansScreen(viewModel: TradingViewModel, onBack: (() -> Unit)? = null) {
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item { ExplorerTitle("My SIPs", onBack) }
+        item {
+            val active = plans.filter { it.isActive }
+            val monthly = active.filter { it.frequency.equals("MONTHLY", ignoreCase = true) }.sumOf { it.amount }
+            Text(
+                "Paper SIP book: ₹${usFmt("%.0f", monthly)} a month across ${active.size} active plans. This is the practice book, not a bank net worth.",
+                color = LocalAppTheme.current.textSecondary,
+                fontSize = 12.sp,
+            )
+        }
         item {
             ProductPaperBanner("Paper SIPs only — no real AMC debit and returns are not guaranteed.")
         }
@@ -1945,6 +1999,7 @@ fun DerivativesIntelligenceScreen(
     val loading by viewModel.derivativesLoading.collectAsStateWithLifecycle()
     val foCandles by viewModel.optionCandles.collectAsStateWithLifecycle()
     val foCandlesLoading by viewModel.optionCandlesLoading.collectAsStateWithLifecycle()
+    val quotes by viewModel.quotes.collectAsStateWithLifecycle()
     // Resume on the underlying of an unfinished drill; otherwise start on NIFTY.
     val startSymbol = savedOptionPractice?.symbol?.takeIf { it.isNotBlank() } ?: "NIFTY"
     var symbol by rememberSaveable { mutableStateOf(startSymbol) }
@@ -1952,6 +2007,22 @@ fun DerivativesIntelligenceScreen(
     var expiry by rememberSaveable { mutableStateOf(FoContractFacts.nextExpiryFor(startSymbol).toString()) }
     var showMoreStrikes by rememberSaveable { mutableStateOf(false) }
     var showGreeks by rememberSaveable { mutableStateOf(false) }
+    var chainSide by rememberSaveable { mutableStateOf("BOTH") }
+    var marketOpen by remember { mutableStateOf(MarketSession.isOpen()) }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            delay(30_000)
+            marketOpen = MarketSession.isOpen()
+        }
+    }
+    LaunchedEffect(marketOpen, practiceSymbol) {
+        if (!marketOpen) return@LaunchedEffect
+        val tape = tapeSymbol(practiceSymbol)
+        while (isActive) {
+            viewModel.refreshQuotes(symbolsOverride = listOf(tape), showSpinner = false)
+            delay(1_500)
+        }
+    }
 
     // Auto-load once so the Options tab isn't an empty form on first open.
     LaunchedEffect(Unit) {
@@ -1962,7 +2033,6 @@ fun DerivativesIntelligenceScreen(
     }
     // The chart drill and the chain always describe the same underlying.
     LaunchedEffect(practiceSymbol) {
-        viewModel.loadFoCandles(practiceSymbol, "options")
         if (optionChain != null && !optionChain?.symbol.equals(practiceSymbol, ignoreCase = true)) {
             symbol = practiceSymbol
             expiry = FoContractFacts.nextExpiryFor(practiceSymbol).toString()
@@ -1985,7 +2055,7 @@ fun DerivativesIntelligenceScreen(
 
     val chainContracts = remember(optionChain, showMoreStrikes) {
         val chain = optionChain ?: return@remember emptyList()
-        val limit = if (showMoreStrikes) 12 else 5
+        val limit = if (showMoreStrikes) chain.contracts.size.coerceAtMost(31) else 12
         chain.contracts.sortedBy { kotlin.math.abs(it.strike - chain.spot) }.take(limit)
     }
 
@@ -2011,6 +2081,17 @@ fun DerivativesIntelligenceScreen(
                 ?: 0.0,
             onReload = { viewModel.loadFoCandles(practiceSymbol, "options") },
             onExtend = { viewModel.loadFoCandles(practiceSymbol, "options", extend = true) },
+            onLive = {
+                viewModel.loadFoCandles(practiceSymbol, "options", live = true)
+                viewModel.loadOptionChain(practiceSymbol, expiry, quiet = true)
+            },
+            onWiden = { viewModel.loadFoCandles(practiceSymbol, "options", live = true, widen = true) },
+            onResetLive = {
+                viewModel.loadFoCandles(practiceSymbol, "options", live = true, resetLive = true)
+                viewModel.loadOptionChain(practiceSymbol, expiry, quiet = true)
+            },
+            livePrice = underlyingLast(quotes, practiceSymbol),
+            marketOpen = marketOpen,
             onSymbol = { practiceSymbol = it },
             modifier = Modifier.weight(1f).fillMaxWidth(),
             asScreen = true,
@@ -2155,7 +2236,30 @@ fun DerivativesIntelligenceScreen(
         }
 
         optionChain?.let { chain ->
-            item {
+            if (chain.contracts.isEmpty() || chain.source.equals("missing", ignoreCase = true)) {
+                item {
+                    Card(
+                        colors = byselCardColors(),
+                        elevation = byselCardElevation(),
+                        border = byselCardBorder(),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                "Exchange chain did not load",
+                                color = LocalAppTheme.current.text,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                chain.notes.firstOrNull()
+                                    ?: "Open interest and premiums stay blank until the exchange board answers.",
+                                color = LocalAppTheme.current.textSecondary,
+                                fontSize = 12.sp,
+                            )
+                        }
+                    }
+                }
+            } else item {
                 Card(colors = CardDefaults.cardColors(containerColor = LocalAppTheme.current.card)) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
@@ -2192,44 +2296,117 @@ fun DerivativesIntelligenceScreen(
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("BOTH" to "Both", "CALL" to "Calls", "PUT" to "Puts").forEach { (side, label) ->
+                                FilterChip(
+                                    selected = chainSide == side,
+                                    onClick = { chainSide = side },
+                                    label = { Text(label, fontSize = 12.sp, maxLines = 1) },
+                                )
+                            }
+                        }
+                        chainMaxPain(chain.contracts)?.let { pain ->
+                            Text(
+                                "Max pain from this chain's open interest is ₹${usFmt("%.0f", pain)}" +
+                                    if (chain.source.equals("synthetic", ignoreCase = true)) ". Teaching open interest, not the exchange book." else ".",
+                                color = LocalAppTheme.current.text,
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp,
+                            )
+                        }
+                        ChainStudyCharts(
+                            contracts = chainContracts,
+                            teaching = chain.source.equals("synthetic", ignoreCase = true),
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "Call",
+                                modifier = Modifier.weight(1f),
+                                color = LocalAppTheme.current.textSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                "Strike",
+                                modifier = Modifier.width(72.dp),
+                                color = LocalAppTheme.current.textSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                textAlign = TextAlign.Center,
+                            )
+                            Text(
+                                "Put",
+                                modifier = Modifier.weight(1f),
+                                color = LocalAppTheme.current.textSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                textAlign = TextAlign.End,
+                            )
+                        }
                         chainContracts.forEach { contract ->
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    if (chainSide != "PUT") {
+                                        Text(
+                                            "₹${usFmt("%.1f", contract.callLtp)}",
+                                            color = LocalAppTheme.current.text,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                        )
+                                        Text(
+                                            "OI ${contract.callOi}",
+                                            color = LocalAppTheme.current.textSecondary,
+                                            fontSize = 10.sp,
+                                            maxLines = 1,
+                                        )
+                                    }
+                                }
                                 Text(
-                                    "₹${usFmt("%.0f", contract.strike)}  ·  ${callPlainEnglish(chain.spot, contract.strike)}  ·  ${putPlainEnglish(chain.spot, contract.strike)}",
+                                    "₹${usFmt("%.0f", contract.strike)}",
+                                    modifier = Modifier.width(72.dp),
                                     color = LocalAppTheme.current.text,
-                                    fontWeight = FontWeight.SemiBold,
+                                    fontWeight = FontWeight.Bold,
                                     fontSize = 12.sp,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                )
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalAlignment = Alignment.End,
+                                ) {
+                                    if (chainSide != "CALL") {
+                                        Text(
+                                            "₹${usFmt("%.1f", contract.putLtp)}",
+                                            color = LocalAppTheme.current.text,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            textAlign = TextAlign.End,
+                                        )
+                                        Text(
+                                            "OI ${contract.putOi}",
+                                            color = LocalAppTheme.current.textSecondary,
+                                            fontSize = 10.sp,
+                                            maxLines = 1,
+                                        )
+                                    }
+                                }
+                            }
+                            if (showGreeks) {
+                                Text(
+                                    "Call Δ ${usFmt("%.2f", contract.callDelta)}  ·  Put Δ ${usFmt("%.2f", contract.putDelta)}  ·  Θ ${usFmt("%.1f", contract.theta)}  ·  Vega ${usFmt("%.1f", contract.vega)}",
+                                    color = LocalAppTheme.current.textSecondary,
+                                    fontSize = 11.sp,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                 )
-                                Text(
-                                    "Call last ₹${usFmt("%.1f", contract.callLtp)}   ·   Put last ₹${usFmt("%.1f", contract.putLtp)}",
-                                    color = LocalAppTheme.current.textSecondary,
-                                    fontSize = 11.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    "Call OI ${contract.callOi}   ·   Put OI ${contract.putOi}",
-                                    color = LocalAppTheme.current.textSecondary,
-                                    fontSize = 11.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                if (showGreeks) {
-                                    Text(
-                                        "Call Δ ${usFmt("%.2f", contract.callDelta)}  ·  Put Δ ${usFmt("%.2f", contract.putDelta)}  ·  Θ ${usFmt("%.1f", contract.theta)}  ·  Vega ${usFmt("%.1f", contract.vega)}",
-                                        color = LocalAppTheme.current.textSecondary,
-                                        fontSize = 11.sp,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
                             }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2245,6 +2422,14 @@ fun DerivativesIntelligenceScreen(
                                     maxLines = 1,
                                 )
                             }
+                        }
+                        if (showGreeks && chain.source.equals("synthetic", ignoreCase = true)) {
+                            Text(
+                                "These Greeks are a teaching model on a synthetic chain. They are not an exchange print.",
+                                color = LocalAppTheme.current.textSecondary,
+                                fontSize = 11.sp,
+                                lineHeight = 14.sp,
+                            )
                         }
                     }
                 }

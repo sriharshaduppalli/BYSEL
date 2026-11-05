@@ -1196,6 +1196,13 @@ _TERM_ANSWERS: dict[str, str] = {
         "Max profit = credit; losses grow outside breakevens; margin intensive.\n\n"
         "**Common mistake:** Selling thin-wing strangles for ‘extra premium’ without a hedge plan."
     ),
+    "grey market premium": (
+        "**Grey-market premium (GMP)**\n\n"
+        "An unofficial, unregulated quote some people share before listing. "
+        "It is not an NSE or BSE price, not the issue price, and not an allotment.\n\n"
+        "BYSEL does not show a GMP figure. The IPO list, when it loads, is the issue calendar only.\n\n"
+        "**Common mistake:** Treating a forwarded GMP number as the listing price."
+    ),
     "iron condor": (
         "**Iron Condor**\n\n"
         "Range strategy: **short put spread + short call spread** (four legs) — defined risk.\n\n"
@@ -2484,6 +2491,8 @@ _TERM_ANSWERS["put-call ratio"] = _TERM_ANSWERS["put call ratio"]
 _TERM_ANSWERS["put/call ratio"] = _TERM_ANSWERS["put call ratio"]
 _TERM_ANSWERS["maxpain"] = _TERM_ANSWERS["max pain"]
 _TERM_ANSWERS["iron butterfly"] = _TERM_ANSWERS["iron condor"]
+_TERM_ANSWERS["gmp"] = _TERM_ANSWERS["grey market premium"]
+_TERM_ANSWERS["grey market"] = _TERM_ANSWERS["grey market premium"]
 _TERM_ANSWERS["options theory"] = _TERM_ANSWERS["option theory"]
 _TERM_ANSWERS["option basics"] = _TERM_ANSWERS["option theory"]
 _TERM_ANSWERS["call options"] = _TERM_ANSWERS["call option"]
@@ -2715,6 +2724,23 @@ def get_education_answer(query: str) -> Optional[str]:
     if not q:
         return None
 
+    # A desk ask (chain, IPO list, journal, NAV, drawn line) is a figure,
+    # not a primer. Bare "what is …?" does not match those patterns.
+    try:
+        from .ism_desk import detect_desk_focus
+
+        if detect_desk_focus(query):
+            return None
+    except Exception:
+        pass
+
+    # Strategy and glossary words that sit one letter away from a ticker.
+    # "iron condor on nifty" is the condor primer, not CONCOR.
+    if re.search(r"\biron condor\b", q):
+        return _TERM_ANSWERS["iron condor"]
+    if re.search(r"\b(grey[- ]market(?:\s+premium)?|\bgmp\b)\b", q):
+        return _TERM_ANSWERS["grey market premium"]
+
     educational_cue = bool(
         re.search(
             r"\b(what is|what are|what happens|explain|define|definition|meaning of|formula|equation|"
@@ -2854,6 +2880,15 @@ def get_education_answer(query: str) -> Optional[str]:
     )
     if stock_specific_stop_or_plan and not formula_cue and not re.search(
         r"\b(what is|define|definition|meaning of|explain)\b", q
+    ):
+        return None
+
+    # "stochastic of RELIANCE" / "RSI for TCS" is that symbol's figure.
+    # "what is stochastic" has no listed symbol and stays a definition.
+    if (
+        named_symbol
+        and re.search(r"\b(of|for|on)\s+", q)
+        and not formula_cue
     ):
         return None
 

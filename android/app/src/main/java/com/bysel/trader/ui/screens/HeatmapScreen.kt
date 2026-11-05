@@ -27,6 +27,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.bysel.trader.ui.components.rememberHideOnScrollState
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import com.bysel.trader.ui.components.detectChartGestures
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -674,19 +676,51 @@ private fun BreathDistributionGraph(
     val gridColor = theme.textSecondary.copy(alpha = 0.2f)
     // Theme text keeps the quality line visible on both light and dark fills.
     val lineColor = theme.text.copy(alpha = 0.9f)
+    val windowStart = remember { mutableFloatStateOf(0f) }
+    val windowSpan = remember { mutableFloatStateOf(1f) }
+    val sampleCount = remember { mutableIntStateOf(samples.size) }
+    sampleCount.intValue = samples.size
 
-    Canvas(modifier = modifier) {
+    Canvas(
+        modifier = modifier.pointerInput(Unit) {
+            detectChartGestures(
+                onPanZoom = { panX, zoom, focalX ->
+                    val count = sampleCount.intValue
+                    if (count < 3 || !zoom.isFinite() || !focalX.isFinite()) return@detectChartGestures
+                    val width = size.width.toFloat().coerceAtLeast(1f)
+                    val nextSpan = (windowSpan.floatValue / zoom).coerceIn(2f / count, 1f)
+                    val focal = (focalX / width).coerceIn(0f, 1f)
+                    val anchor = windowStart.floatValue + focal * windowSpan.floatValue
+                    val rawStart = anchor - focal * nextSpan - (panX / width) * windowSpan.floatValue
+                    val maxStart = (1f - nextSpan).coerceAtLeast(0f)
+                    windowSpan.floatValue = nextSpan
+                    windowStart.floatValue = rawStart.coerceIn(0f, maxStart)
+                },
+                onDoubleTap = {
+                    windowSpan.floatValue = 1f
+                    windowStart.floatValue = 0f
+                },
+            )
+        },
+    ) {
         if (samples.isEmpty()) return@Canvas
+        val count = samples.size
+        val span = windowSpan.floatValue.coerceIn(2f / count.coerceAtLeast(2), 1f)
+        val maxStart = (1f - span).coerceAtLeast(0f)
+        val start = windowStart.floatValue.coerceIn(0f, maxStart)
+        val from = (start * (count - 1)).toInt().coerceIn(0, count - 1)
+        val visible = (span * count).toInt().coerceAtLeast(2).coerceAtMost(count - from)
+        val rows = samples.subList(from, from + visible)
         val w = size.width
         val h = size.height
-        val n = max(samples.size - 1, 1)
+        val n = max(rows.size - 1, 1)
 
         listOf(0.25f, 0.5f, 0.75f).forEach { yFrac ->
             val y = h * (1f - yFrac)
             drawLine(gridColor, Offset(0f, y), Offset(w, y), strokeWidth = 1f)
         }
 
-        fun pointX(index: Int): Float = if (samples.size == 1) w / 2f else (index.toFloat() / n) * w
+        fun pointX(index: Int): Float = if (rows.size == 1) w / 2f else (index.toFloat() / n) * w
 
         fun stackedTops(sample: BreathSample): Pair<Float, Float> {
             val adv = sample.advanceShare.coerceIn(0f, 1f)
@@ -699,31 +733,31 @@ private fun BreathDistributionGraph(
         // Advances (green) from bottom
         val advancePath = Path().apply {
             moveTo(pointX(0), h)
-            samples.forEachIndexed { index, sample ->
+            rows.forEachIndexed { index, sample ->
                 lineTo(pointX(index), stackedTops(sample).first)
             }
-            lineTo(pointX(samples.lastIndex), h)
+            lineTo(pointX(rows.lastIndex), h)
             close()
         }
         // Unchanged (grey) mid band
         val unchangedPath = Path().apply {
-            val first = stackedTops(samples.first())
+            val first = stackedTops(rows.first())
             moveTo(pointX(0), first.first)
-            samples.forEachIndexed { index, sample ->
+            rows.forEachIndexed { index, sample ->
                 lineTo(pointX(index), stackedTops(sample).second)
             }
-            for (index in samples.indices.reversed()) {
-                lineTo(pointX(index), stackedTops(samples[index]).first)
+            for (index in rows.indices.reversed()) {
+                lineTo(pointX(index), stackedTops(rows[index]).first)
             }
             close()
         }
         // Declines (red) — area between unchanged-top and chart top
         val declineArea = Path().apply {
-            moveTo(pointX(0), stackedTops(samples.first()).second)
-            samples.forEachIndexed { index, sample ->
+            moveTo(pointX(0), stackedTops(rows.first()).second)
+            rows.forEachIndexed { index, sample ->
                 lineTo(pointX(index), stackedTops(sample).second)
             }
-            lineTo(pointX(samples.lastIndex), 0f)
+            lineTo(pointX(rows.lastIndex), 0f)
             lineTo(pointX(0), 0f)
             close()
         }
@@ -733,7 +767,7 @@ private fun BreathDistributionGraph(
         drawPath(advancePath, advanceColor.copy(alpha = 0.55f))
 
         val tqiPath = Path()
-        samples.forEachIndexed { index, sample ->
+        rows.forEachIndexed { index, sample ->
             val x = pointX(index)
             val y = h * (1f - (sample.tqi / 100f).coerceIn(0f, 1f))
             if (index == 0) tqiPath.moveTo(x, y) else tqiPath.lineTo(x, y)

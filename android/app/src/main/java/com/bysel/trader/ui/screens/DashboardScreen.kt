@@ -23,10 +23,13 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -64,7 +67,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -73,6 +80,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bysel.trader.data.PracticeHabitStore
+import com.bysel.trader.data.models.HistoryCandle
 import com.bysel.trader.data.models.Holding
 import com.bysel.trader.data.models.IntradayTipsResponse
 import com.bysel.trader.data.models.MarketMoverQuote
@@ -100,6 +108,8 @@ import com.bysel.trader.ui.components.HabitLiteracyCatalog
 import com.bysel.trader.ui.components.NewsWidget
 import com.bysel.trader.ui.components.PullToRefreshBox
 import com.bysel.trader.ui.components.blockParentHorizontalPager
+import com.bysel.trader.ui.components.detectChartGestures
+import com.bysel.trader.ui.theme.TickPriceText
 import com.bysel.trader.ui.components.exclusiveHorizontalScroll
 import com.bysel.trader.ui.components.TraceAwareErrorSnackbar
 import com.bysel.trader.ui.components.WatchlistWidget
@@ -118,6 +128,7 @@ import com.bysel.trader.ui.theme.byselSectionSurface
 import com.bysel.trader.ui.viewmodel.DashboardViewModel
 import com.bysel.trader.utils.MarketSession
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 private data class HomeGuideStep(
@@ -413,6 +424,7 @@ fun DashboardScreen(
     onPracticeReviewSubmit: ((symbol: String, qty: Int, price: Double, note: String, setSl: Boolean, followedPlan: Boolean) -> Unit)? = null,
     walletBalance: Double = 0.0,
     onAddPracticeFunds: (() -> Unit)? = null,
+    onOpenJournal: (() -> Unit)? = null,
     watchlistSymbols: List<String> = emptyList(),
     featuredWatchlistSymbols: List<String> = emptyList(),
     featuredWatchlistTitle: String = "My Watchlist",
@@ -595,6 +607,7 @@ fun DashboardScreen(
         PracticeReviewSheet(
             target = target,
             onDismiss = { practiceReview = null },
+            onOpenJournal = onOpenJournal,
             onSubmit = { note, setSl, followedPlan ->
                 habit = PracticeHabitStore.markReviewed(context, setSl, followedPlan)
                 practiceProgress = PracticeHabitStore.loadProgress(context)
@@ -689,6 +702,17 @@ fun DashboardContent(
     var layoutResetHint by rememberSaveable { mutableStateOf<String?>(null) }
     var showCustomize by rememberSaveable { mutableStateOf(false) }
     var scrollPortfolioIntoView by remember { mutableStateOf(false) }
+    val indexChartOn by dashboardViewModel.indexChartOn.collectAsStateWithLifecycle()
+    val chartMotionOn by dashboardViewModel.chartMotionOn.collectAsStateWithLifecycle()
+    val homeIndexSymbol by dashboardViewModel.homeIndexSymbol.collectAsStateWithLifecycle()
+    val indexCandles by dashboardViewModel.indexCandles.collectAsStateWithLifecycle()
+    LaunchedEffect(indexChartOn, homeIndexSymbol) {
+        if (!indexChartOn) return@LaunchedEffect
+        while (isActive) {
+            dashboardViewModel.refreshIndexSession(homeIndexSymbol)
+            delay(45_000)
+        }
+    }
 
     LaunchedEffect(portfolioPinned, scrollPortfolioIntoView) {
         if (portfolioPinned && scrollPortfolioIntoView) {
@@ -835,19 +859,33 @@ fun DashboardContent(
                     onAskAi = onAiClick,
                     onNews = { scope.launch { newsRequester.bringIntoView() } },
                     layoutResetHint = layoutResetHint,
+                    indexChartOn = indexChartOn,
+                    chartMotion = chartMotionOn,
+                    homeIndexSymbol = homeIndexSymbol,
+                    indexCandles = indexCandles,
+                    onSelectIndex = { dashboardViewModel.selectHomeIndex(it) },
                 )
             }
         }
 
-        // Discovery sits right under the markets, not at the end of a long scroll.
-        item {
-            QuickActionsRow(
-                onSearch = onSearchClick,
-                onScanner = onScannerClick,
-                onSignalLab = onSignalLabClick,
-                onSmartMoney = onSmartMoneyClick,
-                onAskAi = onAiClick,
-            )
+        item(key = "home_watch") {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = byselCardColors(),
+                elevation = byselCardElevation(),
+                shape = RoundedCornerShape(16.dp),
+                border = byselCardBorder(),
+            ) {
+                WatchlistWidget(
+                    isPinned = watchlistPinned,
+                    quotes = watchlistQuotes,
+                    trackedCount = homeWatchSymbols.size,
+                    title = featuredWatchlistTitle,
+                    onPinClick = { dashboardViewModel.toggleWatchlistPin() },
+                    onQuoteClick = { onTradeClick(it.symbol) },
+                    onTradeClick = onQuickTradeClick?.let { handler -> { handler(it.symbol) } },
+                )
+            }
         }
 
         item {
@@ -893,6 +931,16 @@ fun DashboardContent(
         }
 
         item {
+            QuickActionsRow(
+                onSearch = onSearchClick,
+                onScanner = onScannerClick,
+                onSignalLab = onSignalLabClick,
+                onSmartMoney = onSmartMoneyClick,
+                onAskAi = onAiClick,
+            )
+        }
+
+        item {
             Box(
                 modifier = Modifier
                     .bringIntoViewRequester(habitRequester)
@@ -925,7 +973,7 @@ fun DashboardContent(
         item {
             SectionHeader(
                 title = "Your Space",
-                subtitle = "Market Watch, Portfolio and News — yours to reorder from the ⋮ menu.",
+                subtitle = "Portfolio and news — yours to reorder from the ⋮ menu.",
                 modifier = Modifier.bringIntoViewRequester(yourSpaceRequester),
             )
         }
@@ -977,41 +1025,7 @@ fun DashboardContent(
                         }
                     }
                 }
-                "watchlist" -> if (watchlistPinned) {
-                    item(key = "widget_watchlist") {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = byselCardColors(),
-                            elevation = byselCardElevation(),
-                            shape = RoundedCornerShape(16.dp),
-                            border = if (idx == 0) BorderStroke(2.dp, LocalAppTheme.current.primary) else byselCardBorder(),
-                        ) {
-                            WatchlistWidget(
-                                isPinned = true,
-                                quotes = watchlistQuotes,
-                                trackedCount = homeWatchSymbols.size,
-                                title = featuredWatchlistTitle,
-                                onPinClick = { dashboardViewModel.toggleWatchlistPin() },
-                                onQuoteClick = { onTradeClick(it.symbol) },
-                                onTradeClick = onQuickTradeClick?.let { handler -> { handler(it.symbol) } },
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        if (!watchlistPinned) {
-            item(key = "loose_watchlist") {
-                WatchlistWidget(
-                    isPinned = false,
-                    quotes = watchlistQuotes,
-                    trackedCount = homeWatchSymbols.size,
-                    title = featuredWatchlistTitle,
-                    onPinClick = { dashboardViewModel.toggleWatchlistPin() },
-                    onQuoteClick = { onTradeClick(it.symbol) },
-                    onTradeClick = onQuickTradeClick?.let { handler -> { handler(it.symbol) } },
-                )
+                "watchlist" -> Unit
             }
         }
 
@@ -1074,6 +1088,8 @@ fun DashboardContent(
             onToggleWatchlist = { dashboardViewModel.toggleWatchlistPin() },
             onMoveUp = { dashboardViewModel.moveWidgetUp(it) },
             onMoveDown = { dashboardViewModel.moveWidgetDown(it) },
+            indexChartOn = indexChartOn,
+            onIndexChartChange = { dashboardViewModel.setIndexChartOn(it) },
             onReset = {
                 dashboardViewModel.resetDashboardLayout()
                 layoutResetHint = "Restored News and Market Watch."
@@ -1168,6 +1184,11 @@ private fun MarketPulseHero(
     onAskAi: (() -> Unit)?,
     onNews: () -> Unit,
     layoutResetHint: String? = null,
+    indexChartOn: Boolean = true,
+    chartMotion: Boolean = true,
+    homeIndexSymbol: String = "NIFTY50",
+    indexCandles: List<HistoryCandle> = emptyList(),
+    onSelectIndex: (String) -> Unit = {},
 ) {
     val theme = LocalAppTheme.current
     val indices = remember(quotes) {
@@ -1345,15 +1366,18 @@ private fun MarketPulseHero(
                                 softWrap = true,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            Text(
+                            TickPriceText(
+                                price = quote.last,
                                 text = formatInr(quote.last, decimals = 2),
-                                fontSize = priceSize,
-                                lineHeight = if (holdingsCount == 0) 22.sp else 18.sp,
-                                fontWeight = FontWeight.Bold,
                                 color = theme.text,
-                                maxLines = 2,
-                                softWrap = true,
-                                overflow = TextOverflow.Ellipsis,
+                                fontWeight = FontWeight.Bold,
+                                motion = chartMotion,
+                                style = TextStyle(
+                                    fontSize = priceSize,
+                                    lineHeight = if (holdingsCount == 0) 22.sp else 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = theme.text,
+                                ),
                             )
                             Text(
                                 text = formatSignedPercent(quote.pctChange),
@@ -1365,6 +1389,36 @@ private fun MarketPulseHero(
                             )
                         }
                     }
+                }
+            }
+
+            if (indexChartOn) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    listOf("NIFTY50" to "Nifty", "SENSEX" to "Sensex", "BANKNIFTY" to "Bank Nifty").forEach { (symbol, label) ->
+                        FilterChip(
+                            selected = homeIndexSymbol == symbol,
+                            onClick = { onSelectIndex(symbol) },
+                            label = { Text(label, maxLines = 1) },
+                        )
+                    }
+                }
+                val liveLast = indices.firstOrNull { it.symbol.equals(homeIndexSymbol, ignoreCase = true) }?.last ?: 0.0
+                if (indexCandles.size >= 2) {
+                    HomeIndexSparkline(
+                        candles = indexCandles,
+                        livePrice = liveLast,
+                        motion = chartMotion,
+                        onOpen = { onIndexClick?.invoke(homeIndexSymbol) },
+                    )
+                    Text(
+                        text = stringResource(R.string.home_index_chart_sub),
+                        fontSize = 11.sp,
+                        color = theme.textSecondary,
+                        maxLines = 2,
+                    )
                 }
             }
 
@@ -1695,6 +1749,7 @@ private data class PracticeReviewTarget(
 private fun PracticeReviewSheet(
     target: PracticeReviewTarget,
     onDismiss: () -> Unit,
+    onOpenJournal: (() -> Unit)? = null,
     onSubmit: (note: String, setSl: Boolean, followedPlan: Boolean) -> Unit,
 ) {
     val theme = LocalAppTheme.current
@@ -1772,6 +1827,11 @@ private fun PracticeReviewSheet(
             }
             TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
                 Text("Skip for now")
+            }
+            if (onOpenJournal != null) {
+                TextButton(onClick = onOpenJournal, modifier = Modifier.fillMaxWidth()) {
+                    Text("Open the journal for ${target.symbol}")
+                }
             }
         }
     }
@@ -1880,9 +1940,7 @@ private fun TodaysPracticeDeck(
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .blockParentHorizontalPager(),
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(
@@ -1953,10 +2011,16 @@ private fun TodaysPracticeDeck(
             }
             else -> {
                 // A carousel keeps five drills to one card-height instead of a wall of BUY buttons.
+                // Do not put blockParentHorizontalPager on this column.
+                // Its pre-scroll eat stops this row from moving left, so the
+                // other practice picks never come into view. The row itself
+                // keeps leftover horizontal drag off the home tab pager.
                 LazyRow(
-                    modifier = Modifier.exclusiveHorizontalScroll(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .exclusiveHorizontalScroll(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(end = 4.dp),
+                    contentPadding = PaddingValues(end = 16.dp),
                 ) {
                     items(items, key = { it.symbol }) { row ->
                         val norm = WatchlistSymbols.normalize(row.symbol)
@@ -2702,6 +2766,8 @@ private fun HomeCustomizeSheet(
     onReset: () -> Unit,
     resetHint: String?,
     onDismiss: () -> Unit,
+    indexChartOn: Boolean = true,
+    onIndexChartChange: (Boolean) -> Unit = {},
 ) {
     val theme = LocalAppTheme.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -2728,6 +2794,8 @@ private fun HomeCustomizeSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -2739,10 +2807,25 @@ private fun HomeCustomizeSheet(
                 color = theme.text,
             )
             Text(
-                text = "Pin and reorder news, Market Watch, and the portfolio card. The session and practice names stay on top.",
+                text = "Pin and reorder news, Market Watch, and the portfolio card. The session chart and practice names stay on top.",
                 fontSize = 13.sp,
                 color = theme.textSecondary,
             )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.home_index_chart), color = theme.text, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        stringResource(R.string.home_index_chart_sub),
+                        color = theme.textSecondary,
+                        fontSize = 12.sp,
+                    )
+                }
+                Switch(checked = indexChartOn, onCheckedChange = onIndexChartChange)
+            }
             widgetOrder.forEachIndexed { index, widget ->
                 val label = labels[widget] ?: widget
                 Row(
@@ -2815,32 +2898,23 @@ private fun QuickActionsRow(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(theme.card)
+                    .clip(RoundedCornerShape(10.dp))
                     .clickable(onClick = action.onClick)
-                    .padding(vertical = 10.dp, horizontal = 4.dp),
+                    .padding(vertical = 4.dp, horizontal = 2.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(theme.primaryContainer),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        action.icon,
-                        contentDescription = action.label,
-                        tint = theme.onPrimaryContainer,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
+                Icon(
+                    action.icon,
+                    contentDescription = action.label,
+                    tint = theme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
                 Text(
                     text = action.label,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = theme.text,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = theme.textSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -3058,4 +3132,80 @@ private fun buildPersonalNewsSymbols(
         "AXISBANK", "KOTAKBANK",
     )
     return (preferred + liquidDefaults).distinct().take(12)
+}
+
+@Composable
+private fun HomeIndexSparkline(
+    candles: List<HistoryCandle>,
+    livePrice: Double,
+    motion: Boolean,
+    onOpen: () -> Unit,
+) {
+    val theme = LocalAppTheme.current
+    val closes = remember(candles) {
+        candles.map { it.close }.filter { it > 0.0 }
+    }
+    if (closes.size < 2) return
+    val targetLast = if (livePrice > 0.0) livePrice else closes.last()
+    val animatedLast = remember { androidx.compose.animation.core.Animatable(closes.last().toFloat()) }
+    LaunchedEffect(targetLast, motion) {
+        val target = targetLast.toFloat()
+        if (!motion) animatedLast.snapTo(target) else animatedLast.animateTo(target, tween(420))
+    }
+    val windowStart = remember { mutableFloatStateOf(0f) }
+    val windowSpan = remember { mutableFloatStateOf(1f) }
+    val countState = remember { mutableIntStateOf(closes.size) }
+    countState.intValue = closes.size
+    val line = if (targetLast >= closes.first()) theme.positive else theme.negative
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(132.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(theme.surface.copy(alpha = 0.55f))
+            .blockParentHorizontalPager()
+            .pointerInput(Unit) {
+                detectChartGestures(
+                    onPanZoom = { panX, zoom, focalX ->
+                        val count = countState.intValue
+                        if (count < 3 || zoom.isNaN() || focalX.isNaN()) return@detectChartGestures
+                        val width = size.width.toFloat().coerceAtLeast(1f)
+                        val nextSpan = (windowSpan.floatValue / zoom).coerceIn(2f / count, 1f)
+                        val focal = (focalX / width).coerceIn(0f, 1f)
+                        val anchor = windowStart.floatValue + focal * windowSpan.floatValue
+                        val rawStart = anchor - focal * nextSpan - (panX / width) * windowSpan.floatValue
+                        val maxStart = (1f - nextSpan).coerceAtLeast(0f)
+                        windowSpan.floatValue = nextSpan
+                        windowStart.floatValue = rawStart.coerceIn(0f, maxStart)
+                    },
+                    onDoubleTap = {
+                        windowSpan.floatValue = 1f
+                        windowStart.floatValue = 0f
+                    },
+                )
+            }
+            .clickable(onClick = onOpen),
+    ) {
+        val count = closes.size
+        val span = windowSpan.floatValue.coerceIn(2f / count, 1f)
+        val maxStart = (1f - span).coerceAtLeast(0f)
+        val start = windowStart.floatValue.coerceIn(0f, maxStart)
+        val from = (start * (count - 1)).toInt().coerceIn(0, count - 2)
+        val visible = (span * count).toInt().coerceAtLeast(2).coerceAtMost(count - from)
+        val slice = closes.subList(from, from + visible).toMutableList()
+        if (from + visible >= count) slice[slice.lastIndex] = animatedLast.value.toDouble()
+        val minP = slice.min()
+        val maxP = slice.max()
+        val range = (maxP - minP).takeIf { it > 0.0 } ?: (maxP * 0.002).coerceAtLeast(0.05)
+        val path = Path()
+        slice.forEachIndexed { index, price ->
+            val x = if (slice.size == 1) size.width / 2f else index.toFloat() / (slice.size - 1) * size.width
+            val y = size.height - (((price - minP) / range).toFloat().coerceIn(0f, 1f) * size.height)
+            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        drawPath(path, color = line, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+        val endX = size.width
+        val endY = size.height - (((slice.last() - minP) / range).toFloat().coerceIn(0f, 1f) * size.height)
+        drawCircle(color = line, radius = 3.5.dp.toPx(), center = androidx.compose.ui.geometry.Offset(endX, endY))
+    }
 }

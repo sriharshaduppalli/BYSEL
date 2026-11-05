@@ -35,7 +35,7 @@
     <!-- Bottom navigation -->
     <string name="nav_home">Home</string>
     <string name="nav_ai">AI</string>
-    <string name="nav_trade">Trade</string>
+    <string name="nav_trade">Practice</string>
     <string name="nav_portfolio">Portfolio</string>
     <string name="nav_more">More</string>
 
@@ -191,6 +191,12 @@
     <string name="home_pull_refresh">Pull to refresh for today’s practice names.</string>
     <string name="home_customize_title">Customize Home</string>
     <string name="home_reset_layout">Reset layout</string>
+    <string name="home_index_chart">Index chart</string>
+    <string name="home_index_chart_sub">Session line. Pinch sideways. Tap for the full chart. Delayed, not an exchange tape.</string>
+    <string name="settings_home_chart">Home index chart</string>
+    <string name="settings_home_chart_sub">Show Nifty, Sensex, or Bank Nifty on Home</string>
+    <string name="settings_chart_motion">Price motion</string>
+    <string name="settings_chart_motion_sub">Flash the last price and ease the home line when a quote changes</string>
 
     <!-- Portfolio -->
     <string name="portfolio_sub_empty">Paper Practice · Simulated holdings</string>
@@ -362,4 +368,6 @@
     <string name="practice_side_put">put</string>
     <string name="practice_payoff">Payoff at expiry</string>
     <string name="practice_payoff_caption">Horizontal line is zero. Vertical line is today\'s spot. The curve is the recipe at expiry.</string>
+    <string name="practice_live">Live</string>
+    <string name="practice_session_hint">Pinch to scale time. Pinch out at the left edge loads older bars. The last candle follows the quote. Buy call or put under the chart.</string>
 </resources>

@@ -22,6 +22,11 @@ def test_extract_symbol_ignores_beginners_literacy_word():
     assert extract_symbol_from_query("Teach stop-loss for beginners") is None
     assert extract_symbol_from_query("How should beginners do long-term investing in Indian stocks?") is None
     assert extract_symbol_from_query("BEGINNERS") is None
+    assert extract_symbol_from_query("what is max pain") is None
+    assert extract_symbol_from_query("this chain") is None
+    assert extract_symbol_from_query("iron condor on nifty") is None
+    assert extract_symbol_from_query("what is grey market premium") is None
+    assert extract_symbol_from_query("what is expense ratio") is None
     assert extract_symbol_from_query("Should I buy RELIANCE?") == "RELIANCE"
     assert extract_symbol_from_query("full math for RELIANCE") == "RELIANCE"
 

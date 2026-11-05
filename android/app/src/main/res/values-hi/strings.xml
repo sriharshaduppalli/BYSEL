@@ -23,7 +23,7 @@
 
     <string name="nav_home">होम</string>
     <string name="nav_ai">AI</string>
-    <string name="nav_trade">ट्रेड</string>
+    <string name="nav_trade">अभ्यास</string>
     <string name="nav_portfolio">पोर्टफोलियो</string>
     <string name="nav_more">और</string>
 
@@ -172,6 +172,12 @@
     <string name="home_pull_refresh">आज के अभ्यास नामों के लिए नीचे खींचकर रिफ्रेश करें।</string>
     <string name="home_customize_title">होम कस्टमाइज़ करें</string>
     <string name="home_reset_layout">लेआउट रीसेट</string>
+    <string name="home_index_chart">इंडेक्स चार्ट</string>
+    <string name="home_index_chart_sub">सेशन रेखा। बगल में पिंच करें। पूरा चार्ट के लिए टैप करें। देरी से, एक्सचेंज टेप नहीं।</string>
+    <string name="settings_home_chart">होम इंडेक्स चार्ट</string>
+    <string name="settings_home_chart_sub">होम पर निफ्टी, सेंसेक्स या बैंक निफ्टी दिखाएँ</string>
+    <string name="settings_chart_motion">कीमत की गति</string>
+    <string name="settings_chart_motion_sub">भाव बदलने पर कीमत चमके और होम रेखा हल्के से हिले</string>
 
     <!-- Portfolio -->
     <string name="portfolio_sub_empty">पेपर अभ्यास · सिम्युलेटेड होल्डिंग</string>
@@ -351,4 +357,6 @@
     <string name="practice_side_put">पुट</string>
     <string name="practice_payoff">एक्सपायरी पर पेऑफ</string>
     <string name="practice_payoff_caption">क्षैतिज रेखा शून्य है। खड़ी रेखा आज का स्पॉट है। वक्र एक्सपायरी की रेसिपी है।</string>
+    <string name="practice_live">लाइव</string>
+    <string name="practice_session_hint">समय स्केल करने के लिए पिंच करें। बाएँ किनारे पर पिंच आउट से पुराने कैंडल आते हैं। आखिरी कैंडल भाव के साथ चलती है। कॉल या पुट चार्ट के नीचे खरीदें।</string>
 </resources>

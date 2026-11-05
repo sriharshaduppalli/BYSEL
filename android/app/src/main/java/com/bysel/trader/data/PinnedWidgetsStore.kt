@@ -18,6 +18,9 @@ object PinnedWidgetsStore {
     private val NEWS_PINNED_KEY = booleanPreferencesKey("news_pinned")
     private val WATCHLIST_PINNED_KEY = booleanPreferencesKey("watchlist_pinned")
     private val WIDGET_ORDER_KEY = stringPreferencesKey("widget_order")
+    private val INDEX_CHART_KEY = booleanPreferencesKey("index_chart_on")
+    private val CHART_MOTION_KEY = booleanPreferencesKey("chart_motion_on")
+    private val INDEX_SYMBOL_KEY = stringPreferencesKey("home_index_symbol")
 
     fun isPortfolioPinned(context: Context): Flow<Boolean> =
         context.dataStore.data.map { it[PORTFOLIO_PINNED_KEY] ?: false }
@@ -48,4 +51,32 @@ object PinnedWidgetsStore {
     suspend fun setWidgetOrder(context: Context, order: List<String>) {
         context.dataStore.edit { it[WIDGET_ORDER_KEY] = order.joinToString(",") }
     }
+
+    fun isIndexChartOn(context: Context): Flow<Boolean> =
+        context.dataStore.data.map { it[INDEX_CHART_KEY] ?: true }
+
+    suspend fun setIndexChartOn(context: Context, on: Boolean) {
+        context.dataStore.edit { it[INDEX_CHART_KEY] = on }
+    }
+
+    fun isChartMotionOn(context: Context): Flow<Boolean> =
+        context.dataStore.data.map { it[CHART_MOTION_KEY] ?: true }
+
+    suspend fun setChartMotionOn(context: Context, on: Boolean) {
+        context.dataStore.edit { it[CHART_MOTION_KEY] = on }
+    }
+
+    fun homeIndexSymbol(context: Context): Flow<String> =
+        context.dataStore.data.map { prefs ->
+            val saved = prefs[INDEX_SYMBOL_KEY]?.trim()?.uppercase().orEmpty()
+            if (saved in HOME_INDEX_SYMBOLS) saved else "NIFTY50"
+        }
+
+    suspend fun setHomeIndexSymbol(context: Context, symbol: String) {
+        val normalized = symbol.trim().uppercase()
+        if (normalized !in HOME_INDEX_SYMBOLS) return
+        context.dataStore.edit { it[INDEX_SYMBOL_KEY] = normalized }
+    }
+
+    val HOME_INDEX_SYMBOLS = setOf("NIFTY50", "SENSEX", "BANKNIFTY")
 }

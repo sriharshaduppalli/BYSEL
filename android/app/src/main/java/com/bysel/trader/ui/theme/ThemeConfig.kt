@@ -55,7 +55,7 @@ object ThemeColors {
         val surface = Color(0xFF0B0C0E)
         val card = Color(0xFF1C2026)
         val positive = Color(0xFF66BB6A)
-        val negative = Color(0xFFEF9A9A)
+        val negative = Color(0xFFEF5350)
         val text = Color(0xFFE8EEF4)
         val textSecondary = Color(0xFF9AABBA)
         val caution = Color(0xFFFFB74D)
@@ -100,7 +100,7 @@ object ThemeColors {
         val surface = Color(0xFF070A1A)
         val card = Color(0xFF1A223F)
         val positive = Color(0xFF66BB6A)
-        val negative = Color(0xFFEF9A9A)
+        val negative = Color(0xFFEF5350)
         val text = Color(0xFFE8EEF4)
         val textSecondary = Color(0xFF7BCAD6)
         val caution = Color(0xFFFFB74D)
@@ -111,7 +111,7 @@ object ThemeColors {
         val surface = Color(0xFF050505)
         val card = Color(0xFF161616)
         val positive = Color(0xFF66BB6A)
-        val negative = Color(0xFFEF9A9A)
+        val negative = Color(0xFFEF5350)
         val text = Color(0xFFE8EEF4)
         val textSecondary = Color(0xFF9EACB4)
         val caution = Color(0xFFFFB74D)
@@ -145,7 +145,7 @@ object ThemeColors {
         val surface = Color(0xFF0A0A0A)
         val card = Color(0xFF1C1C1C)
         val positive = Color(0xFF81C784)
-        val negative = Color(0xFFEF9A9A)
+        val negative = Color(0xFFEF5350)
         val text = Color(0xFFE8EEF4)
         val textSecondary = Color(0xFFA8A8A8)
         val caution = Color(0xFFFFB74D)
@@ -169,7 +169,7 @@ object ThemeColors {
         val surface = Color(0xFF0B1118)
         val card = Color(0xFF172029)
         val positive = Color(0xFF66BB6A)
-        val negative = Color(0xFFEF9A9A)
+        val negative = Color(0xFFEF5350)
         val text = Color(0xFFE8EEF4)
         val textSecondary = Color(0xFF9AABBA)
         val caution = Color(0xFFFFB74D)
@@ -392,7 +392,7 @@ fun ColorScheme.toAppTheme(name: String = "Dynamic"): AppTheme {
     }
     // Keep PnL readable, but nudge toward wallpaper primary (Material You harmonization).
     val basePositive = if (light) Color(0xFF2E7D32) else Color(0xFF66BB6A)
-    val baseNegative = if (light) Color(0xFFC62828) else Color(0xFFEF9A9A)
+    val baseNegative = if (light) Color(0xFFC62828) else Color(0xFFEF5350)
     val baseCaution = if (light) Color(0xFFE65100) else Color(0xFFFFB74D)
     return AppTheme(
         primary = primary,

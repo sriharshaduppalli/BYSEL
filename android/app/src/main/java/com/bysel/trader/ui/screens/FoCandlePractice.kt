@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -34,6 +35,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +47,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -52,12 +55,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bysel.trader.data.WatchlistSymbols
 import com.bysel.trader.data.fno.FoContractFacts
 import com.bysel.trader.data.models.HistoryCandle
+import com.bysel.trader.data.models.Quote
 import com.bysel.trader.data.models.SavedPaperPractice
 import com.bysel.trader.data.models.StrategyPayoffPoint
+import com.bysel.trader.ui.components.detectChartGestures
 import com.bysel.trader.portfolio.PaperFoMark
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalConfiguration
 import com.bysel.trader.ui.components.PriceHistoryChart
 import com.bysel.trader.ui.theme.LocalAppTheme
 import java.time.Instant
@@ -117,6 +124,15 @@ fun FoCandlePractice(
     onBook: (right: String, strike: Double, price: Double, lots: Int) -> Unit = { _, _, _, _ -> },
     onFlatten: (right: String, strike: Double, price: Double, lots: Int) -> Unit = { _, _, _, _ -> },
     onExtend: () -> Unit = {},
+    onLive: () -> Unit = {},
+    /** Pinching past the left edge of the live session loads a wider window. */
+    onWiden: () -> Unit = {},
+    /** Live chip returns the session to today's bars. */
+    onResetLive: () -> Unit = {},
+    /** Latest underlying quote. Moves the last candle and the paper strike while the session is open. */
+    livePrice: Double = 0.0,
+    /** True while the cash session is open. Live candles are the default only then. */
+    marketOpen: Boolean = false,
     optionsContent: @Composable () -> Unit = {},
     /** Exchange lot from the loaded chain/board; falls back to the local table. */
     lotSize: Int? = null,
@@ -126,6 +142,8 @@ fun FoCandlePractice(
     // position, fullscreen and chain still open. Keyed on symbol so a new
     // underlying starts fresh.
     var cursor by rememberSaveable(symbol) { mutableIntStateOf(0) }
+    var liveChart by rememberSaveable(symbol) { mutableStateOf(marketOpen) }
+    var modeChosen by rememberSaveable(symbol) { mutableStateOf(false) }
     var playing by rememberSaveable(symbol) { mutableStateOf(false) }
     var speed by rememberSaveable(symbol) { mutableIntStateOf(2) }
     var finished by rememberSaveable(symbol) { mutableStateOf(false) }
@@ -187,6 +205,20 @@ fun FoCandlePractice(
             },
         )
     }
+    LaunchedEffect(marketOpen) {
+        if (marketOpen && !modeChosen) {
+            playing = false
+            liveChart = true
+        }
+    }
+    LaunchedEffect(symbol, liveChart, marketOpen) {
+        if (liveChart) onLive() else onReload()
+        if (!liveChart || !marketOpen) return@LaunchedEffect
+        while (isActive) {
+            delay(45_000)
+            onLive()
+        }
+    }
     LaunchedEffect(playing, speed, symbol, candles.size) {
         if (!playing || candles.size < 2) return@LaunchedEffect
         val stepMs = when (speed) {
@@ -209,9 +241,15 @@ fun FoCandlePractice(
         }
     }
     val safeCursor = cursor.coerceIn(0, (candles.size - 1).coerceAtLeast(0))
-    val shown = if (candles.isEmpty()) emptyList() else candles.take(safeCursor + 1)
-    val bar = candles.getOrNull(safeCursor)
-    val spot = bar?.close ?: 0.0
+    val shown = when {
+        candles.isEmpty() -> emptyList()
+        liveChart -> candles
+        else -> candles.take(safeCursor + 1)
+    }
+    val bar = if (liveChart) candles.lastOrNull() else candles.getOrNull(safeCursor)
+    val chartRange = if (liveChart) "1D" else "5D"
+    val spot = if (liveChart && livePrice > 0.0) livePrice else bar?.close ?: 0.0
+    val chartLivePrice = if (liveChart) livePrice else 0.0
     val atmStrike = if (spot > 0.0) practiceStrike(symbol, spot) else 0.0
     val step = if (spot > 0.0) strikeStep(symbol, spot) else 0.0
     val strike = if (atmStrike > 0.0) atmStrike + strikeOffset * step else 0.0
@@ -222,18 +260,47 @@ fun FoCandlePractice(
     val callNow = if (spot > 0.0) PaperFoMark.premium(spot, strike, days, vol, call = true) else 0.0
     val putNow = if (spot > 0.0) PaperFoMark.premium(spot, strike, days, vol, call = false) else 0.0
 
+    @Composable
+    fun OrderTicket() {
+        PracticeOrderControls(
+            future = future,
+            spot = spot,
+            strike = strike,
+            atmStrike = atmStrike,
+            step = step,
+            strikeOffset = strikeOffset,
+            onStrikeOffset = { strikeOffset = it },
+            callNow = callNow,
+            putNow = putNow,
+            lots = lots,
+            lot = lot,
+            simOpen = sim != null,
+            onLots = { lots = it },
+            onOpen = { right, premium ->
+                closedSummary = null
+                booked = false
+                sim = CandleSim(right, if (future) 0.0 else strike, premium, spot)
+            },
+        )
+    }
+
     if (asScreen) {
         var showChain by rememberSaveable(symbol) { mutableStateOf(false) }
         var screenStarted by rememberSaveable(symbol) { mutableStateOf(false) }
-        LaunchedEffect(symbol, candles.size) {
+        LaunchedEffect(symbol, candles.size, liveChart) {
+            if (liveChart) return@LaunchedEffect
             if (!screenStarted && candles.size > 1 && !finished) {
                 screenStarted = true
                 playing = true
             }
         }
+        val windowHeight = LocalConfiguration.current.screenHeightDp.dp
+        val chartHeight = (windowHeight * 0.62f).coerceIn(420.dp, 640.dp)
+        val chainHeight = (windowHeight * 0.62f).coerceIn(240.dp, 880.dp)
         Column(
             modifier = modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .background(theme.surface)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -243,11 +310,14 @@ fun FoCandlePractice(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     FilterChip(
                         selected = !showChain,
                         onClick = { showChain = false },
-                        label = { Text(stringResource(R.string.practice_chart), maxLines = 1) },
+                        label = { Text(stringResource(R.string.practice_chart), maxLines = 1, softWrap = false) },
                     )
                     FilterChip(
                         selected = showChain,
@@ -260,13 +330,31 @@ fun FoCandlePractice(
                     color = theme.textSecondary,
                     fontSize = 12.sp,
                     maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 8.dp).widthIn(max = 148.dp),
                 )
             }
-            Text(
-                stringResource(if (future) R.string.practice_futures_hint else R.string.practice_options_hint),
-                color = theme.textSecondary,
-                fontSize = 11.sp,
+            ChartModeChips(
+                liveChart = liveChart,
+                onLive = {
+                    modeChosen = true
+                    playing = false
+                    liveChart = true
+                    onResetLive()
+                },
+                onReplay = {
+                    modeChosen = true
+                    liveChart = false
+                },
             )
+            if (!liveChart) {
+                Text(
+                    stringResource(if (future) R.string.practice_futures_hint else R.string.practice_options_hint),
+                    color = theme.textSecondary,
+                    fontSize = 11.sp,
+                )
+            }
             Text(
                 stringResource(
                     if (liveVol) R.string.practice_iv_live else R.string.practice_iv_teaching,
@@ -284,7 +372,20 @@ fun FoCandlePractice(
                         onSymbol(it)
                     },
                 )
-                com.bysel.trader.ui.components.DataSourceBadge(label = com.bysel.trader.ui.components.replayDataLabel)
+                com.bysel.trader.ui.components.DataSourceBadge(
+                    label = if (liveChart) {
+                        com.bysel.trader.ui.components.sessionChartLabel(marketOpen)
+                    } else {
+                        com.bysel.trader.ui.components.replayDataLabel
+                    },
+                )
+                if (liveChart) {
+                    Text(
+                        stringResource(R.string.practice_session_hint),
+                        color = theme.textSecondary,
+                        fontSize = 11.sp,
+                    )
+                }
             }
             if (loading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = theme.primary)
@@ -295,25 +396,29 @@ fun FoCandlePractice(
                     color = theme.textSecondary,
                     fontSize = 12.sp,
                 )
-                OutlinedButton(onClick = onReload) { Text(stringResource(R.string.practice_load_candles)) }
+                OutlinedButton(onClick = { if (liveChart) onLive() else onReload() }) {
+                    Text(stringResource(R.string.practice_load_candles))
+                }
             }
             if (shown.isNotEmpty() && !showChain) {
                 PriceHistoryChart(
                     history = shown,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f)
-                        .heightIn(min = 180.dp),
-                    rangeLabel = "5D",
+                        .height(chartHeight),
+                    rangeLabel = chartRange,
                     expandPlot = true,
+                    livePrice = chartLivePrice,
+                    onNeedOlderBars = { if (liveChart) onWiden() else onExtend() },
                 )
+                if (liveChart) {
+                    OrderTicket()
+                }
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 240.dp)
-                        .verticalScroll(rememberScrollState()),
+                    modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    if (!liveChart) {
                     Text(
                         stringResource(R.string.practice_bar_close, safeCursor + 1, candles.size, usFmt("%.2f", spot)),
                         color = theme.textSecondary,
@@ -365,26 +470,10 @@ fun FoCandlePractice(
                             }
                         }
                     }
-                    PracticeOrderControls(
-                        future = future,
-                        spot = spot,
-                        strike = strike,
-                        atmStrike = atmStrike,
-                        step = step,
-                        strikeOffset = strikeOffset,
-                        onStrikeOffset = { strikeOffset = it },
-                        callNow = callNow,
-                        putNow = putNow,
-                        lots = lots,
-                        lot = lot,
-                        simOpen = sim != null,
-                        onLots = { lots = it },
-                        onOpen = { right, premium ->
-                            closedSummary = null
-                            booked = false
-                            sim = CandleSim(right, if (future) 0.0 else strike, premium, spot)
-                        },
-                    )
+                    }
+                    if (!liveChart) {
+                        OrderTicket()
+                    }
                     sim?.let { open ->
                         PracticeResult(
                             open = open,
@@ -414,7 +503,7 @@ fun FoCandlePractice(
                 }
             }
             if (showChain) {
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                Box(modifier = Modifier.fillMaxWidth().height(chainHeight)) {
                     optionsContent()
                 }
             }
@@ -453,7 +542,9 @@ fun FoCandlePractice(
                     color = theme.textSecondary,
                     fontSize = 12.sp,
                 )
-                OutlinedButton(onClick = onReload) { Text(stringResource(R.string.practice_load_candles)) }
+                OutlinedButton(onClick = { if (liveChart) onLive() else onReload() }) {
+                    Text(stringResource(R.string.practice_load_candles))
+                }
             }
             PracticeSymbolPicker(
                 symbol = symbol,
@@ -463,6 +554,44 @@ fun FoCandlePractice(
                     onSymbol(it)
                 },
             )
+            ChartModeChips(
+                liveChart = liveChart,
+                onLive = {
+                    modeChosen = true
+                    playing = false
+                    liveChart = true
+                    onResetLive()
+                },
+                onReplay = {
+                    modeChosen = true
+                    liveChart = false
+                },
+            )
+            if (liveChart && candles.isNotEmpty()) {
+                if (!future && callNow > 0.0) {
+                    Text(
+                        stringResource(
+                            R.string.practice_call_put_strike,
+                            usFmt("%.2f", callNow),
+                            usFmt("%.2f", putNow),
+                            usFmt("%.0f", strike),
+                        ),
+                        color = theme.text,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                PriceHistoryChart(
+                    history = candles,
+                    modifier = Modifier.fillMaxWidth(),
+                    rangeLabel = chartRange,
+                    expandPlot = false,
+                    livePrice = chartLivePrice,
+                    onNeedOlderBars = { onWiden() },
+                )
+                OrderTicket()
+            }
             Text(
                 "${symbol.uppercase()} · 1 lot = $lot units" +
                     (if (spot > 0.0) " · ₹${usFmt("%,.0f", spot * lot)} notional" else "") +
@@ -500,9 +629,13 @@ fun FoCandlePractice(
                 decorFitsSystemWindows = true,
             ),
         ) {
+            val windowHeight = LocalConfiguration.current.screenHeightDp.dp
+            val chartHeight = (windowHeight * 0.62f).coerceIn(440.dp, 680.dp)
+            val chainHeight = (windowHeight * 0.62f).coerceIn(240.dp, 880.dp)
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
                     .background(theme.surface)
                     .statusBarsPadding()
                     .navigationBarsPadding()
@@ -510,14 +643,16 @@ fun FoCandlePractice(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     OutlinedButton(onClick = {
                         playing = false
                         fullscreen = false
-                    }) { Text(stringResource(R.string.practice_exit_full_screen), maxLines = 1) }
+                    }) { Text(stringResource(R.string.practice_exit_full_screen), maxLines = 1, softWrap = false) }
                     if (!future) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilterChip(
@@ -535,6 +670,19 @@ fun FoCandlePractice(
                         Text(symbol.uppercase(), color = theme.text, fontWeight = FontWeight.SemiBold)
                     }
                 }
+                ChartModeChips(
+                    liveChart = liveChart,
+                    onLive = {
+                        modeChosen = true
+                        playing = false
+                        liveChart = true
+                        onResetLive()
+                    },
+                    onReplay = {
+                        modeChosen = true
+                        liveChart = false
+                    },
+                )
                 if (loading) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = theme.primary)
                 }
@@ -544,24 +692,43 @@ fun FoCandlePractice(
                         color = theme.textSecondary,
                         fontSize = 12.sp,
                     )
-                    OutlinedButton(onClick = onReload) { Text(stringResource(R.string.practice_load_candles)) }
+                    OutlinedButton(onClick = { if (liveChart) onLive() else onReload() }) {
+                        Text(stringResource(R.string.practice_load_candles))
+                    }
                 }
                 if (shown.isNotEmpty() && !showOptions) {
+                    if (liveChart && !future && callNow > 0.0) {
+                        Text(
+                            stringResource(
+                                R.string.practice_call_put_strike,
+                                usFmt("%.2f", callNow),
+                                usFmt("%.2f", putNow),
+                                usFmt("%.0f", strike),
+                            ),
+                            color = theme.text,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     PriceHistoryChart(
                         history = shown,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f),
-                        rangeLabel = "5D",
+                            .height(chartHeight),
+                        rangeLabel = chartRange,
                         expandPlot = true,
+                        livePrice = chartLivePrice,
+                        onNeedOlderBars = { if (liveChart) onWiden() else onExtend() },
                     )
+                    if (liveChart) {
+                        OrderTicket()
+                    }
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 320.dp)
-                            .verticalScroll(rememberScrollState()),
+                        modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        if (!liveChart) {
                         Text(
                             stringResource(R.string.practice_bar_close, safeCursor + 1, candles.size, usFmt("%.2f", spot)),
                             color = theme.textSecondary,
@@ -622,26 +789,10 @@ fun FoCandlePractice(
                                 }
                             }
                         }
-                        PracticeOrderControls(
-                            future = future,
-                            spot = spot,
-                            strike = strike,
-                            atmStrike = atmStrike,
-                            step = step,
-                            strikeOffset = strikeOffset,
-                            onStrikeOffset = { strikeOffset = it },
-                            callNow = callNow,
-                            putNow = putNow,
-                            lots = lots,
-                            lot = lot,
-                            simOpen = sim != null,
-                            onLots = { lots = it },
-                            onOpen = { right, premium ->
-                                closedSummary = null
-                                booked = false
-                                sim = CandleSim(right, if (future) 0.0 else strike, premium, spot)
-                            },
-                        )
+                        }
+                        if (!liveChart) {
+                            OrderTicket()
+                        }
                         sim?.let { open ->
                             PracticeResult(
                                 open = open,
@@ -671,7 +822,7 @@ fun FoCandlePractice(
                     }
                 }
                 if (showOptions) {
-                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    Box(modifier = Modifier.fillMaxWidth().height(chainHeight)) {
                         optionsContent()
                     }
                 }
@@ -923,18 +1074,39 @@ private fun PracticeResult(
 }
 
 @Composable
+private fun ChartModeChips(
+    liveChart: Boolean,
+    onLive: () -> Unit,
+    onReplay: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FilterChip(
+            selected = liveChart,
+            onClick = onLive,
+            label = { Text(stringResource(R.string.practice_live), maxLines = 1) },
+        )
+        FilterChip(
+            selected = !liveChart,
+            onClick = onReplay,
+            label = { Text(stringResource(R.string.practice_replay), maxLines = 1) },
+        )
+    }
+}
+
+@Composable
 fun PayoffCurveChart(
     points: List<StrategyPayoffPoint>,
     spot: Double,
 ) {
     val theme = LocalAppTheme.current
     if (points.size < 2) return
-    val minSpot = points.minOf { it.spot }
-    val maxSpot = points.maxOf { it.spot }
-    val minPay = points.minOf { it.payoff }
-    val maxPay = points.maxOf { it.payoff }
-    val spanX = (maxSpot - minSpot).takeIf { it > 0.0 } ?: 1.0
-    val spanY = (maxPay - minPay).takeIf { abs(it) > 0.0 } ?: 1.0
+    val windowStart = remember { mutableFloatStateOf(0f) }
+    val windowSpan = remember { mutableFloatStateOf(1f) }
+    val pointCount = remember { mutableIntStateOf(points.size) }
+    pointCount.intValue = points.size
     Text(
         stringResource(R.string.practice_payoff),
         color = theme.text,
@@ -944,21 +1116,56 @@ fun PayoffCurveChart(
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(140.dp),
+            .height(140.dp)
+            .pointerInput(Unit) {
+                detectChartGestures(
+                    onPanZoom = { panX, zoom, focalX ->
+                        val count = pointCount.intValue
+                        if (count < 3 || !zoom.isFinite() || !focalX.isFinite()) return@detectChartGestures
+                        val width = size.width.toFloat().coerceAtLeast(1f)
+                        val nextSpan = (windowSpan.floatValue / zoom).coerceIn(2f / count, 1f)
+                        val focal = (focalX / width).coerceIn(0f, 1f)
+                        val anchor = windowStart.floatValue + focal * windowSpan.floatValue
+                        val rawStart = anchor - focal * nextSpan - (panX / width) * windowSpan.floatValue
+                        val maxStart = (1f - nextSpan).coerceAtLeast(0f)
+                        windowSpan.floatValue = nextSpan
+                        windowStart.floatValue = rawStart.coerceIn(0f, maxStart)
+                    },
+                    onDoubleTap = {
+                        windowSpan.floatValue = 1f
+                        windowStart.floatValue = 0f
+                    },
+                )
+            },
     ) {
+        val count = points.size
+        val span = windowSpan.floatValue.coerceIn(2f / count, 1f)
+        val maxStart = (1f - span).coerceAtLeast(0f)
+        val start = windowStart.floatValue.coerceIn(0f, maxStart)
+        val from = (start * (count - 1)).toInt().coerceIn(0, count - 1)
+        val visible = (span * count).toInt().coerceAtLeast(2).coerceAtMost(count - from)
+        val slice = points.subList(from, from + visible)
+        val minSpot = slice.minOf { it.spot }
+        val maxSpot = slice.maxOf { it.spot }
+        val minPay = slice.minOf { it.payoff }
+        val maxPay = slice.maxOf { it.payoff }
+        val spanX = (maxSpot - minSpot).takeIf { it > 0.0 } ?: 1.0
+        val spanY = (maxPay - minPay).takeIf { abs(it) > 0.0 } ?: 1.0
         val path = Path()
-        points.forEachIndexed { index, point ->
+        slice.forEachIndexed { index, point ->
             val x = ((point.spot - minSpot) / spanX).toFloat() * size.width
             val y = size.height - (((point.payoff - minPay) / spanY).toFloat() * size.height)
             if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
-        val zeroY = size.height - (((0.0 - minPay) / spanY).toFloat() * size.height)
-        drawLine(
-            color = theme.textSecondary,
-            start = Offset(0f, zeroY),
-            end = Offset(size.width, zeroY),
-            strokeWidth = 1.dp.toPx(),
-        )
+        if (0.0 in minPay..maxPay) {
+            val zeroY = size.height - (((0.0 - minPay) / spanY).toFloat() * size.height)
+            drawLine(
+                color = theme.textSecondary,
+                start = Offset(0f, zeroY),
+                end = Offset(size.width, zeroY),
+                strokeWidth = 1.dp.toPx(),
+            )
+        }
         if (spot in minSpot..maxSpot) {
             val spotX = ((spot - minSpot) / spanX).toFloat() * size.width
             drawLine(
@@ -1019,5 +1226,28 @@ private fun daysAhead(timestamp: Long, expiry: String): Double {
         LocalDate.now(IST)
     }
     return ChronoUnit.DAYS.between(barDate, expiryDate).toDouble().coerceAtLeast(1.0)
+}
+
+/** Index desks say NIFTY; the quote tape says NIFTY50. */
+internal fun tapeSymbol(symbol: String): String = when (symbol.trim().uppercase()) {
+    "NIFTY", "NIFTY 50", "^NSEI" -> "NIFTY50"
+    "NIFTYBANK", "NIFTY BANK", "^NSEBANK" -> "BANKNIFTY"
+    "BSESN", "^BSESN" -> "SENSEX"
+    else -> symbol.trim().uppercase()
+}
+
+/** Index desks say NIFTY; the quote tape says NIFTY50. */
+internal fun underlyingLast(quotes: List<Quote>, symbol: String): Double {
+    val direct = WatchlistSymbols.findQuote(quotes, symbol)?.last ?: 0.0
+    if (direct > 0.0) return direct
+    val keys = when (symbol.trim().uppercase()) {
+        "NIFTY", "NIFTY50", "NIFTY 50", "^NSEI" -> listOf("NIFTY50", "NIFTY", "^NSEI")
+        "BANKNIFTY", "NIFTYBANK", "NIFTY BANK", "^NSEBANK" -> listOf("BANKNIFTY", "NIFTYBANK", "^NSEBANK")
+        "SENSEX", "BSESN", "^BSESN" -> listOf("SENSEX", "^BSESN", "BSESN")
+        else -> emptyList()
+    }
+    return keys.firstNotNullOfOrNull { key ->
+        WatchlistSymbols.findQuote(quotes, key)?.last?.takeIf { it > 0.0 }
+    } ?: 0.0
 }
 

@@ -30,10 +30,11 @@ class AlertWorker(appContext: Context, params: WorkerParameters) : CoroutineWork
                 Log.w(TAG, "Alert poll could not fetch quotes for ${symbols.size} symbol(s)")
                 return Result.retry()
             }
-            val priceBySymbol = quoteResult.data.associate { it.symbol to it.last }
+            val quoteBySymbol = quoteResult.data.associateBy { it.symbol.uppercase() }
 
             for (a in alerts) {
-                val price = priceBySymbol[a.symbol] ?: continue
+                val quote = quoteBySymbol[a.symbol.trim().uppercase()] ?: continue
+                val price = quote.last
                 try {
                     var triggered = false
                     when (a.alertType.uppercase()) {
@@ -43,6 +44,26 @@ class AlertWorker(appContext: Context, params: WorkerParameters) : CoroutineWork
                         }
                         "BELOW" -> if (price <= a.thresholdPrice) {
                             alertsManager.sendPriceAlert(a, price)
+                            triggered = true
+                        }
+                        "PCT_UP" -> if (quote.pctChange >= a.thresholdPrice) {
+                            alertsManager.sendPriceAlert(
+                                a,
+                                price,
+                                "Session is up ${"%.2f".format(java.util.Locale.US, quote.pctChange)}%",
+                            )
+                            triggered = true
+                        }
+                        "PCT_DOWN" -> if (quote.pctChange <= -kotlin.math.abs(a.thresholdPrice)) {
+                            alertsManager.sendPriceAlert(
+                                a,
+                                price,
+                                "Session is down ${"%.2f".format(java.util.Locale.US, quote.pctChange)}%",
+                            )
+                            triggered = true
+                        }
+                        "VOLUME" -> if ((quote.volume ?: 0L) >= a.thresholdPrice.toLong()) {
+                            alertsManager.sendPriceAlert(a, price, "Volume reached ${quote.volume} shares")
                             triggered = true
                         }
                         else -> {}

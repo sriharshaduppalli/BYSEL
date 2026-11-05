@@ -58,6 +58,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.bysel.trader.alerts.FcmTokenRegistrar
 import com.bysel.trader.data.WatchlistSymbols
@@ -887,7 +888,7 @@ fun BYSELApp(
                     // Tab 0: Dashboard
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.Home, contentDescription = stringResource(R.string.nav_home), modifier = Modifier.size(22.dp)) },
-                        label = { Text(stringResource(R.string.nav_home), fontSize = 10.sp) },
+                        label = { Text(stringResource(R.string.nav_home), fontSize = 10.sp, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
                         selected = navHighlightTab == 0,
                         onClick = { selectRootTab(0) },
                         colors = navColors
@@ -895,15 +896,15 @@ fun BYSELApp(
                     // Tab 1: AI Assistant
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.Psychology, contentDescription = stringResource(R.string.nav_ai), modifier = Modifier.size(22.dp)) },
-                        label = { Text(stringResource(R.string.nav_ai), fontSize = 10.sp) },
+                        label = { Text(stringResource(R.string.nav_ai), fontSize = 10.sp, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
                         selected = navHighlightTab == 1,
                         onClick = { selectRootTab(1) },
                         colors = navColors
                     )
                     // Tab 2: Trading
                     NavigationBarItem(
-                        icon = { Icon(Icons.Filled.CurrencyRupee, contentDescription = stringResource(R.string.nav_trade), modifier = Modifier.size(22.dp)) },
-                        label = { Text(stringResource(R.string.nav_trade), fontSize = 10.sp) },
+                        icon = { Icon(Icons.Filled.School, contentDescription = stringResource(R.string.nav_trade), modifier = Modifier.size(22.dp)) },
+                        label = { Text(stringResource(R.string.nav_trade), fontSize = 10.sp, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
                         selected = navHighlightTab == 2,
                         onClick = { selectRootTab(2) },
                         colors = navColors
@@ -911,7 +912,7 @@ fun BYSELApp(
                     // Tab 3: Portfolio
                     NavigationBarItem(
                         icon = { Icon(Icons.AutoMirrored.Filled.ShowChart, contentDescription = stringResource(R.string.nav_portfolio), modifier = Modifier.size(22.dp)) },
-                        label = { Text(stringResource(R.string.nav_portfolio), fontSize = 10.sp) },
+                        label = { Text(stringResource(R.string.nav_portfolio), fontSize = 10.sp, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
                         selected = navHighlightTab == 3,
                         onClick = { selectRootTab(3) },
                         colors = navColors
@@ -945,7 +946,7 @@ fun BYSELApp(
                                 )
                             }
                         },
-                        label = { Text(stringResource(R.string.nav_more), fontSize = 10.sp) },
+                        label = { Text(stringResource(R.string.nav_more), fontSize = 10.sp, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
                         selected = navHighlightTab == 5,
                         onClick = { selectRootTab(5) },
                         colors = navColors
@@ -1031,13 +1032,13 @@ fun BYSELApp(
                             transitionSpec = { overlayScreenTransition(push = targetState != -1) },
                             label = "screenStack",
                         ) { shownKey ->
-                        // Swipeable root tabs: Home, AI, Trade, Portfolio, More
+                        // Root tabs change from the bottom bar. Charts and lists keep sideways drag.
                         if (shownKey == -1) {
                             HorizontalPager(
                                 state = pagerState,
                                 modifier = Modifier.fillMaxSize(),
                                 beyondBoundsPageCount = 1,
-                                userScrollEnabled = true,
+                                userScrollEnabled = false,
                             ) { page ->
                                 when (page) {
                                     0 -> DashboardScreen(
@@ -1106,6 +1107,7 @@ fun BYSELApp(
                                                 followedPlan = followedPlan,
                                             )
                                         },
+                                        onOpenJournal = { navigatePushingCurrent(24) },
                                     )
                                     1 -> AiAssistantScreen(
                                         chatHistory = chatHistory,
@@ -1186,6 +1188,7 @@ fun BYSELApp(
                                         onOpenSearch = { navigatePushingCurrent(6) },
                                         onOpenWatchlists = { navigatePushingCurrent(25) },
                                         onOpenAdvancedOrders = { navigatePushingCurrent(16) },
+                                        onOpenJournal = { navigatePushingCurrent(24) },
                                         viewModel = viewModel
                                     )
                                     3 -> PortfolioScreen(

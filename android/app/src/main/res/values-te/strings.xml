@@ -23,7 +23,7 @@
 
     <string name="nav_home">హోమ్</string>
     <string name="nav_ai">AI</string>
-    <string name="nav_trade">ట్రేడ్</string>
+    <string name="nav_trade">అభ్యాసం</string>
     <string name="nav_portfolio">పోర్ట్‌ఫోలియో</string>
     <string name="nav_more">మరిన్ని</string>
 
@@ -172,6 +172,12 @@
     <string name="home_pull_refresh">ఈరోజు ప్రాక్టీస్ పేర్ల కోసం కిందకు లాగి రిఫ్రెష్ చేయండి.</string>
     <string name="home_customize_title">హోమ్ అనుకూలీకరించు</string>
     <string name="home_reset_layout">లేఅవుట్ రీసెట్</string>
+    <string name="home_index_chart">ఇండెక్స్ చార్ట్</string>
+    <string name="home_index_chart_sub">సెషన్ లైన్. పక్కకు పించ్ చేయండి. పూర్తి చార్ట్ కోసం ట్యాప్ చేయండి. ఆలస్యం, ఎక్స్ఛేంజ్ టేప్ కాదు.</string>
+    <string name="settings_home_chart">హోమ్ ఇండెక్స్ చార్ట్</string>
+    <string name="settings_home_chart_sub">హోమ్‌లో నిఫ్టీ, సెన్సెక్స్ లేదా బ్యాంక్ నిఫ్టీ</string>
+    <string name="settings_chart_motion">ధర కదలిక</string>
+    <string name="settings_chart_motion_sub">ధర మారినప్పుడు సంఖ్య మెరుస్తుంది, హోమ్ లైన్ మెల్లగా కదులుంది</string>
 
     <!-- Portfolio -->
     <string name="portfolio_sub_empty">పేపర్ ప్రాక్టీస్ · సిమ్యులేటెడ్ హోల్డింగ్స్</string>
@@ -351,4 +357,6 @@
     <string name="practice_side_put">పుట్</string>
     <string name="practice_payoff">గడువు వద్ద పేఆఫ్</string>
     <string name="practice_payoff_caption">అడ్డు గీత సున్నా. నిలువు గీత ఈరోజు స్పాట్. వక్రం గడువు వద్ద రెసిపీ.</string>
+    <string name="practice_live">లైవ్</string>
+    <string name="practice_session_hint">సమయాన్ని స్కేల్ చేయడానికి పించ్ చేయండి. ఎడమ అంచున పించ్ అవుట్ చేస్తే పాత క్యాండిల్స్ వస్తాయి. చివరి క్యాండిల్ ధరతో కదులుతుంది. చార్ట్ కింద కాల్ లేదా పుట్ కొనండి.</string>
 </resources>

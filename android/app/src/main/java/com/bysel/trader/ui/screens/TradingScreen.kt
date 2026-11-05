@@ -106,6 +106,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.saveable.rememberSaveable
 import kotlin.math.abs
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 private fun formatVolume(v: Long?): String {
     if (v == null) return "N/A"
@@ -226,6 +227,7 @@ fun TradingScreen(
     onOpenSearch: (() -> Unit)? = null,
     onOpenWatchlists: (() -> Unit)? = null,
     onOpenAdvancedOrders: () -> Unit = {},
+    onOpenJournal: (() -> Unit)? = null,
 ) {
     // Only warm the full quote universe while Trade is the active pager page
     // (adjacent pages stay composed via beyondBoundsPageCount).
@@ -245,20 +247,43 @@ fun TradingScreen(
     val watchlistSymbols by viewModel.watchlist.collectAsStateWithLifecycle()
     val holdings by viewModel.holdings.collectAsStateWithLifecycle()
     val selectedQuote by viewModel.selectedQuote.collectAsStateWithLifecycle()
+    val journalSeed by viewModel.journalSeed.collectAsStateWithLifecycle()
     var tradeSheetQuote by remember { mutableStateOf<Quote?>(null) }
     // AI Trade Coach Dialog
     val tradeCoachTip by viewModel.tradeCoachTip.collectAsStateWithLifecycle()
     if (tradeCoachTip != null) {
-        AlertDialog(
+        Dialog(
             onDismissRequest = { viewModel.clearTradeCoachTip() },
-            title = { Text("Coach says…", fontWeight = FontWeight.Bold) },
-            text = { Text(tradeCoachTip ?: "") },
-            confirmButton = {
-                Button(onClick = { viewModel.clearTradeCoachTip() }) {
-                    Text("Got it!")
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .clickable { viewModel.clearTradeCoachTip() },
+                )
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = LocalAppTheme.current.card,
+                    shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text("Coach says…", fontWeight = FontWeight.Bold, color = LocalAppTheme.current.text)
+                        Text(tradeCoachTip ?: "", color = LocalAppTheme.current.text)
+                        Button(
+                            onClick = { viewModel.clearTradeCoachTip() },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Got it")
+                        }
+                    }
                 }
             }
-        )
+        }
     }
     var showAddFundsDialog by remember { mutableStateOf(false) }
 
@@ -361,8 +386,12 @@ fun TradingScreen(
                 shape = MaterialTheme.shapes.medium,
             ) {
                 ScreenHeader(
-                    title = "Trade",
-                    subtitle = "Practice wallet",
+                    title = "Practice",
+                    subtitle = when {
+                        marketStatus?.isOpen == true -> "Practice cash · session open"
+                        marketStatus != null -> "Practice cash · session closed"
+                        else -> "Practice cash"
+                    },
                     compact = true,
                     modifier = Modifier.padding(14.dp),
                     trailing = {
@@ -372,6 +401,16 @@ fun TradingScreen(
                         )
                     },
                 )
+            }
+        }
+
+        val seed = journalSeed
+        if (!seed.isNullOrBlank() && onOpenJournal != null) {
+            TextButton(
+                onClick = { onOpenJournal() },
+                modifier = Modifier.padding(horizontal = 8.dp),
+            ) {
+                Text("Write the journal line for $seed")
             }
         }
 
@@ -1152,6 +1191,21 @@ private fun FuturesRadarScreen(
     var underlyingInput by rememberSaveable { mutableStateOf(startSymbol) }
     var practiceSymbol by rememberSaveable { mutableStateOf(startSymbol) }
     var selectedExpiry by rememberSaveable { mutableStateOf<String?>(null) }
+    var marketOpen by remember { mutableStateOf(MarketSession.isOpen()) }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            delay(30_000)
+            marketOpen = MarketSession.isOpen()
+        }
+    }
+    LaunchedEffect(marketOpen, practiceSymbol) {
+        if (!marketOpen) return@LaunchedEffect
+        val tape = tapeSymbol(practiceSymbol)
+        while (isActive) {
+            viewModel.refreshQuotes(symbolsOverride = listOf(tape), showSpinner = false)
+            delay(1_500)
+        }
+    }
 
     LaunchedEffect(Unit) {
         if (futuresContracts == null) {
@@ -1164,7 +1218,6 @@ private fun FuturesRadarScreen(
         if (expiry.isNotBlank()) viewModel.loadOptionChain(practiceSymbol, expiry, quiet = true)
     }
     LaunchedEffect(practiceSymbol) {
-        viewModel.loadFoCandles(practiceSymbol, "futures")
         val board = futuresContracts
         if (board != null && !board.symbol.equals(practiceSymbol, ignoreCase = true)) {
             underlyingInput = practiceSymbol
@@ -1322,6 +1375,20 @@ private fun FuturesRadarScreen(
                     ?: 0.0,
                 onReload = { viewModel.loadFoCandles(practiceSymbol, "futures") },
                 onExtend = { viewModel.loadFoCandles(practiceSymbol, "futures", extend = true) },
+                onLive = {
+                    viewModel.loadFoCandles(practiceSymbol, "futures", live = true)
+                    val chainExpiry = selectedExpiry
+                        ?: futuresContracts?.contracts?.firstOrNull()?.expiry.orEmpty()
+                    if (chainExpiry.isNotBlank()) {
+                        viewModel.loadOptionChain(practiceSymbol, chainExpiry, quiet = true)
+                    }
+                },
+                onWiden = { viewModel.loadFoCandles(practiceSymbol, "futures", live = true, widen = true) },
+                onResetLive = {
+                    viewModel.loadFoCandles(practiceSymbol, "futures", live = true, resetLive = true)
+                },
+                livePrice = underlyingLast(quotes, practiceSymbol),
+                marketOpen = marketOpen,
                 onSymbol = { practiceSymbol = it },
                 future = true,
                 lotSize = selectedContract?.lotSize,
@@ -2787,69 +2854,86 @@ private fun TradeBottomSheetContent(
 
     // Order Confirmation Dialog
     if (showConfirmDialog) {
-        AlertDialog(
+        Dialog(
             onDismissRequest = { showConfirmDialog = false },
-            title = {
-                Text(
-                    "Confirm practice $tradeType",
-                    fontWeight = FontWeight.Bold,
-                    color = if (tradeType == "BUY") LocalAppTheme.current.positive else LocalAppTheme.current.negative
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .clickable { showConfirmDialog = false },
                 )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("${quote.symbol} • $qty share${if (qty == 1) "" else "s"}")
-                    Text(
-                        when (orderType) {
-                            "LIMIT" -> "Limit @ ₹${usFmt("%.2f", limitPrice)}"
-                            "SL" -> "Stop-limit. Trigger ₹${usFmt("%.2f", triggerPrice)}, limit ₹${usFmt("%.2f", limitPrice)}. Queued until the trigger."
-                            "SLM" -> "Stop-market. Trigger ₹${usFmt("%.2f", triggerPrice)}. Queued until the trigger."
-                            else -> "Market"
-                        }
-                    )
-                    Text("Est. value: ₹${usFmt("%,.2f", tradeValue)}")
-                    Text("Est. charges: ₹${usFmt("%.2f", totalCharges)}")
-                    Text(
-                        "Net amount: ₹${usFmt("%,.2f", netAmount)}",
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            },
-            confirmButton = {
-                TradeActionButton(
-                    onClick = {
-                        showConfirmDialog = false
-                        when (orderType) {
-                            "SL", "SLM" -> viewModel.createTriggerOrder(
-                                symbol = quote.symbol,
-                                quantity = qty,
-                                side = tradeType,
-                                triggerPrice = triggerPrice,
-                                orderType = orderType,
-                                limitPrice = if (orderType == "SL") limitPrice else null,
-                            )
-                            "LIMIT" -> viewModel.placeAdvancedOrder(
-                                symbol = quote.symbol,
-                                quantity = qty,
-                                side = tradeType,
-                                orderType = "LIMIT",
-                                limitPrice = limitPrice,
-                            )
-                            else -> if (tradeType == "BUY") onBuy(qty) else onSell(qty)
-                        }
-                    },
-                    isBuy = tradeType == "BUY",
-                    height = 40.dp,
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = LocalAppTheme.current.card,
+                    shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                 ) {
-                    Text("Confirm $tradeType", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showConfirmDialog = false }) {
-                    Text("Cancel")
+                    Column(
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            "Confirm practice $tradeType",
+                            fontWeight = FontWeight.Bold,
+                            color = if (tradeType == "BUY") LocalAppTheme.current.positive else LocalAppTheme.current.negative,
+                        )
+                        Text("${quote.symbol} • $qty share${if (qty == 1) "" else "s"}", color = LocalAppTheme.current.text)
+                        Text(
+                            when (orderType) {
+                                "LIMIT" -> "Limit @ ₹${usFmt("%.2f", limitPrice)}"
+                                "SL" -> "Stop-limit. Trigger ₹${usFmt("%.2f", triggerPrice)}, limit ₹${usFmt("%.2f", limitPrice)}. Queued until the trigger."
+                                "SLM" -> "Stop-market. Trigger ₹${usFmt("%.2f", triggerPrice)}. Queued until the trigger."
+                                else -> "Market"
+                            },
+                            color = LocalAppTheme.current.text,
+                        )
+                        Text("Est. value: ₹${usFmt("%,.2f", tradeValue)}", color = LocalAppTheme.current.text)
+                        Text("Est. charges: ₹${usFmt("%.2f", totalCharges)}", color = LocalAppTheme.current.text)
+                        Text(
+                            "Net amount: ₹${usFmt("%,.2f", netAmount)}",
+                            fontWeight = FontWeight.Bold,
+                            color = LocalAppTheme.current.text,
+                        )
+                        TradeActionButton(
+                            onClick = {
+                                showConfirmDialog = false
+                                when (orderType) {
+                                    "SL", "SLM" -> viewModel.createTriggerOrder(
+                                        symbol = quote.symbol,
+                                        quantity = qty,
+                                        side = tradeType,
+                                        triggerPrice = triggerPrice,
+                                        orderType = orderType,
+                                        limitPrice = if (orderType == "SL") limitPrice else null,
+                                    )
+                                    "LIMIT" -> viewModel.placeAdvancedOrder(
+                                        symbol = quote.symbol,
+                                        quantity = qty,
+                                        side = tradeType,
+                                        orderType = "LIMIT",
+                                        limitPrice = limitPrice,
+                                    )
+                                    else -> if (tradeType == "BUY") onBuy(qty) else onSell(qty)
+                                }
+                            },
+                            isBuy = tradeType == "BUY",
+                            modifier = Modifier.fillMaxWidth(),
+                            height = 48.dp,
+                        ) {
+                            Text("Confirm $tradeType", fontWeight = FontWeight.Bold)
+                        }
+                        TextButton(
+                            onClick = { showConfirmDialog = false },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Cancel")
+                        }
+                    }
                 }
             }
-        )
+        }
     }
 }
 
@@ -2980,7 +3064,7 @@ private fun StreamHealthPill(health: TradingViewModel.StreamHealth) {
         TradingViewModel.StreamHealth.OFFLINE -> theme.textSecondary
     }
     val label = when (health) {
-        TradingViewModel.StreamHealth.LIVE -> "Live"
+        TradingViewModel.StreamHealth.LIVE -> "Delayed"
         TradingViewModel.StreamHealth.RECONNECTING -> "Reconnecting"
         TradingViewModel.StreamHealth.CLOSED -> "Closed"
         TradingViewModel.StreamHealth.OFFLINE -> "Offline"

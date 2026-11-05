@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -83,6 +84,10 @@ fun SettingsScreen(
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("bysel_settings", Context.MODE_PRIVATE) }
     val alertsManager = remember { AlertsManager(context) }
+    val indexChartOn by com.bysel.trader.data.PinnedWidgetsStore.isIndexChartOn(context)
+        .collectAsStateWithLifecycle(true)
+    val chartMotionOn by com.bysel.trader.data.PinnedWidgetsStore.isChartMotionOn(context)
+        .collectAsStateWithLifecycle(true)
 
     var selectedTheme by remember(currentTheme) { mutableStateOf(normalizeThemeId(currentTheme)) }
     val liveTheme = LocalAppTheme.current
@@ -568,6 +573,28 @@ fun SettingsScreen(
                 title = "App Theme",
                 subtitle = selectedTheme,
                 onClick = { showThemeDialog = true }
+            )
+        }
+        item {
+            SettingItem(
+                icon = Icons.Filled.ShowChart,
+                title = stringResource(R.string.settings_home_chart),
+                subtitle = stringResource(R.string.settings_home_chart_sub),
+                value = indexChartOn,
+                onValueChange = { on ->
+                    scope.launch { com.bysel.trader.data.PinnedWidgetsStore.setIndexChartOn(context, on) }
+                },
+            )
+        }
+        item {
+            SettingItem(
+                icon = Icons.Filled.Speed,
+                title = stringResource(R.string.settings_chart_motion),
+                subtitle = stringResource(R.string.settings_chart_motion_sub),
+                value = chartMotionOn,
+                onValueChange = { on ->
+                    scope.launch { com.bysel.trader.data.PinnedWidgetsStore.setChartMotionOn(context, on) }
+                },
             )
         }
         item {

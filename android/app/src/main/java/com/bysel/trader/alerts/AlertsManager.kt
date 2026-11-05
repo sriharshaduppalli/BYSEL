@@ -106,7 +106,7 @@ class AlertsManager(private val context: Context) {
         else -> "Price alerts can notify on this device"
     }
 
-    fun sendPriceAlert(alert: Alert, price: Double) {
+    fun sendPriceAlert(alert: Alert, price: Double, detail: String? = null) {
         if (!canDeliverNotifications()) return
 
         val symbol = alert.symbol.trim().uppercase()
@@ -114,7 +114,7 @@ class AlertsManager(private val context: Context) {
         val now = usFmt("%.2f", price)
         // Title = most important scan line (≤30 chars); keep app name out of the title.
         val title = symbol.take(30)
-        val body = when (alert.alertType.uppercase()) {
+        val body = detail ?: when (alert.alertType.uppercase()) {
             "ABOVE" -> "Crossed above ₹$threshold · now ₹$now"
             "BELOW" -> "Dropped below ₹$threshold · now ₹$now"
             else -> "Alert level hit · now ₹$now"

@@ -1,6 +1,8 @@
 package com.bysel.trader.utils
 
 import com.bysel.trader.data.models.HistoryCandle
+import java.time.Instant
+import java.time.ZoneId
 import kotlin.math.sqrt
 
 object TechnicalIndicators {
@@ -143,14 +145,27 @@ object TechnicalIndicators {
         return out
     }
 
-    /** VWAP (Volume Weighted Average Price) — intraday only, resets each day. */
+    /** VWAP resets each IST session, which is how an Indian intraday desk reads it. */
     fun vwap(candles: List<HistoryCandle>): List<Double?> {
         if (candles.isEmpty()) return emptyList()
         val result = MutableList<Double?>(candles.size) { null }
+        val zone = ZoneId.of("Asia/Kolkata")
+        var day = Long.MIN_VALUE
         var cumVolume = 0L
         var cumTP = 0.0
         for (i in candles.indices) {
             val c = candles[i]
+            val ms = when {
+                c.timestamp <= 0L -> 0L
+                c.timestamp < 10_000_000_000L -> c.timestamp * 1000L
+                else -> c.timestamp
+            }
+            val session = if (ms <= 0L) day else Instant.ofEpochMilli(ms).atZone(zone).toLocalDate().toEpochDay()
+            if (session != day) {
+                day = session
+                cumVolume = 0L
+                cumTP = 0.0
+            }
             val tp = (c.high + c.low + c.close) / 3.0
             cumVolume += c.volume
             cumTP += tp * c.volume
