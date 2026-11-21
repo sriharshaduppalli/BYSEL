@@ -36,7 +36,9 @@ _IPO_ASK = re.compile(
     re.I,
 )
 _EARNINGS_ASK = re.compile(
-    r"\b(result date|earnings date|quarterly result|when is the result|results date)\b",
+    r"\b(result date|earnings date|quarterly result|when is the result|results date|"
+    r"earnings calendar|results calendar|upcoming earnings|upcoming results|"
+    r"earnings this week|results this week)\b",
     re.I,
 )
 _LEVEL_ASK = re.compile(
@@ -275,6 +277,28 @@ def _earnings_row(symbol: str, screen: Mapping[str, Any]) -> dict[str, Any] | No
             "illustrative": str(screen.get("earnings_illustrative") or "") in {"1", "true", "True"},
         }
     if not symbol:
+        try:
+            from .routes.ai_v2 import _EARNINGS_ROW_CACHE, upcoming_rows
+
+            cached_rows = [
+                entry[1]
+                for entry in (_EARNINGS_ROW_CACHE or {}).values()
+                if isinstance(entry, tuple) and len(entry) == 2 and isinstance(entry[1], dict)
+            ]
+            upcoming = upcoming_rows(cached_rows)
+            if upcoming:
+                return {
+                    "board": [
+                        {
+                            "symbol": str(r.get("symbol") or ""),
+                            "company": str(r.get("companyName") or r.get("symbol") or ""),
+                            "date": str(r.get("nextEarningsDate") or "")[:10],
+                        }
+                        for r in upcoming[:6]
+                    ]
+                }
+        except Exception:
+            pass
         return None
     from .routes.ai_v2 import _fetch_one_earnings_row
 
@@ -577,10 +601,24 @@ def _render_ipos(desk: Mapping[str, Any]) -> str:
 
 
 def _render_earnings(earn: Mapping[str, Any] | None) -> str:
+    if isinstance(earn, Mapping) and isinstance(earn.get("board"), list) and earn.get("board"):
+        lines = ["**Upcoming result dates (earnings calendar)**", ""]
+        for row in earn["board"][:6]:
+            if not isinstance(row, Mapping):
+                continue
+            lines.append(f"• **{row.get('symbol')}** ({row.get('company')}): {row.get('date')}")
+        lines.extend(
+            [
+                "",
+                "From the earnings calendar. Not a forecast of the print.",
+                "_A date on the calendar is not a trading call._",
+            ]
+        )
+        return "\n".join(lines)
     if not earn or not earn.get("date"):
         return (
             "**Result date**\n\n"
-            "The earnings calendar has no date for this symbol, so none is shown.\n"
+            "Name a listed NSE/BSE symbol (e.g. “TCS result date”) or open the Earnings Calendar board to view upcoming Nifty 50 result dates.\n"
             "_Not company guidance._"
         )
     symbol = str(earn.get("symbol") or "This symbol")

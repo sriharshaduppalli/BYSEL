@@ -2708,6 +2708,149 @@ _TERM_ANSWERS["nse circular"] = _TERM_ANSWERS["nseindia"]
 _TERM_ANSWERS["nse lot size"] = _TERM_ANSWERS["nseindia"]
 _TERM_ANSWERS["official option chain"] = _TERM_ANSWERS["nseindia"]
 
+_TERM_ANSWERS["india vix"] = (
+    "**India VIX (Volatility Index)**\n\n"
+    "India VIX measures the market's expectation of **annualized NIFTY 50 volatility over the next 30 calendar days**, "
+    "derived from out-of-the-money NIFTY option order-book quotes on NSE.\n\n"
+    "**Expected Range Equations:**\n"
+    "• `Expected 30-Day Range (%) ≈ India VIX / √12`\n"
+    "• `Expected Weekly Range (%) ≈ India VIX / √52`\n"
+    "• `Expected Daily Range (%) ≈ India VIX / √252`\n\n"
+    "**Example:** If India VIX = `14%`, expected 1-month NIFTY 1σ move ≈ `14 / 3.464 ≈ ±4.04%`.\n\n"
+    "**How Indian traders read it:**\n"
+    "• **Low VIX (11–14):** Calm tape, cheaper option premiums — favors debit spreads / trend following.\n"
+    "• **High / Spiking VIX (>18–22):** Event fear (Union Budget, election, global shock) — option premiums are rich; widen stops and reduce leverage.\n\n"
+    "_Educational overview — not investment advice._"
+)
+_TERM_ANSWERS["vix"] = _TERM_ANSWERS["india vix"]
+
+_TERM_ANSWERS["asm"] = (
+    "**ASM & GSM (NSE / BSE Surveillance Frameworks)**\n\n"
+    "SEBI and Indian exchanges (NSE/BSE) place stocks under **ASM (Additional Surveillance Measure)** or "
+    "**GSM (Graded Surveillance Measure)** to alert retail investors to abnormal price/volume swings or weak fundamentals.\n\n"
+    "**Key Differences:**\n"
+    "• **ASM (Short-Term & Long-Term Stages I–IV):** Triggered by high price-volume variation, client concentration, or rapid P/E expansion.\n"
+    "  - **Trading impact:** Up to **100% margin** (no intraday MIS leverage, no collateral pledge benefit) and **5% or 2% circuit bands**.\n"
+    "• **GSM (Stages I–VI):** Triggered on small/micro-cap companies with eroded net worth or disconnect from fundamentals.\n"
+    "  - **Trading impact:** Trade-to-Trade (**T2T / BE series**, mandatory delivery only), additional surveillance deposit (ASD), or once-a-week trading.\n\n"
+    "**Important note:** Inclusion in ASM/GSM is a **regulatory risk control**, not a corporate penalty — but liquidity can dry up quickly.\n\n"
+    "_Educational overview — not investment advice._"
+)
+_TERM_ANSWERS["gsm"] = _TERM_ANSWERS["asm"]
+_TERM_ANSWERS["asm and gsm"] = _TERM_ANSWERS["asm"]
+
+_TERM_ANSWERS["supertrend"] = (
+    "**Supertrend Indicator (ATR Trend-Following Overlay)**\n\n"
+    "Supertrend is a volatility-adjusted trend overlay (standard NSE parameter: **Period = 10, Multiplier = 3.0**).\n\n"
+    "**Equations:**\n"
+    "• `HL2 = (High + Low) / 2`\n"
+    "• `Basic Upper Band = HL2 + (Multiplier × Wilder ATR(10))`\n"
+    "• `Basic Lower Band = HL2 − (Multiplier × Wilder ATR(10))`\n\n"
+    "**How it ratchets:**\n"
+    "• In an **uptrend (bullish / green)**, the lower band only moves **up or stays flat** (never drops) until a candle closes below it, serving as a dynamic trailing stop.\n"
+    "• In a **downtrend (bearish / red)**, the upper band only moves **down or stays flat** until a candle closes above it.\n\n"
+    "**Indian market tip:** Combine Supertrend(10,3) with **ADX > 25** or **VWAP** — in sideways/choppy NIFTY sessions, Supertrend alone can whipsaw.\n\n"
+    "_Educational overview — not investment advice._"
+)
+
+_TERM_ANSWERS["xirr"] = (
+    "**XIRR (Extended Internal Rate of Return)**\n\n"
+    "XIRR computes the single annualized return across **multiple cashflows occurring on irregular dates** (such as monthly SIPs, top-ups, dividends, and partial redemptions).\n\n"
+    "**Equation:**\n"
+    "`Σ [ Cashflow_i / (1 + XIRR)^((Date_i − Date_0) / 365) ] = 0`\n\n"
+    "**When to use XIRR vs CAGR:**\n"
+    "• **CAGR:** Single lump-sum investment (`Start Value → End Value`).\n"
+    "• **XIRR:** Ongoing SIPs, SWPs, or staggered equity purchases where each installment stayed invested for a different duration.\n\n"
+    "_Educational overview — not investment advice._"
+)
+
+_TERM_ANSWERS["ebitda"] = (
+    "**EBITDA & EV/EBITDA (Operating Cash-Flow Proxy)**\n\n"
+    "**EBITDA** = *Earnings Before Interest, Taxes, Depreciation, and Amortization*.\n\n"
+    "**Equations:**\n"
+    "• `EBITDA = Operating Profit (EBIT) + Depreciation + Amortization`\n"
+    "• `EBITDA Margin (%) = (EBITDA / Total Revenue) × 100`\n"
+    "• `Enterprise Value (EV) = Market Cap + Total Debt − Cash & Equivalents`\n"
+    "• `EV / EBITDA` compares operating valuation across companies with different debt structures (capital-structure neutral, unlike P/E).\n\n"
+    "**NSE sector note:** Useful for Telecom (`BHARTIARTL`), Cement, Metals, and Industrials; **not used** for Banks/NBFCs (where interest is core revenue).\n\n"
+    "_Educational overview — not investment advice._"
+)
+
+_TERM_ANSWERS["free cash flow"] = (
+    "**Free Cash Flow (FCF) & FCF Yield**\n\n"
+    "**Free Cash Flow** is the actual cash left after a company pays for operating expenses and capital expenditure (Capex).\n\n"
+    "**Equations:**\n"
+    "• `FCF = Cash Flow from Operations (CFO) − Capital Expenditure (Capex)`\n"
+    "• `FCF Yield (%) = (Free Cash Flow / Market Cap) × 100`\n\n"
+    "**Why Indian analysts track it:** Accounting net profit (PAT) can look high even when cash is stuck in receivables or inventory. Consistently positive `CFO / EBITDA > 70%` and positive `FCF` signal high earnings quality.\n\n"
+    "_Educational overview — not investment advice._"
+)
+_TERM_ANSWERS["fcf"] = _TERM_ANSWERS["free cash flow"]
+
+_TERM_ANSWERS["debt to equity"] = (
+    "**Debt-to-Equity Ratio (D/E — Financial Leverage)**\n\n"
+    "**Equation:**\n"
+    "`Debt-to-Equity (D/E) = Total Debt / Shareholders' Equity`\n\n"
+    "**How to read it on NSE/BSE:**\n"
+    "• **D/E < 0.5x:** Conservative balance sheet (common in Indian IT, FMCG, debt-free midcaps).\n"
+    "• **D/E > 1.5x–2.0x:** High leverage — check `Interest Coverage Ratio (EBIT / Interest Expense > 3x)` and `Net Debt / EBITDA`.\n"
+    "• **Exception:** Do not apply standard D/E rules to Banks and NBFCs (deposits/borrowings are their raw material; check **Capital Adequacy CAR** and **GNPA/NNPA** instead).\n\n"
+    "_Educational overview — not investment advice._"
+)
+
+_TERM_ANSWERS["book value"] = (
+    "**Book Value Per Share (BVPS) & P/B Ratio**\n\n"
+    "**Equations:**\n"
+    "• `Book Value = Total Tangible Assets − Total Liabilities`\n"
+    "• `Book Value Per Share (BVPS) = Shareholders' Equity / Total Outstanding Shares`\n"
+    "• `P/B Ratio (Price-to-Book) = Market Price per Share / BVPS`\n\n"
+    "**How Indian analysts use it:**\n"
+    "• **Banks, NBFCs & Capital-Intensive Firms:** Valued primarily on **P/B vs ROE** (a bank with 16% ROE and clean asset quality trades at a higher P/B than one with 9% ROE).\n"
+    "• **Asset-Light IT / FMCG:** Often trade at high P/B (`8x–30x`) because brand and human capital are not on the balance sheet; use **P/E** and **FCF Yield** instead.\n\n"
+    "_Educational overview — not investment advice._"
+)
+_TERM_ANSWERS["pb"] = _TERM_ANSWERS["book value"]
+_TERM_ANSWERS["p/b"] = _TERM_ANSWERS["book value"]
+
+_TERM_ANSWERS["market cap"] = (
+    "**Market Capitalization (Market Cap) & SEBI Size Categories**\n\n"
+    "**Equation:**\n"
+    "`Market Cap = Current Market Price per Share × Total Outstanding Shares`\n"
+    "`Free-Float Market Cap = Share Price × Public (Non-Promoter) Tradable Shares` (used to weight NIFTY 50 & SENSEX).\n\n"
+    "**SEBI / AMFI Classification (by full market-cap rank):**\n"
+    "• **Large-Cap:** Ranked **#1 to #100** on NSE/BSE.\n"
+    "• **Mid-Cap:** Ranked **#101 to #250**.\n"
+    "• **Small-Cap:** Ranked **#251 and beyond**.\n\n"
+    "_Educational overview — not investment advice._"
+)
+
+_TERM_ANSWERS["face value"] = (
+    "**Face Value (Par Value) vs Book Value vs Market Value**\n\n"
+    "• **Face Value:** The nominal par value of a share printed on the charter (commonly ₹1, ₹2, ₹5, or ₹10 on NSE/BSE). Dividends expressed as a percentage (e.g. '200% dividend' on ₹2 face value = ₹4/share) and **stock splits** (e.g. ₹10 → ₹2 split = 5-for-1) are always calculated on Face Value.\n"
+    "• **Book Value:** Net accounting net worth per share (`Equity / Shares`).\n"
+    "• **Market Value (LTP):** Live price where buyers and sellers match on the exchange.\n\n"
+    "_Educational overview — not investment advice._"
+)
+
+_TERM_ANSWERS["buyback"] = (
+    "**Share Buyback & Offer for Sale (OFS)**\n\n"
+    "• **Share Buyback:** A company repurchases its own shares from shareholders and extinguishes them, reducing share count and boosting **EPS** and **ROE**.\n"
+    "  - **Tender Offer Route:** Fixed buyback price on a **Record Date**; SEBI mandates **15% reservation for Small Shareholders** (holding shares worth ≤ ₹2,00,000 on record date).\n"
+    "  - **Open Market Route:** Company buys gradually on NSE/BSE up to a maximum cap price.\n"
+    "• **OFS (Offer for Sale):** Promoters or large shareholders sell existing shares to the public through an exchange bidding window above a declared **Floor Price** (no new shares created).\n\n"
+    "_Educational overview — not investment advice._"
+)
+_TERM_ANSWERS["ofs"] = _TERM_ANSWERS["buyback"]
+_TERM_ANSWERS["offer for sale"] = _TERM_ANSWERS["buyback"]
+
+_TERM_ANSWERS["bulk deal"] = (
+    "**Bulk Deal vs Block Deal (NSE / BSE Institutional Prints)**\n\n"
+    "• **Bulk Deal:** Any single trade or cumulative daily trades in one scrip exceeding **0.5% of the company's total listed equity shares**, executed during normal market hours (`09:15–15:30 IST`). Visible to the market and disclosed to exchanges after close.\n"
+    "• **Block Deal:** A privately negotiated large institutional transaction (minimum order value **₹10 Crore**) executed in two dedicated **15-minute Block Deal Windows** (`08:45–09:00 IST` and `14:05–14:20 IST`) within ±1% of reference price so it does not distort the retail order book.\n\n"
+    "_Educational overview — not investment advice._"
+)
+_TERM_ANSWERS["block deal"] = _TERM_ANSWERS["bulk deal"]
+
 
 def get_education_answer(query: str) -> Optional[str]:
     """Return a structured education answer if the query is definitional/formulaic."""
@@ -3182,6 +3325,31 @@ def get_education_answer(query: str) -> Optional[str]:
         q,
     ):
         return _TERM_ANSWERS["3-6-9 rule"]
+
+    if re.search(r"\b(india\s*vix|\bvix\b)\b", q):
+        return _TERM_ANSWERS["india vix"]
+    if re.search(r"\b(\basm\b|\bgsm\b)\b", q):
+        return _TERM_ANSWERS["asm"]
+    if re.search(r"\bsupertrend\b", q):
+        return _TERM_ANSWERS["supertrend"]
+    if re.search(r"\bxirr\b", q):
+        return _TERM_ANSWERS["xirr"]
+    if re.search(r"\bebitda\b", q):
+        return _TERM_ANSWERS["ebitda"]
+    if re.search(r"\b(free\s*cash\s*flow|\bfcf\b)\b", q):
+        return _TERM_ANSWERS["free cash flow"]
+    if re.search(r"\bdebt[\s-]*to[\s-]*equity\b", q):
+        return _TERM_ANSWERS["debt to equity"]
+    if re.search(r"\b(book\s*value|p/b\s*ratio|pb\s*ratio)\b", q):
+        return _TERM_ANSWERS["book value"]
+    if re.search(r"\bmarket\s*cap(?:itali[sz]ation)?\b", q):
+        return _TERM_ANSWERS["market cap"]
+    if re.search(r"\bface\s*value\b", q):
+        return _TERM_ANSWERS["face value"]
+    if re.search(r"\b(buyback|offer\s*for\s*sale|\bofs\b)\b", q):
+        return _TERM_ANSWERS["buyback"]
+    if re.search(r"\b(bulk\s*deal|block\s*deal)\b", q):
+        return _TERM_ANSWERS["bulk deal"]
 
     for term in sorted(_TERM_ANSWERS.keys(), key=len, reverse=True):
         answer = _TERM_ANSWERS.get(term)

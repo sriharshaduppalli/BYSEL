@@ -14,7 +14,7 @@ COPY backend/ .
 
 # Always pin ISM. GitHub/Cloud Build checkouts often omit the submodule, and
 # the old tag fallback silently served English for Tenglish "ela undi" asks.
-ARG ISM_GIT_COMMIT=df2fa9dea6a2ee04a5e1e2e113dd213c70ee25db
+ARG ISM_GIT_COMMIT=24023a5de925b6f81559005efd75d76c79cbc3fb
 RUN rm -rf /app/vendor/indian_stock_market \
     && git init /app/vendor/indian_stock_market \
     && git -C /app/vendor/indian_stock_market remote add origin \

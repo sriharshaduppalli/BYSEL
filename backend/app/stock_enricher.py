@@ -1500,8 +1500,11 @@ def extract_symbol_from_query(query: str) -> Optional[str]:
     nse_pref = re.search(r"\bNSE:([A-Za-z0-9]{2,15})\b", query, flags=re.IGNORECASE)
     if nse_pref:
         return _resolve_listed_symbol(nse_pref.group(1).upper())
-    code_match = re.search(r"\b(\d{6})\b", query)
-    if code_match:
+    code_match = re.search(r"\b(5\d{5})\b", query)
+    if code_match and not re.search(
+        r"\b(cagr|calculate|compute|sip|lumpsum|from\s+\d+\s+to\s+\d+|₹\s*5\d{5}|rs\.?\s*5\d{5})\b",
+        q_lower,
+    ):
         return code_match.group(1)
 
     # Step 3: regex for explicit uppercase tickers (e.g. "Is LUPIN a buy?")
