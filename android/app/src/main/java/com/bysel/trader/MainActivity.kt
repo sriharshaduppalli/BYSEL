@@ -42,6 +42,8 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -496,11 +498,16 @@ fun BYSELApp(
     // Onboarding state
     var showOnboarding by remember { mutableStateOf(prefs.getBoolean("onboarding_complete", false).not()) }
 
-    var selectedTab by remember { mutableStateOf(initialTab) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(initialTab) }
     var homeScrollToTopTick by remember { mutableIntStateOf(0) }
-    var previousTab by remember { mutableIntStateOf(0) }
+    var previousTab by rememberSaveable { mutableIntStateOf(0) }
     // Deep-link history (e.g. Stock Detail → AI Full Analysis) for swipe/back return.
-    var tabBackStack by remember { mutableStateOf<List<Int>>(emptyList()) }
+    var tabBackStack by rememberSaveable(
+        stateSaver = listSaver(
+            save = { it },
+            restore = { it.filterIsInstance<Int>() },
+        )
+    ) { mutableStateOf<List<Int>>(emptyList()) }
     // More-section screens sit outside the 0–5 pager. Opening AI from SGB/MF
     // must not let a stale settledPage (often Home) overwrite the target tab.
     var suppressPagerTabSync by remember { mutableStateOf(false) }

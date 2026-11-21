@@ -48,14 +48,14 @@
 # Keep data classes
 -keep class com.bysel.trader.data.models.** { *; }
 -keep class com.bysel.trader.data.api.** { *; }
--keep class com.bysel.trader.ui.** { *; }
 
-# Keep other app classes that may be referenced via manifest or reflection
--keep class com.bysel.trader.utils.** { *; }
--keep class com.bysel.trader.util.** { *; }
+# Keep classes referenced via manifest, workers, or platform callbacks
 -keep class com.bysel.trader.security.** { *; }
+-keep class com.bysel.trader.alerts.** { *; }
+-keep class com.bysel.trader.data.auth.** { *; }
+-keep class com.bysel.trader.data.local.** { *; }
 
-# AndroidX Startup / process lifecycle (safe even without custom Application)
+# AndroidX Startup / process lifecycle
 -keep class androidx.startup.** { *; }
 -keep class androidx.lifecycle.ProcessLifecycleOwner { *; }
 -keep class androidx.lifecycle.ProcessLifecycleInitializer { *; }
@@ -64,11 +64,6 @@
 -dontwarn androidx.credentials.**
 -dontwarn androidx.window.**
 -keep class androidx.credentials.** { *; }
--keep class com.bysel.trader.alerts.** { *; }
--keep class com.bysel.trader.data.auth.** { *; }
--keep class com.bysel.trader.data.local.** { *; }
--keep class com.bysel.trader.data.repository.** { *; }
--keep class com.bysel.trader.viewmodel.** { *; }
 
 # Google Play Services
 -keep class com.google.android.gms.** { *; }

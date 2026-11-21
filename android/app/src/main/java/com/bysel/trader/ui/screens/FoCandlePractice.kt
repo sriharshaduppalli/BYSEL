@@ -248,6 +248,7 @@ fun FoCandlePractice(
     }
     val bar = if (liveChart) candles.lastOrNull() else candles.getOrNull(safeCursor)
     val chartRange = if (liveChart) "1D" else "5D"
+    val sessionIntervalLabel = remember(candles) { inferCandleIntervalLabel(candles) }
     val spot = if (liveChart && livePrice > 0.0) livePrice else bar?.close ?: 0.0
     val chartLivePrice = if (liveChart) livePrice else 0.0
     val atmStrike = if (spot > 0.0) practiceStrike(symbol, spot) else 0.0
@@ -374,7 +375,7 @@ fun FoCandlePractice(
                 )
                 com.bysel.trader.ui.components.DataSourceBadge(
                     label = if (liveChart) {
-                        com.bysel.trader.ui.components.sessionChartLabel(marketOpen)
+                        com.bysel.trader.ui.components.sessionChartLabel(marketOpen, sessionIntervalLabel)
                     } else {
                         com.bysel.trader.ui.components.replayDataLabel
                     },
@@ -1234,6 +1235,23 @@ internal fun tapeSymbol(symbol: String): String = when (symbol.trim().uppercase(
     "NIFTYBANK", "NIFTY BANK", "^NSEBANK" -> "BANKNIFTY"
     "BSESN", "^BSESN" -> "SENSEX"
     else -> symbol.trim().uppercase()
+}
+
+internal fun inferCandleIntervalLabel(candles: List<HistoryCandle>): String {
+    if (candles.size < 2) return "5-minute"
+    val deltasMinutes = candles.zipWithNext { a, b ->
+        val t1 = if (a.timestamp < 10_000_000_000L) a.timestamp * 1000L else a.timestamp
+        val t2 = if (b.timestamp < 10_000_000_000L) b.timestamp * 1000L else b.timestamp
+        ((t2 - t1) / 60_000L).coerceAtLeast(0L)
+    }.filter { it in 1L..240L }.sorted()
+    val medianMin = deltasMinutes.getOrNull(deltasMinutes.size / 2) ?: 5L
+    return when {
+        medianMin <= 1L -> "1-minute"
+        medianMin <= 5L -> "5-minute"
+        medianMin <= 15L -> "15-minute"
+        medianMin <= 65L -> "1-hour"
+        else -> "daily"
+    }
 }
 
 /** Index desks say NIFTY; the quote tape says NIFTY50. */

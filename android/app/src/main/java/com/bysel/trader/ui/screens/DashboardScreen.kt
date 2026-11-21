@@ -72,7 +72,11 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -101,6 +105,9 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.ShoppingCart
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import com.bysel.trader.ui.components.DashboardSkeletonLoader
 import com.bysel.trader.ui.components.InfoChip
@@ -3142,9 +3149,8 @@ private fun HomeIndexSparkline(
     onOpen: () -> Unit,
 ) {
     val theme = LocalAppTheme.current
-    val closes = remember(candles) {
-        candles.map { it.close }.filter { it > 0.0 }
-    }
+    val series = remember(candles) { candles.filter { it.close > 0.0 } }
+    val closes = remember(series) { series.map { it.close } }
     if (closes.size < 2) return
     val targetLast = if (livePrice > 0.0) livePrice else closes.last()
     val animatedLast = remember { androidx.compose.animation.core.Animatable(closes.last().toFloat()) }
@@ -3157,12 +3163,16 @@ private fun HomeIndexSparkline(
     val countState = remember { mutableIntStateOf(closes.size) }
     countState.intValue = closes.size
     val line = if (targetLast >= closes.first()) theme.positive else theme.negative
+    val textMeasurer = rememberTextMeasurer()
+    val axisStyle = TextStyle(color = theme.textSecondary, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+    val sparklineDesc = "Home session chart with ${closes.size} bars, last level ${homeAxisPrice(targetLast, (closes.max() - closes.min()).coerceAtLeast(1.0))}. Tap to open full chart."
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(132.dp)
+            .height(168.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(theme.surface.copy(alpha = 0.55f))
+            .semantics { contentDescription = sparklineDesc }
             .blockParentHorizontalPager()
             .pointerInput(Unit) {
                 detectChartGestures(
@@ -3192,20 +3202,100 @@ private fun HomeIndexSparkline(
         val start = windowStart.floatValue.coerceIn(0f, maxStart)
         val from = (start * (count - 1)).toInt().coerceIn(0, count - 2)
         val visible = (span * count).toInt().coerceAtLeast(2).coerceAtMost(count - from)
-        val slice = closes.subList(from, from + visible).toMutableList()
-        if (from + visible >= count) slice[slice.lastIndex] = animatedLast.value.toDouble()
-        val minP = slice.min()
-        val maxP = slice.max()
+        val slice = series.subList(from, from + visible)
+        val prices = slice.map { it.close }.toMutableList()
+        if (from + visible >= count) prices[prices.lastIndex] = animatedLast.value.toDouble()
+        val minP = prices.min()
+        val maxP = prices.max()
         val range = (maxP - minP).takeIf { it > 0.0 } ?: (maxP * 0.002).coerceAtLeast(0.05)
+        val priceLabels = listOf(minP + range, minP + range / 2.0, minP).map { homeAxisPrice(it, range) }
+        val measuredPrices = priceLabels.map { textMeasurer.measure(it, style = axisStyle) }
+        val leftPad = measuredPrices.maxOf { it.size.width }.toFloat() + 10.dp.toPx()
+        val bottomPad = measuredPrices.first().size.height.toFloat() + 8.dp.toPx()
+        val topPad = 6.dp.toPx()
+        val rightPad = 8.dp.toPx()
+        val plotW = (size.width - leftPad - rightPad).coerceAtLeast(1f)
+        val plotH = (size.height - topPad - bottomPad).coerceAtLeast(1f)
+        fun xFor(index: Int): Float =
+            leftPad + if (prices.size == 1) plotW / 2f else index.toFloat() / (prices.size - 1) * plotW
+        fun yFor(price: Double): Float =
+            topPad + plotH - (((price - minP) / range).toFloat().coerceIn(0f, 1f) * plotH)
+
+        val axisColor = theme.text.copy(alpha = 0.28f)
+        val gridColor = theme.text.copy(alpha = 0.10f)
+        listOf(minP + range, minP + range / 2.0).forEach { level ->
+            val y = yFor(level)
+            drawLine(
+                color = gridColor,
+                start = androidx.compose.ui.geometry.Offset(leftPad, y),
+                end = androidx.compose.ui.geometry.Offset(leftPad + plotW, y),
+                strokeWidth = 1f,
+            )
+        }
+        drawLine(
+            color = axisColor,
+            start = androidx.compose.ui.geometry.Offset(leftPad, topPad),
+            end = androidx.compose.ui.geometry.Offset(leftPad, topPad + plotH),
+            strokeWidth = 1.2f,
+        )
+        drawLine(
+            color = axisColor,
+            start = androidx.compose.ui.geometry.Offset(leftPad, topPad + plotH),
+            end = androidx.compose.ui.geometry.Offset(leftPad + plotW, topPad + plotH),
+            strokeWidth = 1.2f,
+        )
+
         val path = Path()
-        slice.forEachIndexed { index, price ->
-            val x = if (slice.size == 1) size.width / 2f else index.toFloat() / (slice.size - 1) * size.width
-            val y = size.height - (((price - minP) / range).toFloat().coerceIn(0f, 1f) * size.height)
+        prices.forEachIndexed { index, price ->
+            val x = xFor(index)
+            val y = yFor(price)
             if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
         drawPath(path, color = line, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
-        val endX = size.width
-        val endY = size.height - (((slice.last() - minP) / range).toFloat().coerceIn(0f, 1f) * size.height)
-        drawCircle(color = line, radius = 3.5.dp.toPx(), center = androidx.compose.ui.geometry.Offset(endX, endY))
+        drawCircle(
+            color = line,
+            radius = 3.5.dp.toPx(),
+            center = androidx.compose.ui.geometry.Offset(xFor(prices.lastIndex), yFor(prices.last())),
+        )
+
+        priceLabels.forEachIndexed { index, label ->
+            val layout = measuredPrices[index]
+            val level = when (index) {
+                0 -> minP + range
+                1 -> minP + range / 2.0
+                else -> minP
+            }
+            val y = (yFor(level) - layout.size.height / 2f).coerceIn(0f, size.height - layout.size.height)
+            drawText(layout, topLeft = androidx.compose.ui.geometry.Offset(2.dp.toPx(), y))
+        }
+
+        val timeSlots = listOf(0, prices.size / 2, prices.lastIndex).distinct()
+        timeSlots.forEach { index ->
+            val label = homeAxisClock(slice[index].timestamp) ?: return@forEach
+            val layout = textMeasurer.measure(label, style = axisStyle)
+            val x = (xFor(index) - layout.size.width / 2f)
+                .coerceIn(leftPad, (leftPad + plotW - layout.size.width).coerceAtLeast(leftPad))
+            drawText(
+                layout,
+                topLeft = androidx.compose.ui.geometry.Offset(x, topPad + plotH + 3.dp.toPx()),
+            )
+        }
     }
+}
+
+private val HOME_INDEX_IST: ZoneId = ZoneId.of("Asia/Kolkata")
+private val HOME_INDEX_CLOCK: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+
+private fun homeAxisPrice(price: Double, range: Double): String =
+    if (range < 20.0) usFmt("%.1f", price) else usFmt("%.0f", price)
+
+private fun homeAxisClock(timestamp: Long): String? {
+    val millis = when {
+        timestamp <= 0L -> return null
+        timestamp < 10_000_000_000L -> timestamp * 1000L
+        else -> timestamp
+    }
+    return runCatching {
+        Instant.ofEpochMilli(millis).atZone(HOME_INDEX_IST).format(HOME_INDEX_CLOCK)
+    }.getOrNull()
 }

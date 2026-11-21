@@ -48,6 +48,8 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -294,6 +296,7 @@ fun CandlestickChart(
     val closes = remember(history) { history.map { it.close } }
     val highs = remember(history) { history.map { it.high } }
     val lows = remember(history) { history.map { it.low } }
+    val hasVolumeData = remember(history) { history.any { it.volume > 0L } }
     // Bars drawn on screen. Indicators stay on the real closes either way.
     val bars = remember(history, heikinAshi) {
         if (heikinAshi) TechnicalIndicators.heikinAshi(history) else history
@@ -389,11 +392,13 @@ fun CandlestickChart(
                     selectedLabelColor = MACD_LINE,
                 ),
             )
-            FilterChip(
-                selected = showVolume,
-                onClick = { showVolume = !showVolume },
-                label = { Text("Volume", fontSize = 11.sp, maxLines = 1, softWrap = false) },
-            )
+            if (hasVolumeData) {
+                FilterChip(
+                    selected = showVolume,
+                    onClick = { showVolume = !showVolume },
+                    label = { Text("Volume", fontSize = 11.sp, maxLines = 1, softWrap = false) },
+                )
+            }
             FilterChip(
                 selected = drawMode == "trend",
                 onClick = {
@@ -707,12 +712,14 @@ fun CandlestickChart(
                         .padding(horizontal = 8.dp),
                 )
 
+                val chartSemanticsDesc = "Candlestick chart ($rangeLabel) with ${history.size} bars, last close ₹${usFmt("%.2f", headerClose)}, high ₹${usFmt("%.2f", headerHigh)}, low ₹${usFmt("%.2f", headerLow)}."
                 Canvas(
                     modifier = Modifier
                         .fillMaxWidth()
                         .then(if (expandPlot) Modifier.weight(1f) else Modifier.height(320.dp))
                         .background(theme.mutedSurface, RoundedCornerShape(12.dp))
                         .padding(start = 4.dp, end = 6.dp, top = 8.dp, bottom = 4.dp)
+                        .semantics { contentDescription = chartSemanticsDesc }
                         .pointerInput(rangeLabel, plotWidthPx) {
                             detectChartGestures(
                                 onPanZoom = { panX, zoom, focalX -> onGesture.value(panX, zoom, focalX) },
@@ -738,8 +745,9 @@ fun CandlestickChart(
                     // MACD takes the bottom quarter of the price area so both share one x-axis.
                     val macdGap = if (showMacd && fullH > 160f) 8f else 0f
                     val macdH = if (showMacd && fullH > 160f) fullH * 0.22f else 0f
-                    val volumeGap = if (showVolume && fullH > 160f) 8f else 0f
-                    val volumeH = if (showVolume && fullH > 160f) fullH * 0.16f else 0f
+                    val activeVolume = showVolume && hasVolumeData
+                    val volumeGap = if (activeVolume && fullH > 160f) 8f else 0f
+                    val volumeH = if (activeVolume && fullH > 160f) fullH * 0.16f else 0f
                     val plotH = (fullH - macdH - macdGap - volumeH - volumeGap).coerceAtLeast(1f)
                     val barPx = (barWidth.dp.toPx()).coerceAtLeast(0.5f)
                     val first = startIndex.toInt().coerceIn(0, history.lastIndex)

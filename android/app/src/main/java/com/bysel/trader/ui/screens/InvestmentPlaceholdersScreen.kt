@@ -2000,6 +2000,7 @@ fun DerivativesIntelligenceScreen(
     val foCandles by viewModel.optionCandles.collectAsStateWithLifecycle()
     val foCandlesLoading by viewModel.optionCandlesLoading.collectAsStateWithLifecycle()
     val quotes by viewModel.quotes.collectAsStateWithLifecycle()
+    val marketStatus by viewModel.marketStatus.collectAsStateWithLifecycle()
     // Resume on the underlying of an unfinished drill; otherwise start on NIFTY.
     val startSymbol = savedOptionPractice?.symbol?.takeIf { it.isNotBlank() } ?: "NIFTY"
     var symbol by rememberSaveable { mutableStateOf(startSymbol) }
@@ -2008,11 +2009,13 @@ fun DerivativesIntelligenceScreen(
     var showMoreStrikes by rememberSaveable { mutableStateOf(false) }
     var showGreeks by rememberSaveable { mutableStateOf(false) }
     var chainSide by rememberSaveable { mutableStateOf("BOTH") }
-    var marketOpen by remember { mutableStateOf(MarketSession.isOpen()) }
-    LaunchedEffect(Unit) {
+    var marketOpen by remember(marketStatus?.isOpen) {
+        mutableStateOf(marketStatus?.isOpen ?: MarketSession.isOpen())
+    }
+    LaunchedEffect(marketStatus?.isOpen) {
         while (isActive) {
             delay(30_000)
-            marketOpen = MarketSession.isOpen()
+            marketOpen = marketStatus?.isOpen ?: MarketSession.isOpen()
         }
     }
     LaunchedEffect(marketOpen, practiceSymbol) {

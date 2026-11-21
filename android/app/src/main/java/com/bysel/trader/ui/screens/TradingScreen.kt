@@ -1186,16 +1186,19 @@ private fun FuturesRadarScreen(
 
     val productActionMessage by viewModel.productActionMessage.collectAsStateWithLifecycle()
     val optionChain by viewModel.optionChain.collectAsStateWithLifecycle()
+    val marketStatus by viewModel.marketStatus.collectAsStateWithLifecycle()
     // Resume on the underlying of an unfinished drill; otherwise start on NIFTY.
     val startSymbol = savedFuturePractice?.symbol?.takeIf { it.isNotBlank() } ?: "NIFTY"
     var underlyingInput by rememberSaveable { mutableStateOf(startSymbol) }
     var practiceSymbol by rememberSaveable { mutableStateOf(startSymbol) }
     var selectedExpiry by rememberSaveable { mutableStateOf<String?>(null) }
-    var marketOpen by remember { mutableStateOf(MarketSession.isOpen()) }
-    LaunchedEffect(Unit) {
+    var marketOpen by remember(marketStatus?.isOpen) {
+        mutableStateOf(marketStatus?.isOpen ?: MarketSession.isOpen())
+    }
+    LaunchedEffect(marketStatus?.isOpen) {
         while (isActive) {
             delay(30_000)
-            marketOpen = MarketSession.isOpen()
+            marketOpen = marketStatus?.isOpen ?: MarketSession.isOpen()
         }
     }
     LaunchedEffect(marketOpen, practiceSymbol) {

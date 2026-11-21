@@ -70,9 +70,9 @@ val replayDataLabel = FoDataLabel(
     "You are stepping through saved bars from a delayed source. Nothing on this chart is live.",
 )
 
-fun sessionChartLabel(marketOpen: Boolean) = FoDataLabel(
+fun sessionChartLabel(marketOpen: Boolean, intervalLabel: String = "5-minute") = FoDataLabel(
     FoDataKind.DELAYED,
-    if (marketOpen) "Session · 5-minute candles" else "Last session · 5-minute candles",
+    if (marketOpen) "Session · $intervalLabel candles" else "Last session · $intervalLabel candles",
     "Delayed candles, refreshed while the market is open. Pinch to zoom. Call and put marks use the latest close, not a traded option price.",
 )
 

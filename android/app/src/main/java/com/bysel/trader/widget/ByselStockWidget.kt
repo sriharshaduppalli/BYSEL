@@ -21,8 +21,12 @@ import androidx.compose.runtime.Composable
 import androidx.glance.LocalContext
 import com.bysel.trader.MainActivity
 import com.bysel.trader.data.api.RetrofitClient
+import com.bysel.trader.data.local.BYSELDatabase
 import com.bysel.trader.data.models.Quote
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
 
 class ByselStockWidget : GlanceAppWidget() {
@@ -122,41 +126,70 @@ class ByselStockWidget : GlanceAppWidget() {
 
     private suspend fun fetchWidgetData(context: Context): WidgetData {
         return withContext(Dispatchers.IO) {
-            try {
-                val api = RetrofitClient.apiService
-                val portfolio = api.getPortfolioValue()
-                val heatmap = api.getMarketHeatmap()
-                val niftyQuote = fetchNiftyQuote()
+            val api = RetrofitClient.apiService
+            coroutineScope {
+                val portfolioDeferred = async {
+                    try { api.getPortfolioValue() } catch (_: Exception) { null }
+                }
+                val heatmapDeferred = async {
+                    try { api.getMarketHeatmap() } catch (_: Exception) { null }
+                }
+                val niftyDeferred = async { fetchNiftyQuote() }
 
-                val allStocks = heatmap.sectors.flatMap { it.stocks }
+                val portfolio = portfolioDeferred.await()
+                val heatmap = heatmapDeferred.await()
+                val niftyQuote = niftyDeferred.await()
+
+                val cachedQuotes = if (heatmap == null || niftyQuote == null) {
+                    try {
+                        BYSELDatabase.getInstance(context).quoteDao().getAllQuotes().firstOrNull().orEmpty()
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                } else {
+                    emptyList()
+                }
+
+                val allStocks = heatmap?.sectors?.flatMap { it.stocks }.orEmpty()
                 val sortedByChange = equityStocksForMovers(allStocks).sortedByDescending { it.pctChange }
+                val cachedEquities = cachedQuotes
+                    .filter { it.symbol.uppercase() !in WIDGET_INDEX_SYMBOLS && it.last > 0.0 }
+                    .sortedByDescending { it.pctChange }
 
-                val pnlPositive = portfolio.pnl >= 0
+                val pnlPositive = (portfolio?.pnl ?: 0.0) >= 0.0
                 val nifty = resolveNiftyLevel(
-                    quotes = listOfNotNull(niftyQuote),
+                    quotes = listOfNotNull(niftyQuote) + cachedQuotes,
                     heatmapStocks = allStocks,
                 )
                 val niftyLevel = nifty?.first
                 val niftyChange = nifty?.second ?: 0.0
 
+                val gainerText = sortedByChange.firstOrNull()?.let { s ->
+                    "${s.symbol} +${usFmt("%.1f", s.pctChange)}%"
+                } ?: cachedEquities.firstOrNull()?.let { q ->
+                    "${q.symbol} ${usFmt("%+.1f", q.pctChange)}%"
+                } ?: "--"
+
+                val loserText = sortedByChange.lastOrNull()?.let { s ->
+                    "${s.symbol} ${usFmt("%.1f", s.pctChange)}%"
+                } ?: cachedEquities.lastOrNull()?.let { q ->
+                    "${q.symbol} ${usFmt("%+.1f", q.pctChange)}%"
+                } ?: "--"
+
                 WidgetData(
-                    portfolioValue = "₹${usFmt("%,.0f", portfolio.value)}",
-                    pnlText = "${if (pnlPositive) "+" else ""}${usFmt("%.2f", portfolio.pnlPercent)}% today",
+                    portfolioValue = portfolio?.let { "₹${usFmt("%,.0f", it.value)}" } ?: "--",
+                    pnlText = portfolio?.let {
+                        "${if (pnlPositive) "+" else ""}${usFmt("%.2f", it.pnlPercent)}% today"
+                    } ?: "Paper portfolio",
                     pnlPositive = pnlPositive,
                     niftyLevel = niftyLevel?.let { usFmt("%,.0f", it) } ?: "--",
                     niftyChange = "${usFmt("%+.2f", niftyChange)}%",
                     niftyPositive = niftyChange >= 0,
-                    topGainer = sortedByChange.firstOrNull()?.let { s ->
-                        "${s.symbol} +${usFmt("%.1f", s.pctChange)}%"
-                    } ?: "--",
-                    topLoser = sortedByChange.lastOrNull()?.let { s ->
-                        "${s.symbol} ${usFmt("%.1f", s.pctChange)}%"
-                    } ?: "--",
+                    topGainer = gainerText,
+                    topLoser = loserText,
                     lastUpdated = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
                         .format(java.util.Date()),
                 )
-            } catch (_: Exception) {
-                WidgetData()
             }
         }
     }
