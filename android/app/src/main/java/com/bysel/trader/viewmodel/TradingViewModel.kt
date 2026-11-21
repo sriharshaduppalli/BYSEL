@@ -828,7 +828,7 @@ class TradingViewModel(
 
     private fun isMarketTapeOpen(): Boolean {
         val serverOpen = _marketStatus.value?.isOpen
-        return MarketSession.isOpen() || serverOpen == true
+        return serverOpen ?: MarketSession.isOpen()
     }
 
     private fun markQuoteUpdate(nowMs: Long = System.currentTimeMillis()) {
@@ -1872,11 +1872,9 @@ class TradingViewModel(
                     if (!_fastRefreshPlaying.value) return@collect
                     if (_requireCharging.value && !isDeviceCharging()) return@collect
                     if (_requireUnmetered.value && !isOnUnmeteredNetwork()) return@collect
-                    val serverOpen = _marketStatus.value?.isOpen
-                    val localOpen = MarketSession.isOpen()
-                    // Apply ticks while the IST session is open even if /market/status
-                    // is stale-closed. After hours, skip no-op reprints.
-                    if (!localOpen && serverOpen != true) return@collect
+                    // Respect authoritative server holiday/closed status when loaded;
+                    // fall back to local IST clock before /market/status arrives.
+                    if (!isMarketTapeOpen()) return@collect
 
                     when (result) {
                         is Result.Success -> {

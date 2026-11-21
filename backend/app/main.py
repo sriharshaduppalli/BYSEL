@@ -198,9 +198,12 @@ if allow_all_origins:
 async def _lifespan(_app: FastAPI):
     logger.info("BYSEL Backend starting up...")
     try:
-        from .llm_integration import _LLM_DATA, _LLM_PKG
+        from .llm_integration import _LLM_DATA, _LLM_PKG, _get_assistant
+        import threading
+
         logger.info("LLM pkg: %s (exists=%s)", _LLM_PKG, _LLM_PKG.exists())
         logger.info("LLM data: %s (exists=%s)", _LLM_DATA, _LLM_DATA.exists())
+        threading.Thread(target=_get_assistant, name="ism-warmup", daemon=True).start()
     except Exception as e:
         logger.error("LLM startup check failed: %s", e)
     try:

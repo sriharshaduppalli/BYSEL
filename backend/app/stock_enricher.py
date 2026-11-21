@@ -1665,19 +1665,42 @@ def _rolling_std(arr, n):
 
 
 def _calc_rsi(closes, period=14):
+    """Wilder-smoothed RSI(14) so stock_enricher matches TradingView, ISM analysis_math, and Android charts."""
     if len(closes) < period + 1:
         return None
     gains, losses = [], []
     for i in range(1, len(closes)):
-        diff = closes[i] - closes[i - 1]
-        gains.append(max(diff, 0))
-        losses.append(max(-diff, 0))
-    avg_gain = sum(gains[-period:]) / period
-    avg_loss = sum(losses[-period:]) / period
+        diff = float(closes[i]) - float(closes[i - 1])
+        gains.append(max(diff, 0.0))
+        losses.append(max(-diff, 0.0))
+    if len(gains) < period:
+        return None
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+    for i in range(period, len(gains)):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
     if avg_loss == 0:
         return 100.0
     rs = avg_gain / avg_loss
-    return round(100 - (100 / (1 + rs)), 1)
+    return round(100.0 - (100.0 / (1.0 + rs)), 2)
+
+
+def _calc_atr(highs, lows, closes, period=14):
+    """Wilder-smoothed ATR(14) for volatility-aware stop and target placement."""
+    n = min(len(highs), len(lows), len(closes))
+    if n < period + 1:
+        return None
+    trs = []
+    for i in range(1, n):
+        h, l, prev_c = float(highs[i]), float(lows[i]), float(closes[i - 1])
+        trs.append(max(h - l, abs(h - prev_c), abs(l - prev_c)))
+    if len(trs) < period:
+        return None
+    atr_val = sum(trs[:period]) / period
+    for tr in trs[period:]:
+        atr_val = (atr_val * (period - 1) + tr) / period
+    return round(atr_val, 2)
 
 
 def _news_sentiment(headlines: list[str]) -> dict:
@@ -2171,12 +2194,37 @@ def _fetch_yfinance(symbol: str, deadline_seconds: float | None = None) -> dict:
         resistance1 = round(max(highs[-20:]), 2) if len(highs) >= 20 else None
         support2 = round(min(lows[-52:]), 2) if len(lows) >= 52 else None
         resistance2 = round(max(highs[-52:]), 2) if len(highs) >= 52 else None
+        atr_val = _calc_atr(highs, lows, closes, 14)
 
-        # Stop Loss & Take Profit
-        stop_loss = round(support1 * 0.98, 2) if support1 else None
-        take_profit = resistance1
+        # Volatility-aware Stop Loss & Take Profit (avoids inverted R:R near 20D breakout)
+        stop_loss = None
+        take_profit = None
+        if current and current > 0:
+            if atr_val and atr_val > 0:
+                atr_stop = current - 1.5 * atr_val
+                struct_stop = (support1 - 0.5 * atr_val) if (support1 and support1 < current) else atr_stop
+                stop_loss = round(max(struct_stop, current - 2.5 * atr_val), 2)
+                if stop_loss >= current:
+                    stop_loss = round(current - 1.5 * atr_val, 2)
+            elif support1 and support1 < current:
+                stop_loss = round(support1 * 0.985, 2)
+
+            risk_pts = (current - stop_loss) if (stop_loss and stop_loss < current) else (atr_val * 1.5 if atr_val else None)
+            if risk_pts and risk_pts > 0:
+                min_tp = current + 1.5 * risk_pts
+                if resistance1 and resistance1 >= min_tp:
+                    take_profit = resistance1
+                elif resistance2 and resistance2 >= min_tp:
+                    take_profit = resistance2
+                elif atr_val and atr_val > 0:
+                    take_profit = round(current + 2.0 * risk_pts, 2)
+                else:
+                    take_profit = resistance1 if (resistance1 and resistance1 > current) else None
+            else:
+                take_profit = resistance1 if (resistance1 and resistance1 > current) else None
+
         rr_ratio = None
-        if current and stop_loss and take_profit and current > stop_loss:
+        if current and stop_loss and take_profit and current > stop_loss and take_profit > current:
             risk = current - stop_loss
             reward = take_profit - current
             if risk > 0:
@@ -2241,7 +2289,9 @@ def _fetch_yfinance(symbol: str, deadline_seconds: float | None = None) -> dict:
         }
         technical_data = {
             "rsi": rsi_str,
+            "rsi_num": rsi_val,
             "rsi_interpretation": rsi_interp,
+            "atr": atr_val,
             "bollinger_bands": bb_band,
             "moving_averages": ma_trend,
             "trend": ("strong_bullish" if current and sma50 and sma200 and current > sma50 > sma200

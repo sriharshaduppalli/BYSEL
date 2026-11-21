@@ -145,21 +145,61 @@ object TechnicalIndicators {
         return out
     }
 
-    /** VWAP resets each IST session, which is how an Indian intraday desk reads it. */
-    fun vwap(candles: List<HistoryCandle>): List<Double?> {
+    data class SupertrendPoint(
+        val value: Double,
+        val bullish: Boolean,
+    )
+
+    /**
+     * VWAP resets each IST session on intraday candles (1D/5D), and switches to a
+     * 20-bar rolling VWAP on daily/weekly candles so daily bars never collapse to typical price.
+     */
+    fun vwap(candles: List<HistoryCandle>, rollingWindow: Int = 20): List<Double?> {
         if (candles.isEmpty()) return emptyList()
         val result = MutableList<Double?>(candles.size) { null }
+        fun epochMs(ts: Long): Long = when {
+            ts <= 0L -> 0L
+            ts < 10_000_000_000L -> ts * 1000L
+            else -> ts
+        }
+        val deltas = buildList {
+            for (i in 1 until candles.size) {
+                val prev = epochMs(candles[i - 1].timestamp)
+                val curr = epochMs(candles[i].timestamp)
+                if (prev > 0L && curr > prev) add(curr - prev)
+            }
+        }.sorted()
+        val intradaySteps = deltas.count { it > 0L && it < 6L * 3600L * 1000L }
+        val isDailyOrWider = if (deltas.isNotEmpty()) {
+            intradaySteps * 2 < deltas.size
+        } else {
+            candles.size >= 2
+        }
+
+        if (isDailyOrWider) {
+            val win = rollingWindow.coerceAtLeast(1)
+            for (i in candles.indices) {
+                val start = (i - win + 1).coerceAtLeast(0)
+                var cumVolume = 0L
+                var cumTP = 0.0
+                for (j in start..i) {
+                    val c = candles[j]
+                    val tp = (c.high + c.low + c.close) / 3.0
+                    cumVolume += c.volume
+                    cumTP += tp * c.volume
+                }
+                result[i] = if (cumVolume > 0L) cumTP / cumVolume else null
+            }
+            return result
+        }
+
         val zone = ZoneId.of("Asia/Kolkata")
         var day = Long.MIN_VALUE
         var cumVolume = 0L
         var cumTP = 0.0
         for (i in candles.indices) {
             val c = candles[i]
-            val ms = when {
-                c.timestamp <= 0L -> 0L
-                c.timestamp < 10_000_000_000L -> c.timestamp * 1000L
-                else -> c.timestamp
-            }
+            val ms = epochMs(c.timestamp)
             val session = if (ms <= 0L) day else Instant.ofEpochMilli(ms).atZone(zone).toLocalDate().toEpochDay()
             if (session != day) {
                 day = session
@@ -170,6 +210,67 @@ object TechnicalIndicators {
             cumVolume += c.volume
             cumTP += tp * c.volume
             result[i] = if (cumVolume > 0) cumTP / cumVolume else null
+        }
+        return result
+    }
+
+    /**
+     * Wilder ATR-based Supertrend (default 10, 3.0) matching ISM analysis_math.supertrend.
+     */
+    fun supertrend(
+        candles: List<HistoryCandle>,
+        period: Int = 10,
+        multiplier: Double = 3.0,
+    ): List<SupertrendPoint?> {
+        val n = candles.size
+        val result = MutableList<SupertrendPoint?>(n) { null }
+        if (n < period + 2 || period <= 0) return result
+
+        val trs = DoubleArray(n)
+        trs[0] = candles[0].high - candles[0].low
+        for (i in 1 until n) {
+            val h = candles[i].high
+            val l = candles[i].low
+            val prevC = candles[i - 1].close
+            trs[i] = maxOf(h - l, kotlin.math.abs(h - prevC), kotlin.math.abs(l - prevC))
+        }
+
+        val atrSeries = DoubleArray(n)
+        var atrVal = 0.0
+        for (i in 0 until period) atrVal += trs[i]
+        atrVal /= period.toDouble()
+        atrSeries[period - 1] = atrVal
+        for (i in period until n) {
+            atrVal = (atrVal * (period - 1) + trs[i]) / period.toDouble()
+            atrSeries[i] = atrVal
+        }
+
+        val finalUpper = DoubleArray(n)
+        val finalLower = DoubleArray(n)
+        var bullish = true
+
+        for (i in (period - 1) until n) {
+            val hl2 = (candles[i].high + candles[i].low) / 2.0
+            val atr = atrSeries[i]
+            val basicUpper = hl2 + multiplier * atr
+            val basicLower = hl2 - multiplier * atr
+            if (i == period - 1) {
+                finalUpper[i] = basicUpper
+                finalLower[i] = basicLower
+                bullish = candles[i].close >= basicLower
+            } else {
+                val prevFu = finalUpper[i - 1]
+                val prevFl = finalLower[i - 1]
+                finalUpper[i] = if (basicUpper < prevFu || candles[i - 1].close > prevFu) basicUpper else prevFu
+                finalLower[i] = if (basicLower > prevFl || candles[i - 1].close < prevFl) basicLower else prevFl
+                bullish = if (bullish) {
+                    candles[i].close >= finalLower[i]
+                } else {
+                    candles[i].close > finalUpper[i]
+                }
+            }
+            val line = if (bullish) finalLower[i] else finalUpper[i]
+            result[i] = SupertrendPoint(value = line, bullish = bullish)
         }
         return result
     }

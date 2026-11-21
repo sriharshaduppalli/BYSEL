@@ -73,6 +73,7 @@ private enum class Overlay(val label: String, val color: Color) {
     EMA20("EMA 20", Color(0xFFFF6D00)),
     BB("Bollinger", Color(0xFFAB47BC)),
     VWAP("VWAP", Color(0xFF26A69A)),
+    SUPERTREND("Supertrend", Color(0xFF00E676)),
 }
 
 private val MACD_LINE = Color(0xFF29B6F6)
@@ -309,6 +310,7 @@ fun CandlestickChart(
     val rsi = remember(closes) { TechnicalIndicators.rsi(closes, 14) }
     val macd = remember(closes) { TechnicalIndicators.macd(closes) }
     val vwap = remember(history) { TechnicalIndicators.vwap(history) }
+    val supertrend = remember(history) { TechnicalIndicators.supertrend(history) }
     val trendPairs = remember(trendStore) { parseIndexPairs(trendStore) }
     val fibPair = remember(fibStore) { parseIndexPairs(fibStore).firstOrNull() }
 
@@ -765,6 +767,12 @@ fun CandlestickChart(
                         val candle = bars[index]
                         visMin = min(visMin, barLow(index, candle))
                         visMax = max(visMax, barHigh(index, candle))
+                        if (Overlay.SUPERTREND in activeOverlays) {
+                            supertrend.getOrNull(index)?.value?.let { stVal ->
+                                visMin = min(visMin, stVal)
+                                visMax = max(visMax, stVal)
+                            }
+                        }
                     }
                     val pad = ((visMax - visMin) * 0.08).coerceAtLeast(visMax * 0.002).coerceAtLeast(0.05)
                     val minPrice = visMin - pad
@@ -886,6 +894,11 @@ fun CandlestickChart(
                                 dot(bb.lower.getOrNull(i), Overlay.BB.color)
                             }
                             if (Overlay.VWAP in activeOverlays) dot(vwap.getOrNull(i), Overlay.VWAP.color)
+                            if (Overlay.SUPERTREND in activeOverlays) {
+                                supertrend.getOrNull(i)?.let { st ->
+                                    dot(st.value, if (st.bullish) theme.positive else theme.negative)
+                                }
+                            }
                         }
                         i++
                     }

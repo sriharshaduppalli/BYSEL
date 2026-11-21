@@ -381,13 +381,15 @@ def _build_peers(query: str, primary: str | None, ctx: dict[str, Any]) -> list[d
     elif primary and primary not in cleaned:
         cleaned.insert(0, primary)
 
-    for sym in cleaned:
-        if primary and sym == primary:
-            continue
-        peers.append(_enrich_compare_leg(sym))
-        # Pairwise compares should stay at 1 peer; allow up to 2 for "A vs B vs C".
-        if len(peers) >= (2 if len(cleaned) >= 3 else 1):
-            break
+    max_peers = 2 if len(cleaned) >= 3 else 1
+    peer_syms = [sym for sym in cleaned if not (primary and sym == primary)][:max_peers]
+    if len(peer_syms) == 1:
+        peers.append(_enrich_compare_leg(peer_syms[0]))
+    elif len(peer_syms) > 1:
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=len(peer_syms)) as pool:
+            peers.extend(list(pool.map(_enrich_compare_leg, peer_syms)))
     return peers
 
 
